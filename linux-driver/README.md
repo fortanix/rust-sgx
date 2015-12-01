@@ -11,7 +11,7 @@ intended for production use.
 The module build has been tested on Linux 3.13 and 4.2. You'll probably want a
 recent kernel for generic hardware support anyway.
 
-You'll need a recent version of GNU as that supports the `encls` instruction.
+You'll need a recent version of GNU `as` that supports the `encls` instruction.
 2.25.1 is ok, 2.24 is not.
 
 ### Building

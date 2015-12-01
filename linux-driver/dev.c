@@ -15,7 +15,9 @@
 #include <linux/fs.h>
 #include <linux/notifier.h>
 #include <linux/kdebug.h>
-#include <linux/mm.h>
+#include <linux/ktime.h>
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <asm/asm.h>
 #include <asm/traps.h>
 #include <asm/uaccess.h>
@@ -34,9 +36,26 @@ struct sgx_ioctl_data {
 		struct {
 			int exception;
 			unsigned long data;
+			unsigned long duration_encls;
+			unsigned long duration_copy;
 		} /*out*/;
 	};
 };
+
+struct sgx_ioctl_vec_elem {
+	int leaf;
+	int return_flag;
+	struct sgx_ioctl_data data;
+};
+
+struct sgx_ioctl_vec {
+	int num;
+	struct sgx_ioctl_vec_elem* ioctls;
+};
+
+#define RETURN_EXCEPTION    0x01 // return if an exception was encountered executing ENCLS
+#define RETURN_ERROR        0x02 // return if EAX was not 0 after ENCLS
+#define RETURN_ERROR_EBLOCK 0x04 // same as RETURN_ERROR but also continue on SGX_BLKSTATE
 
 /// ENCLS ioctl
 /// Select leaf by IOCTL request code.
@@ -77,8 +96,12 @@ struct sgx_ioctl_data {
 ///   .exception    -1
 ///   .data         kernel virtual address of EPC
 
+/// SGX_MULTI_ENCLS_IOCTL
+/// execute multiple ENCLS by passing an array of IOCTLs
+
 #define SGX_META_IOCTL 'H'
-#define SGX_IOADDR_IOCTL _IOW(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
+#define SGX_IOADDR_IOCTL      _IOW(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
+#define SGX_MULTI_ENCLS_IOCTL _IOWR(SGX_META_IOCTL, 0x01, struct sgx_ioctl_vec)
 
 // ===global state===
 static int major;
@@ -138,12 +161,16 @@ static int sgx_die_notify(struct notifier_block *nb, unsigned long event, void *
 // to fit everything in a single page with proper alignment:
 //   struct      size   align   offset
 //   SIGSTRUCT   1808   4096    0
+//   (empty)     16             1808
 //   PAGEINFO    32     32      1824
 //   SECINFO     64     64      1856
+//   PCMD        128    128     1920
 //   EINITTOKEN  304    512     2048
+//   (empty)     1744           2352
 #define SIGSTRUCT_OFFSET   0
 #define PAGEINFO_OFFSET    1824
 #define SECINFO_OFFSET     1856
+#define PCMD_OFFSET        1920
 #define EINITTOKEN_OFFSET  2048
 
 static unsigned long sgx_copy(unsigned long* pageptr,unsigned long offset,unsigned long src,unsigned long size) {
@@ -158,6 +185,123 @@ static unsigned long sgx_copy(unsigned long* pageptr,unsigned long offset,unsign
 	return dst;
 }
 
+static long do_encls_ioctl(int leaf, struct sgx_ioctl_data* data, bool manage_die_notifier) {
+	long ret=-EFAULT;
+	long result;
+	long page1=0,page2=0;
+	ktime_t start1,start2,end1,end2;
+	pageinfo_t* pageinfo;
+	unsigned long user_rbx;
+
+	switch (leaf) {
+		case ENCLS_ECREATE:
+		case ENCLS_EADD:
+		case ENCLS_EEXTEND:
+		case ENCLS_EINIT:
+		case ENCLS_EREMOVE:
+		case ENCLS_EBLOCK:
+		case ENCLS_ETRACK:
+		case ENCLS_ELDB:
+		case ENCLS_ELDU:
+		case ENCLS_EWB:
+		case ENCLS_EPA:
+			break;
+		default:
+			return -EINVAL;
+	}
+
+	start1=ktime_get_raw();
+	if (leaf==ENCLS_ECREATE || leaf==ENCLS_EADD || leaf==ENCLS_ELDB || leaf==ENCLS_ELDU) {
+		pageinfo=(pageinfo_t*)(data->rbx=sgx_copy(&page1,PAGEINFO_OFFSET,data->rbx,sizeof(pageinfo_t)));
+		if (!pageinfo)
+			goto exit;
+		if (leaf==ENCLS_ECREATE || leaf==ENCLS_EADD)
+			pageinfo->secinfo=sgx_copy(&page1,SECINFO_OFFSET,pageinfo->secinfo,sizeof(secinfo_t));
+		else /* leaf==ENCLS_ELDB || leaf==ENCLS_ELDU */
+			pageinfo->secinfo=sgx_copy(&page1,PCMD_OFFSET,pageinfo->secinfo,sizeof(pcmd_t));
+		pageinfo->srcpge=sgx_copy(&page2,0,pageinfo->srcpge,4096);
+		if (!pageinfo->secinfo || !pageinfo->srcpge)
+			goto exit;
+	} else if (leaf==ENCLS_EINIT) {
+		data->rbx=sgx_copy(&page1,SIGSTRUCT_OFFSET,data->rbx,sizeof(sigstruct_t));
+		data->rdx=sgx_copy(&page1,EINITTOKEN_OFFSET,data->rdx,sizeof(einittoken_t));
+		if (!data->rbx || !data->rdx)
+			goto exit;
+	} else if (leaf==ENCLS_EWB) {
+		page1=__get_free_page(GFP_KERNEL);
+		page2=__get_free_page(GFP_KERNEL);
+		if (!page1 || !page2)
+			goto exit;
+		user_rbx=data->rbx;
+		pageinfo=(pageinfo_t*)(data->rbx=page1+PAGEINFO_OFFSET);
+		pageinfo->secinfo=page1+PCMD_OFFSET;
+		pageinfo->srcpge=page2;
+		pageinfo->secs=0;
+		pageinfo->linaddr=0;
+	}
+	end1=ktime_get_raw();
+
+	//printk("[SGX] encls[%d] rcx=%p rbx=%p rdx=%p\n",leaf,(void*)data->rcx,(void*)data->rbx,(void*)data->rdx);
+	die_info.triggered=0;
+	if (manage_die_notifier) {
+		unregister_die_notifier(&sgx_die_notifier);
+		register_die_notifier(&sgx_die_notifier);
+	}
+	start2=ktime_get_raw();
+	asm volatile("    call encls_might_fault \n"
+				 : "=a"(result)
+				 : "a"(leaf), "b"(data->rbx) , "c"(data->rcx) , "d"(data->rdx)
+				 : );
+	end2=ktime_get_raw();
+	if (manage_die_notifier)
+		unregister_die_notifier(&sgx_die_notifier);
+	if (die_info.triggered) {
+		data->exception=die_info.trapnr;
+		if (die_info.trapnr==X86_TRAP_PF)
+			data->data=die_info.cr2;
+		else if (die_info.trapnr==X86_TRAP_GP)
+			data->data=die_info.error_code;
+	} else {
+		data->exception=-1;
+		switch (leaf) {
+			case ENCLS_EADD:
+			//case ENCLS_EAUG: /*SGX2*/
+			case ENCLS_ECREATE:
+			case ENCLS_EDBGRD:
+			case ENCLS_EDBGWR:
+			case ENCLS_EEXTEND:
+			case ENCLS_EPA:
+			// NB: EREMOVE does modify EAX, unlike operand encoding table suggests
+				result=0;
+		}
+		data->data=result;
+	}
+
+	if (leaf==ENCLS_EWB && data->exception==-1) {
+		pageinfo_t user_pageinfo;
+		start1=ktime_get_raw();
+		copy_from_user(&user_pageinfo,(void*)user_rbx, sizeof(pageinfo_t));
+		user_pageinfo.linaddr=pageinfo->linaddr;
+
+		if (copy_to_user((void*)user_pageinfo.srcpge,(void*)pageinfo->srcpge,4096)!=0)
+			goto exit;
+		if (copy_to_user((void*)user_pageinfo.secinfo,(void*)pageinfo->secinfo,sizeof(pcmd_t))!=0)
+			goto exit;
+		if (copy_to_user((void*)user_rbx,&user_pageinfo,sizeof(pageinfo_t))!=0)
+			goto exit;
+		end1=ktime_get_raw();
+	}
+
+	data->duration_copy=end1.tv64-start1.tv64;
+	data->duration_encls=end2.tv64-start2.tv64;
+
+	ret=0;
+exit:
+	if (page1) free_page(page1);
+	if (page2) free_page(page2);
+	return ret;
+}
+
 static long sgxdev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg) {
 	switch (cmd) {
 		case ENCLS_ECREATE_IOCTL:
@@ -165,50 +309,24 @@ static long sgxdev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg
 		case ENCLS_EEXTEND_IOCTL:
 		case ENCLS_EINIT_IOCTL:
 		case ENCLS_EREMOVE_IOCTL:
-		case ENCLS_EBLOCK_IOCTL: {
-			long result;
-			long page1=0,page2=0;
+		case ENCLS_EBLOCK_IOCTL:
+		case ENCLS_ETRACK_IOCTL:
+		case ENCLS_ELDB_IOCTL:
+		case ENCLS_ELDU_IOCTL:
+		case ENCLS_EWB_IOCTL:
+		case ENCLS_EPA_IOCTL: {
+			long ret;
 			struct sgx_ioctl_data data;
 
 			if (copy_from_user(&data, (void*)arg, sizeof(data))!=0)
 				return -EFAULT;
 
-			if (cmd==ENCLS_ECREATE_IOCTL || cmd==ENCLS_EADD_IOCTL) {
-				pageinfo_t* pageinfo;
-				pageinfo=(pageinfo_t*)(data.rbx=sgx_copy(&page1,PAGEINFO_OFFSET,data.rbx,sizeof(pageinfo_t)));
-				pageinfo->secinfo=sgx_copy(&page1,SECINFO_OFFSET,pageinfo->secinfo,sizeof(secinfo_t));
-				pageinfo->srcpge=sgx_copy(&page2,0,pageinfo->srcpge,4096);
-			} else if (cmd==ENCLS_EINIT_IOCTL) {
-				data.rbx=sgx_copy(&page1,SIGSTRUCT_OFFSET,data.rbx,sizeof(sigstruct_t));
-				data.rdx=sgx_copy(&page1,EINITTOKEN_OFFSET,data.rdx,sizeof(einittoken_t));
-			}
-
-			//printk("[SGX] encls[%d] rcx=%p rbx=%p rdx=%p\n",_IOC_NR(cmd),(void*)data.rcx,(void*)data.rbx,(void*)data.rdx);
-			die_info.triggered=0;
-			unregister_die_notifier(&sgx_die_notifier);
-			register_die_notifier(&sgx_die_notifier);
-			asm volatile("    call encls_might_fault \n"
-			             : "=a"(result)
-			             : "a"(_IOC_NR(cmd)), "b"(data.rbx) , "c"(data.rcx) , "d"(data.rdx)
-			             : );
-			unregister_die_notifier(&sgx_die_notifier);
-			if (die_info.triggered) {
-				data.exception=die_info.trapnr;
-				if (die_info.trapnr==X86_TRAP_PF)
-					data.data=die_info.cr2;
-				else if (die_info.trapnr==X86_TRAP_GP)
-					data.data=die_info.error_code;
-			} else {
-				data.exception=-1;
-				data.data=result;
-			}
-
-			if (page1) free_page(page1);
-			if (page2) free_page(page2);
+			ret=do_encls_ioctl(_IOC_NR(cmd),&data,1);
 
 			if (copy_to_user((void*)arg,&data,sizeof(data))!=0)
 				return -EFAULT;
-			return 0;
+
+			return ret;
 		}
 		case SGX_IOADDR_IOCTL: {
 			struct sgx_ioctl_data data={
@@ -218,6 +336,54 @@ static long sgxdev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg
 			if (copy_to_user((char*)arg,&data,sizeof(data))!=0)
 				return -EFAULT;
 			return 0;
+		}
+		case SGX_MULTI_ENCLS_IOCTL: {
+			long i;
+			struct sgx_ioctl_vec vec;
+			struct sgx_ioctl_vec_elem* ioctls=NULL;
+
+			if (copy_from_user(&vec, (void*)arg, sizeof(vec))!=0)
+				return -EFAULT;
+			if (vec.num<0)
+				return -EINVAL;
+			ioctls=vmalloc(sizeof(struct sgx_ioctl_vec_elem)*vec.num);
+			if (!ioctls)
+				return -ENOMEM;
+			if (copy_from_user(ioctls, vec.ioctls, sizeof(struct sgx_ioctl_vec_elem)*vec.num)!=0) {
+				i=-EFAULT;
+				goto exit;
+			}
+
+			unregister_die_notifier(&sgx_die_notifier);
+			register_die_notifier(&sgx_die_notifier);
+
+			for (i=0;i<vec.num;i++) {
+				int flags=0;
+				long ret=do_encls_ioctl(ioctls[i].leaf,&ioctls[i].data,0);
+				if (ret) {
+					i=ret;
+					goto exit;
+				}
+
+				if (ioctls[i].data.exception!=-1) flags|=RETURN_EXCEPTION;
+				if (ioctls[i].data.data!=ERR_SGX_NOERROR) {
+					flags|=RETURN_ERROR;
+					if (ioctls[i].data.data!=ERR_SGX_BLKSTATE) flags|=RETURN_ERROR_EBLOCK;
+				}
+				if (ioctls[i].return_flag&flags)
+					break;
+			}
+
+			if (copy_to_user(vec.ioctls, ioctls, sizeof(struct sgx_ioctl_vec_elem)*vec.num)!=0) {
+				i=-EFAULT;
+				goto exit;
+			}
+
+exit:
+			unregister_die_notifier(&sgx_die_notifier);
+			vfree(ioctls);
+			return i;
+
 		}
 		default:
 			return -ENOTTY;

@@ -1,6 +1,6 @@
-commit 840587d70a94e6babcf0f20cf4f4441ff45bd68b
+commit 4445624d11b50d83f71181ee0ad65207241c390e
 Author: Jethro Beekman <jethro@jbeekman.nl>
-Date:   Tue Oct 13 15:53:49 2015 -0700
+Date:   Mon Nov 30 18:09:29 2015 -0800
 
     Add SGX kernel driver support
     
@@ -69,10 +69,10 @@ index 7f1abad..f93e4bf 100644
  
 diff --git a/user/sgx-kern-dev.c b/user/sgx-kern-dev.c
 new file mode 100644
-index 0000000..e86baf7
+index 0000000..1c198c7
 --- /dev/null
 +++ b/user/sgx-kern-dev.c
-@@ -0,0 +1,75 @@
+@@ -0,0 +1,77 @@
 +#include <sys/mman.h>
 +#include <sys/ioctl.h>
 +#include <fcntl.h>
@@ -88,11 +88,13 @@ index 0000000..e86baf7
 +			unsigned long rbx;
 +			unsigned long rcx;
 +			unsigned long rdx;
-+		};
++		} /*in*/;
 +		struct {
 +			int exception;
 +			unsigned long data;
-+		};
++			unsigned long duration_encls;
++			unsigned long duration_copy;
++		} /*out*/;
 +	};
 +};
 +
@@ -149,7 +151,7 @@ index 0000000..e86baf7
 +    }
 +}
 diff --git a/user/sgx-kern-epc.c b/user/sgx-kern-epc.c
-index b026025..722c858 100644
+index b026025..08953fd 100644
 --- a/user/sgx-kern-epc.c
 +++ b/user/sgx-kern-epc.c
 @@ -28,6 +28,7 @@
@@ -165,7 +167,7 @@ index b026025..722c858 100644
  
  void init_epc(int nepc) {
 +    sgx_dev_init();
-+    
++
      g_num_epc = nepc;
  
      //toward making g_num_epc configurable
