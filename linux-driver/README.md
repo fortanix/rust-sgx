@@ -26,19 +26,31 @@ make
 sudo insmod sgxmod.ko
 ```
 
-## User test program
+### Device file
 
-### Building
-
-```sh
-gcc user.c -o user
-```
-
-### Running
+You have to manually create the device file to expose the device to userspace.
 
 IMPORTANT: Look in the dmesg for the correct device major number
 
 ```sh
 sudo mknod -m 666 /dev/sgx c 245 0
-./user
 ```
+
+## User test program
+
+Three test utilities should've been built at the same time as the kernel
+module.
+
+### clear <n>
+
+Calls ERMOVE on the fist N pages.
+
+### user
+
+Builds a simple enclave, while recording timing information of the ENCLS
+instruction.
+
+### user_multi
+
+The same as `user`, except using a single system call to perform multiple ENCLS
+instructions.
