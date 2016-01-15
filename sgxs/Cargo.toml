@@ -1,0 +1,13 @@
+[package]
+name = "sgxs"
+description = "Library and utilities for working with the SGX stream format"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
+license = "GPL-2.0+"
+repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
+
+[dependencies]
+"bitflags" = "0.4"
+"byteorder" = "0.4"
+"ioctl" = "0.3"
+"libc" = "0.2"
