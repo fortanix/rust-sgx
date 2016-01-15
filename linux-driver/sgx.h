@@ -38,7 +38,7 @@
 #define HEAP_PAGE_FRAMES         (100)              // Need to decide how many initial Heap pages are required
 
 /// custom format
-#define PRIfptr "0x%016"PRIxPTR
+#define PRIfptr "0x%016" PRIxPTR
 
 /// QEMU resource management for enclave
 #define MAX_ENCLAVES 16

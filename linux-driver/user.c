@@ -18,46 +18,7 @@
 #include <time.h>
 
 #include "sgx.h"
-
-// BEGIN user ABI
-
-struct sgx_ioctl_data {
-	union {
-		struct {
-			unsigned long rbx;
-			unsigned long rcx;
-			unsigned long rdx;
-		} /*in*/;
-		struct {
-			int exception;
-			unsigned long data;
-			unsigned long duration_encls;
-			unsigned long duration_copy;
-		} /*out*/;
-	};
-};
-
-#define SGX_IOCTL 'G'
-#define ENCLS_ECREATE_IOCTL _IOWR(SGX_IOCTL, 0x00, struct sgx_ioctl_data)
-#define ENCLS_EADD_IOCTL    _IOWR(SGX_IOCTL, 0x01, struct sgx_ioctl_data)
-#define ENCLS_EINIT_IOCTL   _IOWR(SGX_IOCTL, 0x02, struct sgx_ioctl_data)
-#define ENCLS_EREMOVE_IOCTL _IOWR(SGX_IOCTL, 0x03, struct sgx_ioctl_data)
-#define ENCLS_EDBGRD_IOCTL  _IOWR(SGX_IOCTL, 0x04, struct sgx_ioctl_data)
-#define ENCLS_EDBGWR_IOCTL  _IOWR(SGX_IOCTL, 0x05, struct sgx_ioctl_data)
-#define ENCLS_EEXTEND_IOCTL _IOWR(SGX_IOCTL, 0x06, struct sgx_ioctl_data)
-#define ENCLS_ELDB_IOCTL    _IOWR(SGX_IOCTL, 0x07, struct sgx_ioctl_data)
-#define ENCLS_ELDU_IOCTL    _IOWR(SGX_IOCTL, 0x08, struct sgx_ioctl_data)
-#define ENCLS_EBLOCK_IOCTL  _IOWR(SGX_IOCTL, 0x09, struct sgx_ioctl_data)
-#define ENCLS_EPA_IOCTL     _IOWR(SGX_IOCTL, 0x0a, struct sgx_ioctl_data)
-#define ENCLS_EWB_IOCTL     _IOWR(SGX_IOCTL, 0x0b, struct sgx_ioctl_data)
-#define ENCLS_ETRACK_IOCTL  _IOWR(SGX_IOCTL, 0x0c, struct sgx_ioctl_data)
-#define ENCLS_EAUG_IOCTL    _IOWR(SGX_IOCTL, 0x0d, struct sgx_ioctl_data)
-#define ENCLS_EMODPR_IOCTL  _IOWR(SGX_IOCTL, 0x0e, struct sgx_ioctl_data)
-#define ENCLS_EMODT_IOCTL   _IOWR(SGX_IOCTL, 0x0f, struct sgx_ioctl_data)
-#define SGX_META_IOCTL 'H'
-#define SGX_IOADDR_IOCTL _IOW(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
-
-// END user ABI
+#include "ioctl.h"
 
 static const char* g_leaf_names[]={"ECREATE","EADD","EINIT","EREMOVE","EDBGRD","EDBGWR","EEXTEND","ELDB","ELDU","EBLOCK","EPA","EWB","ETRACK","EAUG","EMODPR","EMODT"};
 
@@ -199,7 +160,7 @@ int main(int argc,char** argv) {
 	k_addr k_base=data.data;
 	printf("EPC kernel address=%lx\n",k_base);
 
-	u_addr u_base=(u_addr)mmap(NULL,4096*2,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE,sgxfd,4096*2);
+	u_addr u_base=(u_addr)mmap(NULL,4096*2,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_SHARED,sgxfd,4096*2);
 	if (u_base==(u_addr)MAP_FAILED) {
 		perror("mmap");
 		return 1;

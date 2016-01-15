@@ -23,85 +23,7 @@
 #include <asm/uaccess.h>
 
 #include "sgx.h"
-
-// ===user ABI===
-
-struct sgx_ioctl_data {
-	union {
-		struct {
-			unsigned long rbx;
-			unsigned long rcx;
-			unsigned long rdx;
-		} /*in*/;
-		struct {
-			int exception;
-			unsigned long data;
-			unsigned long duration_encls;
-			unsigned long duration_copy;
-		} /*out*/;
-	};
-};
-
-struct sgx_ioctl_vec_elem {
-	int leaf;
-	int return_flag;
-	struct sgx_ioctl_data data;
-};
-
-struct sgx_ioctl_vec {
-	int num;
-	struct sgx_ioctl_vec_elem* ioctls;
-};
-
-#define RETURN_EXCEPTION    0x01 // return if an exception was encountered executing ENCLS
-#define RETURN_ERROR        0x02 // return if EAX was not 0 after ENCLS
-#define RETURN_ERROR_EBLOCK 0x04 // same as RETURN_ERROR but also continue on SGX_BLKSTATE
-
-/// ENCLS ioctl
-/// Select leaf by IOCTL request code.
-/// Currently only ECREATE, EADD, EEXTEND, EINIT, EREMOVE, EBLOCK are supported.
-///
-/// IN:
-///   .rbx          RBX register contents for ENCLS
-///   .rcx          RCX register contents for ENCLS
-///   .rdx          RDX register contents for ENCLS
-/// OUT:
-///   .exception    Trap number if exception occurred, -1 otherwise
-///   .data         Additional information if exception occured,
-///                 EAX output otherwise
-
-#define SGX_IOCTL 'G'
-#define ENCLS_ECREATE_IOCTL _IOWR(SGX_IOCTL, 0x00, struct sgx_ioctl_data)
-#define ENCLS_EADD_IOCTL    _IOWR(SGX_IOCTL, 0x01, struct sgx_ioctl_data)
-#define ENCLS_EINIT_IOCTL   _IOWR(SGX_IOCTL, 0x02, struct sgx_ioctl_data)
-#define ENCLS_EREMOVE_IOCTL _IOWR(SGX_IOCTL, 0x03, struct sgx_ioctl_data)
-#define ENCLS_EDBGRD_IOCTL  _IOWR(SGX_IOCTL, 0x04, struct sgx_ioctl_data)
-#define ENCLS_EDBGWR_IOCTL  _IOWR(SGX_IOCTL, 0x05, struct sgx_ioctl_data)
-#define ENCLS_EEXTEND_IOCTL _IOWR(SGX_IOCTL, 0x06, struct sgx_ioctl_data)
-#define ENCLS_ELDB_IOCTL    _IOWR(SGX_IOCTL, 0x07, struct sgx_ioctl_data)
-#define ENCLS_ELDU_IOCTL    _IOWR(SGX_IOCTL, 0x08, struct sgx_ioctl_data)
-#define ENCLS_EBLOCK_IOCTL  _IOWR(SGX_IOCTL, 0x09, struct sgx_ioctl_data)
-#define ENCLS_EPA_IOCTL     _IOWR(SGX_IOCTL, 0x0a, struct sgx_ioctl_data)
-#define ENCLS_EWB_IOCTL     _IOWR(SGX_IOCTL, 0x0b, struct sgx_ioctl_data)
-#define ENCLS_ETRACK_IOCTL  _IOWR(SGX_IOCTL, 0x0c, struct sgx_ioctl_data)
-#define ENCLS_EAUG_IOCTL    _IOWR(SGX_IOCTL, 0x0d, struct sgx_ioctl_data)
-#define ENCLS_EMODPR_IOCTL  _IOWR(SGX_IOCTL, 0x0e, struct sgx_ioctl_data)
-#define ENCLS_EMODT_IOCTL   _IOWR(SGX_IOCTL, 0x0f, struct sgx_ioctl_data)
-
-/// SGX_IOADDR ioctl
-/// returns the kernel address of the start of the EPC
-///
-/// IN: (no inputs)
-/// OUT:
-///   .exception    -1
-///   .data         kernel virtual address of EPC
-
-/// SGX_MULTI_ENCLS_IOCTL
-/// execute multiple ENCLS by passing an array of IOCTLs
-
-#define SGX_META_IOCTL 'H'
-#define SGX_IOADDR_IOCTL      _IOW(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
-#define SGX_MULTI_ENCLS_IOCTL _IOWR(SGX_META_IOCTL, 0x01, struct sgx_ioctl_vec)
+#include "ioctl.h"
 
 // ===global state===
 static int major;
@@ -414,10 +336,14 @@ static struct file_operations fops = {
 
 static int __init sgxdev_module_init(void) {
 	major = register_chrdev(0, "sgxdev", &fops);
-	epcmem=ioremap(epc_start(),epc_len());
 	if (major < 0) {
 		printk ("[SGX] Registering the character device failed with %d\n", major);
 		return major;
+	}
+	epcmem=ioremap_cache(epc_start(),epc_len());
+	if (epcmem == NULL) {
+		unregister_chrdev(major, "sgxdev");
+		return -EBUSY;
 	}
 	printk("[SGX] create node with: sudo mknod -m 666 /dev/sgx c %d 0\n", major);
 	return 0;

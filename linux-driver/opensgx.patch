@@ -1,6 +1,6 @@
-commit 4445624d11b50d83f71181ee0ad65207241c390e
+commit 537a7bd056d8a5ca753fc73cc7964ae6d95cdbe6
 Author: Jethro Beekman <jethro@jbeekman.nl>
-Date:   Mon Nov 30 18:09:29 2015 -0800
+Date:   Thu Jan 14 15:57:32 2016 -0800
 
     Add SGX kernel driver support
     
@@ -9,17 +9,18 @@ Date:   Mon Nov 30 18:09:29 2015 -0800
     * Add undocumented EEXTEND register param
 
 diff --git a/user/Makefile b/user/Makefile
-index 01e3d5e..0b9ffe9 100644
+index 31a37f4..76c895e 100644
 --- a/user/Makefile
 +++ b/user/Makefile
-@@ -1,6 +1,6 @@
- SGX_LIBS := sgxLib.o sslLib.a
- SGX_RUNTIME := sgx-runtime.o sgx-test-runtime.o
--SGX_OBJS := sgx-user.o sgx-kern.o sgx-kern-epc.o sgx-utils.o sgx-trampoline.o sgx-crypto.o
-+SGX_OBJS := sgx-user.o sgx-kern.o sgx-kern-epc.o sgx-kern-dev.o sgx-utils.o sgx-trampoline.o sgx-crypto.o
- 
- SSL_OBJS := polarssl/rsa.o polarssl/entropy.o polarssl/ctr_drbg.o \
- 	polarssl/bignum.o polarssl/md.o polarssl/oid.o polarssl/asn1parse.o polarssl/sha1.o \
+@@ -18,7 +18,7 @@ OPENSSL_LIBS = $(LIBSGXDIR)/sgx-entry.o $(LIBSGXDIR)/libssl.a \
+ # Host code/tool
+ SGX_HOST_RUNTIME = sgx-runtime.o sgx-test-runtime.o
+ SGX_HOST_OBJS = sgx-user.o sgx-kern.o sgx-kern-epc.o sgx-utils.o sgx-trampoline.o \
+-                sgx-crypto.o sgx-loader.o
++                sgx-crypto.o sgx-loader.o sgx-kern-dev.o
+ POLARSSL_LIB = libpolarssl.a
+ POLARSSL_OBJS = polarssl/rsa.o polarssl/entropy.o polarssl/ctr_drbg.o \
+ 	            polarssl/bignum.o polarssl/md.o polarssl/oid.o polarssl/asn1parse.o \
 diff --git a/user/include/sgx-kern-dev.h b/user/include/sgx-kern-dev.h
 new file mode 100644
 index 0000000..e4448a7
@@ -31,14 +32,14 @@ index 0000000..e4448a7
 +void* sgx_dev_map(unsigned int off, unsigned int len);
 +void encls(encls_cmd_t leaf, uint64_t rbx, uint64_t rcx, uint64_t rdx, out_regs_t* out);
 diff --git a/user/include/sgx-kern-epc.h b/user/include/sgx-kern-epc.h
-index 7f1abad..f93e4bf 100644
+index dd917f9..f93e4bf 100644
 --- a/user/include/sgx-kern-epc.h
 +++ b/user/include/sgx-kern-epc.h
 @@ -22,13 +22,8 @@
  #define SGX_KERNEL
  #include <sgx.h>
  
--#define EPC_ADDR       0x40008000
+-#define EPC_ADDR       0x4fffc000
 -
 -// linear address is in fact just addr of epc page (physical page)
 -static inline
@@ -69,7 +70,7 @@ index 7f1abad..f93e4bf 100644
  
 diff --git a/user/sgx-kern-dev.c b/user/sgx-kern-dev.c
 new file mode 100644
-index 0000000..1c198c7
+index 0000000..ee091e0
 --- /dev/null
 +++ b/user/sgx-kern-dev.c
 @@ -0,0 +1,77 @@
@@ -100,7 +101,7 @@ index 0000000..1c198c7
 +
 +#define SGX_IOCTL 'G'
 +#define SGX_META_IOCTL 'H'
-+#define SGX_IOADDR_IOCTL _IOW(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
++#define SGX_IOADDR_IOCTL _IOR(SGX_META_IOCTL, 0x00, struct sgx_ioctl_data)
 +
 +void sgx_dev_init() {
 +    if (sgxfd<0) {
@@ -122,7 +123,7 @@ index 0000000..1c198c7
 +}
 +
 +void* sgx_dev_map(unsigned int off, unsigned int len) {
-+	return mmap(NULL,len*PAGE_SIZE,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_PRIVATE,sgxfd,off*PAGE_SIZE);
++	return mmap(NULL,len*PAGE_SIZE,PROT_READ|PROT_WRITE|PROT_EXEC,MAP_SHARED,sgxfd,off*PAGE_SIZE);
 +}
 +
 +// encls() : Execute an encls instruction
@@ -151,7 +152,7 @@ index 0000000..1c198c7
 +    }
 +}
 diff --git a/user/sgx-kern-epc.c b/user/sgx-kern-epc.c
-index b026025..08953fd 100644
+index a4c473d..7089264 100644
 --- a/user/sgx-kern-epc.c
 +++ b/user/sgx-kern-epc.c
 @@ -28,6 +28,7 @@
@@ -174,8 +175,8 @@ index b026025..08953fd 100644
      //g_epc = memalign(PAGE_SIZE, g_num_epc * sizeof(epc_t));
  
 -    g_epc = (epc_t *)mmap((void *)EPC_ADDR, g_num_epc * sizeof(epc_t),
--                               PROT_READ|PROT_WRITE,
--                               MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+-                          PROT_READ|PROT_WRITE,
+-                          MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
 +    g_epc = (epc_t*)sgx_dev_get_epc_base();
 +
      if(g_epc == MAP_FAILED) {
@@ -247,7 +248,7 @@ index b026025..08953fd 100644
  int count_epc(int key)
  {
 diff --git a/user/sgx-kern.c b/user/sgx-kern.c
-index fffd076..cad22d6 100644
+index 0931d33..9756c85 100644
 --- a/user/sgx-kern.c
 +++ b/user/sgx-kern.c
 @@ -13,6 +13,7 @@
@@ -268,7 +269,7 @@ index fffd076..cad22d6 100644
 -void encls(encls_cmd_t leaf, uint64_t rbx, uint64_t rcx,
 -           uint64_t rdx, out_regs_t* out)
 -{
--   sgx_dbg(ttrace,
+-   sgx_dbg(kern,
 -           "leaf=%d, rbx=0x%"PRIx64", rcx=0x%"PRIx64", rdx=0x%"PRIx64")",
 -           leaf, rbx, rcx, rdx);
 -
@@ -355,7 +356,7 @@ index fffd076..cad22d6 100644
 @@ -310,24 +282,24 @@ bool add_page_to_epc(void *page, epc_t *epc, epc_t *secs, page_type_t pt)
          secinfo->flags.x = true;
          // change permissions of a page table entry
-         sgx_dbg(ttrace, "+x to %p", (void *)epc);
+         sgx_dbg(kern, "+x to %p", (void *)epc);
 -        if (mprotect(epc, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC) == -1)
 -            err(1, "failed to add executable permission");
 +        //if (mprotect(epc, PAGE_SIZE, PROT_READ|PROT_WRITE|PROT_EXEC) == -1)
@@ -369,8 +370,8 @@ index fffd076..cad22d6 100644
 +    pageinfo->secs    = (uint64_t)epc_to_kaddr(secs);
 +    pageinfo->linaddr = (uint64_t)epc_to_uaddr(epc);
  
--    sgx_dbg(eadd, "add/copy %p -> %p", page, epc_to_vaddr(epc));
-+    sgx_dbg(eadd, "add/copy %p -> %p", page, epc_to_kaddr(epc));
+-    sgx_dbg(kern, "add/copy %p -> %p", page, epc_to_vaddr(epc));
++    sgx_dbg(kern, "add/copy %p -> %p", page, epc_to_kaddr(epc));
      //if (sgx_dbg_eadd)
      //    hexdump(stderr, page, 32);
  
@@ -406,9 +407,9 @@ index fffd076..cad22d6 100644
      if (!enclave)
          goto err;
  
-@@ -489,15 +462,13 @@ int sys_create_enclave(void *base, unsigned int code_pages,
-     printf("DEBUG npages is %d\n",npages);
-     printf("encalve size is %x\n", PAGE_SIZE * npages);
+@@ -488,15 +461,13 @@ int sys_create_enclave(void *base, unsigned int code_pages,
+     int enclave_size = PAGE_SIZE * npages;
+     sgx_dbg(kern, "npages: %d enclave size: %x", npages, PAGE_SIZE * npages);
  
 -    void *enclave_addr = epc_to_vaddr(enclave);
 -
@@ -423,7 +424,7 @@ index fffd076..cad22d6 100644
  
      // get epc for TCS
      epc_t *tcs_epc = get_epc(eid, TCS_PAGE);
-@@ -508,8 +479,8 @@ int sys_create_enclave(void *base, unsigned int code_pages,
+@@ -507,8 +478,8 @@ int sys_create_enclave(void *base, unsigned int code_pages,
      int ssa_page_offset = sec_npages + tcs_npages + tls_npages + code_pages;
      update_tcs_fields(tcs, tls_page_offset, ssa_page_offset);
  
@@ -434,7 +435,7 @@ index fffd076..cad22d6 100644
          goto err;
  
      // allocate TLS pages
-@@ -569,7 +540,7 @@ int sys_create_enclave(void *base, unsigned int code_pages,
+@@ -568,7 +539,7 @@ int sys_create_enclave(void *base, unsigned int code_pages,
      free_reserved_epc_pages(enclave);
  
      // update per-enclave info
@@ -443,7 +444,7 @@ index fffd076..cad22d6 100644
      kenclaves[eid].enclave = (uint64_t)enclave;
  
      kenclaves[eid].kout_n++;
-@@ -632,7 +603,7 @@ void test_ecreate(pageinfo_t *pageinfo, epc_t *epc)
+@@ -630,7 +601,7 @@ void test_ecreate(pageinfo_t *pageinfo, epc_t *epc)
      // RCX: EPCPAGE(In, EA)
      encls(ENCLS_ECREATE,
            (uint64_t)pageinfo,
@@ -452,7 +453,7 @@ index fffd076..cad22d6 100644
            0x0, NULL);
  }
  
-@@ -653,7 +624,7 @@ void test_eadd(pageinfo_t *pageinfo, epc_t *epc)
+@@ -651,7 +622,7 @@ void test_eadd(pageinfo_t *pageinfo, epc_t *epc)
      // RCX: EPCPAGE(In, EA)
      encls(ENCLS_EADD,
            (uint64_t)pageinfo,
@@ -461,7 +462,7 @@ index fffd076..cad22d6 100644
            0x0, NULL);
  }
  
-@@ -669,7 +640,7 @@ void test_eaug(pageinfo_t *pageinfo, epc_t *epc)
+@@ -667,7 +638,7 @@ void test_eaug(pageinfo_t *pageinfo, epc_t *epc)
      // RCX: EPCPAGE(In, EA)
      encls(ENCLS_EAUG,
            (uint64_t)pageinfo,
