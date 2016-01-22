@@ -21,3 +21,5 @@ extern crate byteorder;
 pub mod abi;
 pub mod sgxdev;
 pub mod sgxs;
+
+#[cfg(target_endian="big")] const E:ENDIANNESS_NOT_SUPPORTED=();

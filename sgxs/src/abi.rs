@@ -173,6 +173,12 @@ pub struct Tcs {
 	pub _reserved3: [u8; 4024],
 }
 
+impl Default for Tcs {
+	fn default() -> Tcs {
+		unsafe{::std::mem::transmute([0u8;4096])}
+	}
+}
+
 bitflags! {
 	flags TcsFlags: u64 {
 		const DBGOPTIN = 0b0000_0001,

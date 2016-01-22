@@ -1,13 +1,17 @@
 [package]
 name = "sgxs"
 description = "Library and utilities for working with the SGX stream format"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "GPL-2.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
 
 [dependencies]
-"bitflags" = "0.4"
-"byteorder" = "0.4"
-"ioctl" = "0.3"
-"libc" = "0.2"
+"bitflags" = "0.4"    # MIT/Apache-2.0
+"byteorder" = "0.4"   # Unlicense/MIT
+"ioctl" = "0.3"       # MIT/Apache-2.0 (per 7205d48)
+"libc" = "0.2"        # MIT/Apache-2.0
+"rust-crypto" = "0.2" # MIT/Apache-2.0
+"broadcast" = "0.1"   # MIT
+"lazy_static" = "0.1" # MIT
+"pe" = "0.1"          # GPL-2.0+

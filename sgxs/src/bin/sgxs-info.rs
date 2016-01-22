@@ -60,6 +60,7 @@ fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 					println!("EADD offset=0x{:8x} pagetype={:?} flags={:?}",eadd.offset,eadd.secinfo.flags.page_type(),eadd.secinfo.flags&!secinfo_flags::PT_MASK),
 				sgxs::Meas::EExtend{header,data} =>
 					println!("EEXTEND offset=0x{:8x} data={}",header.offset,classify_data(&data)),
+				sgxs::Meas::BareEExtend(_) => unreachable!()
 			}
 		} else {
 			break;
