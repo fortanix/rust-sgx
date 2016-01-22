@@ -50,9 +50,9 @@ preceding thread.
 The `sgxmeta` section informs the loader how to load parts of the enclave that
 are not parts of the PE image, such as the stack and the heap.
 
-This section consists of a header followed by the `SIGSTRUCT`. A field named
-`unknown` ìs filled with the indicated data, the meaning of which is unknown at
-this time.
+This section consists of a header followed by the `SIGSTRUCT`. Fields named
+`unknown` are filled with the indicated data, the meaning of which is unknown
+at this time.
 
 ```rust
 #[repr(packed)]
@@ -92,11 +92,10 @@ address space is left unmapped.
 
 The first few tens of bytes in the `.tls` section are overwritten by the
 loader. The structure is different for 32-bit and 64-bit enclaves, but the
-fields are the same. In the following structures, a field named `unchanged`
-means that the data is copied directly from the `.tls` section in the image
-file, as is all data beyond the size of this structure. A field named `unknown`
-ìs filled with the indicated data, the meaning of which is unknown at this
-time.
+fields are the same. In the following structures, fields named `unchanged` mean
+that the data is copied directly from the `.tls` section in the image file, as
+is all data beyond the size of this structure. Fields named `unknown` are
+filled with the indicated data, the meaning of which is unknown at this time.
 
 ```rust
 #[repr(packed)]
@@ -170,6 +169,6 @@ Each TCS is initialized as follows:
 - **GSLIMIT**: `0xfff`
 
 All other fields are 0. Note that the FS/GS limits are always 1 page,
-regardless of the size of the TLS area. Access to the TLS use a pointer in the
-beginning of the TLS area to find the address of that area without having to
-use segment addressing.
+regardless of the size of the TLS area. Accesses to the TLS use a pointer in
+the beginning of the TLS area to find the address of that area without having
+to use segment addressing.
