@@ -21,6 +21,7 @@ use libc;
 use sgxs::{SgxsRead,PageReader};
 use abi::{Sigstruct,Einittoken};
 
+use loader::{Map,Load};
 use self::loader::{Pages,Uaddr,Kaddr};
 pub use self::loader::{Result,Error};
 
@@ -38,17 +39,19 @@ impl<'a> Drop for Mapping<'a> {
 }
 
 impl<'a> Mapping<'a> {
-	pub fn base_address(&self) -> u64 {
-		self.base.0
-	}
-
-	pub fn tcss(&self) -> &[u64] {
-		unsafe{::std::mem::transmute(&self.tcss[..])}
-	}
-
 	#[allow(dead_code)]
 	fn assert_u64_uaddr_same_size(a: Uaddr) -> u64 {
 		unsafe{::std::mem::transmute(a)}
+	}
+}
+
+impl<'a> Map for Mapping<'a> {
+	fn base_address(&self) -> u64 {
+		self.base.0
+	}
+
+	fn tcss(&self) -> &[u64] {
+		unsafe{::std::mem::transmute(&self.tcss[..])}
 	}
 }
 
@@ -80,8 +83,13 @@ impl Device {
 			Ok(Uaddr(ptr as u64))
 		}
 	}
+}
 
-	pub fn load<'dev, 'rd, R: SgxsRead + 'rd>(&'dev self, reader: &'rd mut R, sigstruct: Sigstruct, einittoken: Option<Einittoken>) -> Result<Mapping<'dev>> {
+impl<'dev> Load<'dev> for Device {
+	type Mapping=Mapping<'dev>;
+	type Error=Error;
+
+	fn load<'rd, R: SgxsRead + 'rd>(&'dev self, reader: &'rd mut R, sigstruct: Sigstruct, einittoken: Option<Einittoken>) -> Result<Mapping<'dev>> {
 		let (ecreate,reader)=try!(PageReader::new(reader));
 		let size=ecreate.size;
 

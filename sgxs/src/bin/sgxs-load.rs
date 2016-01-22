@@ -18,6 +18,7 @@ use std::io::Read;
 use std::fs::File;
 use std::mem::transmute;
 
+use sgxs::loader::{Map,Load};
 use sgxs::sgxdev;
 use sgxs::abi::{Einittoken,Sigstruct,Enclu};
 
