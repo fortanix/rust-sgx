@@ -172,3 +172,122 @@ All other fields are 0. Note that the FS/GS limits are always 1 page,
 regardless of the size of the TLS area. Accesses to the TLS use a pointer in
 the beginning of the TLS area to find the address of that area without having
 to use segment addressing.
+
+## `enclave_entry`
+
+The entrypoint for each thread of the enclave is pointed to by the
+`enclave_entry` symbol in the PE export directory. The entry has two input
+parameters. A “call number” is passed in `%edi`. A call-specific parameter is
+passed in `%rsi`. Upon return `%eax`, `%rbx`, `%rcx` are set according to
+`ENCLU[EEXIT]`, `%rsp` and `%rbp` are preserved from entry, `%rdi` and `%rsi`
+contain the return value, and the other 9 registers are cleared. A return value
+other than `%rdi==0xffffffffffffffff && %rsi==0` indicates an error.
+
+It seems that negative call numbers are reserved for platform
+standard calls, whereas positive (including 0) call numbers are used for
+enclave-specific calls.
+
+### Known calls
+
+What follows is a list of known calls for the platform and some
+enclave-specific calls. Parameter types are described at the end.
+
+#### Platform standard
+
+The following calls seem to exist in every enclave.
+
+| Call number (`%edi`) | Description  | Parameter (`%rsi`) |
+| --------------------:| ------------ | ------------------ |
+|                   -1 | Module init? | `*const Cpuinfo`   |
+
+#### Enclave specificic: LE
+
+The following known calls pertain to the Launch Enclave.
+
+| Call number (`%edi`) | Description         | Parameter (`%rsi`)  |
+| --------------------:| ------------------- | ------------------- |
+|                    0 | Generate EINITTOKEN | `*mut TokenRequest` |
+
+This information was obtained from `le.signed.dll` version 1.0.26876.1392
+(SHA-256: `015e790fc27ff7df756d4dca9da03df5b292105967563539d3f80c667c499fa2`).
+
+**Generate EINITTOKEN**: this call will generate an EINITTOKEN for the supplied 
+parameters. It is not exactly known what the policy implemented by the Launch 
+Enclave is, but it seems that any call with the `DEBUG` attribute will return 
+successfully. This call on its own is not sufficient to get tokens for the 
+other Intel-supplied enclaves.
+
+### Parameter types
+
+#### `Cpuinfo`
+
+The Cpuinfo type is a bitset indicating the existence of various CPU features
+from CPUID. The encoding is obtained from the function at address
+`0x1800011a0...0x18000163f` in `sgx_urts.dll` version 1.0.26826.1391 (SHA-256:
+`edfa9670679a2ea8b6df31630ea0b70232dff484f0637a03b888d29114c3e591`).
+
+Bit | Feature name | Condition
+---:| ------------ | -------------------------------------------
+  0 | (always set) |
+  1 | fpu          | `cpuid(1).edx[0]`
+  2 | cmov         | `cpuid(1).edx[15]`
+  3 | mmx          | `cpuid(1).edx[23]`
+  4 | fxsr         | `cpuid(1).edx[24]`
+  5 | sse          | `cpuid(1).edx[25] && fxsr`
+  6 | sse2         | `cpuid(1).edx[26] && fxsr`
+  7 | sse3         | `cpuid(1).ecx[0] && fxsr`
+  8 | ssse3        | `cpuid(1).ecx[9] && fxsr`
+  9 | sse4.1       | `cpuid(1).ecx[19] && fxsr`
+ 10 | sse4.2       | `cpuid(1).ecx[20] && fxsr`
+ 11 | popcnt       | `cpuid(1).ecx[23] && fxsr`
+ 12 | movbe        | `cpuid(1).ecx[22] && fxsr`
+ 13 | pclmulqdq    | `cpuid(1).ecx[1] && fxsr`
+ 14 | aes          | `cpuid(1).ecx[25] && fxsr`
+    | osxsave      | `cpuid(1).ecx[27]`
+ 15 | f16c         | `cpuid(1).ecx[29] && osxsave`
+ 16 | avx          | `cpuid(1).ecx[28] && osxsave`
+ 17 | rdrnd        | `cpuid(1).ecx[30]`
+ 18 | fma3         | `cpuid(1).ecx[12] && osxsave`
+ 19 | bmi1+bmi2    | `cpuid(7).ebx[3] && cpuid(7).ebx[8]`
+ 20 | lzcnt        | `cpuid(0x80000001).ecx[5]`
+ 21 | hle          | `cpuid(7).ebx[4]`
+ 22 | rtm          | `cpuid(7).ebx[11]`
+ 23 | avx2         | `cpuid(7).ebx[5] && osxsave`
+ 24 | (reserved?)  |
+ 25 | prefetchw    | `cpuid(0x80000001).ecx[8]`
+ 26 | rdseed       | `cpuid(7).ebx[18]`
+ 27 | adx          | `cpuid(7).ebx[19]`
+    | model        | `cpuid(1).eax[19:16]:cpuid(1).eax[7:4]`
+ 28 | atom         | `model==0x1c || model==0x26 || model==0x27`
+
+All other bits are clear.
+
+[According to
+Intel](https://software.intel.com/en-us/articles/intel-architecture-and-processor-identification-with-cpuid-model-and-family-numbers),
+the model numbers for bit 28 refer to various Atom processors: `0x1c` is
+Pineview, Silverthorne, Diamondville, Stellarton, `0x26` is Lincroft, Tunnel
+Creek, `0x27` is Penwell.
+
+Note that the Enclave can not rely on the information in this field because it
+is passed in by the untrusted process.
+
+#### `TokenRequest`
+
+The input parameter for the “Generate EINITTOKEN” call of the Launch Enclave is
+as follows:
+
+```rust
+#[repr(packed)]
+struct TokenRequest {
+	/// Unused
+	unused: u64,
+	/// Pointer to MRENCLAVE for the requested token
+	mrenclave: *const [u8;32],
+	/// Pointer to MRSIGNER for the requested token
+	mrsigner: *const [u8;32],
+	/// Pointer to attributes for the requested token
+	attributes: *const Attributes,
+	/// Pointer to caller-allocated buffer receiving the token
+	einittoken: *mut Einittoken,
+}
+```
