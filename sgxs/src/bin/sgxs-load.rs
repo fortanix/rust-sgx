@@ -13,24 +13,31 @@
 #![feature(asm)]
 extern crate sgxs;
 extern crate libc;
+extern crate clap;
 
-use std::io::Read;
+use std::io::{Write,Read};
 use std::fs::File;
 use std::mem::transmute;
 
+use clap::{Arg,App};
+
 use sgxs::loader::{Map,Load};
 use sgxs::sgxdev;
-use sgxs::abi::{Einittoken,Sigstruct,Enclu};
+use sgxs::abi::{Einittoken,Sigstruct,Enclu,DEBUG as ATTRIBUTE_DEBUG};
 
-fn read_einittoken() -> Einittoken {
+fn read_einittoken(path: &str) -> Einittoken {
 	let mut buf=[0u8;304];
-	File::open("token").unwrap().read_exact(&mut buf).unwrap();
+	File::open(path).unwrap().read_exact(&mut buf).unwrap();
 	unsafe{transmute(buf)}
 }
 
-fn read_sigstruct() -> Sigstruct {
+fn write_einittoken(path: &str, token: Einittoken) {
+	File::create(path).unwrap().write_all(&mut unsafe{transmute::<_,[u8;304]>(token)}).unwrap();
+}
+
+fn read_sigstruct(path: &str) -> Sigstruct {
 	let mut buf=[0u8;1808];
-	File::open("sig").unwrap().read_exact(&mut buf).unwrap();
+	File::open(path).unwrap().read_exact(&mut buf).unwrap();
 	unsafe{transmute(buf)}
 }
 
@@ -61,10 +68,71 @@ post:
 }
 
 fn main() {
-	let dev=sgxdev::Device::open("/dev/sgx").unwrap();
-	let mut file=File::open("sgxs").unwrap();
-	let mapping=dev.load(&mut file,read_sigstruct(),Some(read_einittoken())).unwrap();
-	let tcs=mapping.tcss()[0];
+	let matches = App::new("sgxs-load")
+		.about("SGXS loader")
+		.arg(Arg::with_name("debug").short("d").long("debug").requires("le-sgxs").help("Request a debug token"))
+		.arg(Arg::with_name("le-sgxs").long("le-sgxs").takes_value(true).requires("le-sigstruct").help("Sets the launch enclave SGXS file to use"))
+		.arg(Arg::with_name("le-sigstruct").long("le-sigstruct").takes_value(true).requires("le-sgxs").help("Sets the launch enclave SIGSTRUCT file to use"))
+		.arg(Arg::with_name("token").long("token").takes_value(true).help("Sets the enclave EINITTOKEN file to use"))
+		.arg(Arg::with_name("device").long("device").takes_value(true).help("Sets the SGX device to use (default: /dev/sgx)"))
+		.arg(Arg::with_name("sgxs").required(true).help("Sets the enclave SGXS file to use"))
+		.arg(Arg::with_name("sigstruct").required(true).help("Sets the enclave SIGSTRUCT file to use"))
+		.after_help("LAUNCH ENCLAVE / TOKEN OPTION:
+    When specifying <token>, but no <le-...>, that token file will be used as
+    EINITTOKEN. When specifying <le-...>, but not <token>, the launch enclave
+    will be used to generate an EINITTOKEN. When specifying <le-...> and
+    <token>, that token file will be used as EINITTOKEN. If loading with that
+    token fails, the launch enclave will be used to generate an EINITTOKEN, and
+    the new token will be written back to <token>.")
+		.get_matches();
 
+	let dev=sgxdev::Device::open(matches.value_of("device").unwrap_or("/dev/sgx")).unwrap();
+	let mut file=File::open(matches.value_of("sgxs").unwrap()).unwrap();
+	let sigstruct=read_sigstruct(matches.value_of("sigstruct").unwrap());
+	let use_le=matches.is_present("le-sgxs");
+	let mapping;
+	let mut token=None;
+	{
+		use sgxs::loader::OptionalEinittoken as OptTok;
+		let token_opt;
+		match matches.value_of("token") {
+			Some(path) => {
+				let mut intoken=read_einittoken(path);
+				if matches.is_present("debug") && intoken.valid==0 {
+					intoken.attributes=sigstruct.attributes.clone();
+					intoken.attributes.flags.insert(ATTRIBUTE_DEBUG);
+				}
+				token=Some(intoken);
+				if use_le {
+					token_opt=OptTok::UseOrGenerate(token.as_mut().unwrap())
+				} else {
+					token_opt=OptTok::Use(token.as_ref().unwrap())
+				}
+			},
+			None => {
+				if matches.is_present("debug") {
+					let mut attributes=sigstruct.attributes.clone();
+					attributes.flags.insert(ATTRIBUTE_DEBUG);
+					token_opt=OptTok::None(Some(attributes))
+				} else {
+					token_opt=OptTok::None(None)
+				}
+			}
+		}
+		if use_le {
+			let mut le=File::open(matches.value_of("le-sgxs").unwrap()).unwrap();
+			let le_sig=read_sigstruct(matches.value_of("le-sigstruct").unwrap());
+			mapping=dev.load_with_launch_enclave(&mut file,&sigstruct,token_opt,&mut le,&le_sig).unwrap();
+		} else {
+			mapping=dev.load(&mut file,&sigstruct,token_opt.as_option()).unwrap();
+		}
+	}
+	if let Some(token)=token {
+		if use_le {
+			write_einittoken(matches.value_of("token").unwrap(),token);
+		}
+	}
+
+	let tcs=mapping.tcss()[0];
 	enclu_eenter(tcs);
 }

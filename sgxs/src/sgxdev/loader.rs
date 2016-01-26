@@ -20,6 +20,7 @@ use std::io::Error as IoError;
 use libc;
 use abi::*;
 use sgxs::{self,PageReader,SgxsRead,MeasECreate};
+use loader::EinittokenError;
 use super::ioctl::*;
 use super::Device;
 
@@ -34,6 +35,20 @@ pub enum Error {
 	TooManyPages,
 	Sgx(Encls,ErrorCodes),
 	Exception(Encls,u8,u64),
+}
+
+impl EinittokenError for Error {
+	fn is_einittoken_error(&self) -> bool {
+		use abi::ErrorCodes::*;
+		use self::Error::*;
+		match self {
+			&Sgx(Encls::EInit,InvalidEinitToken) |
+			&Sgx(Encls::EInit,InvalidCpusvn) |
+			&Sgx(Encls::EInit,InvalidAttribute) | // InvalidEinitAttribute according to PR, but does not exist.
+			&Sgx(Encls::EInit,InvalidMeasurement) => true,
+			_ => false,
+		}
+	}
 }
 
 impl From<sgxs::Error> for Error {
@@ -130,14 +145,6 @@ impl IoctlDataStore {
 			ioctl_call.0.into()
 		}
 	}
-
-	fn store_einit<'a>(&'a self, sigstruct: Sigstruct, einittoken: Einittoken, mut ioctl_call: Pre<IoctlVecElem>) -> RestrictedIoctlVecElem<'a> {
-		unsafe {
-			(ioctl_call.0.data.borrow_mut() as &mut EnclsDataIn).rbx=self.store(sigstruct);
-			(ioctl_call.0.data.borrow_mut() as &mut EnclsDataIn).rdx=self.store(einittoken);
-			ioctl_call.0.into()
-		}
-	}
 }
 
 // ===============================================
@@ -230,17 +237,17 @@ fn prepare_eextend(addr: Kaddr, secs: Kaddr) -> IoctlVecElem {
 	}
 }
 
-fn prepare_einit(secs: Kaddr) -> Pre<IoctlVecElem> {
-	Pre(IoctlVecElem{
+fn prepare_einit<'a>(secs: Kaddr, sigstruct: &'a Sigstruct, einittoken: &'a Einittoken) -> RestrictedIoctlVecElem<'a> {
+	IoctlVecElem{
 		leaf: Encls::EInit as i32,
 		return_flag: EXCEPTION|ERROR,
 		data: EnclsData::from(EnclsDataIn{
 			rcx: secs.0,
-			rbx: !0,
-			rdx: !0,
+			rbx: sigstruct as *const _ as u64,
+			rdx: einittoken as *const _ as u64,
 			..Default::default()
 		}),
-	})
+	}.into()
 }
 
 fn prepare_eremove(addr: Kaddr) -> IoctlVecElem {
@@ -283,8 +290,9 @@ impl<'a> Drop for Pages<'a> {
 	}
 }
 
-pub fn load<'dev,'rd, R: SgxsRead + 'rd>(dev: &'dev Device, mut reader: PageReader<'rd,R>, ecreate: MeasECreate, base: Uaddr, k_base: Kaddr, secs: Kaddr, sigstruct: Sigstruct, einittoken: Option<Einittoken>) -> Result<(Vec<Uaddr>,Pages<'dev>)> {
-	let einittoken=einittoken.unwrap_or(Default::default());
+pub fn load<'dev,'rd, R: SgxsRead + 'rd>(dev: &'dev Device, mut reader: PageReader<'rd,R>, ecreate: MeasECreate, base: Uaddr, k_base: Kaddr, secs: Kaddr, sigstruct: &Sigstruct, einittoken: Option<&Einittoken>) -> Result<(Vec<Uaddr>,Pages<'dev>)> {
+	let einittoken_default;
+	let einittoken=einittoken.unwrap_or({einittoken_default=Default::default();&einittoken_default});
 	let ioctl_data=IoctlDataStore::new();
 	let mut ioctls=vec![];
 	let mut pages=vec![];
@@ -312,8 +320,7 @@ pub fn load<'dev,'rd, R: SgxsRead + 'rd>(dev: &'dev Device, mut reader: PageRead
 		}
 	}
 
-	{	let ioctl_call=prepare_einit(secs);
-		ioctls.push(ioctl_data.store_einit(sigstruct,einittoken,ioctl_call)); }
+	ioctls.push(prepare_einit(secs,sigstruct,einittoken));
 
 	if ioctls.len()>(::std::i32::MAX as usize) {
 		return Err(Error::TooManyPages);

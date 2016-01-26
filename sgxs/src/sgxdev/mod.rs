@@ -89,7 +89,7 @@ impl<'dev> Load<'dev> for Device {
 	type Mapping=Mapping<'dev>;
 	type Error=Error;
 
-	fn load<'rd, R: SgxsRead + 'rd>(&'dev self, reader: &'rd mut R, sigstruct: Sigstruct, einittoken: Option<Einittoken>) -> Result<Mapping<'dev>> {
+	fn load<'r, R: SgxsRead + 'r>(&'dev self, reader: &'r mut R, sigstruct: &Sigstruct, einittoken: Option<&Einittoken>) -> Result<Mapping<'dev>> {
 		let (ecreate,reader)=try!(PageReader::new(reader));
 		let size=ecreate.size;
 
