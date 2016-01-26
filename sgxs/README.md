@@ -14,9 +14,16 @@ built on top of the library.
 
 Compiles with Rust nightly.
 
+## pe2sgxs
+
+`pe2sgxs` converts enclaves in Intel's PE format to SGXS format, optionally
+extracting the signature. You can then use the SGXS file with the other SGXS
+utilities.
+
 ## sgxs-info
 
-The `sgxs-info` parses SGXS files for further analysis. It currently supports the following commands:
+`sgxs-info` parses SGXS files for further analysis. It currently supports the
+following commands:
 
 ### list-all
 
@@ -50,6 +57,6 @@ with zeroes. Unmapped pages at the end are truncated.
 
 ## sgxs-load
 
-The `sgxs-load` loads an SGXS file into the EPC. Currently, only the linux
+`sgxs-load` loads an SGXS file into the EPC. Currently, only the linux
 ioctl driver is supported. You must also provide a signature and initialization
 token.
