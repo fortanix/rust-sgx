@@ -51,7 +51,7 @@ pub enum ErrorCodes {
 	Success                =   0,
 	InvalidSigStruct       =   1,
 	InvalidAttribute       =   2,
-	Blkstate               =   3,
+	Blkstate               =   3, // Blstate in §41.1.3, Blkstate in §41.3
 	InvalidMeasurement     =   4,
 	Notblockable           =   5,
 	PgInvld                =   6,
@@ -69,6 +69,7 @@ pub enum ErrorCodes {
 	PgIsSecs               =  18,
 	PageAttributesMismatch =  19,
 	PageNotModifiable      =  20,
+	PageNotDebuggable      =  21,
 	InvalidCpusvn          =  32,
 	InvalidIsvsvn          =  64,
 	UnmaskedEvent          = 128,
@@ -135,6 +136,7 @@ pub struct Attributes {
 
 bitflags! {
 	flags AttributesFlags: u64 {
+		const INIT          = 0b0000_0001,
 		const DEBUG         = 0b0000_0010,
 		const MODE64BIT     = 0b0000_0100,
 		const PROVISIONKEY  = 0b0001_0000,
@@ -221,6 +223,7 @@ pub mod secinfo_flags {
 			const X        = 0b0000_0000_0000_0100,
 			const PENDING  = 0b0000_0000_0000_1000,
 			const MODIFIED = 0b0000_0000_0001_0000,
+			const PR       = 0b0000_0000_0010_0000,
 			const PT_MASK  = 0b1111_1111_0000_0000,
 			const PT_B0    = 0b0000_0001_0000_0000, // ****
 			const PT_B1    = 0b0000_0010_0000_0000, // * These are just here so that
