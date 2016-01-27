@@ -9,7 +9,7 @@
  * of the License.
  */
 
-use std::io::Write;
+use std::io::{Read,Write};
 
 pub trait Sha256Digest: Write {
 	// Must call as <Sha256 as Sha256Digest>::new()
@@ -19,6 +19,35 @@ pub trait Sha256Digest: Write {
 
 // Should implement Sha256Digest
 pub use self::sha256impl::Hasher as Sha256;
+
+pub trait RsaPrivateKeyOps: Sized {
+	type E: ::std::error::Error;
+	/// Read an RSA private key in PEM format
+	fn new<R: Read>(input: &mut R) -> Result<Self,Self::E>;
+
+	/// Return the number of bits in the RSA key
+	fn len(&self) -> usize;
+
+	/// Generate an RSASSA-PKCS1-v1_5 signature over a SHA256 hash. Also
+	/// compute
+	/// - `q1 = s^2 / n`
+	/// - `q2 = (s^3 - q1*s*n) / n`
+	/// where `/` is integer division.
+	///
+	/// Returns `(s,q1,q2)` in little-endian format
+	///
+	/// ### Panics
+	/// Panics if the input length is not 32
+	fn sign_sha256_pkcs1v1_5_with_q1_q2<H: AsRef<[u8]>>(&self, hash: H) -> Result<(Vec<u8>,Vec<u8>,Vec<u8>),Self::E>;
+
+	/// Retrieve the public key in little-endian format
+	fn e(&self) -> Result<Vec<u8>,Self::E>;
+
+	/// Retrieve the modulus in little-endian format
+	fn n(&self) -> Result<Vec<u8>,Self::E>;
+}
+
+pub use self::rsa_impl::RsaPrivateKey;
 
 #[cfg(feature="with-rust-crypto")]
 mod sha256impl {
@@ -69,3 +98,76 @@ mod sha256impl {
 		}
 	}
 }
+
+// No rust-crypto version of rsa_impl because rust-crypto doesn't do RSA (yet)
+mod rsa_impl {
+	extern crate openssl_sys;
+
+	use std::io::Read;
+
+	use openssl::crypto::pkey::PKey;
+	use openssl::crypto::rsa::RSA;
+	use openssl::ssl::error::SslError;
+	use openssl::crypto::hash::Type as HashType;
+	use openssl::bn::BigNum;
+
+	pub struct RsaPrivateKey<'rsa> {
+		pkey: PKey,
+		rsa: &'rsa RSA,
+	}
+
+	impl<'a> super::RsaPrivateKeyOps for RsaPrivateKey<'a> {
+		type E = SslError;
+
+		fn new<R: Read>(input: &mut R) -> Result<RsaPrivateKey<'a>,SslError> {
+			let pkey=try!(PKey::private_key_from_pem(input));
+
+			let rsa=unsafe {
+				let rsa=openssl_sys::EVP_PKEY_get1_RSA(pkey.get_handle());
+				if rsa.is_null() {
+					return Err(SslError::get())
+				} else {
+					// our PKey still holds a reference, so the pointer remains valid
+					openssl_sys::RSA_free(rsa);
+				}
+				&*(rsa as *const RSA)
+			};
+
+			Ok(RsaPrivateKey{pkey:pkey,rsa:rsa})
+		}
+
+		fn len(&self) -> usize {
+			self.pkey.size()*8
+		}
+
+		fn sign_sha256_pkcs1v1_5_with_q1_q2<H: AsRef<[u8]>>(&self, hash: H) -> Result<(Vec<u8>,Vec<u8>,Vec<u8>),Self::E> {
+			let mut s_vec=self.pkey.sign_with_hash(hash.as_ref(),HashType::SHA256);
+			if s_vec.len()==0 {
+				Err(SslError::get())
+			} else {
+				let s=try!(BigNum::new_from_slice(&s_vec[..]));
+				let n=try!(self.rsa.n());
+				let s_2=try!(s.checked_sqr());
+				let q1=try!(s_2.checked_div(&n));
+				let q2=try!(try!(try!(s_2.checked_mul(&s)).checked_sub(&try!(try!(q1.checked_mul(&s)).checked_mul(&n)))).checked_div(&n));
+				let mut q1=q1.to_vec();
+				let mut q2=q2.to_vec();
+				q1.reverse();
+				q2.reverse();
+				s_vec.reverse();
+				Ok((s_vec,q1,q2))
+			}
+		}
+
+		fn e(&self) -> Result<Vec<u8>,Self::E> {
+			self.rsa.e().map(|e|{let mut v=e.to_vec();v.reverse();v})
+		}
+
+		fn n(&self) -> Result<Vec<u8>,Self::E> {
+			self.rsa.n().map(|n|{let mut v=n.to_vec();v.reverse();v})
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests;
