@@ -9,13 +9,13 @@
  * of the License.
  */
 
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
+use std::io::Write;
 
 use abi::{Sigstruct,Einittoken,Attributes,Enclu};
 use sgxs::SgxsRead;
 use loader::{Load,Map,Error};
 use loader::Error::*;
+use crypto::{Sha256Digest,Sha256};
 
 bitflags!{
 	flags CpuidFlags: u64 {
@@ -78,15 +78,14 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 		return Err(LaunchEnclaveInit(rdi,rsi));
 	}
 
-	let mut mrsigner=[0u8;32];
-	let mut sha=Sha256::new();
-	sha.input(&enclave_sig.modulus);
-	sha.result(&mut mrsigner);
+	let mut sha=<Sha256 as Sha256Digest>::new();
+	sha.write(&enclave_sig.modulus).unwrap();
+	let mrsigner=sha.finish();
 
 	let callbuf=GetTokenCall{
 		unused:0,
 		mrenclave: &enclave_sig.enclavehash,
-		mrsigner: &mrsigner,
+		mrsigner: mrsigner.as_ptr() as *const _,
 		attributes: requested_attributes,
 		einittoken: enclave_token,
 	};

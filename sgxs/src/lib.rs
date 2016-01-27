@@ -18,8 +18,11 @@ extern crate bitflags;
 extern crate ioctl as ioctl_crate;
 extern crate libc;
 extern crate byteorder;
-extern crate crypto;
+extern crate openssl;
+#[cfg(feature="with-rust-crypto")]
+extern crate crypto as rust_crypto;
 
+pub mod crypto;
 pub mod abi;
 pub mod sgxdev;
 pub mod sgxs;

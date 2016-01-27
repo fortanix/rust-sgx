@@ -6,13 +6,21 @@ authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "GPL-2.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
 
+[features]
+with-rust-crypto = ["rust-crypto"]
+
 [dependencies]
 "bitflags" = "0.4"    # MIT/Apache-2.0
 "byteorder" = "0.4"   # Unlicense/MIT
 "ioctl" = "0.3"       # MIT/Apache-2.0 (per 7205d48)
 "libc" = "0.2"        # MIT/Apache-2.0
-"rust-crypto" = "0.2" # MIT/Apache-2.0
 "broadcast" = "0.1"   # MIT
 "lazy_static" = "0.1" # MIT
 "pe" = "0.1"          # GPL-2.0+
 "clap" = "1.5"        # MIT
+"openssl" = { git = "https://github.com/sfackler/rust-openssl", rev = "7610804c" }  # Apache-2.0
+"openssl-sys" = { git = "https://github.com/sfackler/rust-openssl", rev = "7610804c" }  # MIT
+
+[dependencies.rust-crypto]  # MIT/Apache-2.0
+version = "0.2"
+optional = true

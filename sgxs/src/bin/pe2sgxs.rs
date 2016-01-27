@@ -13,21 +13,19 @@
 
 #[macro_use]
 extern crate lazy_static;
-extern crate crypto;
 extern crate sgxs as sgxs_crate;
 extern crate pe;
 extern crate broadcast;
 
 use std::fs::File;
-use std::io::{self,Read,Write,Result as IoResult};
+use std::io::{self,Read,Write};
 use std::mem::{transmute,size_of,size_of_val};
 use std::collections::HashSet;
 use std::sync::atomic;
 
-use crypto::digest::Digest;
-use crypto::sha2::Sha256;
 use broadcast::BroadcastWriter;
 
+use sgxs_crate::crypto::{Sha256Digest,Sha256};
 use sgxs_crate::abi::{Tcs,Sigstruct,PageType,secinfo_flags,SecinfoFlags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated};
 
@@ -507,17 +505,6 @@ at https://github.com/jethrogb/sgx-utils/issues/new or send an e-mail to
 sgx-utils@jbeekman.nl with as much data as you can provide about the enclave.")
 }
 
-struct DigestWriter<D: Digest>(D);
-
-impl<D: Digest> Write for DigestWriter<D> {
-	fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-		self.0.input(buf);
-		Ok(buf.len())
-	}
-
-	fn flush(&mut self) -> IoResult<()> { Ok(()) }
-}
-
 fn main() {
 	let mut args=std::env::args_os();
 	let _name=args.next();
@@ -534,7 +521,7 @@ fn main() {
 		Err(InvalidSgxmetaSection) => { print_unknown_value_msg(); return },
 		l @ _ => l.unwrap()
 	};
-	let mut hasher=DigestWriter(Sha256::new());
+	let mut hasher=<Sha256 as Sha256Digest>::new();
 
 	{
 		let mut outfile=File::create(outfile).unwrap();
@@ -542,15 +529,14 @@ fn main() {
 		layout.write(&mut out).unwrap();
 	}
 
-	let mut hash=[0u8;32];
-	hasher.0.result(&mut hash);
+	let hash=hasher.finish();
 	let msg;
-	if layout.sgxmeta.sigstruct.enclavehash!=hash {
+	if layout.sgxmeta.sigstruct.enclavehash!=&hash[..] {
 		msg="\nWARNING: does not match SIGSTRUCT.ENCLAVEHASH!";
 	} else {
 		msg=" (OK)";
 	}
-	println!("MRENCLAVE: {}{}",hasher.0.result_str(),msg);
+	println!("MRENCLAVE: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{}",hash[0],hash[1],hash[2],hash[3],hash[4],hash[5],hash[6],hash[7],hash[8],hash[9],hash[10],hash[11],hash[12],hash[13],hash[14],hash[15],hash[16],hash[17],hash[18],hash[19],hash[20],hash[21],hash[22],hash[23],hash[24],hash[25],hash[26],hash[27],hash[28],hash[29],hash[30],hash[31],msg);
 
 	if UNKNOWN_VALUE_ENCOUNTERED.load(atomic::Ordering::Relaxed) {
 		print_unknown_value_msg();
