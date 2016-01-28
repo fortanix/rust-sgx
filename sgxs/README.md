@@ -20,6 +20,28 @@ Compiles with Rust nightly.
 extracting the signature. You can then use the SGXS file with the other SGXS
 utilities.
 
+## sgxs-build
+
+`sgxs-build` generates an SGXS by concatenating raw binary files specified on
+the command line. For example, to generate the simplest valid enclave possible:
+
+```
+$ as -k
+mov %rcx,%rbx
+mov $0x4,%eax
+enclu
+^D
+$ objcopy -O binary -j .text a.out
+$ sgxs-build rx=a.out tcs=nssa:1 > a.sgxs
+$ sgxs-info info a.sgxs
+   0- fff Reg  r-x  (data) meas=all
+1000-1fff Tcs  ---  (data) meas=all
+2000-2fff Reg  rw- (empty) meas=all
+3000-3fff (unmapped)
+```
+
+Input files will be page-aligned.
+
 ## sgxs-info
 
 `sgxs-info` parses SGXS files for further analysis. It currently supports the

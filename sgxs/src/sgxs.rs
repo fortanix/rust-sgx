@@ -345,6 +345,10 @@ impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a,W> {
 	pub fn skip_pages(&mut self, n: usize) {
 		self.next_offset+=(n as u64)*4096;
 	}
+
+	pub fn offset(&self) -> u64 {
+		self.next_offset
+	}
 }
 
 /// Note: only the first 48 bytes of the `Secinfo` structure are included in a
