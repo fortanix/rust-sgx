@@ -20,6 +20,8 @@ with-rust-crypto = ["rust-crypto"]
 "clap" = "1.5"        # MIT
 "openssl" = { git = "https://github.com/sfackler/rust-openssl", rev = "7610804c" }  # Apache-2.0
 "openssl-sys" = { git = "https://github.com/sfackler/rust-openssl", rev = "7610804c" }  # MIT
+"regex" = "0.1"       # MIT/Apache-2.0
+"time" = "0.1"        # MIT/Apache-2.0
 
 [dependencies.rust-crypto]  # MIT/Apache-2.0
 version = "0.2"

@@ -60,3 +60,13 @@ with zeroes. Unmapped pages at the end are truncated.
 `sgxs-load` loads an SGXS file into the EPC. Currently, only the linux
 ioctl driver is supported. You must also provide a signature and initialization
 token.
+
+## sgxs-sign
+
+`sgxs-sign` generates a SIGSTRUCT given an SGX stream and user-specified 
+parameters. You can generate a fresh private key using the `openssl genrsa`
+command like so:
+
+```
+openssl genrsa -3 3072 > private.pem
+```
