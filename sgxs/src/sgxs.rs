@@ -80,7 +80,7 @@ fn read_fill<R: Read>(reader: &mut R, mut buf: &mut [u8]) -> IoResult<bool> {
 	}
 	if read_any {
 		if !buf.is_empty() {
-			Err(IoError::new(IoErrorKind::UnexpectedEOF,
+			Err(IoError::new(IoErrorKind::UnexpectedEof,
 						   "failed to fill whole buffer"))
 		} else {
 			Ok(true)
@@ -112,7 +112,7 @@ impl<R: Read> SgxsRead for R {
 
 				let mut data=[0u8;256];
 				if !try!(read_fill(self,&mut data)) {
-					return Err(Error::IoError(IoError::new(IoErrorKind::UnexpectedEOF,
+					return Err(Error::IoError(IoError::new(IoErrorKind::UnexpectedEof,
 						   "failed to fill whole buffer")));
 				}
 

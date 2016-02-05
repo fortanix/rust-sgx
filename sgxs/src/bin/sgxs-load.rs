@@ -9,7 +9,6 @@
  * of the License.
  */
 
-#![feature(read_exact)]
 #![feature(asm)]
 extern crate sgxs;
 extern crate libc;
