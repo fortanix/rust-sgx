@@ -10,7 +10,6 @@
  */
 
 #![feature(asm)]
-#![feature(read_exact,read_exact_old)]
 #![feature(unsafe_no_drop_flag)]
 #[macro_use]
 extern crate bitflags;
