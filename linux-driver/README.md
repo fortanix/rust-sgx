@@ -8,13 +8,16 @@ intended for production use.
 
 ### Build requirements
 
-The module build has been tested on Linux 3.13 and 4.2. You'll probably want a
-recent kernel for generic hardware support anyway.
+The module build has been tested on Linux 3.13, 4.2, and 4.4. You'll probably
+want a recent kernel for generic hardware support anyway.
 
 You'll need a recent version of GNU `as` that supports the `encls` instruction.
 2.25.1 is ok, 2.24 is not.
 
 ### Building
+
+First, you'll want to edit the size and location of the EPC to match what your
+system is reporting by editing `epc_start` and `epc_len` in `dev.c`. Then, run:
 
 ```sh
 make
@@ -33,7 +36,7 @@ You have to manually create the device file to expose the device to userspace.
 IMPORTANT: Look in the dmesg for the correct device major number
 
 ```sh
-sudo mknod -m 666 /dev/sgx c 245 0
+sudo mknod -m 666 /dev/sgx c XXX 0
 ```
 
 ## User test program
@@ -41,9 +44,9 @@ sudo mknod -m 666 /dev/sgx c 245 0
 Three test utilities should've been built at the same time as the kernel
 module.
 
-### clear <n>
+### clear `n`
 
-Calls ERMOVE on the fist N pages.
+Calls EREMOVE on the fist `n` EPC pages.
 
 ### user
 
