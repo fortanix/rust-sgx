@@ -74,8 +74,8 @@ struct Tls64 {
     bos_tcs_offset: u64,
     // Save state area (SSA) offset from TCS base
     ssa_tcs_offset: u64,
-    // ERRCD offset in the SSA from TCS base
-    errcd_tcs_offset: u64,
+    // GPRSGX offset in the SSA from TCS base
+    gprsgx_tcs_offset: u64,
     // SSA size?
     unknown0x0000000000001000: u64,
     sgxmeta_field_7: u8,
@@ -101,8 +101,8 @@ struct Tls32 {
     bos_tcs_offset: u32,
     // Save state area (SSA) offset from TCS base
     ssa_tcs_offset: u32,
-    // ERRCD offset in the SSA from TCS base
-    errcd_tcs_offset: u32,
+    // GPRSGX offset in the SSA from TCS base
+    gprsgx_tcs_offset: u32,
     // SSA size?
     unknown0x00001000: u32,
     sgxmeta_field_7: u8,
@@ -399,7 +399,7 @@ impl<'a> LayoutInfo<'a> {
 
 	fn tls_splice(&self, data: &mut &[u8]) -> Vec<u8> {
 		let ssa_tcs_offset=0x1000+self.tls_size+0x10000;
-		let errcd_tcs_offset=ssa_tcs_offset+0xf48;
+		let gprsgx_tcs_offset=ssa_tcs_offset+0xf48;
 		let bos_tcs_offset=ssa_tcs_offset+((self.sgxmeta.tcs_nssa*self.ssaframesize) as u64)*0x1000+0x10000;
 		let tos_tcs_offset=bos_tcs_offset+size_align_page_size(self.sgxmeta.stack_size as u64);
 		let sgxmeta_field_7=self.sgxmeta.tls_field_8 as u8;
@@ -416,7 +416,7 @@ impl<'a> LayoutInfo<'a> {
 			tlsh.tos_tcs_offset2=tos_tcs_offset;
 			tlsh.bos_tcs_offset=bos_tcs_offset;
 			tlsh.ssa_tcs_offset=ssa_tcs_offset;
-			tlsh.errcd_tcs_offset=errcd_tcs_offset;
+			tlsh.gprsgx_tcs_offset=gprsgx_tcs_offset;
 			tlsh.sgxmeta_field_7=sgxmeta_field_7;
 			tlsh.heap_base_offset=heap_base_offset;
 			tlsh.enclave_size=enclave_size;
@@ -432,7 +432,7 @@ impl<'a> LayoutInfo<'a> {
 			tlsh.tos_tcs_offset2=tos_tcs_offset as u32;
 			tlsh.bos_tcs_offset=bos_tcs_offset as u32;
 			tlsh.ssa_tcs_offset=ssa_tcs_offset as u32;
-			tlsh.errcd_tcs_offset=errcd_tcs_offset as u32;
+			tlsh.gprsgx_tcs_offset=gprsgx_tcs_offset as u32;
 			tlsh.sgxmeta_field_7=sgxmeta_field_7;
 			tlsh.heap_base_offset=heap_base_offset as u32;
 			tlsh.enclave_size=enclave_size as u32;

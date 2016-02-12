@@ -109,8 +109,8 @@ struct Tls64 {
     bos_tcs_offset: u64,
     // Save state area (SSA) offset from TCS base
     ssa_tcs_offset: u64,
-    // ERRCD offset in the first SSA from TCS base
-    errcd_tcs_offset: u64,
+    // GPRSGX offset in the first SSA from TCS base
+    gprsgx_tcs_offset: u64,
     // SSA size?
     unknown0x0000000000001000: u64,
     sgxmeta_field_7: u8,
@@ -135,8 +135,8 @@ struct Tls32 {
     bos_tcs_offset: u32,
     // Save state area (SSA) offset from TCS base
     ssa_tcs_offset: u32,
-    // ERRCD offset in the first SSA from TCS base
-    errcd_tcs_offset: u32,
+    // GPRSGX offset in the first SSA from TCS base
+    gprsgx_tcs_offset: u32,
     // SSA size?
     unknown0x00001000: u32,
     sgxmeta_field_7: u8,
