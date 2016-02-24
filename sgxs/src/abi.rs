@@ -11,6 +11,8 @@
 
 #![allow(dead_code)]
 
+use core::mem::transmute;
+
 #[derive(Clone,Copy,Debug)]
 #[repr(u32)]
 pub enum Encls {
@@ -123,7 +125,7 @@ pub struct Secs {
 
 impl Default for Secs {
 	fn default() -> Secs {
-		unsafe{::std::mem::transmute([0u8;4096])}
+		unsafe{transmute([0u8;4096])}
 	}
 }
 
@@ -177,7 +179,7 @@ pub struct Tcs {
 
 impl Default for Tcs {
 	fn default() -> Tcs {
-		unsafe{::std::mem::transmute([0u8;4096])}
+		unsafe{transmute([0u8;4096])}
 	}
 }
 
@@ -209,12 +211,13 @@ pub struct Secinfo {
 
 impl Default for Secinfo {
 	fn default() -> Secinfo {
-		unsafe{::std::mem::transmute([0u8;64])}
+		unsafe{transmute([0u8;64])}
 	}
 }
 
 pub mod secinfo_flags {
 	use super::PageType;
+	use core::mem::transmute;
 
 	bitflags! {
 		flags SecinfoFlags: u64 {
@@ -238,11 +241,10 @@ pub mod secinfo_flags {
 
 	impl SecinfoFlags {
 		pub fn page_type(&self) -> PageType {
-			unsafe{::std::mem::transmute((((*self&PT_MASK).bits) >> 8) as u8)}
+			unsafe{transmute((((*self&PT_MASK).bits) >> 8) as u8)}
 		}
 
 		pub fn page_type_mut(&mut self) -> &mut PageType {
-			use std::mem::transmute;
 			unsafe {
 				let page_type: &mut [u8;8]=transmute(&mut self.bits);
 				transmute(&mut page_type[1])
@@ -320,7 +322,7 @@ pub struct Einittoken {
 
 impl Default for Einittoken {
 	fn default() -> Einittoken {
-		unsafe{::std::mem::transmute([0u8;304])}
+		unsafe{transmute([0u8;304])}
 	}
 }
 
@@ -353,6 +355,12 @@ pub struct Targetinfo {
 	pub _reserved2:  [u8; 456],
 }
 
+impl Default for Targetinfo {
+	fn default() -> Targetinfo {
+		unsafe{transmute([0u8;512])}
+	}
+}
+
 #[repr(C,packed)]
 // Doesn't work because large array: #[derive(Clone,Debug,Default)]
 pub struct Keyrequest {
@@ -363,12 +371,18 @@ pub struct Keyrequest {
 	pub cpusvn:        [u8; 16],
 	pub attributemask: [u64; 2],
 	pub keyid:         [u8; 32],
-	pub miscmask:      Miscselect,
+	pub miscmask:      u32,
 	pub _reserved2:    [u8; 436],
 }
 
+impl Default for Keyrequest {
+	fn default() -> Keyrequest {
+		unsafe{transmute([0u8;512])}
+	}
+}
+
 bitflags! {
-	flags Keypolicy: u64 {
+	flags Keypolicy: u16 {
 		const MRENCLAVE = 0b0000_0001,
 		const MRSIGNER  = 0b0000_0010,
 	}

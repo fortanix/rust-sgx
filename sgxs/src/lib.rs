@@ -20,6 +20,7 @@ extern crate byteorder;
 extern crate openssl;
 #[cfg(feature="with-rust-crypto")]
 extern crate crypto as rust_crypto;
+extern crate core;
 
 pub mod crypto;
 pub mod abi;
