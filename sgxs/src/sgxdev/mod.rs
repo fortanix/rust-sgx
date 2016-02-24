@@ -16,10 +16,10 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::os::unix::io::IntoRawFd;
 use std::io::{Result as IoResult,Error as IoError};
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow,BorrowMut};
 use libc;
 use sgxs::{SgxsRead,PageReader};
-use abi::{Sigstruct,Einittoken};
+use abi::{Sigstruct,Einittoken,Encls};
 
 use loader::{Map,Load};
 use self::loader::{Pages,Uaddr,Kaddr};
@@ -63,6 +63,40 @@ impl Device {
 	pub fn open<P: AsRef<Path>>(path: P) -> IoResult<Device> {
 		let file=try!(OpenOptions::new().read(true).write(true).open(path));
 		Ok(Device{fd:file.into_raw_fd()})
+	}
+
+	pub fn debug_read(&self, addr: u64, len: usize) -> IoResult<(Vec<u64>,Vec<u64>)> {
+		use self::ioctl::*;
+
+		let addr=try!(self.base_address()).0+addr;
+
+		let mut ioctls: Vec<IoctlVecElem>=(0..(len as u64)).map(|i|
+			IoctlVecElem{
+				leaf: Encls::EDbgrd as i32,
+				return_flag: ReturnFlags::empty(),
+				data: EnclsData::from(EnclsDataIn{
+					rcx: addr+i*8,
+					..Default::default()
+				}),
+			}
+		).collect();
+
+		let mut ioctl_param=IoctlVec{num:ioctls.len() as i32,ioctls:ioctls.as_mut_ptr() as *mut _};
+		let ret=unsafe{multi_encls(self.fd,&mut ioctl_param)} as i32;
+		if ret<0 {
+			return Err(IoError::from_raw_os_error(-ret).into());
+		}
+
+		let mut errors=vec![];
+		Ok((ioctls.into_iter().enumerate().map(|(i,ioctl_call)| {
+			let dout: &EnclsDataOut=ioctl_call.data.borrow();
+			if dout.exception!=-1 {
+				errors.push(addr+(i as u64)*8);
+				0
+			} else {
+				dout.data
+			}
+		}).collect(),errors))
 	}
 
 	fn base_address(&self) -> IoResult<Kaddr> {

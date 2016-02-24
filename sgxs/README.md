@@ -20,6 +20,13 @@ Compiles with Rust nightly.
 extracting the signature. You can then use the SGXS file with the other SGXS
 utilities.
 
+## sgx-debug-read
+
+`sgx-debug-read` tries to reads memory in the EPC. This will only succeed for
+regular and TCS pages that are part of debug enclaves. The contents of the
+memory (or zeroes for inaccessible memory) will be output to stdout. Errors
+will be printed to stderr.
+
 ## sgxs-build
 
 `sgxs-build` generates an SGXS by concatenating raw binary files specified on

@@ -109,7 +109,7 @@ static unsigned long sgx_copy(unsigned long* pageptr,unsigned long offset,unsign
 
 static long do_encls_ioctl(int leaf, struct sgx_ioctl_data* data, bool manage_die_notifier) {
 	long ret=-EFAULT;
-	long result;
+	long result,result_rbx;
 	long page1=0,page2=0;
 	ktime_t start1,start2,end1,end2;
 	pageinfo_t* pageinfo;
@@ -118,6 +118,8 @@ static long do_encls_ioctl(int leaf, struct sgx_ioctl_data* data, bool manage_di
 	switch (leaf) {
 		case ENCLS_ECREATE:
 		case ENCLS_EADD:
+		case ENCLS_EDBGRD:
+		case ENCLS_EDBGWR:
 		case ENCLS_EEXTEND:
 		case ENCLS_EINIT:
 		case ENCLS_EREMOVE:
@@ -171,7 +173,7 @@ static long do_encls_ioctl(int leaf, struct sgx_ioctl_data* data, bool manage_di
 	}
 	start2=ktime_get_raw();
 	asm volatile("    call encls_might_fault \n"
-				 : "=a"(result)
+				 : "=a"(result), "=b"(result_rbx)
 				 : "a"(leaf), "b"(data->rbx) , "c"(data->rcx) , "d"(data->rdx)
 				 : );
 	end2=ktime_get_raw();
@@ -186,10 +188,12 @@ static long do_encls_ioctl(int leaf, struct sgx_ioctl_data* data, bool manage_di
 	} else {
 		data->exception=-1;
 		switch (leaf) {
+			case ENCLS_EDBGRD:
+				result=result_rbx;
+				break;
 			case ENCLS_EADD:
 			//case ENCLS_EAUG: /*SGX2*/
 			case ENCLS_ECREATE:
-			case ENCLS_EDBGRD:
 			case ENCLS_EDBGWR:
 			case ENCLS_EEXTEND:
 			case ENCLS_EPA:
@@ -228,6 +232,8 @@ static long sgxdev_ioctl(struct file *filep, unsigned int cmd, unsigned long arg
 	switch (cmd) {
 		case ENCLS_ECREATE_IOCTL:
 		case ENCLS_EADD_IOCTL:
+		case ENCLS_EDBGRD_IOCTL:
+		case ENCLS_EDBGWR_IOCTL:
 		case ENCLS_EEXTEND_IOCTL:
 		case ENCLS_EINIT_IOCTL:
 		case ENCLS_EREMOVE_IOCTL:
