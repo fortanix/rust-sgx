@@ -162,8 +162,6 @@ fn prepare_ecreate(addr: Kaddr, base: Uaddr, size: u64, ssaframesize: u32, sigst
 		ssaframesize: ssaframesize,
 		miscselect: sigstruct.miscselect,
 		attributes: if einittoken.valid==1 { einittoken.attributes.clone() } else { sigstruct.attributes.clone() },
-		isvprodid: sigstruct.isvprodid,
-		isvsvn: sigstruct.isvsvn,
 		..Default::default()
 	};
 	let pageinfo=Pre(Pageinfo{
