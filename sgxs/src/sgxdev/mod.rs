@@ -26,7 +26,7 @@ use self::loader::{Pages,Uaddr,Kaddr};
 pub use self::loader::{Result,Error};
 
 pub struct Mapping<'a> {
-	_pages: Pages<'a>,
+	_pages: Option<Pages<'a>>,
 	tcss: Vec<Uaddr>,
 	base: Uaddr,
 	size: u64,
@@ -109,12 +109,12 @@ impl Device {
 		}
 	}
 
-	fn map(&self, offset: u64, size: usize) -> IoResult<Uaddr> {
+	fn map(&self, offset: u64, size: usize) -> IoResult<Mapping> {
 		let ptr=unsafe{libc::mmap(0x17fffffffusize as *mut _,size,libc::PROT_NONE,libc::MAP_SHARED,self.fd,offset as i64)};
 		if ptr==::std::ptr::null_mut() {
 			Err(IoError::last_os_error())
 		} else {
-			Ok(Uaddr(ptr as u64))
+			Ok(Mapping{_pages:None,tcss:Vec::with_capacity(0),base:Uaddr(ptr as u64),size:size as u64})
 		}
 	}
 }
@@ -130,11 +130,13 @@ impl<'dev> Load<'dev> for Device {
 		let secs=try!(self.base_address());
 		let epc_offset=0x1000;
 		let k_base=secs+epc_offset;
-		let base=try!(self.map(epc_offset,size as usize));
+		let mut mapping=try!(self.map(epc_offset,size as usize));
 
-		let (tcss,pages)=try!(loader::load(&self,reader,ecreate,base,k_base,secs,sigstruct,einittoken));
+		let (tcss,pages)=try!(loader::load(&self,reader,ecreate,mapping.base,k_base,secs,sigstruct,einittoken));
 
-		Ok(Mapping{_pages:pages,tcss:tcss,base:base,size:size})
+		mapping._pages=Some(pages);
+		mapping.tcss=tcss;
+		Ok(mapping)
 	}
 }
 
