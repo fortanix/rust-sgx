@@ -25,6 +25,7 @@ extern crate core;
 pub mod crypto;
 pub mod abi;
 pub mod sgxdev;
+pub mod isgx;
 pub mod sgxs;
 mod intelcall;
 pub mod loader;
