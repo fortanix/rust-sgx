@@ -13,6 +13,7 @@
 extern crate sgxs;
 extern crate libc;
 extern crate clap;
+extern crate sgx_isa;
 
 use std::io::{Write,Read};
 use std::fs::File;
@@ -22,7 +23,7 @@ use clap::{Arg,App};
 
 use sgxs::loader::{Map,Load};
 use sgxs::sgxdev;
-use sgxs::abi::{Einittoken,Sigstruct,Enclu,DEBUG as ATTRIBUTE_DEBUG};
+use sgx_isa::{Einittoken,Sigstruct,Enclu,attributes_flags};
 
 fn read_einittoken(path: &str) -> Einittoken {
 	let mut buf=[0u8;304];
@@ -99,7 +100,7 @@ fn main() {
 				let mut intoken=read_einittoken(path);
 				if matches.is_present("debug") && intoken.valid==0 {
 					intoken.attributes=sigstruct.attributes.clone();
-					intoken.attributes.flags.insert(ATTRIBUTE_DEBUG);
+					intoken.attributes.flags.insert(attributes_flags::DEBUG);
 				}
 				token=Some(intoken);
 				if use_le {
@@ -111,7 +112,7 @@ fn main() {
 			None => {
 				if matches.is_present("debug") {
 					let mut attributes=sigstruct.attributes.clone();
-					attributes.flags.insert(ATTRIBUTE_DEBUG);
+					attributes.flags.insert(attributes_flags::DEBUG);
 					token_opt=OptTok::None(Some(attributes))
 				} else {
 					token_opt=OptTok::None(None)

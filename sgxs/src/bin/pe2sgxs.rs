@@ -16,6 +16,7 @@ extern crate lazy_static;
 extern crate sgxs as sgxs_crate;
 extern crate pe;
 extern crate broadcast;
+extern crate sgx_isa;
 
 use std::fs::File;
 use std::io::{self,Read,Write};
@@ -26,7 +27,7 @@ use std::sync::atomic;
 use broadcast::BroadcastWriter;
 
 use sgxs_crate::crypto::{Sha256Digest,Sha256};
-use sgxs_crate::abi::{Tcs,Sigstruct,PageType,secinfo_flags,SecinfoFlags};
+use sgx_isa::{Tcs,Sigstruct,PageType,secinfo_flags,SecinfoFlags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated};
 
 use pe::types::{section_characteristics,SectionHeader,DataDirectory,DirectoryEntry};

@@ -1,15 +1,19 @@
 /*
- * The Intel SGX ABI.
+ * Constants and structures related to the Intel SGX ISA extension.
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * Licensed under the Apache License, Version 2.0
+ * <COPYING-APACHE or http://www.apache.org/licenses/LICENSE-2.0> or the MIT
+ * license <COPYING-MIT or http://opensource.org/licenses/MIT>, at your
+ * option. All files in the project carrying such notice may not be copied,
+ * modified, or distributed except according to those terms.
  */
 
-#![allow(dead_code)]
+#![no_std]
+
+#[macro_use]
+extern crate bitflags;
 
 use core::mem::transmute;
 
@@ -49,7 +53,7 @@ pub enum Enclu {
 
 #[derive(Clone,Copy,Debug)]
 #[repr(u32)]
-pub enum ErrorCodes {
+pub enum ErrorCode {
 	Success                =   0,
 	InvalidSigStruct       =   1,
 	InvalidAttribute       =   2,
@@ -97,8 +101,8 @@ pub enum PageType {
 
 #[derive(Clone,Copy,Debug)]
 #[repr(u16)]
-pub enum KeyName {
-	Launch        = 0,
+pub enum Keyname {
+	EinitToken    = 0, // EinitToken in §38.17.1, Launch in §41.3
 	Provision     = 1,
 	ProvisionSeal = 2,
 	Report        = 3,
@@ -136,29 +140,35 @@ pub struct Attributes {
 	pub xfrm: u64,
 }
 
-bitflags! {
-	flags AttributesFlags: u64 {
-		const INIT          = 0b0000_0001,
-		const DEBUG         = 0b0000_0010,
-		const MODE64BIT     = 0b0000_0100,
-		const PROVISIONKEY  = 0b0001_0000,
-		const EINITTOKENKEY = 0b0010_0000,
+pub mod attributes_flags {
+	bitflags! {
+		pub flags AttributesFlags: u64 {
+			const INIT          = 0b0000_0001,
+			const DEBUG         = 0b0000_0010,
+			const MODE64BIT     = 0b0000_0100,
+			const PROVISIONKEY  = 0b0001_0000,
+			const EINITTOKENKEY = 0b0010_0000,
+		}
+	}
+
+	impl Default for AttributesFlags {
+		fn default() -> Self { Self::empty() }
 	}
 }
+pub use self::attributes_flags::AttributesFlags;
 
-impl Default for AttributesFlags {
-	fn default() -> Self { Self::empty() }
-}
+pub mod miscselect {
+	bitflags! {
+		pub flags Miscselect: u32 {
+			const EXINFO = 0b0000_0001,
+		}
+	}
 
-bitflags! {
-	flags Miscselect: u32 {
-		const EXINFO = 0b0000_0001,
+	impl Default for Miscselect {
+		fn default() -> Self { Self::empty() }
 	}
 }
-
-impl Default for Miscselect {
-	fn default() -> Self { Self::empty() }
-}
+pub use self::miscselect::Miscselect;
 
 #[repr(C,packed)]
 // Doesn't work because large array: #[derive(Clone,Debug,Default)]
@@ -183,15 +193,18 @@ impl Default for Tcs {
 	}
 }
 
-bitflags! {
-	flags TcsFlags: u64 {
-		const DBGOPTIN = 0b0000_0001,
+pub mod tcs_flags {
+	bitflags! {
+		pub flags TcsFlags: u64 {
+			const DBGOPTIN = 0b0000_0001,
+		}
+	}
+
+	impl Default for TcsFlags {
+		fn default() -> Self { Self::empty() }
 	}
 }
-
-impl Default for TcsFlags {
-	fn default() -> Self { Self::empty() }
-}
+pub use self::tcs_flags::TcsFlags;
 
 #[repr(C,packed)]
 #[derive(Clone,Debug,Default)]
@@ -216,11 +229,8 @@ impl Default for Secinfo {
 }
 
 pub mod secinfo_flags {
-	use super::PageType;
-	use core::mem::transmute;
-
 	bitflags! {
-		flags SecinfoFlags: u64 {
+		pub flags SecinfoFlags: u64 {
 			const R        = 0b0000_0000_0000_0001,
 			const W        = 0b0000_0000_0000_0010,
 			const X        = 0b0000_0000_0000_0100,
@@ -229,9 +239,9 @@ pub mod secinfo_flags {
 			const PR       = 0b0000_0000_0010_0000,
 			const PT_MASK  = 0b1111_1111_0000_0000,
 			const PT_B0    = 0b0000_0001_0000_0000, // ****
-			const PT_B1    = 0b0000_0010_0000_0000, // * These are just here so that
-			const PT_B2    = 0b0000_0100_0000_0000, // * something shows up in the
-			const PT_B3    = 0b0000_1000_0000_0000, // * Debug output
+			const PT_B1    = 0b0000_0010_0000_0000, // * These are just here so
+			const PT_B2    = 0b0000_0100_0000_0000, // * that something shows
+			const PT_B3    = 0b0000_1000_0000_0000, // * up in the Debug output
 			const PT_B4    = 0b0001_0000_0000_0000, // *
 			const PT_B5    = 0b0010_0000_0000_0000, // *
 			const PT_B6    = 0b0100_0000_0000_0000, // *
@@ -239,12 +249,17 @@ pub mod secinfo_flags {
 		}
 	}
 
+	impl Default for SecinfoFlags {
+		fn default() -> Self { Self::empty() }
+	}
+
 	impl SecinfoFlags {
-		pub fn page_type(&self) -> PageType {
-			unsafe{transmute((((*self&PT_MASK).bits) >> 8) as u8)}
+		pub fn page_type(&self) -> u8 {
+			(((*self&PT_MASK).bits) >> 8) as u8
 		}
 
-		pub fn page_type_mut(&mut self) -> &mut PageType {
+		pub fn page_type_mut(&mut self) -> &mut u8 {
+			use core::mem::transmute;
 			unsafe {
 				let page_type: &mut [u8;8]=transmute(&mut self.bits);
 				transmute(&mut page_type[1])
@@ -252,17 +267,12 @@ pub mod secinfo_flags {
 		}
 	}
 
-	impl From<PageType> for SecinfoFlags {
-		fn from(data: PageType) -> SecinfoFlags {
+	impl From<super::PageType> for SecinfoFlags {
+		fn from(data: super::PageType) -> SecinfoFlags {
 			SecinfoFlags::from_bits_truncate((data as u64)<<8)
 		}
 	}
-
-	impl Default for SecinfoFlags {
-		fn default() -> Self { Self::empty() }
-	}
 }
-
 pub use self::secinfo_flags::SecinfoFlags;
 
 #[repr(C,packed)]
@@ -271,7 +281,7 @@ pub struct Pcmd {
 	pub secinfo:    Secinfo,
 	pub enclaveid:  u64,
 	pub _reserved1: [u8; 40],
-	pub mac:        [u8; 2],
+	pub mac:        [u8; 16],
 }
 
 #[repr(C,packed)]
@@ -303,7 +313,7 @@ pub struct Sigstruct {
 #[repr(C,packed)]
 // Doesn't work because large array: #[derive(Clone,Debug,Default)]
 pub struct Einittoken {
-	pub valid:              u32,
+	pub valid:              u32, // debug in §38.14, valid in §41.3
 	pub _reserved1:         [u8; 44],
 	pub attributes:         Attributes,
 	pub mrenclave:          [u8; 32],
@@ -381,13 +391,16 @@ impl Default for Keyrequest {
 	}
 }
 
-bitflags! {
-	flags Keypolicy: u16 {
-		const MRENCLAVE = 0b0000_0001,
-		const MRSIGNER  = 0b0000_0010,
+pub mod keypolicy {
+	bitflags! {
+		pub flags Keypolicy: u16 {
+			const MRENCLAVE = 0b0000_0001,
+			const MRSIGNER  = 0b0000_0010,
+		}
+	}
+
+	impl Default for Keypolicy {
+		fn default() -> Self { Self::empty() }
 	}
 }
-
-impl Default for Keypolicy {
-	fn default() -> Self { Self::empty() }
-}
+pub use self::keypolicy::Keypolicy;

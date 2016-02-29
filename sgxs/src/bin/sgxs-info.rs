@@ -10,13 +10,15 @@
  */
 
 extern crate sgxs as sgxs_crate;
+extern crate sgx_isa;
+
 use std::path::Path;
 use std::fs::File;
 use std::ffi::OsStr;
 use std::fmt;
 
 use sgxs_crate::sgxs::{self,SgxsRead};
-use sgxs_crate::abi::secinfo_flags;
+use sgx_isa::secinfo_flags;
 
 /// Ok(Some(_)) all data is _
 /// Ok(None) there is data, but not all bytes are the same
