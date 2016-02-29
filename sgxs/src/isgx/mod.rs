@@ -17,14 +17,14 @@ use std::os::unix::io::IntoRawFd;
 use std::io::{Result as IoResult,Error as IoError};
 use libc;
 use sgxs::{SgxsRead,PageReader,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
-use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,self};
+use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode};
 
 use loader::{Map,Load,EinittokenError};
 
 #[derive(Debug)]
 pub enum SgxIoctlError {
 	Io(IoError),
-	Ret(i32),
+	Ret(ErrorCode),
 }
 
 #[derive(Debug)]
@@ -46,17 +46,13 @@ impl From<SgxsError> for Error {
 impl EinittokenError for Error {
 	#[allow(non_upper_case_globals)]
 	fn is_einittoken_error(&self) -> bool {
-		use self::Error::*;
+		use self::Error::Init;
 		use self::SgxIoctlError::Ret;
-		const InvalidEinitToken:  i32=abi::ErrorCodes::InvalidEinitToken  as i32;
-		const InvalidCpusvn:      i32=abi::ErrorCodes::InvalidCpusvn      as i32;
-		const InvalidAttribute:   i32=abi::ErrorCodes::InvalidAttribute   as i32;
-		const InvalidMeasurement: i32=abi::ErrorCodes::InvalidMeasurement as i32;
 		match self {
-			&Init(Ret(InvalidEinitToken)) |
-			&Init(Ret(InvalidCpusvn)) |
-			&Init(Ret(InvalidAttribute)) | // InvalidEinitAttribute according to PR, but does not exist.
-			&Init(Ret(InvalidMeasurement)) => true,
+			&Init(Ret(ErrorCode::InvalidEinitToken)) |
+			&Init(Ret(ErrorCode::InvalidCpusvn)) |
+			&Init(Ret(ErrorCode::InvalidAttribute)) | // InvalidEinitAttribute according to PR, but does not exist.
+			&Init(Ret(ErrorCode::InvalidMeasurement)) => true,
 			_ => false,
 		}
 	}
@@ -70,7 +66,7 @@ macro_rules! try_ioctl_unsafe {
 		if ret == -1 {
 			return Err(Error::$f(SgxIoctlError::Io(IoError::last_os_error())));
 		} else if ret != 0 {
-			return Err(Error::$f(SgxIoctlError::Ret(ret)));
+			return Err(Error::$f(SgxIoctlError::Ret(unsafe{::std::mem::transmute(ret)})));
 		}
 	}}
 }
@@ -132,7 +128,7 @@ impl<'a> Mapping<'a> {
 			not_measured:not_measured,
 		};
 		try_ioctl_unsafe!(Add,ioctl::add(self.device.fd,&adddata));
-		if secinfo.flags.page_type()==PageType::Tcs {
+		if secinfo.flags.page_type()==PageType::Tcs as u8 {
 			self.tcss.push(adddata.dstpage);
 		}
 		Ok(())
