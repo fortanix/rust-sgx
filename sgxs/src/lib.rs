@@ -21,9 +21,9 @@ extern crate openssl;
 #[cfg(feature="with-rust-crypto")]
 extern crate crypto as rust_crypto;
 extern crate core;
+extern crate sgx_isa as abi;
 
 pub mod crypto;
-pub mod abi;
 pub mod sgxdev;
 pub mod sgxs;
 mod intelcall;

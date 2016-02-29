@@ -12,11 +12,12 @@
 #![feature(float_extras)]
 
 extern crate sgxs as sgxs_crate;
+extern crate sgx_isa;
 
 use std::fs::{self,File};
 use std::io::stdout;
 
-use sgxs_crate::abi::{Tcs,PageType,secinfo_flags,SecinfoFlags};
+use sgx_isa::{Tcs,PageType,secinfo_flags,SecinfoFlags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated};
 
 enum Block {

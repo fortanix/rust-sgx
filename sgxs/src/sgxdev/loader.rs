@@ -33,13 +33,13 @@ pub enum Error {
 	Sgxs(sgxs::Error),
 	Io(IoError),
 	TooManyPages,
-	Sgx(Encls,ErrorCodes),
+	Sgx(Encls,ErrorCode),
 	Exception(Encls,u8,u64),
 }
 
 impl EinittokenError for Error {
 	fn is_einittoken_error(&self) -> bool {
-		use abi::ErrorCodes::*;
+		use abi::ErrorCode::*;
 		use self::Error::*;
 		match self {
 			&Sgx(Encls::EInit,InvalidEinitToken) |
@@ -204,7 +204,7 @@ fn prepare_eadd(k_addr: Kaddr, u_addr: Uaddr, secs: Kaddr, secinfo_flags_: Secin
 	});
 
 	let mut prot=libc::PROT_NONE;
-	if secinfo.flags.page_type()==PageType::Tcs {
+	if secinfo.flags.page_type()==PageType::Tcs as u8{
 			prot=libc::PROT_READ|libc::PROT_WRITE;
 	} else {
 		if secinfo.flags.contains(secinfo_flags::R) {
@@ -305,7 +305,7 @@ pub fn load<'dev,'rd, R: SgxsRead + 'rd>(dev: &'dev Device, mut reader: PageRead
 			{	let (secinfo,pageinfo,ioctl_call)=prepare_eadd(k_base+eadd.offset,base+eadd.offset,secs,eadd.secinfo.flags);
 				ioctls.push(ioctl_data.store_eadd(secinfo,data,pageinfo,ioctl_call)); }
 			pages.push(k_base+eadd.offset);
-			if eadd.secinfo.flags.page_type()==PageType::Tcs {
+			if eadd.secinfo.flags.page_type()==PageType::Tcs as u8 {
 				tcss.push(base+eadd.offset);
 			}
 			for chunk in 0..16 {

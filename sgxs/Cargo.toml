@@ -22,6 +22,7 @@ with-rust-crypto = ["rust-crypto"]
 "openssl-sys" = { git = "https://github.com/sfackler/rust-openssl", rev = "7610804c" }  # MIT
 "regex" = "0.1"       # MIT/Apache-2.0
 "time" = "0.1"        # MIT/Apache-2.0
+"sgx-isa" = "0.1"     # MIT/Apache-2.0
 
 [dependencies.rust-crypto]  # MIT/Apache-2.0
 version = "0.2"

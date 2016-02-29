@@ -13,6 +13,7 @@ extern crate sgxs;
 extern crate clap;
 extern crate regex;
 extern crate time;
+extern crate sgx_isa;
 
 use std::io::{self,Write};
 use std::fs::File;
@@ -21,7 +22,7 @@ use std::borrow::Borrow;
 
 use regex::Regex;
 
-use sgxs::abi::{self as sgx_abi,Sigstruct,Attributes,AttributesFlags,Miscselect,SIGSTRUCT_HEADER1,SIGSTRUCT_HEADER2};
+use sgx_isa::{Sigstruct,Attributes,AttributesFlags,Miscselect,SIGSTRUCT_HEADER1,SIGSTRUCT_HEADER2};
 use sgxs::crypto::{Sha256Digest,Sha256,RsaPrivateKeyOps,RsaPrivateKey};
 
 fn write_sigstruct(path: &str, sig: Sigstruct) {
@@ -136,15 +137,15 @@ fn do_sign<'n,'a>(matches: &clap::ArgMatches<'n,'a>, key: &RsaPrivateKey) -> Sig
 	let miscmask=!miscmask;
 
 	let (mut attributes,attributemask)=matches.value_of("attributes/attributemask")
-		.map(parse_num_num).unwrap_or((sgx_abi::MODE64BIT.bits(),sgx_abi::DEBUG.bits()));
+		.map(parse_num_num).unwrap_or((sgx_isa::attributes_flags::MODE64BIT.bits(),sgx_isa::attributes_flags::DEBUG.bits()));
 	let mut attributemask=!attributemask;
 	if matches.is_present("32bit") {
-		attributes&=!(sgx_abi::MODE64BIT.bits());
-		attributemask|=sgx_abi::MODE64BIT.bits();
+		attributes&=!(sgx_isa::attributes_flags::MODE64BIT.bits());
+		attributemask|=sgx_isa::attributes_flags::MODE64BIT.bits();
 	}
 	if matches.is_present("debug") {
-		attributes|=sgx_abi::DEBUG.bits();
-		attributemask&=!(sgx_abi::DEBUG.bits());
+		attributes|=sgx_isa::attributes_flags::DEBUG.bits();
+		attributemask&=!(sgx_isa::attributes_flags::DEBUG.bits());
 	}
 	let (xfrm,xfrmmask)=matches.value_of("xfrm/xfrmmask").map(parse_num_num).unwrap_or((0x3,0x3));
 	let xfrmmask=!xfrmmask;
