@@ -1,10 +1,13 @@
 [package]
 name = "sgx-isa"
 description = "Constants and structures related to the Intel SGX ISA extension"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgx-isa"
 
 [dependencies]
 "bitflags" = "0.5" # MIT/Apache-2.0
+
+[features]
+"large_array_derive" = []

@@ -10,14 +10,21 @@
  * modified, or distributed except according to those terms.
  */
 
+//! Constants and structures related to the Intel SGX ISA extension.
+//!
+//! These are taken directly from the [Intel Software Developer's Manual][isdm],
+//! volume 3, chapters 37–43. Rust conversions traits were added where
+//! convenient.
+//!
+//! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
+
+
 #![no_std]
 
 #[macro_use]
 extern crate bitflags;
 
-use core::mem::transmute;
-
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum Encls {
 	ECreate =  0,
@@ -38,7 +45,7 @@ pub enum Encls {
 	EModt   = 15,
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum Enclu {
 	EReport     = 0,
@@ -51,7 +58,7 @@ pub enum Enclu {
 	EAcceptcopy = 7,
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum ErrorCode {
 	Success                =   0,
@@ -99,7 +106,7 @@ pub enum PageType {
 	Trim = 4,
 }
 
-#[derive(Clone,Copy,Debug)]
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u16)]
 pub enum Keyname {
 	EinitToken    = 0, // EinitToken in §38.17.1, Launch in §41.3
@@ -110,7 +117,7 @@ pub enum Keyname {
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Secs {
 	pub size:         u64,
 	pub baseaddr:     u64,
@@ -125,12 +132,6 @@ pub struct Secs {
 	pub isvprodid:    u16,
 	pub isvsvn:       u16,
 	pub padding:      [u8; 3836],
-}
-
-impl Default for Secs {
-	fn default() -> Secs {
-		unsafe{transmute([0u8;4096])}
-	}
 }
 
 #[repr(C,packed)]
@@ -171,7 +172,7 @@ pub mod miscselect {
 pub use self::miscselect::Miscselect;
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Tcs {
 	pub _reserved1: u64,
 	pub flags:      TcsFlags,
@@ -185,12 +186,6 @@ pub struct Tcs {
 	pub fslimit:    u32,
 	pub gslimit:    u32,
 	pub _reserved3: [u8; 4024],
-}
-
-impl Default for Tcs {
-	fn default() -> Tcs {
-		unsafe{transmute([0u8;4096])}
-	}
 }
 
 pub mod tcs_flags {
@@ -216,16 +211,10 @@ pub struct Pageinfo {
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Secinfo {
 	pub flags:      SecinfoFlags,
 	pub _reserved1: [u8; 56],
-}
-
-impl Default for Secinfo {
-	fn default() -> Secinfo {
-		unsafe{transmute([0u8;64])}
-	}
 }
 
 pub mod secinfo_flags {
@@ -276,7 +265,7 @@ pub mod secinfo_flags {
 pub use self::secinfo_flags::SecinfoFlags;
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Pcmd {
 	pub secinfo:    Secinfo,
 	pub enclaveid:  u64,
@@ -285,7 +274,7 @@ pub struct Pcmd {
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Sigstruct {
 	pub header:        [u8; 16],
 	pub vendor:        u32,
@@ -311,7 +300,7 @@ pub struct Sigstruct {
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Einittoken {
 	pub valid:              u32, // debug in §38.14, valid in §41.3
 	pub _reserved1:         [u8; 44],
@@ -330,14 +319,8 @@ pub struct Einittoken {
 	pub mac:                [u8; 16],
 }
 
-impl Default for Einittoken {
-	fn default() -> Einittoken {
-		unsafe{transmute([0u8;304])}
-	}
-}
-
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Report {
 	pub cpusvn:     [u8; 16],
 	pub miscselect: Miscselect,
@@ -356,7 +339,7 @@ pub struct Report {
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Targetinfo {
 	pub measurement: [u8; 32],
 	pub attributes:  Attributes,
@@ -365,14 +348,19 @@ pub struct Targetinfo {
 	pub _reserved2:  [u8; 456],
 }
 
-impl Default for Targetinfo {
-	fn default() -> Targetinfo {
-		unsafe{transmute([0u8;512])}
+impl From<Report> for Targetinfo {
+	fn from(r: Report) -> Targetinfo {
+		Targetinfo{
+			measurement: r.mrenclave,
+			attributes: r.attributes,
+			miscselect: r.miscselect,
+			..Targetinfo::default()
+		}
 	}
 }
 
 #[repr(C,packed)]
-// Doesn't work because large array: #[derive(Clone,Debug,Default)]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
 pub struct Keyrequest {
 	pub keyname:       u16,
 	pub keypolicy:     Keypolicy,
@@ -383,12 +371,6 @@ pub struct Keyrequest {
 	pub keyid:         [u8; 32],
 	pub miscmask:      u32,
 	pub _reserved2:    [u8; 436],
-}
-
-impl Default for Keyrequest {
-	fn default() -> Keyrequest {
-		unsafe{transmute([0u8;512])}
-	}
 }
 
 pub mod keypolicy {
@@ -404,3 +386,6 @@ pub mod keypolicy {
 	}
 }
 pub use self::keypolicy::Keypolicy;
+
+#[cfg(not(feature="large_array_derive"))]
+mod large_array_impl;
