@@ -3,17 +3,17 @@
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  */
 
 use std::io::Write;
 
 use abi::{Sigstruct,Einittoken,Attributes,Enclu};
 use sgxs::SgxsRead;
-use loader::{Load,Map,Error};
+use loader::{Load,Map,Address,Error};
 use loader::Error::*;
 use crypto::{Sha256Digest,Sha256};
 
@@ -98,14 +98,14 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 	Ok(())
 }
 
-fn enclu_eenter(tcs: u64, mut rdi: u64, mut rsi: u64) -> (u64,u64) {
+fn enclu_eenter(tcs: Address, mut rdi: u64, mut rsi: u64) -> (u64,u64) {
 	let eax: u32;
 	unsafe{asm!("
 		lea aep(%rip),%rcx
 aep:
 		enclu
 "		: "={eax}"(eax), "={rdi}"(rdi), "={rsi}"(rsi)
-		: "{eax}"(Enclu::EEnter), "{rbx}"(tcs), "{rdi}"(rdi), "{rsi}"(rsi)
+		: "{eax}"(Enclu::EEnter), "{rbx}"(u64::from(tcs)), "{rdi}"(rdi), "{rsi}"(rsi)
 		: "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
 		: "volatile"
 	)};

@@ -1,4 +1,4 @@
-sgxs - Rust library for working with the SGX stream format
+sgxs-tools - Rust utilities for working with the SGX stream format
 Copyright (C) 2016  Jethro G. Beekman
 
 This program is free software; you can redistribute it and/or

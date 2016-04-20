@@ -3,36 +3,48 @@
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  */
 
 extern crate sgxs;
 extern crate clap;
 extern crate regex;
-extern crate time;
 extern crate sgx_isa;
+extern crate num;
 
-use std::io::{self,Write};
+use std::io::Write;
 use std::fs::File;
 use std::mem::transmute;
 use std::borrow::Borrow;
 
 use regex::Regex;
 
-use sgx_isa::{Sigstruct,Attributes,AttributesFlags,Miscselect,SIGSTRUCT_HEADER1,SIGSTRUCT_HEADER2};
-use sgxs::crypto::{Sha256Digest,Sha256,RsaPrivateKeyOps,RsaPrivateKey};
+use num::{Num,Unsigned};
+
+use sgx_isa::{Sigstruct,AttributesFlags,Miscselect};
+use sgxs::crypto::{RsaPrivateKeyOps,RsaPrivateKey};
+use sgxs::sigstruct::Signer;
 
 fn write_sigstruct(path: &str, sig: Sigstruct) {
 	File::create(path).expect("Unable to open output file")
 		.write_all(&mut unsafe{transmute::<_,[u8;1808]>(sig)}).expect("Unable to write output file");
 }
 
+const DATE_REGEX: &'static str = "^[:digit:]{8}$";
 const NUM_REGEX: &'static str = "^([:digit:]+|0x[:xdigit:]+)$";
 const NUM_NUM_REGEX: &'static str = "^([:digit:]+|0x[:xdigit:]+)(/([:digit:]+|0x[:xdigit:]+))?$";
 const HASH_REGEX: &'static str = "^[:xdigit:]{64}$";
+
+fn date_validate(s: String) -> Result<(),String> {
+	if Regex::new(DATE_REGEX).unwrap().is_match(&s) {
+		Ok(())
+	} else {
+		Err(String::from("date must be specified as YYYYMMDD"))
+	}
+}
 
 fn num_validate(s: String) -> Result<(),String> {
 	if Regex::new(NUM_REGEX).unwrap().is_match(&s) {
@@ -58,17 +70,16 @@ fn hash_validate(s: &str) -> Result<(),String> {
 	}
 }
 
-fn parse_num<S: Borrow<str>>(s: S) -> u64 {
-	let s=s.borrow();
+fn parse_num<T: Copy + Unsigned + Num<FromStrRadixErr=std::num::ParseIntError>>(s: &str) -> T {
 	if s.starts_with("0x") {
-		u64::from_str_radix(&s[2..],16).unwrap()
+		Num::from_str_radix(&s[2..],16).unwrap()
 	} else {
-		u64::from_str_radix(s,10).unwrap()
+		Num::from_str_radix(s,10).unwrap()
 	}
 }
 
-fn parse_num_num<S: Borrow<str>>(s: S) -> (u64,u64) {
-	let mut splits=s.borrow().splitn(2,"/");
+fn parse_num_num<T: Copy + Unsigned + Num<FromStrRadixErr=std::num::ParseIntError>>(s: &str) -> (T,T) {
+	let mut splits=s.splitn(2,"/");
 	let num1=parse_num(splits.next().unwrap());
 	let num2=splits.next().map(parse_num).unwrap_or(num1);
 	(num1,num2)
@@ -92,24 +103,24 @@ fn parse_hexstr<S: Borrow<str>>(s: S) -> Vec<u8> {
 	vec
 }
 
-fn args_desc<'a>() -> clap::App<'a,'a,'a,'a,'a,'a> {
+fn args_desc<'a>() -> clap::App<'a,'a> {
 	use clap::Arg;
 
 	clap::App::new("sgxs-sign")
 		.about("SGXS SIGSTRUCT generator")
-		.arg(Arg::with_name("swdefined")               .short("s").long("swdefined") .takes_value(true).validator(num_validate)    .help("Sets the SWDEFINED field (default: 0)"))
-		.arg(Arg::with_name("miscselect/miscmask")     .short("m").long("miscselect").takes_value(true).validator(num_num_validate).help("Sets the MISCSELECT and inverse MISCMASK fields (default: 0/0)"))
-		.arg(Arg::with_name("attributes/attributemask").short("a").long("attributes").takes_value(true).validator(num_num_validate).help("Sets the lower ATTRIBUTES and inverse lower ATTRIBUTEMASK fields (default: 0x4/0x2)"))
-		.arg(Arg::with_name("xfrm/xfrmmask")           .short("x").long("xfrm")      .takes_value(true).validator(num_num_validate).help("Sets the ATTRIBUTES.XFRM and inverse ATTRIBUTEMASK.XFRM fields (default: 0x3/0)"))
-		.arg(Arg::with_name("32bit")                              .long("32")                                                      .help("Unsets the MODE64BIT bit in the ATTRIBUTES field, sets MODE64BIT in the ATTRIBUTEMASK field"))
-		.arg(Arg::with_name("debug")                   .short("d").long("debug")                                                   .help("Sets the DEBUG bit in the ATTRIBUTES field, unsets the DEBUG bit in the ATTRIBUTEMASK field"))
-		.arg(Arg::with_name("YYYYMMDD")                           .long("date")      .takes_value(true).validator(num_validate)    .help("Sets the DATE field (default: today)"))
-		.arg(Arg::with_name("isvprodid")               .short("p").long("isvprodid") .takes_value(true).validator(num_validate)    .help("Sets the ISVPRODID field (default: 0)"))
-		.arg(Arg::with_name("isvsvn")                  .short("v").long("isvsvn")    .takes_value(true).validator(num_validate)    .help("Sets the ISVSVN field (default: 0)"))
-		.arg(Arg::with_name("key-file")                .short("k").long("key")       .takes_value(true).required(true)             .help("Sets the path to the PEM-encoded RSA private key"))
-		.arg(Arg::with_name("input-hash")                         .long("in-hash")                                                 .help("<input> specifies the ENCLAVEHASH field directly, instead of an SGXS file"))
-		.arg(Arg::with_name("input")                                                                   .required(true)             .help("The enclave SGXS file that will be hashed"))
-		.arg(Arg::with_name("output")                                                                  .required(true)             .help("The output SIGSTRUCT file"))
+		.arg(Arg::with_name("swdefined")               .short("s").long("swdefined") .takes_value(true)     .validator(num_validate)    .help("Sets the SWDEFINED field (default: 0)"))
+		.arg(Arg::with_name("miscselect/miscmask")     .short("m").long("miscselect").takes_value(true)     .validator(num_num_validate).help("Sets the MISCSELECT and inverse MISCMASK fields (default: 0/0)"))
+		.arg(Arg::with_name("attributes/attributemask").short("a").long("attributes").takes_value(true)     .validator(num_num_validate).help("Sets the lower ATTRIBUTES and inverse lower ATTRIBUTEMASK fields (default: 0x4/0x2)"))
+		.arg(Arg::with_name("xfrm/xfrmmask")           .short("x").long("xfrm")      .takes_value(true)     .validator(num_num_validate).help("Sets the ATTRIBUTES.XFRM and inverse ATTRIBUTEMASK.XFRM fields (default: 0x3/0)"))
+		.arg(Arg::with_name("32bit")                              .long("32")                                                           .help("Unsets the MODE64BIT bit in the ATTRIBUTES field, sets MODE64BIT in the ATTRIBUTEMASK field"))
+		.arg(Arg::with_name("debug")                   .short("d").long("debug")                                                        .help("Sets the DEBUG bit in the ATTRIBUTES field, unsets the DEBUG bit in the ATTRIBUTEMASK field"))
+		.arg(Arg::with_name("date")                               .long("date")      .value_name("YYYYMMDD").validator(date_validate)   .help("Sets the DATE field (default: today)"))
+		.arg(Arg::with_name("isvprodid")               .short("p").long("isvprodid") .takes_value(true)     .validator(num_validate)    .help("Sets the ISVPRODID field (default: 0)"))
+		.arg(Arg::with_name("isvsvn")                  .short("v").long("isvsvn")    .takes_value(true)     .validator(num_validate)    .help("Sets the ISVSVN field (default: 0)"))
+		.arg(Arg::with_name("key-file")                .short("k").long("key")       .value_name("FILE")    .required(true)             .help("Sets the path to the PEM-encoded RSA private key"))
+		.arg(Arg::with_name("input-hash")                         .long("in-hash")                                                      .help("<input> specifies the ENCLAVEHASH field directly, instead of an SGXS file"))
+		.arg(Arg::with_name("input")                                                                        .required(true)             .help("The enclave SGXS file that will be hashed"))
+		.arg(Arg::with_name("output")                                                                       .required(true)             .help("The output SIGSTRUCT file"))
 		.after_help("NUMERIC ARGUMENTS:
     Unsigned values only. It is possible to specify hexadecimal numbers using
     the 0x prefix.
@@ -119,25 +130,19 @@ MISCSELECT / ATTRIBUTES MASKS:
     the same value will be used twice.")
 }
 
-macro_rules! check_bits {
-    ( $var:ident as $ty:ident : print $name:expr, $bits:expr ) => {
-        {
-			if $var>(std::$ty::MAX as u64) {
-				panic!(concat!("ERROR: ",$name," is ",$bits," bits!"));
-			}
-			$var as $ty
-        }
-    };
-}
+fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &RsaPrivateKey) -> Sigstruct {
+	let mut signer=Signer::new();
 
-fn do_sign<'n,'a>(matches: &clap::ArgMatches<'n,'a>, key: &RsaPrivateKey) -> Sigstruct {
-	let (miscselect,miscmask)=matches.value_of("miscselect/miscmask").map(parse_num_num).unwrap_or((0,0));
-	let miscselect=check_bits!(miscselect as u32 : print "MISCSELECT", 32);
-	let miscmask=check_bits!(miscmask as u32 : print "MISCMASK", 32);
-	let miscmask=!miscmask;
+	if let Some((sel,mask))=matches.value_of("miscselect/miscmask").map(parse_num_num::<u32>) {
+		let sel =Miscselect::from_bits(sel).unwrap_or_else(||{
+			println!("WARNING: Dropping unknown bits in input MISCSELECT!");
+			Miscselect::from_bits_truncate(sel)
+		});
+		signer.miscselect(sel,!mask);
+	}
 
 	let (mut attributes,attributemask)=matches.value_of("attributes/attributemask")
-		.map(parse_num_num).unwrap_or((sgx_isa::attributes_flags::MODE64BIT.bits(),sgx_isa::attributes_flags::DEBUG.bits()));
+		.map(parse_num_num::<u64>).unwrap_or((sgx_isa::attributes_flags::MODE64BIT.bits(),sgx_isa::attributes_flags::DEBUG.bits()));
 	let mut attributemask=!attributemask;
 	if matches.is_present("32bit") {
 		attributes&=!(sgx_isa::attributes_flags::MODE64BIT.bits());
@@ -147,95 +152,33 @@ fn do_sign<'n,'a>(matches: &clap::ArgMatches<'n,'a>, key: &RsaPrivateKey) -> Sig
 		attributes|=sgx_isa::attributes_flags::DEBUG.bits();
 		attributemask&=!(sgx_isa::attributes_flags::DEBUG.bits());
 	}
-	let (xfrm,xfrmmask)=matches.value_of("xfrm/xfrmmask").map(parse_num_num).unwrap_or((0x3,0x3));
-	let xfrmmask=!xfrmmask;
-
-	let swdefined=matches.value_of("swdefined").map(parse_num).unwrap_or(0);
-	let swdefined=check_bits!(swdefined as u32 : print "SWDEFINED", 32);
-
-	let isvprodid=matches.value_of("isvprodid").map(parse_num).unwrap_or(0);
-	let isvprodid=check_bits!(isvprodid as u16 : print "ISVPRODID", 16);
-
-	let isvsvn=matches.value_of("isvsvn").map(parse_num).unwrap_or(0);
-	let isvsvn=check_bits!(isvsvn as u16 : print "ISVSVN", 16);
-
-	let mut date=matches.value_of("YYYYMMDD").map(str::to_string)
-		.unwrap_or_else(||time::strftime("0x%Y%m%d",&time::now()).unwrap());
-	if !date.starts_with("0x") {
-		date="0x".to_string()+&date;
-	}
-	let date=parse_num(date);
-	let date=check_bits!(date as u32 : print "DATE", 32);
-
-	let enclavehash;
-	if matches.is_present("input-hash") {
-		let s=matches.value_of("input").unwrap();
-		hash_validate(s).unwrap();
-		enclavehash=parse_hexstr(s);
-	} else {
-		let mut sgxsfile=File::open(matches.value_of("input").unwrap()).expect("Unable to open input SGXS file");
-		let mut hasher=<Sha256 as Sha256Digest>::new();
-		io::copy(&mut sgxsfile,&mut hasher).expect("Unable to read input SGXS file");
-		enclavehash=hasher.finish();
-	}
-
 	let attributes=AttributesFlags::from_bits(attributes)
 		.unwrap_or_else(||{println!("WARNING: Dropping unknown bits in input ATTRIBUTES!");
 			AttributesFlags::from_bits_truncate(attributes)});
-	let miscselect=Miscselect::from_bits(miscselect)
-		.unwrap_or_else(||{println!("WARNING: Dropping unknown bits in input MISCSELECT!");
-			Miscselect::from_bits_truncate(miscselect)});
+	signer.attributes_flags(attributes,attributemask);
 
-	if key.len()!=3072 {
-		panic!("ERROR: Key size is not 3072 bits!");
-	}
-	if key.e().unwrap()!=[3] {
-		panic!("ERROR: Key public exponent is not 3!");
-	}
+	matches.value_of("xfrm/xfrmmask").map(parse_num_num::<u64>).map(|(xfrm,xfrmmask)|signer.attributes_xfrm(xfrm,!xfrmmask));
 
-	let mut sig=Sigstruct {
-		header:        SIGSTRUCT_HEADER1,
-		vendor:        0,
-		date:          date,
-		header2:       SIGSTRUCT_HEADER2,
-		swdefined:     swdefined,
-		_reserved1:    [0;84],
-		modulus:       [0;384],
-		exponent:      3,
-		signature:     [0;384],
-		miscselect:    miscselect,
-		miscmask:      miscmask,
-		_reserved2:    [0;20],
-		attributes:    Attributes{flags:attributes,xfrm:xfrm},
-		attributemask: [attributemask,xfrmmask],
-		enclavehash:   [0;32],
-		_reserved3:    [0;32],
-		isvprodid:     isvprodid,
-		isvsvn:        isvsvn,
-		_reserved4:    [0;12],
-		q1:            [0;384],
-		q2:            [0;384],
-	};
-	(&mut sig.enclavehash[..]).write_all(&enclavehash).unwrap();
+	matches.value_of("swdefined").map(parse_num::<u32>).map(|v|signer.swdefined(v));
+	matches.value_of("isvprodid").map(parse_num::<u16>).map(|v|signer.isvprodid(v));
+	matches.value_of("isvsvn").map(parse_num::<u16>).map(|v|signer.isvsvn(v));
 
-	let sighash;
-	{
-		let sig_buf=unsafe{std::slice::from_raw_parts(&sig as *const _ as *const u8,std::mem::size_of::<Sigstruct>())};
-		let mut hasher=<Sha256 as Sha256Digest>::new();
-		hasher.write(&sig_buf[0..128]).unwrap();
-		hasher.write(&sig_buf[900..1028]).unwrap();
-		sighash=hasher.finish();
+	if let Some(date)=matches.value_of("date") {
+		signer.date(date[0..4].parse::<u16>().unwrap(),date[4..6].parse::<u8>().unwrap(),date[6..8].parse::<u8>().unwrap());
 	}
 
-	let (s,q1,q2)=key.sign_sha256_pkcs1v1_5_with_q1_q2(&sighash).expect("Error during signing operation");
-	let n=key.n().unwrap();
+	if matches.is_present("input-hash") {
+		let s=matches.value_of("input").unwrap();
+		hash_validate(s).unwrap();
+		let mut hash=[0u8; 32];
+		(&mut hash[..]).write_all(&parse_hexstr(s)).unwrap();
+		signer.enclavehash(hash);
+	} else {
+		let mut sgxsfile=File::open(matches.value_of("input").unwrap()).expect("Unable to open input SGXS file");
+		signer.enclavehash_from_stream(&mut sgxsfile).expect("Unable to read input SGXS file");
+	}
 
-	(&mut sig.modulus[..]).write_all(&n).unwrap();
-	(&mut sig.signature[..]).write_all(&s).unwrap();
-	(&mut sig.q1[..]).write_all(&q1).unwrap();
-	(&mut sig.q2[..]).write_all(&q2).unwrap();
-
-	sig
+	signer.sign(key).expect("Error during signing operation")
 }
 
 fn main() {

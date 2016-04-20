@@ -3,10 +3,10 @@
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  */
 
 use std::io::{Read,Write};
@@ -101,8 +101,6 @@ mod sha256impl {
 
 // No rust-crypto version of rsa_impl because rust-crypto doesn't do RSA (yet)
 mod rsa_impl {
-	extern crate openssl_sys;
-
 	use std::io::Read;
 
 	use openssl::crypto::pkey::PKey;
@@ -111,28 +109,17 @@ mod rsa_impl {
 	use openssl::crypto::hash::Type as HashType;
 	use openssl::bn::BigNum;
 
-	pub struct RsaPrivateKey<'rsa> {
+	pub struct RsaPrivateKey {
 		pkey: PKey,
-		rsa: &'rsa RSA,
+		rsa: RSA,
 	}
 
-	impl<'a> super::RsaPrivateKeyOps for RsaPrivateKey<'a> {
+	impl super::RsaPrivateKeyOps for RsaPrivateKey {
 		type E = SslError;
 
-		fn new<R: Read>(input: &mut R) -> Result<RsaPrivateKey<'a>,SslError> {
+		fn new<R: Read>(input: &mut R) -> Result<RsaPrivateKey,SslError> {
 			let pkey=try!(PKey::private_key_from_pem(input));
-
-			let rsa=unsafe {
-				let rsa=openssl_sys::EVP_PKEY_get1_RSA(pkey.get_handle());
-				if rsa.is_null() {
-					return Err(SslError::get())
-				} else {
-					// our PKey still holds a reference, so the pointer remains valid
-					openssl_sys::RSA_free(rsa);
-				}
-				&*(rsa as *const RSA)
-			};
-
+			let rsa=pkey.get_rsa();
 			Ok(RsaPrivateKey{pkey:pkey,rsa:rsa})
 		}
 

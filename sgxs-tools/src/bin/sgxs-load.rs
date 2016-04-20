@@ -3,15 +3,14 @@
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  */
 
 #![feature(asm)]
 extern crate sgxs;
-extern crate libc;
 extern crate clap;
 extern crate sgx_isa;
 
@@ -21,7 +20,7 @@ use std::mem::transmute;
 
 use clap::{Arg,App};
 
-use sgxs::loader::{Map,Load};
+use sgxs::loader::{Map,Load,Address};
 use sgxs::sgxdev;
 use sgx_isa::{Einittoken,Sigstruct,Enclu,attributes_flags};
 
@@ -41,7 +40,7 @@ fn read_sigstruct(path: &str) -> Sigstruct {
 	unsafe{transmute(buf)}
 }
 
-fn enclu_eenter(tcs: u64) {
+fn enclu_eenter(tcs: Address) {
 	let result: u32;
 	unsafe{asm!("
 		lea aep(%rip),%rcx

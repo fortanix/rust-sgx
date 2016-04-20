@@ -3,10 +3,10 @@
  *
  * (C) Copyright 2016 Jethro G. Beekman
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU General Public License as published by the Free
+ * Software Foundation; either version 2 of the License, or (at your option)
+ * any later version.
  */
 
 mod loader;
@@ -21,7 +21,7 @@ use libc;
 use sgxs::{SgxsRead,PageReader};
 use abi::{Sigstruct,Einittoken,Encls};
 
-use loader::{Map,Load};
+use loader::{Map,Load,Address};
 use self::loader::{Pages,Uaddr,Kaddr};
 pub use self::loader::{Result,Error};
 
@@ -40,17 +40,17 @@ impl<'a> Drop for Mapping<'a> {
 
 impl<'a> Mapping<'a> {
 	#[allow(dead_code)]
-	fn assert_u64_uaddr_same_size(a: Uaddr) -> u64 {
+	fn assert_address_uaddr_same_size(a: Uaddr) -> Address {
 		unsafe{::std::mem::transmute(a)}
 	}
 }
 
 impl<'a> Map for Mapping<'a> {
-	fn base_address(&self) -> u64 {
-		self.base.0
+	fn base_address(&self) -> Address {
+		::private::loader::make_address(self.base.0)
 	}
 
-	fn tcss(&self) -> &[u64] {
+	fn tcss(&self) -> &[Address] {
 		unsafe{::std::mem::transmute(&self.tcss[..])}
 	}
 }

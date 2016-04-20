@@ -12,6 +12,6 @@ Documentation on various SGX file formats and ABIs.
 Bare-bones SGX EPC driver. Exposes ENCLS pretty much directly to userspace. Not
 intended for production use.
 
-## sgxs
+## sgxs / sgxs-tools
 
 Rust library and utilities for working with the SGX stream format.
