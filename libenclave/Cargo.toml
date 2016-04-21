@@ -1,0 +1,26 @@
+[package]
+name = "enclave"
+description = "Secure enclave runtime and library"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
+license = "AGPL-3.0+"
+repository = "https://github.com/jethrogb/sgx-utils/tree/master/libenclave"
+build = "build.rs"
+
+[dependencies]
+rlibc = "1.0.0"  # MIT/Apache-2.0
+spin = "0.4.0"   # MIT
+alloc_buddy_simple = { version = "0.1" } # Apache-2.0/MIT
+sgx-isa = "0.1"  # Apache-2.0/MIT
+bitflags = { version = "0.5", features = ["no_std"] } # MIT/Apache-2.0
+
+[build-dependencies]
+gcc = "0.3"      # MIT/Apache-2.0
+
+[features]
+# Only disable default features when running `cargo test`
+default = ["allocator"]
+allocator = ["alloc_buddy_simple/use-as-rust-allocator"]
+
+# Enable debugging runtime
+debug = []

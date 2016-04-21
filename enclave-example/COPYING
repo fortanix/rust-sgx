@@ -1,0 +1,5 @@
+Files under src/trusted are licensed under the terms in src/trusted/COPYING.
+
+Files under src/untrusted are licensed under the terms in src/untrusted/COPYING.
+
+See those files for more information.
