@@ -16,4 +16,4 @@ Compiles with Rust nightly.
 
 ## Tools
 
-See the sgxs-tools crate for utilities that use this library.
+See the [sgxs-tools crate](../sgxs-tools) for utilities that use this library.
