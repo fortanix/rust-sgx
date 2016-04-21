@@ -19,6 +19,28 @@ fn remove_prefix<'a>(prefix: &Path, filename: &'a Path) -> Option<&'a Path> {
 	}
 }
 
+// Building as packaging dependency if $OUT_DIR == .../target/package/[^/]+/target/$PROFILE/build/enclave-\x{16}/out
+fn building_as_packaging_dependency() -> bool {
+	let out_dir: PathBuf=env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set?").into();
+	let env_profile=env::var_os("PROFILE").expect("PROFILE environment variable not set?");
+
+	let mut iter=out_dir.iter().rev();
+
+	if let (Some(out),Some(enclave),Some(build),Some(profile),Some(target),Some(_),Some(package),Some(target2))=(iter.next(),iter.next(),iter.next(),iter.next(),iter.next(),iter.next(),iter.next(),iter.next()) {
+		(
+			target2=="target" &&
+			package=="package" &&
+			target=="target" &&
+			profile==&env_profile[..] &&
+			build=="build" &&
+			enclave.to_str().map(|s|s.starts_with("enclave-")).unwrap_or(false) &&
+			out=="out"
+		)
+	} else {
+		false
+	}
+}
+
 // Building stand-alone if $OUT_DIR == $CARGO_MANIFEST_DIR/target/$PROFILE/build/$CRATE-\x{16}/out
 fn building_as_dependency() -> bool {
 	let out_dir: PathBuf=env::var_os("OUT_DIR").expect("OUT_DIR environment variable not set?").into();
@@ -45,7 +67,7 @@ fn building_as_dependency() -> bool {
 }
 
 fn main() {
-	if building_as_dependency() {
+	if building_as_dependency() && !building_as_packaging_dependency() {
 		if env::var_os("LIBENCLAVE_NO_WARNING").is_none() {
 			let _=writeln!(stderr(),"Dependents of libenclave must use the libenclave build tools!");
 			let _=writeln!(stderr(),"");
