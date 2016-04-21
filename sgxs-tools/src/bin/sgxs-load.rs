@@ -77,12 +77,12 @@ fn main() {
 		.arg(Arg::with_name("sgxs").required(true).help("Sets the enclave SGXS file to use"))
 		.arg(Arg::with_name("sigstruct").required(true).help("Sets the enclave SIGSTRUCT file to use"))
 		.after_help("LAUNCH ENCLAVE / TOKEN OPTION:
-    When specifying <token>, but no <le-...>, that token file will be used as
-    EINITTOKEN. When specifying <le-...>, but not <token>, the launch enclave
-    will be used to generate an EINITTOKEN. When specifying <le-...> and
-    <token>, that token file will be used as EINITTOKEN. If loading with that
-    token fails, the launch enclave will be used to generate an EINITTOKEN, and
-    the new token will be written back to <token>.")
+	When specifying <token>, but no <le-...>, that token file will be used as
+	EINITTOKEN. When specifying <le-...>, but not <token>, the launch enclave
+	will be used to generate an EINITTOKEN. When specifying <le-...> and
+	<token>, that token file will be used as EINITTOKEN. If loading with that
+	token fails, the launch enclave will be used to generate an EINITTOKEN, and
+	the new token will be written back to <token>.")
 		.get_matches();
 
 	let dev=sgxdev::Device::open(matches.value_of("device").unwrap_or("/dev/sgx")).unwrap();

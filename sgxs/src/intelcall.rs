@@ -162,7 +162,7 @@ struct Bitfield<T>(T);
 
 impl ::std::ops::Index<usize> for Bitfield<u32> {
 	type Output = bool;
-    fn index(&self, index: usize) -> &bool {
+	fn index(&self, index: usize) -> &bool {
 		static FALSE: bool=false;
 		static TRUE: bool=true;
 

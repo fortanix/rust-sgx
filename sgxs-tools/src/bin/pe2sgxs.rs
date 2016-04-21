@@ -66,56 +66,56 @@ struct Sgxmeta {
 #[allow(dead_code)]
 #[repr(packed)]
 struct Tls64 {
-    unchanged1: u64,
-    // Top-of-stack offset from TCS base
-    tos_tcs_offset1: u64,
-    // Top-of-stack offset from TCS base
-    tos_tcs_offset2: u64,
-    // Bottom-of-stack offset from TCS base
-    bos_tcs_offset: u64,
-    // Save state area (SSA) offset from TCS base
-    ssa_tcs_offset: u64,
-    // GPRSGX offset in the SSA from TCS base
-    gprsgx_tcs_offset: u64,
-    // SSA size?
-    unknown0x0000000000001000: u64,
-    sgxmeta_field_7: u8,
-    unchanged2: [u8;7],
-    // Heap offset from enclave base
-    heap_base_offset: u64,
-    enclave_size: u64,
-    unchanged3: u64,
-    unknown0x0000000000001030: u64,
-    unknown0x00000001: u32,
-    heap_size: u32,
+	unchanged1: u64,
+	// Top-of-stack offset from TCS base
+	tos_tcs_offset1: u64,
+	// Top-of-stack offset from TCS base
+	tos_tcs_offset2: u64,
+	// Bottom-of-stack offset from TCS base
+	bos_tcs_offset: u64,
+	// Save state area (SSA) offset from TCS base
+	ssa_tcs_offset: u64,
+	// GPRSGX offset in the SSA from TCS base
+	gprsgx_tcs_offset: u64,
+	// SSA size?
+	unknown0x0000000000001000: u64,
+	sgxmeta_field_7: u8,
+	unchanged2: [u8;7],
+	// Heap offset from enclave base
+	heap_base_offset: u64,
+	enclave_size: u64,
+	unchanged3: u64,
+	unknown0x0000000000001030: u64,
+	unknown0x00000001: u32,
+	heap_size: u32,
 }
 
 #[allow(dead_code)]
 #[repr(packed)]
 struct Tls32 {
-    unknown0xffffffff: u32,
-    // Top-of-stack offset from TCS base
-    tos_tcs_offset1: u32,
-    // Top-of-stack offset from TCS base
-    tos_tcs_offset2: u32,
-    // Bottom-of-stack offset from TCS base
-    bos_tcs_offset: u32,
-    // Save state area (SSA) offset from TCS base
-    ssa_tcs_offset: u32,
-    // GPRSGX offset in the SSA from TCS base
-    gprsgx_tcs_offset: u32,
-    // SSA size?
-    unknown0x00001000: u32,
-    sgxmeta_field_7: u8,
-    unchanged2: [u8;3],
-    // Heap offset from enclave base
-    heap_base_offset: u32,
-    enclave_size: u32,
-    unchanged3: u32,
-    unknown0x00001018: u32,
-    unknown0x00000001: u32,
-    unchanged4: u32,
-    heap_size: u32,
+	unknown0xffffffff: u32,
+	// Top-of-stack offset from TCS base
+	tos_tcs_offset1: u32,
+	// Top-of-stack offset from TCS base
+	tos_tcs_offset2: u32,
+	// Bottom-of-stack offset from TCS base
+	bos_tcs_offset: u32,
+	// Save state area (SSA) offset from TCS base
+	ssa_tcs_offset: u32,
+	// GPRSGX offset in the SSA from TCS base
+	gprsgx_tcs_offset: u32,
+	// SSA size?
+	unknown0x00001000: u32,
+	sgxmeta_field_7: u8,
+	unchanged2: [u8;3],
+	// Heap offset from enclave base
+	heap_base_offset: u32,
+	enclave_size: u32,
+	unchanged3: u32,
+	unknown0x00001018: u32,
+	unknown0x00000001: u32,
+	unchanged4: u32,
+	heap_size: u32,
 }
 
 impl Tls64 {

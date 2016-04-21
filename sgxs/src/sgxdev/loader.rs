@@ -52,15 +52,15 @@ impl EinittokenError for Error {
 }
 
 impl From<sgxs::Error> for Error {
-    fn from(err: sgxs::Error) -> Error {
-        Error::Sgxs(err)
-    }
+	fn from(err: sgxs::Error) -> Error {
+		Error::Sgxs(err)
+	}
 }
 
 impl From<IoError> for Error {
-    fn from(err: IoError) -> Error {
-        Error::Io(err)
-    }
+	fn from(err: IoError) -> Error {
+		Error::Io(err)
+	}
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;
@@ -71,15 +71,15 @@ pub struct Kaddr(pub u64);
 pub struct Uaddr(pub u64);
 
 impl Add<u64> for Kaddr {
-    type Output=Kaddr;
-    fn add(self, rhs: u64) -> Kaddr {
+	type Output=Kaddr;
+	fn add(self, rhs: u64) -> Kaddr {
 		Kaddr(self.0+rhs)
 	}
 }
 
 impl Add<u64> for Uaddr {
-    type Output=Uaddr;
-    fn add(self, rhs: u64) -> Uaddr {
+	type Output=Uaddr;
+	fn add(self, rhs: u64) -> Uaddr {
 		Uaddr(self.0+rhs)
 	}
 }

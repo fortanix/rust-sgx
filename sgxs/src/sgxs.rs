@@ -22,9 +22,9 @@ pub enum Error {
 }
 
 impl From<IoError> for Error {
-    fn from(err: IoError) -> Error {
-        Error::IoError(err)
-    }
+	fn from(err: IoError) -> Error {
+		Error::IoError(err)
+	}
 }
 
 pub type Result<T> = ::std::result::Result<T, Error>;

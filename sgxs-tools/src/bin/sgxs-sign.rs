@@ -122,12 +122,12 @@ fn args_desc<'a>() -> clap::App<'a,'a> {
 		.arg(Arg::with_name("input")                                                                        .required(true)             .help("The enclave SGXS file that will be hashed"))
 		.arg(Arg::with_name("output")                                                                       .required(true)             .help("The output SIGSTRUCT file"))
 		.after_help("NUMERIC ARGUMENTS:
-    Unsigned values only. It is possible to specify hexadecimal numbers using
-    the 0x prefix.
+	Unsigned values only. It is possible to specify hexadecimal numbers using
+	the 0x prefix.
 
 MISCSELECT / ATTRIBUTES MASKS:
-    Specify the *inverse* of the mask you want. If you don't specify a mask,
-    the same value will be used twice.")
+	Specify the *inverse* of the mask you want. If you don't specify a mask,
+	the same value will be used twice.")
 }
 
 fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &RsaPrivateKey) -> Sigstruct {
