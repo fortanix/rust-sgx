@@ -81,7 +81,7 @@ Upon `EEXIT`, parameters are passed in:
 - R8
 - R9
 
-Upon `EENTER`, a value is returned in:
+See above under “exit value” which values can be passed in RDI. Upon `EENTER`, a value is returned in:
 
 - RDX
 
