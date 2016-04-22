@@ -6,4 +6,4 @@ See also the [Quick start guide](../doc/GUIDE.md).
 
 ## ABI
 
-The libenclave ABI is described separately [../doc/LIBENCLAVE-ABI.md].
+The libenclave ABI is [described separately](../doc/LIBENCLAVE-ABI.md).
