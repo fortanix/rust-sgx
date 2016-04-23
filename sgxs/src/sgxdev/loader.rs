@@ -91,9 +91,10 @@ impl Add<u64> for Uaddr {
 struct Pre<T>(T);
 
 #[repr(C)]
-#[unsafe_no_drop_flag]
+#[unsafe_no_drop_flag] // safe because Drop impl is empty
 pub struct RestrictedIoctlVecElem<'a>(pub IoctlVecElem,PhantomData<&'a Any>);
 
+// Prevent moving out of RestrictedIoctlVecElem
 impl<'a> Drop for RestrictedIoctlVecElem<'a> {
 	fn drop(&mut self) {}
 }
