@@ -9,7 +9,7 @@
  * any later version.
  */
 
-#![feature(asm,linkage)]
+#![feature(asm)]
 extern crate sgx_isa;
 extern crate sgxs;
 extern crate libc;
