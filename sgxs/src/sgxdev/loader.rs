@@ -92,7 +92,7 @@ struct Pre<T>(T);
 
 #[repr(C)]
 #[unsafe_no_drop_flag] // safe because Drop impl is empty
-pub struct RestrictedIoctlVecElem<'a>(pub IoctlVecElem,PhantomData<&'a Any>);
+struct RestrictedIoctlVecElem<'a>(IoctlVecElem,PhantomData<&'a Any>);
 
 // Prevent moving out of RestrictedIoctlVecElem
 impl<'a> Drop for RestrictedIoctlVecElem<'a> {
@@ -110,7 +110,7 @@ impl<'a> From<IoctlVecElem> for RestrictedIoctlVecElem<'a> {
 	}
 }
 
-pub struct IoctlDataStore {
+struct IoctlDataStore {
 	ioctl_data: RefCell<Vec<Box<Any>>>,
 }
 
