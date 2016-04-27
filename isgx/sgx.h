@@ -19,6 +19,8 @@
 #include <linux/bitops.h>
 #include <linux/types.h>
 
+#define X86_FEATURE_SGX		( 9*32+ 2) /* Software Guard Extensions */
+
 #define SGX_CPUID		0x12
 
 enum sgx_page_type {

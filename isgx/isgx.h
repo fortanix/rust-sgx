@@ -16,7 +16,7 @@
 #define __ARCH_ISGX_H__
 
 #include "isgx_user.h"
-#include <asm/sgx.h>
+#include "sgx.h"
 #include <linux/kref.h>
 #include <linux/rbtree.h>
 #include <linux/rwsem.h>
