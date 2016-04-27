@@ -1,0 +1,86 @@
+1. Intel(R) SGX overview
+========================
+
+Intel(R) SGX is a set of CPU instructions that can be used by applications to
+set aside private regions of code and data. The code outside the enclave is
+disallowed to access the memory inside the enclave by the CPU access control.
+
+There is a new hardware unit in the processor called Memory Encryption Engine
+(MEE) starting from the Skylake microachitecture. BIOS can define one or many
+MEE regions that can hold enclave data by configuring them with PRMRR registers.
+
+The MEE automatically encrypts the data leaving the processor package to the MEE
+regions. The data is encrypted using a random key whose life-time is exactly one
+power cycle.
+
+You can tell if your CPU supports SGX by looking into /proc/cpuinfo:
+
+	cat /proc/cpuinfo  | grep ' sgx '
+
+2. Enclaves overview
+====================
+
+SGX defines new data types to maintain information about the enclaves and their
+security properties.
+
+The following data structures exist in MEE regions:
+
+* Enclave Page Cache (EPC): protected code and data
+* Enclave Page Cache Map (EPCM): meta-data for each EPC page
+
+The Enclave Page Cache can hold following types EPC pages:
+
+* SGX Enclave Control Structure (SECS): contains meta-data defining the global
+  properties of an enclave such as range of addresses it can access.
+* Regular EPC pages containing code and data for the enclave.
+* Thread Control Structure (TCS): defines an entry point for a hardware thread
+  to enter into the enclave. The enclave can only be entered through these entry
+  points.
+* Version Array (VA): an EPC page receives a unique version number when it is
+  evicted that is stored into a VA page. A VA page can hold up to 512 version
+  numbers.
+
+There are leaf instructions called EADD and EEXTEND that can be used to add and
+measure an enclave to a virtual address space.
+
+When initializing an enclave a SIGSTRUCT must provided for the EINIT leaf
+instruction that contains signed measurement of the enclave binary. For so
+called architectural enclaves (AEs) this structure is signed with Intel Root of
+Trust.
+
+For normal application specific enclaves a cryptographic token called EINITTOKEN
+must be provided that is signed with Intel RoT. There is an AE called License
+Enclave that provides this token given by a SIGSTRUCT instance. It checks
+whether the public key contained inside SIGSTRUCT is whitelisted and generates
+EINITTOKEN if it is.
+
+There is a special type of enclave called debug enclave that is convenient when
+the enclave code is being developed. These enclaves can be read and write by
+using EDBGWR and EDBGRD leaf instructions. The kernel driver provides ptrace()
+interface for enclaves by using these instructions.
+
+Another benefit with debug enclaves is that LE will ignore the white list
+and always generates EINITTOKEN.
+
+3. IOCTL API
+============
+
+The ioctl API is defined in arch/x86/include/uapi/asm/sgx.h.
+
+SGX_IOCTL_ENCLAVE_CREATE
+
+Creates a VMA and a SECS page for the enclave.
+
+SGX_IOCTL_ENCLAVE_ADD_PAGE
+
+Adds and measures a new EPC page for the enclave. Must be in the range defined
+by SGX_IOCTL_ENCLAVE_CREATE. This will copy the page data and it to a workqueue
+that will eventually execute EADD and EEXTEND leaf instruction that add and
+measure the page.
+
+SGX_IOCTL_ENCLAVE_INIT
+
+Initializes an enclave given by SIGSTRUCT and EINITTOKEN. Executes EINIT leaf
+instruction that will check that the measurement matches the one SIGSTRUCT and
+EINITTOKEN. EINITTOKEN is a data blob given by a special enclave called Launch
+Enclave and it is signed with a CPU's Launch Key.
