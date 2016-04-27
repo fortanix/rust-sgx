@@ -21,7 +21,7 @@ use std::mem::transmute;
 use clap::{Arg,App};
 
 use sgxs::loader::{Map,Load,Address};
-use sgxs::sgxdev;
+use sgxs::isgx;
 use sgx_isa::{Einittoken,Sigstruct,Enclu,attributes_flags};
 
 fn read_einittoken(path: &str) -> Einittoken {
@@ -85,7 +85,7 @@ fn main() {
 	the new token will be written back to <token>.")
 		.get_matches();
 
-	let dev=sgxdev::Device::open(matches.value_of("device").unwrap_or("/dev/sgx")).unwrap();
+	let dev=isgx::Device::open(matches.value_of("device").unwrap_or("/dev/isgx")).unwrap();
 	let mut file=File::open(matches.value_of("sgxs").unwrap()).unwrap();
 	let sigstruct=read_sigstruct(matches.value_of("sigstruct").unwrap());
 	let use_le=matches.is_present("le-sgxs");

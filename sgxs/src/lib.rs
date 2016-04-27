@@ -26,6 +26,7 @@ extern crate time;
 
 pub mod crypto;
 pub mod sgxdev;
+pub mod isgx;
 pub mod sgxs;
 mod intelcall;
 pub mod loader;
