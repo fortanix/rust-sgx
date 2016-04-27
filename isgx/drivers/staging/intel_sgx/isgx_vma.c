@@ -275,8 +275,126 @@ static int isgx_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		return VM_FAULT_SIGBUS;
 }
 
+static inline int isgx_vma_access_word(struct isgx_enclave *enclave,
+				       unsigned long addr,
+				       void *buf,
+				       int len,
+				       int write,
+				       struct isgx_enclave_page *enclave_page,
+				       int i)
+{
+	char data[sizeof(unsigned long)];
+	int align, cnt, offset;
+	void *vaddr;
+	int ret;
+
+	offset = ((addr + i) & (PAGE_SIZE - 1)) & ~(sizeof(unsigned long) - 1);
+	align = (addr + i) & (sizeof(unsigned long) - 1);
+	cnt = sizeof(unsigned long) - align;
+	cnt = min(cnt, len - i);
+
+	if (write) {
+		if (enclave_page->flags & ISGX_ENCLAVE_PAGE_TCS &&
+		    (offset < 8 || (offset + (len - i)) > 16))
+			return -ECANCELED;
+
+		if (align || (cnt != sizeof(unsigned long))) {
+			vaddr = isgx_get_epc_page(enclave_page->epc_page);
+			ret = __edbgrd((void *)((unsigned long)vaddr + offset),
+				       (unsigned long *)data);
+			isgx_put_epc_page(vaddr);
+			if (ret) {
+				isgx_dbg(enclave, "EDBGRD returned %d\n", ret);
+				return -EFAULT;
+			}
+		}
+
+		memcpy(data + align, buf + i, cnt);
+		vaddr = isgx_get_epc_page(enclave_page->epc_page);
+		ret = __edbgwr((void *)((unsigned long)vaddr + offset),
+			       (unsigned long *)data);
+		isgx_put_epc_page(vaddr);
+		if (ret) {
+			isgx_dbg(enclave, "EDBGWR returned %d\n", ret);
+			return -EFAULT;
+		}
+	} else {
+		if (enclave_page->flags & ISGX_ENCLAVE_PAGE_TCS &&
+		    (offset + (len - i)) > 72)
+			return -ECANCELED;
+
+		vaddr = isgx_get_epc_page(enclave_page->epc_page);
+		ret = __edbgrd((void *)((unsigned long)vaddr + offset),
+			       (unsigned long *)data);
+		isgx_put_epc_page(vaddr);
+		if (ret) {
+			isgx_dbg(enclave, "EDBGRD returned %d\n", ret);
+			return -EFAULT;
+		}
+
+		memcpy(buf + i, data + align, cnt);
+	}
+
+	return cnt;
+}
+
+static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
+			   void *buf, int len, int write)
+{
+	struct isgx_enclave *enclave = vma->vm_private_data;
+	struct isgx_enclave_page *entry = NULL;
+	const char *op_str = write ? "EDBGWR" : "EDBGRD";
+	int ret = 0;
+	int i;
+
+	/* If process was forked, VMA is still there but vm_private_data is set
+	 * to NULL.
+	 */
+	if (!enclave)
+		return -EFAULT;
+
+	if (!(enclave->flags & ISGX_ENCLAVE_DEBUG) ||
+	    !(enclave->flags & ISGX_ENCLAVE_INITIALIZED) ||
+	    (enclave->flags & ISGX_ENCLAVE_SUSPEND))
+		return -EFAULT;
+
+	isgx_dbg(enclave, "%s addr=0x%lx, len=%d\n", op_str, addr, len);
+
+	for (i = 0; i < len; i += ret) {
+		if (!entry || !((addr + i) & (PAGE_SIZE - 1))) {
+			if (entry)
+				entry->flags &= ~ISGX_ENCLAVE_PAGE_RESERVED;
+
+			do {
+				entry = isgx_vma_do_fault(
+					vma, (addr + i) & PAGE_MASK, true);
+			} while (entry == ERR_PTR(-EBUSY));
+
+			if (IS_ERR(entry)) {
+				ret = PTR_ERR(entry);
+				entry = NULL;
+				break;
+			}
+		}
+
+		/* No locks are needed because used fields are immutable after
+		 * intialization.
+		 */
+		ret = isgx_vma_access_word(enclave, addr, buf, len, write,
+					   entry, i);
+		if (ret < 0)
+			break;
+	}
+
+	if (entry)
+		entry->flags &= ~ISGX_ENCLAVE_PAGE_RESERVED;
+
+	return (ret < 0 && ret != -ECANCELED) ? ret : i;
+}
+
 struct vm_operations_struct isgx_vm_ops = {
 	.close = isgx_vma_close,
 	.open = isgx_vma_open,
 	.fault = isgx_vma_fault,
+	.access = isgx_vma_access,
 };
