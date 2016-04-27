@@ -1,0 +1,13 @@
+config INTEL_SGX
+	tristate "Intel(R) SGX Driver"
+	depends on X86
+	---help---
+	Intel(R) SGX is a set of CPU instructions that can be used by
+	applications to set aside private regions of code and data.  The code
+	outside the enclave is disallowed to access the memory inside the
+	enclave by the CPU access control.
+
+	The firmware uses PRMRR registers to reserve an area of physical memory
+	called Enclave Page Cache (EPC). There is a hardware unit in the
+	processor called Memory Encryption Engine. The MEE encrypts and decrypts
+	the EPC pages as they enter and leave the processor package.

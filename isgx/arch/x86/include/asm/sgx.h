@@ -82,7 +82,7 @@ enum sgx_secinfo_masks {
 };
 
 struct sgx_pcmd {
-	struct isgx_secinfo secinfo;
+	struct sgx_secinfo secinfo;
 	u64 enclave_id;
 	u8 reserved[40];
 	u8 mac[16];
@@ -185,7 +185,7 @@ static inline int __eadd(struct sgx_page_info *pginfo, void *epc)
 	return __encls(EADD, pginfo, epc, "d"(0));
 }
 
-static inline int __einit(void *sigstruct, struct isgx_einittoken *einittoken,
+static inline int __einit(void *sigstruct, struct sgx_einittoken *einittoken,
 			  void *secs)
 {
 	return __encls_ret(EINIT, sigstruct, secs, einittoken);
