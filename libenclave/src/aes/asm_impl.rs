@@ -38,6 +38,18 @@ pub struct KeySchedule {
 	pub ks: [u32;AES_MAX_EXP_KEY_SIZE],
 }
 
+impl Clone for KeySchedule {
+    fn clone(&self) -> Self {
+		KeySchedule{
+			_nb:self._nb,
+			nr:self.nr,
+			_freebl_cipher_func:self._freebl_cipher_func,
+			_iv:self._iv.clone(),
+			ks:unsafe{core::ptr::read(&self.ks)},
+		}
+	}
+}
+
 impl KeySchedule {
 	fn new() -> KeySchedule {
 		KeySchedule{
@@ -57,6 +69,18 @@ pub struct GcmContext {
 	pub t: [u8;AES_BLOCK_SIZE],
 	pub ctr: [u8;AES_BLOCK_SIZE],
 	pub ks: Box<KeySchedule>,
+}
+
+impl Clone for GcmContext {
+    fn clone(&self) -> Self {
+		GcmContext{
+			htbl:unsafe{core::ptr::read(&self.htbl)},
+			x0:self.x0.clone(),
+			t:self.t.clone(),
+			ctr:self.ctr.clone(),
+			ks:self.ks.clone(),
+		}
+	}
 }
 
 impl GcmContext {

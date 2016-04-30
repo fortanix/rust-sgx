@@ -120,7 +120,8 @@ pub fn cmac_128(key: &[u8;16], data: &[u8]) -> [u8;16]  {
 #[derive(PartialEq,Eq)]
 enum State {
 	New,
-	AadAdded,
+	Aad,
+	AadFinal,
 	Encrypting,
 	Decrypting,
 	Done,
@@ -131,6 +132,13 @@ pub struct AesGcm {
 	a_len: usize,
 	m_len: usize,
 	state: State,
+}
+
+impl Clone for AesGcm {
+    fn clone(&self) -> Self {
+		if self.state!=State::New { panic!("Can't clone in this state") };
+		AesGcm{gctx:self.gctx.clone(),a_len:0,m_len:0,state:State::New}
+	}
 }
 
 impl AesGcm {
@@ -157,7 +165,7 @@ impl AesGcm {
 	}
 
 	pub fn aad(&mut self, mut data: &[u8]) {
-		if self.state!=State::New { panic!("Can't add AAD in this state") }
+		match self.state { State::New | State::Aad => {}, _ => panic!("Can't add AAD in this state") };
 		self.a_len+=data.len();
 
 		let partial=data.len()%AES_BLOCK_SIZE;
@@ -166,7 +174,9 @@ impl AesGcm {
 			let (a,b)=data.split_at(data.len()-partial);
 			data=a;
 			unsafe{core::ptr::copy(b.as_ptr(),data2.as_mut_ptr(),partial)};
-			self.state=State::AadAdded;
+			self.state=State::AadFinal;
+		} else {
+			self.state=State::Aad;
 		}
 		unsafe{
 			intel_aes_gcmAAD(&self.gctx.htbl,data.as_ptr(),data.len(),&mut self.gctx.t);
