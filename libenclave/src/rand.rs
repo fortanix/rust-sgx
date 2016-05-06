@@ -11,6 +11,6 @@
 
 pub fn rand() -> u64 {
 	let ret;
-	unsafe{asm!("rdrand $0":"=r"(ret))};
+	unsafe{asm!("rdrand $0":"=r"(ret):::"volatile")};
 	ret
 }
