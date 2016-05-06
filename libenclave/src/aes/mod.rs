@@ -386,6 +386,20 @@ mod tests {
 	}
 
 	#[test]
+	fn aes_gcm_large() {
+		let mut v1=Vec::<u8>::with_capacity(0);
+		v1.resize(4096,0);
+		let mut v2=v1.clone();
+		let mut key=[0u8;16];
+		let mut iv=[0u8;12];
+		let mut aes1=AesGcm::new(&key,&iv);
+		let mut aes2=aes1.clone();
+		aes1.decrypt(&v1,&mut v2);
+		aes2.encrypt(&v2,&mut v1);
+		assert!(v1.iter().all(|&i|i==0));
+	}
+
+	#[test]
 	fn aes_gcm_decrypt_test() {
 		for item in gcm_test_vectors().iter() {
 			let mut decipher = AesGcm::new(&item.key, &item.iv);

@@ -441,7 +441,7 @@ intel_aes_gcmENC:
 
     vpclmulqdq  $0x00, 128+\i*16(Htbl), TMP4, TMP3
     vpxor       TMP3, TMP0, TMP0
-    vmovdqa     \i*16(Htbl), TMP4
+    vmovdqu     \i*16(Htbl), TMP4
     vpclmulqdq  $0x11, TMP4, TMP5, TMP3
     vpxor       TMP3, TMP1, TMP1
     vpclmulqdq  $0x00, TMP4, TMP5, TMP3
