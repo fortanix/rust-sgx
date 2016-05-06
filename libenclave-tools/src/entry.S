@@ -145,10 +145,10 @@ no_debug:
 	mov %gs:tls_tos,%rsp
 // check for panic
 	bt $0,panicked(%rip)
-	jnz panic_exit
+	jc panic_exit
 // check for init
 	bt $0,init_once(%rip)
-	jnz skip_init
+	jc skip_init
 	movb $1,init_once(%rip)
 // adjust stack -- NOTE: this needs to happen for every thread, not just once...
 	lea IMAGE_BASE(%rip),%rax
