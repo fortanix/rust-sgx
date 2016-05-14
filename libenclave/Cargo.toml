@@ -9,7 +9,7 @@ build = "build.rs"
 
 [dependencies]
 rlibc = "1.0.0"  # MIT/Apache-2.0
-spin = "0.4.0"   # MIT
+spin = "=0.4.0"   # MIT
 alloc_buddy_simple = { version = "0.1" } # Apache-2.0/MIT
 sgx-isa = "0.1"  # Apache-2.0/MIT
 bitflags = { version = "0.5", features = ["no_std"] } # MIT/Apache-2.0
