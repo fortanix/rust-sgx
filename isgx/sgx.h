@@ -12,244 +12,226 @@
  * of the License.
  */
 
-#ifndef _ASM_X86_SGX_H
-#define _ASM_X86_SGX_H
+#ifndef __ARCH_ISGX_H__
+#define __ARCH_ISGX_H__
 
-#include <asm/asm.h>
-#include <linux/bitops.h>
-#include <linux/types.h>
+#include "sgx_user.h"
+#include "sgx_arch.h"
+#include <linux/kref.h>
+#include <linux/rbtree.h>
+#include <linux/rwsem.h>
+#include <linux/sched.h>
+#include <linux/workqueue.h>
 
-#define X86_FEATURE_SGX		( 9*32+ 2) /* Software Guard Extensions */
+/* Number of times to spin before going to sleep because of an interrupt
+ * storm.
+ */
+#define EINIT_SPIN_COUNT	20
 
-#define SGX_CPUID		0x12
+/* Number of tries in total before giving up with EINIT. During each try
+ * EINIT is called the number of times specified by EINIT_SPINT_COUNT.
+ */
+#define EINIT_TRY_COUNT		50
 
-enum sgx_page_type {
-	SGX_PAGE_TYPE_SECS	= 0x00,
-	SGX_PAGE_TYPE_TCS	= 0x01,
-	SGX_PAGE_TYPE_REG	= 0x02,
-	SGX_PAGE_TYPE_VA	= 0x03,
+/* Time to sleep between each try. */
+#define EINIT_BACKOFF_TIME	20
+
+#define ISGX_ENCLAVE_PAGE_TCS		0x1
+#define ISGX_ENCLAVE_PAGE_RESERVED	0x2
+
+struct sgx_epc_page {
+	resource_size_t		pa;
+	struct list_head	free_list;
 };
 
-enum sgx_secs_attributes {
-	SGX_SECS_A_DEBUG		= BIT_ULL(1),
-	SGX_SECS_A_MODE64BIT		= BIT_ULL(2),
-	SGX_SECS_A_PROVISION_KEY	= BIT_ULL(4),
-	SGX_SECS_A_LICENSE_KEY		= BIT_ULL(5),
-	SGX_SECS_A_RESERVED_MASK	= (BIT_ULL(0) |
-					   BIT_ULL(3) |
-					   GENMASK_ULL(63, 6)),
+#define ISGX_VA_SLOT_COUNT 512
+
+struct sgx_va_page {
+	struct sgx_epc_page	*epc_page;
+	DECLARE_BITMAP(slots, ISGX_VA_SLOT_COUNT);
+	struct list_head	list;
 };
 
-#define SGX_SECS_RESERVED1_SIZE 28
-#define SGX_SECS_RESERVED2_SIZE 32
-#define SGX_SECS_RESERVED3_SIZE 96
-#define SGX_SECS_RESERVED4_SIZE 3836
+/**
+ * sgx_alloc_va_slot() - allocate VA slot from a VA page
+ *
+ * @page: VA page
+ *
+ * Returns offset to a free VA slot. If there are no free slots, an offset of
+ * PAGE_SIZE is returned.
+ */
+static inline unsigned int sgx_alloc_va_slot(struct sgx_va_page *page)
+{
+	int slot = find_first_zero_bit(page->slots, ISGX_VA_SLOT_COUNT);
 
-struct sgx_secs {
-	u64	size;
-	u64	base;
-	u32	ssaframesize;
-	uint8_t reserved1[SGX_SECS_RESERVED1_SIZE];
-	u64	flags;
-	u64	xfrm;
-	u32	mrenclave[8];
-	uint8_t	reserved2[SGX_SECS_RESERVED2_SIZE];
-	u32	mrsigner[8];
-	uint8_t	reserved3[SGX_SECS_RESERVED3_SIZE];
-	u16	isvvprodid;
-	u16	isvsvn;
-	uint8_t	reserved[SGX_SECS_RESERVED4_SIZE];
+	if (slot < ISGX_VA_SLOT_COUNT)
+		set_bit(slot, page->slots);
+
+	return slot << 3;
+}
+
+/**
+ * sgx_free_va_slot() - free VA slot from a VA page
+ *
+ * @page:	VA page
+ * @offset:	the offset of the VA slot
+ *
+ * Releases VA slot.
+ */
+static inline void sgx_free_va_slot(struct sgx_va_page *page,
+				    unsigned int offset)
+{
+	clear_bit(offset >> 3, page->slots);
+}
+
+struct sgx_enclave_page {
+	unsigned long		addr;
+	unsigned int		flags;
+	struct sgx_epc_page	*epc_page;
+	struct list_head	load_list;
+	struct sgx_enclave	*enclave;
+	struct sgx_va_page	*va_page;
+	unsigned int		va_offset;
+	struct sgx_pcmd		pcmd;
+	struct rb_node		node;
 };
 
-struct sgx_tcs {
-	u64 state;
-	u64 flags;
-	u64 ossa;
-	u32 cssa;
-	u32 nssa;
-	u64 oentry;
-	u64 aep;
-	u64 ofsbase;
-	u64 ogsbase;
-	u32 fslimit;
-	u32 gslimit;
-	u64 reserved[503];
+#define ISGX_ENCLAVE_INITIALIZED	0x01
+#define ISGX_ENCLAVE_DEBUG		0x02
+#define ISGX_ENCLAVE_SECS_EVICTED	0x04
+#define ISGX_ENCLAVE_SUSPEND		0x08
+
+struct sgx_vma {
+	struct vm_area_struct	*vma;
+	struct list_head	vma_list;
 };
 
-enum sgx_secinfo_masks {
-	ISGX_SECINFO_PERMISSION_MASK	= GENMASK_ULL(2, 0),
-	ISGX_SECINFO_PAGE_TYPE_MASK	= GENMASK_ULL(15, 8),
-	ISGX_SECINFO_RESERVED_MASK	= (GENMASK_ULL(7, 3) |
-					   GENMASK_ULL(63, 16)),
+struct sgx_tgid_ctx {
+	struct pid			*tgid;
+	atomic_t			epc_cnt;
+	struct kref			refcount;
+	struct list_head		enclave_list;
+	struct list_head		list;
 };
 
-struct sgx_pcmd {
-	struct sgx_secinfo secinfo;
-	u64 enclave_id;
-	u8 reserved[40];
-	u8 mac[16];
+struct sgx_enclave {
+	/* the enclave lock */
+	struct mutex			lock;
+	unsigned int			flags;
+	struct task_struct		*owner;
+	struct mm_struct		*mm;
+	struct file			*backing;
+	struct list_head		vma_list;
+	struct list_head		load_list;
+	struct kref			refcount;
+	unsigned long			base;
+	unsigned long			size;
+	struct list_head		va_pages;
+	struct rb_root			enclave_rb;
+	struct list_head		add_page_reqs;
+	struct work_struct		add_page_work;
+	unsigned int			secs_child_cnt;
+	struct sgx_enclave_page	secs_page;
+	struct sgx_tgid_ctx		*tgid_ctx;
+	struct list_head		enclave_list;
 };
 
-struct sgx_page_info {
-	u64 linaddr;
-	u64 srcpge;
-	union {
-		u64 secinfo;
-		u64 pcmd;
-	};
-	u64 secs;
-} __aligned(32);
-
-#define SIGSTRUCT_SIZE 1808
-#define EINITTOKEN_SIZE 304
-
-enum {
-	ECREATE	= 0x0,
-	EADD	= 0x1,
-	EINIT	= 0x2,
-	EREMOVE	= 0x3,
-	EDGBRD	= 0x4,
-	EDGBWR	= 0x5,
-	EEXTEND	= 0x6,
-	ELDU	= 0x8,
-	EBLOCK	= 0x9,
-	EPA	= 0xA,
-	EWB	= 0xB,
-	ETRACK	= 0xC,
-};
-
-#define __encls_ret(rax, rbx, rcx, rdx)			\
-	({						\
-	int ret;					\
-	asm volatile(					\
-	"1: .byte 0x0f, 0x01, 0xcf;\n\t"		\
-	"2:\n"						\
-	".section .fixup,\"ax\"\n"			\
-	"3: jmp 2b\n"					\
-	".previous\n"					\
-	_ASM_EXTABLE(1b, 3b)				\
-	: "=a"(ret)					\
-	: "a"(rax), "b"(rbx), "c"(rcx), "d"(rdx)	\
-	: "memory");					\
-	ret;						\
-	})
-
+extern struct workqueue_struct *sgx_add_page_wq;
+extern unsigned long sgx_epc_base;
+extern unsigned long sgx_epc_size;
 #ifdef CONFIG_X86_64
-#define __encls(rax, rbx, rcx, rdx...)			\
-	({						\
-	int ret;					\
-	asm volatile(					\
-	"1: .byte 0x0f, 0x01, 0xcf;\n\t"		\
-	"   xor %%eax,%%eax;\n"				\
-	"2:\n"						\
-	".section .fixup,\"ax\"\n"			\
-	"3: movq $-1,%%rax\n"				\
-	"   jmp 2b\n"					\
-	".previous\n"					\
-	_ASM_EXTABLE(1b, 3b)				\
-	: "=a"(ret), "=b"(rbx), "=c"(rcx)		\
-	: "a"(rax), "b"(rbx), "c"(rcx), rdx		\
-	: "memory");					\
-	ret;						\
-	})
-#else
-#define __encls(rax, rbx, rcx, rdx...)			\
-	({						\
-	int ret;					\
-	asm volatile(					\
-	"1: .byte 0x0f, 0x01, 0xcf;\n\t"		\
-	"   xor %%eax,%%eax;\n"				\
-	"2:\n"						\
-	".section .fixup,\"ax\"\n"			\
-	"3: mov $-1,%%eax\n"				\
-	"   jmp 2b\n"					\
-	".previous\n"					\
-	_ASM_EXTABLE(1b, 3b)				\
-	: "=a"(ret), "=b"(rbx), "=c"(rcx)		\
-	: "a"(rax), "b"(rbx), "c"(rcx), rdx		\
-	: "memory");					\
-	ret;						\
-	})
+extern void *sgx_epc_mem;
 #endif
+extern u64 sgx_enclave_size_max_32;
+extern u64 sgx_enclave_size_max_64;
+extern u64 sgx_xfrm_mask;
+extern u32 sgx_ssaframesize_tbl[64];
 
-static inline unsigned long __ecreate(struct sgx_page_info *pginfo, void *secs)
-{
-	return __encls(ECREATE, pginfo, secs, "d"(0));
-}
+extern struct vm_operations_struct sgx_vm_ops;
+extern atomic_t sgx_nr_pids;
 
-static inline int __eextend(void *secs, void *epc)
-{
-	return __encls(EEXTEND, secs, epc, "d"(0));
-}
+/* Message macros */
+#define sgx_dbg(encl, fmt, ...)					\
+	pr_debug_ratelimited("isgx: [%d:0x%p] " fmt,			\
+			     pid_nr((encl)->tgid_ctx->tgid),		\
+			     (void *)(encl)->base, ##__VA_ARGS__)
+#define sgx_info(encl, fmt, ...)					\
+	pr_info_ratelimited("isgx: [%d:0x%p] " fmt,			\
+			    pid_nr((encl)->tgid_ctx->tgid),		\
+			    (void *)(encl)->base, ##__VA_ARGS__)
+#define sgx_warn(encl, fmt, ...)					\
+	pr_warn_ratelimited("isgx: [%d:0x%p] " fmt,			\
+			    pid_nr((encl)->tgid_ctx->tgid),		\
+			    (void *)(encl)->base, ##__VA_ARGS__)
+#define sgx_err(encl, fmt, ...)					\
+	pr_err_ratelimited("isgx: [%d:0x%p] " fmt,			\
+			   pid_nr((encl)->tgid_ctx->tgid),		\
+			   (void *)(encl)->base, ##__VA_ARGS__)
 
-static inline int __eadd(struct sgx_page_info *pginfo, void *epc)
-{
-	return __encls(EADD, pginfo, epc, "d"(0));
-}
+/*
+ * Ioctl subsystem.
+ */
 
-static inline int __einit(void *sigstruct, struct sgx_einittoken *einittoken,
-			  void *secs)
-{
-	return __encls_ret(EINIT, sigstruct, secs, einittoken);
-}
+long sgx_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
+#ifdef CONFIG_COMPAT
+long sgx_compat_ioctl(struct file *filep, unsigned int cmd, unsigned long arg);
+#endif
+void sgx_add_page_worker(struct work_struct *work);
 
-static inline int __eremove(void *epc)
-{
-	unsigned long rbx = 0;
-	unsigned long rdx = 0;
+/*
+ * Utility functions
+ */
 
-	return __encls_ret(EREMOVE, rbx, epc, rdx);
-}
+void *sgx_get_epc_page(struct sgx_epc_page *entry);
+void sgx_put_epc_page(void *epc_page_vaddr);
+struct page *sgx_get_backing(struct sgx_enclave *enclave,
+			     struct sgx_enclave_page *entry);
+void sgx_put_backing(struct page *backing, bool write);
+void sgx_insert_pte(struct sgx_enclave *enclave,
+		    struct sgx_enclave_page *enclave_page,
+		    struct sgx_epc_page *epc_page,
+		    struct vm_area_struct *vma);
+int sgx_eremove(struct sgx_epc_page *epc_page);
+struct sgx_vma *sgx_find_vma(struct sgx_enclave *enclave,
+			     unsigned long addr);
+void sgx_zap_tcs_ptes(struct sgx_enclave *enclave,
+		      struct vm_area_struct *vma);
+bool sgx_pin_mm(struct sgx_enclave *encl);
+void sgx_unpin_mm(struct sgx_enclave *encl);
+void sgx_invalidate(struct sgx_enclave *encl);
+int sgx_find_enclave(struct mm_struct *mm, unsigned long addr,
+		     struct vm_area_struct **vma);
+struct sgx_enclave_page *sgx_enclave_find_page(struct sgx_enclave *enclave,
+					       unsigned long addr);
+void sgx_enclave_release(struct kref *ref);
+void release_tgid_ctx(struct kref *ref);
 
-static inline int __edbgwr(void *epc, unsigned long *data)
-{
-	return __encls(EDGBWR, *data, epc, "d"(0));
-}
+/*
+ * Page cache subsystem.
+ */
 
-static inline int __edbgrd(void *epc, unsigned long *data)
-{
-	unsigned long rbx = 0;
-	int ret;
+#define ISGX_NR_LOW_EPC_PAGES_DEFAULT	32
+#define ISGX_NR_SWAP_CLUSTER_MAX	16
 
-	ret = __encls(EDGBRD, rbx, epc, "d"(0));
-	if (!ret)
-		*(unsigned long *) data = rbx;
+extern struct mutex sgx_tgid_ctx_mutex;
+extern struct list_head sgx_tgid_ctx_list;
+extern struct task_struct *kisgxswapd_tsk;
 
-	return ret;
-}
+enum sgx_alloc_flags {
+	ISGX_ALLOC_ATOMIC	= BIT(0),
+};
 
-static inline int __etrack(void *epc)
-{
-	unsigned long rbx = 0;
-	unsigned long rdx = 0;
+enum sgx_free_flags {
+	ISGX_FREE_SKIP_EREMOVE	= BIT(0),
+};
 
-	return __encls_ret(ETRACK, rbx, epc, rdx);
-}
+int kisgxswapd(void *p);
+int sgx_page_cache_init(resource_size_t start, unsigned long size);
+void sgx_page_cache_teardown(void);
+struct sgx_epc_page *sgx_alloc_epc_page(
+	struct sgx_tgid_ctx *tgid_epc_cnt, unsigned int flags);
+void sgx_free_epc_page(struct sgx_epc_page *entry,
+		       struct sgx_enclave *encl,
+		       unsigned int flags);
 
-static inline int __eldu(unsigned long rbx, unsigned long rcx,
-			 unsigned long rdx)
-{
-	return __encls_ret(ELDU, rbx, rcx, rdx);
-}
-
-static inline int __eblock(unsigned long rcx)
-{
-	unsigned long rbx = 0;
-	unsigned long rdx = 0;
-
-	return __encls_ret(EBLOCK, rbx, rcx, rdx);
-}
-
-static inline int __epa(void *epc)
-{
-	unsigned long rbx = SGX_PAGE_TYPE_VA;
-
-	return __encls(EPA, rbx, epc, "d"(0));
-}
-
-static inline int __ewb(struct sgx_page_info *pginfo, void *epc, void *va)
-{
-	return __encls_ret(EWB, pginfo, epc, va);
-}
-
-#endif /* _ASM_X86_SGX_H */
+#endif /* __ARCH_X86_ISGX_H__ */

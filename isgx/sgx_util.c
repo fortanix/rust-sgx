@@ -14,20 +14,20 @@
  * of the License.
  */
 
-#include "isgx.h"
+#include "sgx.h"
 #include <linux/highmem.h>
 #include <linux/shmem_fs.h>
 
-void *isgx_get_epc_page(struct isgx_epc_page *entry)
+void *sgx_get_epc_page(struct sgx_epc_page *entry)
 {
 #ifdef CONFIG_X86_32
 	return kmap_atomic_pfn(PFN_DOWN(entry->pa));
 #else
-	return isgx_epc_mem + (entry->pa - isgx_epc_base);
+	return sgx_epc_mem + (entry->pa - sgx_epc_base);
 #endif
 }
 
-void isgx_put_epc_page(void *epc_page_vaddr)
+void sgx_put_epc_page(void *epc_page_vaddr)
 {
 #ifdef CONFIG_X86_32
 	kunmap_atomic(epc_page_vaddr);
@@ -35,8 +35,8 @@ void isgx_put_epc_page(void *epc_page_vaddr)
 #endif
 }
 
-struct page *isgx_get_backing(struct isgx_enclave *enclave,
-			      struct isgx_enclave_page *entry)
+struct page *sgx_get_backing(struct sgx_enclave *enclave,
+			     struct sgx_enclave_page *entry)
 {
 	struct page *backing;
 	struct inode *inode;
@@ -54,7 +54,7 @@ struct page *isgx_get_backing(struct isgx_enclave *enclave,
 	return backing;
 }
 
-void isgx_put_backing(struct page *backing_page, bool write)
+void sgx_put_backing(struct page *backing_page, bool write)
 {
 	if (write)
 		set_page_dirty(backing_page);
@@ -62,94 +62,42 @@ void isgx_put_backing(struct page *backing_page, bool write)
 	page_cache_release(backing_page);
 }
 
-int isgx_eremove(struct isgx_epc_page *epc_page)
-{
-	void *epc;
-	int ret;
-
-	epc = isgx_get_epc_page(epc_page);
-	ret = __eremove(epc);
-	isgx_put_epc_page(epc);
-
-	if (ret)
-		pr_debug_ratelimited("EREMOVE returned %d\n", ret);
-
-	return ret;
-}
-
-static int isgx_test_and_clear_young_cb(pte_t *ptep, pgtable_t token,
-					unsigned long addr, void *data)
-{
-	pte_t pte;
-	int rc;
-
-	rc = pte_young(*ptep);
-	if (rc) {
-		pte = pte_mkold(*ptep);
-		set_pte_at((struct mm_struct *)data, addr, ptep, pte);
-	}
-
-	return rc;
-}
-
 /**
- * isgx_test_and_clear_young() - is the enclave page recently accessed?
- * @page:	enclave page to be tested for recent access
- *
- * Checks the Access (A) bit from the PTE corresponding to the
- * enclave page and clears it. Returns 1 if the page has been
- * recently accessed and 0 if not.
- */
-int isgx_test_and_clear_young(struct isgx_enclave_page *page)
-{
-	struct mm_struct *mm;
-	struct isgx_vma *evma = isgx_find_vma(page->enclave, page->addr);
-
-	if (!evma)
-		return 0;
-
-	mm = evma->vma->vm_mm;
-
-	return apply_to_page_range(mm, page->addr, PAGE_SIZE,
-				   isgx_test_and_clear_young_cb, mm);
-}
-
-/**
- * isgx_find_vma() - find VMA for the enclave address
+ * sgx_find_vma() - find VMA for the enclave address
  * @enclave:	the enclave to be searched
  * @addr:	the linear address to query
  *
  * Finds VMA for the given address of the enclave. Returns the VMA if
  * there is one containing the given address.
  */
-struct isgx_vma *isgx_find_vma(struct isgx_enclave *enclave,
-			       unsigned long addr)
+struct sgx_vma *sgx_find_vma(struct sgx_enclave *enclave,
+			     unsigned long addr)
 {
-	struct isgx_vma *tmp;
-	struct isgx_vma *evma;
+	struct sgx_vma *tmp;
+	struct sgx_vma *evma;
 
 	list_for_each_entry_safe(evma, tmp, &enclave->vma_list, vma_list) {
 		if (evma->vma->vm_start <= addr && evma->vma->vm_end > addr)
 			return evma;
 	}
 
-	isgx_dbg(enclave, "cannot find VMA at 0x%lx\n", addr);
+	sgx_dbg(enclave, "cannot find VMA at 0x%lx\n", addr);
 	return NULL;
 }
 
 /**
- * isgx_zap_tcs_ptes() - clear PTEs that contain TCS pages
+ * sgx_zap_tcs_ptes() - clear PTEs that contain TCS pages
  * @enclave	an enclave
  * @vma:	a VMA of the enclave
  */
-void isgx_zap_tcs_ptes(struct isgx_enclave *enclave, struct vm_area_struct *vma)
+void sgx_zap_tcs_ptes(struct sgx_enclave *enclave, struct vm_area_struct *vma)
 {
-	struct isgx_enclave_page *entry;
+	struct sgx_enclave_page *entry;
 	struct rb_node *rb;
 
 	rb = rb_first(&enclave->enclave_rb);
 	while (rb) {
-		entry = container_of(rb, struct isgx_enclave_page, node);
+		entry = container_of(rb, struct sgx_enclave_page, node);
 		rb = rb_next(rb);
 		if (entry->epc_page && (entry->flags & ISGX_ENCLAVE_PAGE_TCS) &&
 		    entry->addr >= vma->vm_start &&
@@ -159,14 +107,14 @@ void isgx_zap_tcs_ptes(struct isgx_enclave *enclave, struct vm_area_struct *vma)
 }
 
 /**
- * isgx_pin_mm - pin the mm_struct of an enclave
+ * sgx_pin_mm - pin the mm_struct of an enclave
  *
  * @encl:	an enclave
  *
  * Locks down mmap_sem of an enclave if it still has VMAs and was not suspended.
  * Returns true if this the case.
  */
-bool isgx_pin_mm(struct isgx_enclave *encl)
+bool sgx_pin_mm(struct sgx_enclave *encl)
 {
 	if (encl->flags & ISGX_ENCLAVE_SUSPEND)
 		return false;
@@ -183,7 +131,7 @@ bool isgx_pin_mm(struct isgx_enclave *encl)
 	down_read(&encl->mm->mmap_sem);
 
 	if (list_empty(&encl->vma_list)) {
-		isgx_unpin_mm(encl);
+		sgx_unpin_mm(encl);
 		return false;
 	}
 
@@ -191,34 +139,34 @@ bool isgx_pin_mm(struct isgx_enclave *encl)
 }
 
 /**
- * isgx_unpin_mm - unpin the mm_struct of an enclave
+ * sgx_unpin_mm - unpin the mm_struct of an enclave
  *
  * @encl:	an enclave
  *
  * Unlocks the mmap_sem.
  */
-void isgx_unpin_mm(struct isgx_enclave *encl)
+void sgx_unpin_mm(struct sgx_enclave *encl)
 {
 	up_read(&encl->mm->mmap_sem);
 	mmdrop(encl->mm);
 }
 
 /**
- * isgx_unpin_mm - invalidate the enclave
+ * sgx_unpin_mm - invalidate the enclave
  *
  * @encl:	an enclave
  *
  * Unmap TCS pages and empty the VMA list.
  */
-void isgx_invalidate(struct isgx_enclave *encl)
+void sgx_invalidate(struct sgx_enclave *encl)
 {
-	struct isgx_vma *vma;
+	struct sgx_vma *vma;
 
 	list_for_each_entry(vma, &encl->vma_list, vma_list)
-		isgx_zap_tcs_ptes(encl, vma->vma);
+		sgx_zap_tcs_ptes(encl, vma->vma);
 
 	while (!list_empty(&encl->vma_list)) {
-		vma = list_first_entry(&encl->vma_list, struct isgx_vma,
+		vma = list_first_entry(&encl->vma_list, struct sgx_vma,
 				       vma_list);
 		list_del(&vma->vma_list);
 		kfree(vma);
@@ -226,7 +174,7 @@ void isgx_invalidate(struct isgx_enclave *encl)
 }
 
 /**
- * isgx_find_enclave() - find enclave given a virtual address
+ * sgx_find_enclave() - find enclave given a virtual address
  * @mm:		the address space where we query the enclave
  * @addr:	the virtual address to query
  * @vma:	VMA if an enclave is found or NULL if not
@@ -235,14 +183,14 @@ void isgx_invalidate(struct isgx_enclave *encl)
  * from. The return value is zero on success. Otherwise, it is either positive
  * for SGX specific errors or negative for the system errors.
  */
-int isgx_find_enclave(struct mm_struct *mm, unsigned long addr,
-		      struct vm_area_struct **vma)
+int sgx_find_enclave(struct mm_struct *mm, unsigned long addr,
+		     struct vm_area_struct **vma)
 {
-	struct isgx_enclave *enclave;
+	struct sgx_enclave *enclave;
 
 	*vma = find_vma(mm, addr);
 
-	if (!(*vma) || (*vma)->vm_ops != &isgx_vm_ops ||
+	if (!(*vma) || (*vma)->vm_ops != &sgx_vm_ops ||
 	    addr < (*vma)->vm_start)
 		return -EINVAL;
 
@@ -252,7 +200,7 @@ int isgx_find_enclave(struct mm_struct *mm, unsigned long addr,
 		return -ENOENT;
 
 	if (enclave->flags & ISGX_ENCLAVE_SUSPEND) {
-		isgx_info(enclave,  "suspend ID has been changed");
+		sgx_info(enclave,  "suspend ID has been changed");
 		return SGX_POWER_LOST_ENCLAVE;
 	}
 
@@ -260,22 +208,22 @@ int isgx_find_enclave(struct mm_struct *mm, unsigned long addr,
 }
 
 /**
- * isgx_enclave_find_page() - find an enclave page
+ * sgx_enclave_find_page() - find an enclave page
  * @encl:	the enclave to query
  * @addr:	the virtual address to query
  */
-struct isgx_enclave_page *isgx_enclave_find_page(struct isgx_enclave *enclave,
-						 unsigned long enclave_la)
+struct sgx_enclave_page *sgx_enclave_find_page(struct sgx_enclave *enclave,
+					       unsigned long addr)
 {
 	struct rb_node *node = enclave->enclave_rb.rb_node;
 
 	while (node) {
-		struct isgx_enclave_page *data =
-			container_of(node, struct isgx_enclave_page, node);
+		struct sgx_enclave_page *data =
+			container_of(node, struct sgx_enclave_page, node);
 
-		if (data->addr > enclave_la)
+		if (data->addr > addr)
 			node = node->rb_left;
-		else if (data->addr < enclave_la)
+		else if (data->addr < addr)
 			node = node->rb_right;
 		else
 			return data;
@@ -284,28 +232,28 @@ struct isgx_enclave_page *isgx_enclave_find_page(struct isgx_enclave *enclave,
 	return NULL;
 }
 
-void isgx_enclave_release(struct kref *ref)
+void sgx_enclave_release(struct kref *ref)
 {
 	struct rb_node *rb1, *rb2;
-	struct isgx_enclave_page *entry;
-	struct isgx_va_page *va_page;
-	struct isgx_enclave *enclave =
-		container_of(ref, struct isgx_enclave, refcount);
+	struct sgx_enclave_page *entry;
+	struct sgx_va_page *va_page;
+	struct sgx_enclave *enclave =
+		container_of(ref, struct sgx_enclave, refcount);
 
-	mutex_lock(&isgx_tgid_ctx_mutex);
+	mutex_lock(&sgx_tgid_ctx_mutex);
 	if (!list_empty(&enclave->enclave_list))
 		list_del(&enclave->enclave_list);
 
-	mutex_unlock(&isgx_tgid_ctx_mutex);
+	mutex_unlock(&sgx_tgid_ctx_mutex);
 
 	rb1 = rb_first(&enclave->enclave_rb);
 	while (rb1) {
-		entry = container_of(rb1, struct isgx_enclave_page, node);
+		entry = container_of(rb1, struct sgx_enclave_page, node);
 		rb2 = rb_next(rb1);
 		rb_erase(rb1, &enclave->enclave_rb);
 		if (entry->epc_page) {
 			list_del(&entry->load_list);
-			isgx_free_epc_page(entry->epc_page, enclave, 0);
+			sgx_free_epc_page(entry->epc_page, enclave, 0);
 		}
 		kfree(entry);
 		rb1 = rb2;
@@ -313,14 +261,14 @@ void isgx_enclave_release(struct kref *ref)
 
 	while (!list_empty(&enclave->va_pages)) {
 		va_page = list_first_entry(&enclave->va_pages,
-					   struct isgx_va_page, list);
+					   struct sgx_va_page, list);
 		list_del(&va_page->list);
-		isgx_free_epc_page(va_page->epc_page, NULL, 0);
+		sgx_free_epc_page(va_page->epc_page, enclave, 0);
 		kfree(va_page);
 	}
 
 	if (enclave->secs_page.epc_page)
-		isgx_free_epc_page(enclave->secs_page.epc_page, NULL, 0);
+		sgx_free_epc_page(enclave->secs_page.epc_page, enclave, 0);
 
 	enclave->secs_page.epc_page = NULL;
 

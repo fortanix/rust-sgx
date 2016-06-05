@@ -17,19 +17,17 @@
 #ifndef _UAPI_ASM_X86_SGX_H
 #define _UAPI_ASM_X86_SGX_H
 
-#include <linux/bitops.h>
-#include <linux/ioctl.h>
-#include <linux/stddef.h>
 #include <linux/types.h>
+#include <linux/ioctl.h>
+
+#define SGX_MAGIC 0xA4
 
 #define SGX_IOC_ENCLAVE_CREATE \
-	_IOWR('p', 0x02, struct sgx_create_param)
+	_IOW(SGX_MAGIC, 0x00, struct sgx_enclave_create)
 #define SGX_IOC_ENCLAVE_ADD_PAGE \
-	_IOW('p', 0x03, struct sgx_add_param)
+	_IOW(SGX_MAGIC, 0x01, struct sgx_enclave_add_page)
 #define SGX_IOC_ENCLAVE_INIT \
-	_IOW('p', 0x04, struct sgx_init_param)
-#define SGX_IOC_ENCLAVE_DESTROY \
-	_IOW('p', 0x06, struct sgx_destroy_param)
+	_IOW(SGX_MAGIC, 0x02, struct sgx_enclave_init)
 
 /* SGX leaf instruction return values */
 #define SGX_SUCCESS			0
@@ -57,57 +55,28 @@
 #define SGX_INVALID_KEYNAME		256
 
 /* IOCTL return values */
-#define SGX_POWER_LOST_ENCLAVE		0xc0000002
-#define SGX_LE_ROLLBACK			0xc0000003
+#define SGX_POWER_LOST_ENCLAVE		0x40000000
+#define SGX_LE_ROLLBACK			0x40000001
 
-/* SECINFO flags */
-enum isgx_secinfo_flags {
-	SGX_SECINFO_FL_R	= BIT_ULL(0),
-	SGX_SECINFO_FL_W	= BIT_ULL(1),
-	SGX_SECINFO_FL_X	= BIT_ULL(2),
-};
+struct sgx_enclave_create  {
+	__u64	src;
+} __attribute__((packed));
 
-/* SECINFO page types */
-enum isgx_secinfo_pt {
-	SGX_SECINFO_PT_SECS	= 0x000ULL,
-	SGX_SECINFO_PT_TCS	= 0x100ULL,
-	SGX_SECINFO_PT_REG	= 0x200ULL,
-};
+struct sgx_enclave_add_page {
+	__u64	addr;
+	__u64	src;
+	__u64	secinfo;
+	__u16	mrmask;
+} __attribute__((packed));
 
-struct sgx_secinfo {
-	__u64 flags;
-	__u64 reserved[7];
-} __aligned(128);
+struct sgx_enclave_init {
+	__u64	addr;
+	__u64	sigstruct;
+	__u64	einittoken;
+} __attribute__((packed));
 
-struct sgx_einittoken {
-	__u32	valid;
-	__u8	reserved1[206];
-	__u16	isvsvnle;
-	__u8	reserved2[92];
-} __aligned(512);
-
-struct sgx_create_param {
-	void *secs;
-	unsigned long addr;
-};
-
-#define SGX_ADD_SKIP_EEXTEND 0x1
-
-struct sgx_add_param {
-	unsigned long		addr;
-	unsigned long		user_addr;
-	struct isgx_secinfo	*secinfo;
-	unsigned int		flags;
-};
-
-struct sgx_init_param {
-	unsigned long		addr;
-	void			*sigstruct;
-	struct isgx_einittoken	*einittoken;
-};
-
-struct sgx_destroy_param {
-	unsigned long addr;
-};
+struct sgx_enclave_destroy {
+	__u64	addr;
+} __attribute__((packed));
 
 #endif /* _UAPI_ASM_X86_SGX_H */

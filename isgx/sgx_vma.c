@@ -14,7 +14,7 @@
  * of the License.
  */
 
-#include "isgx.h"
+#include "sgx.h"
 #include <asm/mman.h>
 #include <linux/delay.h>
 #include <linux/file.h>
@@ -25,10 +25,10 @@
 #include <linux/hashtable.h>
 #include <linux/shmem_fs.h>
 
-static void isgx_vma_open(struct vm_area_struct *vma)
+static void sgx_vma_open(struct vm_area_struct *vma)
 {
-	struct isgx_enclave *enclave;
-	struct isgx_vma *evma;
+	struct sgx_enclave *enclave;
+	struct sgx_vma *evma;
 
 	/* Was vm_private_data nullified as a result of the previous fork? */
 	enclave = vma->vm_private_data;
@@ -40,7 +40,7 @@ static void isgx_vma_open(struct vm_area_struct *vma)
 	 */
 	mutex_lock(&enclave->lock);
 	evma = list_first_entry(&enclave->vma_list,
-				struct isgx_vma, vma_list);
+				struct sgx_vma, vma_list);
 	if (evma->vma->vm_mm != vma->vm_mm) {
 		mutex_unlock(&enclave->lock);
 		goto out_fork;
@@ -51,7 +51,7 @@ static void isgx_vma_open(struct vm_area_struct *vma)
 	if (!list_empty(&enclave->vma_list)) {
 		evma = kzalloc(sizeof(*evma), GFP_KERNEL);
 		if (!evma) {
-			isgx_invalidate(enclave);
+			sgx_invalidate(enclave);
 		} else {
 			evma->vma = vma;
 			list_add_tail(&evma->vma_list, &enclave->vma_list);
@@ -66,10 +66,10 @@ out_fork:
 	vma->vm_private_data = NULL;
 }
 
-static void isgx_vma_close(struct vm_area_struct *vma)
+static void sgx_vma_close(struct vm_area_struct *vma)
 {
-	struct isgx_enclave *enclave = vma->vm_private_data;
-	struct isgx_vma *evma;
+	struct sgx_enclave *enclave = vma->vm_private_data;
+	struct sgx_vma *evma;
 
 	/* If process was forked, VMA is still there but
 	 * vm_private_data is set to NULL.
@@ -84,7 +84,7 @@ static void isgx_vma_close(struct vm_area_struct *vma)
 	 * in case vma_open() has failed on memory allocation
 	 * and vma list has then been emptied
 	 */
-	evma = isgx_find_vma(enclave, vma->vm_start);
+	evma = sgx_find_vma(enclave, vma->vm_start);
 	if (evma) {
 		list_del(&evma->vma_list);
 		kfree(evma);
@@ -92,17 +92,17 @@ static void isgx_vma_close(struct vm_area_struct *vma)
 
 	vma->vm_private_data = NULL;
 
-	isgx_zap_tcs_ptes(enclave, vma);
+	sgx_zap_tcs_ptes(enclave, vma);
 	zap_vma_ptes(vma, vma->vm_start, vma->vm_end - vma->vm_start);
 
 	mutex_unlock(&enclave->lock);
 
-	kref_put(&enclave->refcount, isgx_enclave_release);
+	kref_put(&enclave->refcount, sgx_enclave_release);
 }
 
-static int do_eldu(struct isgx_enclave *enclave,
-		   struct isgx_enclave_page *enclave_page,
-		   struct isgx_epc_page *epc_page,
+static int do_eldu(struct sgx_enclave *enclave,
+		   struct sgx_enclave_page *enclave_page,
+		   struct sgx_epc_page *epc_page,
 		   struct page *backing,
 		   bool is_secs)
 {
@@ -114,11 +114,11 @@ static int do_eldu(struct isgx_enclave *enclave,
 
 	pginfo.srcpge = (unsigned long)kmap_atomic(backing);
 	if (!is_secs)
-		secs_ptr = isgx_get_epc_page(enclave->secs_page.epc_page);
+		secs_ptr = sgx_get_epc_page(enclave->secs_page.epc_page);
 	pginfo.secs = (unsigned long)secs_ptr;
 
-	epc_ptr = isgx_get_epc_page(epc_page);
-	va_ptr = isgx_get_epc_page(enclave_page->va_page->epc_page);
+	epc_ptr = sgx_get_epc_page(epc_page);
+	va_ptr = sgx_get_epc_page(enclave_page->va_page->epc_page);
 
 	pginfo.linaddr = is_secs ? 0 : enclave_page->addr;
 	pginfo.pcmd = (unsigned long)&enclave_page->pcmd;
@@ -128,11 +128,11 @@ static int do_eldu(struct isgx_enclave *enclave,
 		     (unsigned long)va_ptr +
 		     enclave_page->va_offset);
 
-	isgx_put_epc_page(va_ptr);
-	isgx_put_epc_page(epc_ptr);
+	sgx_put_epc_page(va_ptr);
+	sgx_put_epc_page(epc_ptr);
 
 	if (!is_secs)
-		isgx_put_epc_page(secs_ptr);
+		sgx_put_epc_page(secs_ptr);
 
 	kunmap_atomic((void *)(unsigned long)pginfo.srcpge);
 	WARN_ON(ret);
@@ -142,14 +142,14 @@ static int do_eldu(struct isgx_enclave *enclave,
 	return 0;
 }
 
-static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
-						   unsigned long addr,
-						   int reserve)
+static struct sgx_enclave_page *sgx_vma_do_fault(struct vm_area_struct *vma,
+						 unsigned long addr,
+						 int reserve)
 {
-	struct isgx_enclave *enclave = vma->vm_private_data;
-	struct isgx_enclave_page *entry;
-	struct isgx_epc_page *epc_page;
-	struct isgx_epc_page *secs_epc_page = NULL;
+	struct sgx_enclave *enclave = vma->vm_private_data;
+	struct sgx_enclave_page *entry;
+	struct sgx_epc_page *epc_page;
+	struct sgx_epc_page *secs_epc_page = NULL;
 	struct page *backing;
 	unsigned free_flags = ISGX_FREE_SKIP_EREMOVE;
 	int rc;
@@ -160,22 +160,23 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 	if (!enclave)
 		return ERR_PTR(-EFAULT);
 
-	entry = isgx_enclave_find_page(enclave, addr);
+	entry = sgx_enclave_find_page(enclave, addr);
 	if (!entry)
 		return ERR_PTR(-EFAULT);
 
 	/* We use atomic allocation in the #PF handler in order to avoid ABBA
 	 * deadlock with mmap_sems.
 	 */
-	epc_page = isgx_alloc_epc_page(enclave->tgid_ctx, ISGX_ALLOC_ATOMIC);
+	epc_page = sgx_alloc_epc_page(enclave->tgid_ctx, ISGX_ALLOC_ATOMIC);
 	if (IS_ERR(epc_page))
-		return (struct isgx_enclave_page *)epc_page;
+		return (struct sgx_enclave_page *)epc_page;
 
 	/* The SECS page is not currently accounted. */
-	secs_epc_page = isgx_alloc_epc_page(NULL, ISGX_ALLOC_ATOMIC);
+	secs_epc_page = sgx_alloc_epc_page(enclave->tgid_ctx,
+					   ISGX_ALLOC_ATOMIC);
 	if (IS_ERR(secs_epc_page)) {
-		isgx_free_epc_page(epc_page, enclave, ISGX_FREE_SKIP_EREMOVE);
-		return (struct isgx_enclave_page *)secs_epc_page;
+		sgx_free_epc_page(epc_page, enclave, ISGX_FREE_SKIP_EREMOVE);
+		return (struct sgx_enclave_page *)secs_epc_page;
 	}
 
 	mutex_lock(&enclave->lock);
@@ -186,14 +187,14 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 	}
 
 	if (!(enclave->flags & ISGX_ENCLAVE_INITIALIZED)) {
-		isgx_dbg(enclave, "cannot fault, unitialized\n");
+		sgx_dbg(enclave, "cannot fault, unitialized\n");
 		entry = ERR_PTR(-EFAULT);
 		goto out;
 	}
 
 	if (reserve && (entry->flags & ISGX_ENCLAVE_PAGE_RESERVED)) {
-		isgx_dbg(enclave, "cannot fault, 0x%lx is reserved\n",
-			 entry->addr);
+		sgx_dbg(enclave, "cannot fault, 0x%lx is reserved\n",
+			entry->addr);
 		entry = ERR_PTR(-EBUSY);
 		goto out;
 	}
@@ -207,7 +208,7 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 
 	/* If SECS is evicted then reload it first */
 	if (enclave->flags & ISGX_ENCLAVE_SECS_EVICTED) {
-		backing = isgx_get_backing(enclave, &enclave->secs_page);
+		backing = sgx_get_backing(enclave, &enclave->secs_page);
 		if (IS_ERR(backing)) {
 			entry = (void *)backing;
 			goto out;
@@ -215,7 +216,7 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 
 		rc = do_eldu(enclave, &enclave->secs_page, secs_epc_page,
 			     backing, true /* is_secs */);
-		isgx_put_backing(backing, 0);
+		sgx_put_backing(backing, 0);
 		if (rc)
 			goto out;
 
@@ -226,7 +227,7 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 		secs_epc_page = NULL;
 	}
 
-	backing = isgx_get_backing(enclave, entry);
+	backing = sgx_get_backing(enclave, entry);
 	if (IS_ERR(backing)) {
 		entry = (void *)backing;
 		goto out;
@@ -234,7 +235,7 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 
 	do_eldu(enclave, entry, epc_page, backing, false /* is_secs */);
 	rc = vm_insert_pfn(vma, entry->addr, PFN_DOWN(epc_page->pa));
-	isgx_put_backing(backing, 0);
+	sgx_put_backing(backing, 0);
 
 	if (rc) {
 		free_flags = 0;
@@ -255,19 +256,19 @@ static struct isgx_enclave_page *isgx_vma_do_fault(struct vm_area_struct *vma,
 out:
 	mutex_unlock(&enclave->lock);
 	if (epc_page)
-		isgx_free_epc_page(epc_page, enclave, free_flags);
+		sgx_free_epc_page(epc_page, enclave, free_flags);
 	if (secs_epc_page)
-		isgx_free_epc_page(secs_epc_page, NULL,
-				   ISGX_FREE_SKIP_EREMOVE);
+		sgx_free_epc_page(secs_epc_page, enclave,
+				  ISGX_FREE_SKIP_EREMOVE);
 	return entry;
 }
 
-static int isgx_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
+static int sgx_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	unsigned long addr = (unsigned long)vmf->virtual_address;
-	struct isgx_enclave_page *entry;
+	struct sgx_enclave_page *entry;
 
-	entry = isgx_vma_do_fault(vma, addr, 0);
+	entry = sgx_vma_do_fault(vma, addr, 0);
 
 	if (!IS_ERR(entry) || PTR_ERR(entry) == -EBUSY)
 		return VM_FAULT_NOPAGE;
@@ -275,13 +276,13 @@ static int isgx_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		return VM_FAULT_SIGBUS;
 }
 
-static inline int isgx_vma_access_word(struct isgx_enclave *enclave,
-				       unsigned long addr,
-				       void *buf,
-				       int len,
-				       int write,
-				       struct isgx_enclave_page *enclave_page,
-				       int i)
+static inline int sgx_vma_access_word(struct sgx_enclave *enclave,
+				      unsigned long addr,
+				      void *buf,
+				      int len,
+				      int write,
+				      struct sgx_enclave_page *enclave_page,
+				      int i)
 {
 	char data[sizeof(unsigned long)];
 	int align, cnt, offset;
@@ -299,23 +300,23 @@ static inline int isgx_vma_access_word(struct isgx_enclave *enclave,
 			return -ECANCELED;
 
 		if (align || (cnt != sizeof(unsigned long))) {
-			vaddr = isgx_get_epc_page(enclave_page->epc_page);
+			vaddr = sgx_get_epc_page(enclave_page->epc_page);
 			ret = __edbgrd((void *)((unsigned long)vaddr + offset),
 				       (unsigned long *)data);
-			isgx_put_epc_page(vaddr);
+			sgx_put_epc_page(vaddr);
 			if (ret) {
-				isgx_dbg(enclave, "EDBGRD returned %d\n", ret);
+				sgx_dbg(enclave, "EDBGRD returned %d\n", ret);
 				return -EFAULT;
 			}
 		}
 
 		memcpy(data + align, buf + i, cnt);
-		vaddr = isgx_get_epc_page(enclave_page->epc_page);
+		vaddr = sgx_get_epc_page(enclave_page->epc_page);
 		ret = __edbgwr((void *)((unsigned long)vaddr + offset),
 			       (unsigned long *)data);
-		isgx_put_epc_page(vaddr);
+		sgx_put_epc_page(vaddr);
 		if (ret) {
-			isgx_dbg(enclave, "EDBGWR returned %d\n", ret);
+			sgx_dbg(enclave, "EDBGWR returned %d\n", ret);
 			return -EFAULT;
 		}
 	} else {
@@ -323,12 +324,12 @@ static inline int isgx_vma_access_word(struct isgx_enclave *enclave,
 		    (offset + (len - i)) > 72)
 			return -ECANCELED;
 
-		vaddr = isgx_get_epc_page(enclave_page->epc_page);
+		vaddr = sgx_get_epc_page(enclave_page->epc_page);
 		ret = __edbgrd((void *)((unsigned long)vaddr + offset),
 			       (unsigned long *)data);
-		isgx_put_epc_page(vaddr);
+		sgx_put_epc_page(vaddr);
 		if (ret) {
-			isgx_dbg(enclave, "EDBGRD returned %d\n", ret);
+			sgx_dbg(enclave, "EDBGRD returned %d\n", ret);
 			return -EFAULT;
 		}
 
@@ -338,11 +339,11 @@ static inline int isgx_vma_access_word(struct isgx_enclave *enclave,
 	return cnt;
 }
 
-static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
-			   void *buf, int len, int write)
+static int sgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
+			  void *buf, int len, int write)
 {
-	struct isgx_enclave *enclave = vma->vm_private_data;
-	struct isgx_enclave_page *entry = NULL;
+	struct sgx_enclave *enclave = vma->vm_private_data;
+	struct sgx_enclave_page *entry = NULL;
 	const char *op_str = write ? "EDBGWR" : "EDBGRD";
 	int ret = 0;
 	int i;
@@ -358,7 +359,7 @@ static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
 	    (enclave->flags & ISGX_ENCLAVE_SUSPEND))
 		return -EFAULT;
 
-	isgx_dbg(enclave, "%s addr=0x%lx, len=%d\n", op_str, addr, len);
+	sgx_dbg(enclave, "%s addr=0x%lx, len=%d\n", op_str, addr, len);
 
 	for (i = 0; i < len; i += ret) {
 		if (!entry || !((addr + i) & (PAGE_SIZE - 1))) {
@@ -366,7 +367,7 @@ static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
 				entry->flags &= ~ISGX_ENCLAVE_PAGE_RESERVED;
 
 			do {
-				entry = isgx_vma_do_fault(
+				entry = sgx_vma_do_fault(
 					vma, (addr + i) & PAGE_MASK, true);
 			} while (entry == ERR_PTR(-EBUSY));
 
@@ -380,8 +381,8 @@ static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
 		/* No locks are needed because used fields are immutable after
 		 * intialization.
 		 */
-		ret = isgx_vma_access_word(enclave, addr, buf, len, write,
-					   entry, i);
+		ret = sgx_vma_access_word(enclave, addr, buf, len, write,
+					  entry, i);
 		if (ret < 0)
 			break;
 	}
@@ -392,9 +393,9 @@ static int isgx_vma_access(struct vm_area_struct *vma, unsigned long addr,
 	return (ret < 0 && ret != -ECANCELED) ? ret : i;
 }
 
-struct vm_operations_struct isgx_vm_ops = {
-	.close = isgx_vma_close,
-	.open = isgx_vma_open,
-	.fault = isgx_vma_fault,
-	.access = isgx_vma_access,
+struct vm_operations_struct sgx_vm_ops = {
+	.close = sgx_vma_close,
+	.open = sgx_vma_open,
+	.fault = sgx_vma_fault,
+	.access = sgx_vma_access,
 };
