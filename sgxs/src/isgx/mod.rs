@@ -18,7 +18,7 @@ use std::io::{Result as IoResult,Error as IoError};
 use std::ptr;
 use libc;
 use sgxs::{SgxsRead,PageReader,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
-use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode};
+use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode,secinfo_flags};
 
 use loader::{Map,Load,Address,EinittokenError};
 
@@ -128,9 +128,25 @@ impl<'a> Mapping<'a> {
 			chunks:chunks.0,
 		};
 		try_ioctl_unsafe!(Add,ioctl::add(self.device.fd,&adddata));
+
+		let mut prot=libc::PROT_NONE;
 		if secinfo.flags.page_type()==PageType::Tcs as u8 {
 			self.tcss.push(::private::loader::make_address(adddata.dstpage));
+			prot=libc::PROT_READ|libc::PROT_WRITE;
+		} else {
+			if secinfo.flags.contains(secinfo_flags::R) {
+				prot|=libc::PROT_READ;
+			}
+			if secinfo.flags.contains(secinfo_flags::W) {
+				prot|=libc::PROT_WRITE;
+			}
+			if secinfo.flags.contains(secinfo_flags::X) {
+				prot|=libc::PROT_EXEC;
+			}
 		}
+
+		unsafe{libc::mprotect((self.base+eadd.offset) as usize as *mut _,0x1000,prot)};
+
 		Ok(())
 	}
 
