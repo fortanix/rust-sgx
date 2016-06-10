@@ -13,7 +13,6 @@ use alloc;
 use core::cell::UnsafeCell;
 use core::mem::{size_of,align_of,transmute};
 use core::ptr;
-use core::raw::Slice;
 use collections::Vec;
 
 extern "C" { fn usercall(nr: u64, p1: u64, p2: u64, _ignore: u64, p3: u64, p4: u64) -> u64; }
@@ -54,12 +53,15 @@ impl<T: Copy> Drop for UserBox<T> {
 	}
 }
 
-pub struct UserSlice<T: Copy>(Slice<T>);
+pub struct UserSlice<T: Copy> {
+	data: *mut T,
+	len: usize,
+}
 
 impl<T: Copy> UserSlice<T> {
 	pub fn clone_from(val: &[T]) -> UserSlice<T> {
 		let ret=Self::new_uninit(val.len());
-		unsafe{ptr::copy(val.as_ptr(),ret.0.data as *mut T,val.len())};
+		unsafe{ptr::copy(val.as_ptr(),ret.data,val.len())};
 		ret
 	}
 
@@ -68,20 +70,21 @@ impl<T: Copy> UserSlice<T> {
 			let p=alloc::USER_HEAP.lock().as_mut().expect("Trying to allocate on unintialized heap")
 				.allocate(size_of::<T>()*len,align_of::<T>()) as *mut T;
 			assert!(p != ptr::null_mut());
-			UserSlice(Slice{data:p,len:len})
+			UserSlice{data:p,len:len}
 		}
 	}
 
 	fn as_unsafe_cell(&self) -> &UnsafeCell<[T]> {
-		unsafe{transmute::<_,&UnsafeCell<[T]>>(self.0)}
+		use core::slice::from_raw_parts;
+		unsafe{transmute::<&[T],&UnsafeCell<[T]>>(from_raw_parts(self.data,self.len))}
 	}
 
 	pub unsafe fn as_ptr(&self) -> *const T {
-		self.0.data
+		self.data
 	}
 
 	pub fn len(&self) -> usize {
-		self.0.len
+		self.len
 	}
 
 	pub fn clone_into_enclave(&self,dst: &mut [T]) {
@@ -98,6 +101,6 @@ impl<T: Copy> UserSlice<T> {
 impl<T: Copy> Drop for UserSlice<T> {
 	fn drop(&mut self) {
 		unsafe{alloc::USER_HEAP.lock().as_mut().unwrap()
-			.deallocate(self.0.data as *mut u8,size_of::<T>()*self.0.len,align_of::<T>())};
+			.deallocate(self.data as *mut u8,size_of::<T>()*self.len,align_of::<T>())};
 	}
 }

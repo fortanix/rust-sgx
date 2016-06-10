@@ -9,9 +9,18 @@
  * any later version.
  */
 
-use std;
-use std::io::{repeat,Read};
+#![feature(float_extras)]
+
+#[macro_use]
+extern crate clap;
+extern crate sgxs as sgxs_crate;
+extern crate sgx_isa;
+extern crate xmas_elf;
+
+use std::io::{repeat,Read,Error as IoError};
 use std::mem::{transmute,replace};
+use std::path::{Path,PathBuf};
+use std::fs::File;
 
 use xmas_elf::ElfFile;
 use xmas_elf::sections::{SHN_UNDEF,SectionData};
@@ -42,12 +51,20 @@ pub enum Error {
 	DynEntryFoundDtRelacountButNotDtRela,                // "DT_RELACOUNT found, but DT_RELA not found"
 	DynamicSectionNotInPtDynamicSegment,                 // "PT_DYNAMIC segment is not a dynamic section!"
 	DynamicSectionNotFound,                              // "Could not found dynamic section!"
+	NotesNotInNoteLibenclaveSection,                     // ".note.libenclave section is not a note section!"
 	RelocationInvalid{section:u32,rtype:u32},            // "Invalid relocation: section={} type={}"
 	RelocationOutsideWritableSegment(u64),               // "Relocation at 0x{:016x} outside of writable segments"
 	RelocationInvalidCount{expected:u64,actual:usize},   // "Expected {} relocations, found {}"
 	ElfClassNot64,                                       // "Only 64-bit supported!"
 	NoLoadableSegments,                                  // "No loadable segments found"
+	XmasElfError(&'static str),
 	Sgxs(SgxsError),
+}
+
+impl From<&'static str> for Error {
+	fn from(err: &'static str) -> Error {
+		Error::XmasElfError(err)
+	}
 }
 
 impl From<SgxsError> for Error {
@@ -116,8 +133,8 @@ macro_rules! read_syms {
 		$(let mut $name=None;)*
 		for sym in $syms.iter().skip(1) {
 			if sym.shndx()==SHN_UNDEF {
-				return Err(Error::DynamicSymbolUndefined(sym.get_name(&$elf).to_string()));
-			} $(else if sym.get_name(&$elf)==stringify!($name) {
+				return Err(Error::DynamicSymbolUndefined(try!(sym.get_name(&$elf)).to_string()));
+			} $(else if try!(sym.get_name(&$elf))==stringify!($name) {
 				if replace(&mut $name,Some(sym)).is_some() {
 					return Err(Error::DynamicSymbolDuplicate(stringify!($name)));
 				}
@@ -148,7 +165,7 @@ impl<'a> LayoutInfo<'a> {
 	#[allow(non_snake_case)]
 	fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>,Error> {
 		if let Some(dynsym)=elf.find_section_by_name(".dynsym") {
-			if let SectionData::DynSymbolTable64(syms) = dynsym.get_data(&elf) {
+			if let SectionData::DynSymbolTable64(syms) = try!(dynsym.get_data(&elf)) {
 				let syms=read_syms!(sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE in syms : elf);
 
 				check_size!(syms.HEAP_BASE    == 8);
@@ -173,13 +190,13 @@ impl<'a> LayoutInfo<'a> {
 		//const DT_PLTPADSZ:  DynTag<u64> = OsSpecific(0x6ffffdf9);
 		//const DT_PLTPAD:    DynTag<u64> = OsSpecific(0x6ffffefd);
 
-		if let Some(dynh)=elf.program_iter().find(|ph|ph.get_type()==PhType::Dynamic) {
-			if let SegmentData::Dynamic64(dyns) = dynh.get_data(&elf) {
+		if let Some(dynh)=elf.program_iter().find(|ph|ph.get_type()==Ok(PhType::Dynamic)) {
+			if let SegmentData::Dynamic64(dyns) = try!(dynh.get_data(&elf)) {
 				let mut rela=None;
 				let mut relacount=None;
 
 				for dyn in dyns {
-					match dyn.get_tag() {
+					match try!(dyn.get_tag()) {
 						// Some entries for PLT/GOT checking are currently
 						// commented out. I *think* that if there were an actual
 						// PLT/GOT problem, that would be caught by the remaining
@@ -222,13 +239,13 @@ impl<'a> LayoutInfo<'a> {
 		const R_X86_64_RELATIVE: u32 = 8;
 
 		let writable_ranges=elf.program_iter().filter_map(|ph|
-			if ph.get_type()==PhType::Load && (ph.flags()&FLAG_W)==FLAG_W {
+			if ph.get_type()==Ok(PhType::Load) && (ph.flags()&FLAG_W)==FLAG_W {
 				Some(ph.virtual_addr()..(ph.virtual_addr()+ph.mem_size()))
 			} else { None }).collect::<Vec<_>>();
 
 		let mut count=0;
 		for section in elf.section_iter() {
-			if let SectionData::Rela64(relas) = section.get_data(&elf) {
+			if let SectionData::Rela64(relas) = try!(section.get_data(&elf)) {
 				count+=relas.len();
 				for rela in relas {
 					let shind=rela.get_symbol_table_index();
@@ -244,21 +261,34 @@ impl<'a> LayoutInfo<'a> {
 			}
 		}
 
-		let target=dynamic.map(|d|d.relacount.get_val()).unwrap_or(0);
+		let target=dynamic.and_then(|d|d.relacount.get_val().ok()).unwrap_or(0);
 		if count as u64 != target {
 			return Err(Error::RelocationInvalidCount{expected:target,actual:count});
 		}
 
 		Ok(())
 	}
+	
+	fn check_debug(elf: &ElfFile<'a>) -> Result<bool,Error> {
+		if let Some(notes)=elf.find_section_by_name(".note.libenclave") {
+			if let SectionData::Note64(note,data) = try!(notes.get_data(&elf)) {
+				Ok(note.name(data)=="libenclave DEBUG")
+			} else {
+				Err(Error::NotesNotInNoteLibenclaveSection)
+			}
+		} else {
+			Ok(false)
+		}
+	}
 
-	pub fn new(elf: ElfFile<'a>, ssaframesize: u32, heap_size: u64, stack_size: u64, debug: bool) -> Result<LayoutInfo<'a>,Error>  {
+	pub fn new(elf: ElfFile<'a>, ssaframesize: u32, heap_size: u64, stack_size: u64) -> Result<LayoutInfo<'a>,Error>  {
 		if let HeaderClass::SixtyFour=elf.header.pt1.class {} else {
 			return Err(Error::ElfClassNot64);
 		}
 		let sym=try!(Self::check_symbols(&elf));
 		let dyn=try!(Self::check_dynamic(&elf));
 		try!(Self::check_relocs(&elf,dyn.as_ref()));
+		let debug=try!(Self::check_debug(&elf));
 
 		Ok(LayoutInfo{
 			elf:elf,
@@ -271,18 +301,18 @@ impl<'a> LayoutInfo<'a> {
 		})
 	}
 
-	pub fn write_elf_segments<W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, heap_addr: u64, enclave_size: u64) -> Result<(),SgxsError> {
+	pub fn write_elf_segments<W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, heap_addr: u64, enclave_size: u64) -> Result<(),Error> {
 		let mut splices=[
 			Splice(self.sym.HEAP_BASE.value(),heap_addr),
 			Splice(self.sym.HEAP_SIZE.value(),self.heap_size),
-			Splice(self.sym.RELA.value(),self.dyn.as_ref().map(|d|d.rela.get_ptr()).unwrap_or(0)),
-			Splice(self.sym.RELACOUNT.value(),self.dyn.as_ref().map(|d|d.relacount.get_val()).unwrap_or(0)),
+			Splice(self.sym.RELA.value(),self.dyn.as_ref().and_then(|d|d.rela.get_ptr().ok()).unwrap_or(0)),
+			Splice(self.sym.RELACOUNT.value(),self.dyn.as_ref().and_then(|d|d.relacount.get_val().ok()).unwrap_or(0)),
 			Splice(self.sym.ENCLAVE_SIZE.value(),enclave_size),
 		];
 		splices.sort(); // `Splice` sorts by address
 		let mut cur_splice=splices.iter().peekable();
 
-		for ph in self.elf.program_iter().filter(|ph|ph.get_type()==PhType::Load) {
+		for ph in self.elf.program_iter().filter(|ph|ph.get_type()==Ok(PhType::Load)) {
 			use xmas_elf::program::{FLAG_R,FLAG_W,FLAG_X};
 			let mut secinfo=SecinfoTruncated{flags:PageType::Reg.into()};
 			if (ph.flags()&FLAG_R)!= 0 { secinfo.flags.insert(secinfo_flags::R); }
@@ -292,7 +322,7 @@ impl<'a> LayoutInfo<'a> {
 			let base=start&!0xfff;
 			let end=start+ph.mem_size();
 			let base_data;
-			if let SegmentData::Undefined(data)=ph.get_data(&self.elf) {
+			if let SegmentData::Undefined(data)=try!(ph.get_data(&self.elf)) {
 				base_data=data;
 			} else {
 				// Reachable if xmas-elf changes definitition of SegmentData
@@ -331,7 +361,7 @@ impl<'a> LayoutInfo<'a> {
 
 	pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(),Error> {
 		let max_addr=try!(self.elf.program_iter().filter_map(|ph|
-			if ph.get_type()==PhType::Load {
+			if ph.get_type()==Ok(PhType::Load) {
 				Some(ph.virtual_addr()+ph.mem_size())
 			} else { None }).max().ok_or(Error::NoLoadableSegments));
 
@@ -361,9 +391,10 @@ impl<'a> LayoutInfo<'a> {
 		try!(writer.write_pages(Some(&mut &tls[..]),1,Some(tls_addr),secinfo));
 
 		// Output TCS, SSA
+		let nssa=if self.debug { 2 } else { 1 };
 		let tcs=Tcs {
 			ossa: tcs_addr+0x1000,
-			nssa: if self.debug { 2 } else { 1 },
+			nssa: nssa,
 			oentry: self.sym.sgx_entry.value(),
 			ofsbasgx: tls_addr,
 			ogsbasgx: stack_tos,
@@ -375,8 +406,73 @@ impl<'a> LayoutInfo<'a> {
 		let secinfo=SecinfoTruncated{flags:PageType::Tcs.into()};
 		try!(writer.write_page(Some(&mut &tcs[..]),Some(tcs_addr),secinfo));
 		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-		try!(writer.write_pages::<&[u8]>(None,2*self.ssaframesize as usize,None,secinfo));
+		try!(writer.write_pages::<&[u8]>(None,(nssa*self.ssaframesize) as usize,None,secinfo));
 
 		Ok(())
 	}
+}
+
+/////////////////
+// Driver code //
+/////////////////
+
+mod naming;
+mod num;
+
+use clap::ArgMatches;
+use num::NumArg;
+
+#[derive(Debug)]
+enum DriverError {
+	ElfRead(IoError),
+	Elf2Sgxs(Error),
+}
+
+impl From<Error> for DriverError {
+	fn from(err: Error) -> DriverError {
+		DriverError::Elf2Sgxs(err)
+	}
+}
+
+fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>,IoError> {
+	let mut f=try!(File::open(path));
+	let mut buf=vec![];
+	try!(f.read_to_end(&mut buf));
+	Ok(buf)
+}
+
+fn main_result(args: ArgMatches) -> Result<(),DriverError> {
+	let ssaframesize=u32::parse_arg(args.value_of("ssaframesize").unwrap());
+	let heap_size=   u64::parse_arg(args.value_of("heap-size")   .unwrap());
+	let stack_size=  u64::parse_arg(args.value_of("stack-size")  .unwrap());
+
+	let srclib=PathBuf::from(args.value_of("lib").unwrap());
+	let srcbuf=try!(read_file(&srclib).map_err(DriverError::ElfRead));
+	let srcelf=ElfFile::new(&srcbuf);
+	let layout=try!(LayoutInfo::new(srcelf,ssaframesize,heap_size,stack_size));
+
+	let mut outfile=args.value_of("output").map(|out|File::create(out)).unwrap_or_else(||File::create(naming::output_lib_name(&srclib,"sgxs").expect("Missing filename"))).unwrap();
+	try!(layout.write(&mut outfile));
+
+	Ok(())
+}
+
+fn main() {
+	use clap::{Arg,App,AppSettings};
+
+	let args = App::new("libenclave-elf2sgxs")
+		.about("Convert a libenclave dynamic library into an SGXS enclave")
+		.version(crate_version!())
+		.setting(AppSettings::UnifiedHelpMessage)
+		.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg).default_value("1").help("Specify SSAFRAMESIZE"))
+		.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify heap size"))
+		.arg(Arg::with_name("stack-size").short("S").long("stack-size")  .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify stack size"))
+		.arg(Arg::with_name("output").short("o").long("output").value_name("FILE").help("Specify output file"))
+		.arg(Arg::with_name("lib").index(1).required(true).help("Path to the dynamic library to be converted"))
+		.get_matches();
+
+	if let Err(e)=main_result(args) {
+		println!("Error: {:?}",e);
+		std::process::exit(1);
+	};
 }

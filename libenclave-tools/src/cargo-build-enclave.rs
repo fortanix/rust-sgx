@@ -27,9 +27,9 @@ use std::env;
 use std::ffi::{OsStr,OsString};
 use std::path::Path;
 use std::io::{Write,Error as IoError};
-use std::collections::HashMap;
 use std::fs;
 use std::borrow::Cow;
+use std::fmt;
 
 use clap::ArgMatches;
 
@@ -53,12 +53,10 @@ struct Manifest {
 	manifest_path: String,
 	targets: Vec<ManifestTarget>,
 	dependencies: Vec<ManifestDependency>,
-	features: HashMap<String,Vec<String>>,
 }
 
 #[derive(Deserialize)]
 struct ManifestTarget {
-	name: String,
 	kind: Vec<String>,
 }
 
@@ -70,28 +68,14 @@ struct ManifestDependency {
 
 impl Manifest {
 	fn check(&self) -> Result<(),Error> {
-		if !self.targets.iter().any(|target|target.name==self.name && target.kind.iter().any(|kind|kind=="staticlib")) {
-			return Err(Error::ManifestNotStaticlib);
+		if !(self.targets.len()==1 && self.targets[0].kind==["dylib"]) {
+			return Err(Error::ManifestTargetNotDylib);
 		}
 		let dependency=try!(self.dependencies.iter().find(|dep|dep.name=="enclave").ok_or(Error::ManifestNoEnclaveDependency));
 		if dependency.req!=concat!("= ",crate_version!()) {
-			return Err(Error::ManifestEnclaveDependencyInvalidVersion(dependency.req.to_owned()));
+			return Err(Error::ManifestEnclaveDependencyInvalidVersion(dependency.req.to_owned().into()));
 		}
 		Ok(())
-	}
-
-	fn find_debug_feature(&self) -> Result<&str,Error> {
-		let mut found_feature=None;
-		for (feature,deps) in self.features.iter() {
-			if deps.iter().any(|dep|dep=="enclave/debug") {
-				if found_feature.is_none() {
-					found_feature=Some(&feature[..]);
-				} else {
-					return Err(Error::ManifestMultipleDebugFeatures);
-				}
-			}
-		}
-		found_feature.ok_or(Error::ManifestNoDebugFeature)
 	}
 }
 
@@ -105,25 +89,39 @@ fn say_status<W: Write>(writer: &mut W, color: bool, status: &str, message: &str
 
 #[derive(Debug)]
 enum Error {
-	ManifestNoDebugFeature,
-	ManifestMultipleDebugFeatures,
-	ManifestNotStaticlib,
+	ManifestTargetNotDylib,
 	ManifestNoEnclaveDependency,
 	ManifestEnclaveDependencyInvalidVersion(String),
-	StdoutError(IoError),
 	CargoReadManifestInvalidCmdline,
 	CargoReadManifestExec(ExecError),
 	CargoReadManifestJson(JsonError),
-	CargoBuildInvalidCmdline,
-	CargoBuildExec(ExecError),
-	CargoBuildNoOutput(IoError),
-	LinkCantFindLink(IoError),
-	LinkExec(ExecError),
-	LinkNoOutput(IoError),
+	CargoRustcExec(ExecError),
+	CargoRustcNoOutput(IoError),
+	ConvCantFindConv(IoError),
+	ConvExec(ExecError),
+	ConvNoOutput(IoError),
+}
+
+impl fmt::Display for Error {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		use Error::*;
+		match *self {
+			ManifestTargetNotDylib => write!(fmt,"This crate's manifest specifies more than one target, or the only target is not a `dylib' target. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
+			ManifestNoEnclaveDependency => write!(fmt,"This crate does not seem to have a dependency on libenclave."),
+			ManifestEnclaveDependencyInvalidVersion(ref dep_v) => write!(fmt,"There is a version mismatch between libenclave-tools ({}) and the libenclave dependency version ({}).",crate_version!(),dep_v),
+			CargoReadManifestInvalidCmdline => write!(fmt,"There was an error executing `cargo read-manifest': the --manifest-path argument is invalid."),
+			CargoReadManifestExec(ref err) => write!(fmt,"There was an error executing `cargo read-manifest': {}",err),
+			CargoReadManifestJson(ref err) => write!(fmt,"There was an error parsing the JSON output of `cargo read-manifest': {}",err),
+			CargoRustcExec(ref err) => write!(fmt,"There was an error executing `cargo rustc': {}",err),
+			CargoRustcNoOutput(ref err) => write!(fmt,"Output artifact not found after executing `cargo rustc': {}",err),
+			ConvCantFindConv(ref err) => write!(fmt,"Couldn't find `libenclave-elf2sgxs' executable: {}",err),
+			ConvExec(ref err) => write!(fmt,"There was an error executing `libenclave-elf2sgxs': {}",err),
+			ConvNoOutput(ref err) => write!(fmt,"Output artifact not found after executing `libenclave-elf2sgxs': {}",err),
+		}
+	}
 }
 
 struct BuilderMode<'args> {
-	debug: bool,
 	verbose: bool,
 	color: bool,
 	quiet: bool,
@@ -148,7 +146,6 @@ fn color_detect(arg: &str) -> bool {
 impl<'args> BuilderMode<'args> {
 	fn new(args: &'args ArgMatches) -> BuilderMode<'args> {
 		BuilderMode{
-			debug: args.is_present("debug"),
 			verbose: args.is_present("verbose"),
 			quiet: args.is_present("quiet"),
 			color: color_detect(args.value_of("color").unwrap()),
@@ -163,13 +160,15 @@ impl<'args> BuilderMode<'args> {
 		let manifest=try!(self.read_manifest());
 		try!(manifest.check());
 
-		let staticlib_artifact=try!(self.target_path(&manifest));
-		let sgxs_artifact=naming::output_lib_name(&staticlib_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+		let dylib_artifact=try!(self.target_path(&manifest));
+		let map_tempfile=naming::output_lib_name(&dylib_artifact,"map").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+		let sgxs_artifact=naming::output_lib_name(&dylib_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
 
 		let builder=Builder{
 			mode:self,
 			manifest:manifest,
-			staticlib_artifact:staticlib_artifact,
+			dylib_artifact:dylib_artifact,
+			map_tempfile:map_tempfile,
 			sgxs_artifact:sgxs_artifact,
 		};
 
@@ -210,7 +209,7 @@ impl<'args> BuilderMode<'args> {
 		buf.push("lib");
 		let mut target=buf.into_os_string();
 		target.push(&manifest.name.replace("-","_"));
-		target.push(".a");
+		target.push(".so");
 
 		Ok(target)
 	}
@@ -219,29 +218,17 @@ impl<'args> BuilderMode<'args> {
 struct Builder<'args> {
 	mode: BuilderMode<'args>,
 	manifest: Manifest,
-	staticlib_artifact: OsString,
+	dylib_artifact: OsString,
 	sgxs_artifact: OsString,
+	map_tempfile: OsString,
 }
 
 impl<'args> Builder<'args> {
-	fn cargo_build(&mut self) -> Result<(),Error> {
-		if self.mode.debug {
-			let feature=try!(self.manifest.find_debug_feature());
-			match self.mode.cargo_args.iter().position(|arg|&**arg=="--features") {
-				Some(pos) => {
-					let features_arg=try!(self.mode.cargo_args.get_mut(pos+1).ok_or(Error::CargoBuildInvalidCmdline));
-					features_arg.to_mut().push(" ");
-					features_arg.to_mut().push(feature);
-				},
-				None => {
-					self.mode.cargo_args.push(Cow::Owned("--features".into()));
-					self.mode.cargo_args.push(Cow::Owned(feature.into()));
-				}
-			}
-		}
-
+	fn cargo_rustc(&mut self) -> Result<(),Error> {
 		let mut cargo=Command::new("cargo");
-		cargo.env("LIBENCLAVE_NO_WARNING","1").arg("build");
+		cargo.env("LIBENCLAVE_NO_WARNING","1");
+		cargo.env("LIBENCLAVE_MAP_FILE",&self.map_tempfile);
+		cargo.args(&["rustc","--lib"]);
 
 		if self.mode.verbose { cargo.arg("--verbose"); }
 		if self.mode.quiet { cargo.arg("--quiet"); }
@@ -249,18 +236,37 @@ impl<'args> Builder<'args> {
 		cargo.arg(if self.mode.color { "always" } else { "never" });
 
 		cargo.args(&self.mode.cargo_args);
-		cargo.status_ext(self.mode.verbose).map_err(Error::CargoBuildExec)
+
+		let mut link_args: OsString=("link-args=".to_string()+&[
+			"-fuse-ld=gold",
+			"-nostdlib",
+			"-shared",
+			"-Wl,-e,sgx_entry",
+			"-Wl,-Bstatic",
+			"-Wl,--gc-sections",
+			"-Wl,-z,text",
+			"-Wl,-z,norelro",
+			"-Wl,--rosegment",
+			"-Wl,--no-undefined",
+			"-Wl,--error-unresolved-symbols",
+			"-Wl,--no-undefined-version",
+			"-Wl,-Bsymbolic",
+			"-Wl,--version-script="/*append later*/
+		].join(" ")).into();
+		link_args.push(&self.map_tempfile);
+		cargo.args(&["--","-C"]).arg(&link_args);
+
+		cargo.status_ext(self.mode.verbose).map_err(Error::CargoRustcExec)
 	}
 
-	fn find_link_sgxs() -> Result<Command,Error> {
-		let arg0=try!(env::current_exe().map_err(Error::LinkCantFindLink));
-		Ok(Command::new(arg0.with_file_name("link-sgxs")))
+	fn find_elf2sgxs() -> Result<Command,Error> {
+		let arg0=try!(env::current_exe().map_err(Error::ConvCantFindConv));
+		Ok(Command::new(arg0.with_file_name("libenclave-elf2sgxs")))
 	}
 
-	fn link(&self) -> Result<(),Error> {
-		let mut cmd=try!(Self::find_link_sgxs());
+	fn sgxsconv(&self) -> Result<(),Error> {
+		let mut cmd=try!(Self::find_elf2sgxs());
 
-		if self.mode.debug { cmd.arg("--debug"); }
 		cmd.arg("--ssaframesize");
 		cmd.arg(format!("0x{:x}",self.mode.ssaframesize));
 		cmd.arg("--heap-size");
@@ -268,25 +274,25 @@ impl<'args> Builder<'args> {
 		cmd.arg("--stack-size");
 		cmd.arg(format!("0x{:x}",self.mode.stack_size));
 
-		cmd.arg(&self.staticlib_artifact);
-		cmd.status_ext(self.mode.verbose).map_err(Error::LinkExec)
+		cmd.arg(&self.dylib_artifact);
+		cmd.status_ext(self.mode.verbose).map_err(Error::ConvExec)
 	}
 
 	fn build(mut self) -> Result<(),Error> {
-		try!(self.cargo_build());
-		try!(fs::metadata(&self.staticlib_artifact).map_err(Error::CargoBuildNoOutput));
+		try!(self.cargo_rustc());
+		try!(fs::metadata(&self.dylib_artifact).map_err(Error::CargoRustcNoOutput));
 
-		try!(self.say_status("Linking",&self.manifest.id));
-		try!(self.link());
-		try!(fs::metadata(&self.sgxs_artifact).map_err(Error::LinkNoOutput));
+		self.say_status("SGXS Convert",&self.manifest.id);
+		try!(self.sgxsconv());
+		try!(fs::metadata(&self.sgxs_artifact).map_err(Error::ConvNoOutput));
 
 		Ok(())
 	}
 
-	fn say_status(&self, status: &str, message: &str) -> Result<(),Error> {
-		let stdout=std::io::stdout();
-		let mut l=stdout.lock();
-		say_status(&mut l,self.mode.color,status,message).map_err(Error::StdoutError)
+	fn say_status(&self, status: &str, message: &str) {
+		let stderr=std::io::stderr();
+		let mut l=stderr.lock();
+		say_status(&mut l,self.mode.color,status,message).expect("failed printing to stderr");
 	}
 }
 
@@ -306,7 +312,7 @@ fn main() {
 			.arg(Arg::with_name("verbose").short("v").long("verbose").help("Use verbose output"))
 			.arg(Arg::with_name("quiet").short("q").long("quiet").help("No output printed to stdout"))
 			.arg(Arg::with_name("color").value_name("WHEN").possible_values(&["auto", "always", "never"]).default_value("auto").long("color").help("Coloring"))
-			.arg(Arg::with_name("debug").short("d").long("debug").help("Link with the debug runtime"))
+			.arg(Arg::with_name("debug").short("d").long("debug").help("(ignored)"))
 			.arg(Arg::with_name("cargo-opts").index(1).multiple(true).help("Options to be passed to `cargo build`"))
 			.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg).default_value("1").help("Specify SSAFRAMESIZE"))
 			.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify heap size"))
@@ -314,9 +320,14 @@ fn main() {
 		).get_matches();
 
 	let args=args.subcommand_matches("build-enclave").unwrap();
+	
+	if args.is_present("debug") {
+		writeln!(std::io::stderr(),"Error: the --debug flag is no longer supported. Use --features directly to use the SGX debugging features.").expect("failed printing to stderr");
+		std::process::exit(1);
+	}
 
 	if let Err(e)=BuilderMode::new(&args).into_builder().and_then(Builder::build) {
-		println!("Error: {:?}",e);
+		writeln!(std::io::stderr(),"ERROR: {}",e).expect("failed printing to stderr");
 		std::process::exit(1);
 	};
 }

@@ -2,6 +2,7 @@ extern crate gcc;
 
 use std::env;
 use std::path::{Path,PathBuf};
+use std::fs::File;
 use std::io::{stderr,Write};
 
 /// If `prefix` is a prefix of `filename`, return the remainder of the path
@@ -74,7 +75,27 @@ fn main() {
 			let _=writeln!(stderr(),"Use «cargo build-enclave» instead of «cargo build»");
 			std::process::exit(1);
 		}
+		
+		let mut f=File::create(env::var_os("LIBENCLAVE_MAP_FILE").unwrap()).unwrap();
+		f.write_all(b"{
+global:
+	sgx_entry;
+	HEAP_BASE;
+	HEAP_SIZE;
+	RELA;
+	RELACOUNT;
+	ENCLAVE_SIZE;
+local:
+	*;
+};").unwrap();
 	}
 
 	gcc::compile_library("libaes.a", &["src/aes/asm_impl.S"]);
+	
+	let mut entry=gcc::Config::new();
+	entry.file("src/entry.S");
+	if std::env::var_os("CARGO_FEATURE_DEBUG").is_some() {
+		entry.define("DEBUG",Some("DEBUG"));
+	}
+	entry.compile("libentry.a");
 }

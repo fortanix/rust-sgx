@@ -46,6 +46,15 @@ init_once:
 panicked:
 	.byte 0
 
+#ifdef DEBUG
+.section .note.libenclave, "", @note
+	.int 17 // namesz
+	.int  0 // descsz
+	.int  0 // type
+	.asciz "libenclave DEBUG"
+	.align 4
+#endif
+
 // stack section
 
 // TLS section

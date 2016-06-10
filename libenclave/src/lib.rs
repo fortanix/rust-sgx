@@ -9,7 +9,7 @@
  * option) any later version.
  */
 
-#![feature(linkage,lang_items,unwind_attributes,asm,raw,const_fn,collections,unicode,alloc,str_char,oom,heap_api)]
+#![feature(linkage,lang_items,unwind_attributes,asm,const_fn,collections,unicode,alloc,oom,heap_api)]
 #![no_std]
 
 #[macro_use] extern crate collections;

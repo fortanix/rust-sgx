@@ -3,12 +3,12 @@ name = "libenclave-tools"
 description = "Tools for building and linking enclaves using libenclave"
 version = "0.1.0"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
-license = "GPL-2.0+ AND AGPL-3.0+"
+license = "GPL-2.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/libenclave-tools"
 
 [[bin]]
-name = "link-sgxs"
-path = "src/link-sgxs.rs"
+name = "libenclave-elf2sgxs"
+path = "src/elf2sgxs.rs"
 
 [[bin]]
 name = "cargo-build-enclave"
@@ -16,8 +16,8 @@ path = "src/cargo-build-enclave.rs"
 
 [dependencies]
 sgxs = "0.4.0"
-"sgx-isa" = "0.1.0"
-xmas-elf = "0.2.0"      # Apache-2.0/MIT
+sgx-isa = "0.1.0"
+xmas-elf = "0.3.0"      # Apache-2.0/MIT
 clap = "2.2.5"          # MIT
 serde_json = "0.7.0"    # MIT/Apache-2.0
 serde = "0.7.0"         # MIT/Apache-2.0

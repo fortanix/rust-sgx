@@ -11,11 +11,21 @@
 
 use std::process::{Command,Output as ProcessOutput,ExitStatus};
 use std::io::Error as IoError;
+use std::fmt;
 
 #[derive(Debug)]
 pub enum ExecError {
 	Io(IoError),
 	Status(ExitStatus),
+}
+
+impl fmt::Display for ExecError {
+	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+		match *self {
+			ExecError::Io(ref err) => write!(fmt,"I/O error while executing: {}",err),
+			ExecError::Status(ref status) => write!(fmt,"Process exited with {}",status),
+		}
+	}
 }
 
 pub trait CommandExt {
