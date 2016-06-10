@@ -46,7 +46,7 @@ fn main() {
 		}
 	};
 
-	let dev=sgxs::sgxdev::Device::open("/dev/sgx").unwrap();
+	let dev=sgxs::isgx::Device::open("/dev/sgx").unwrap();
 	let mapping=dev.load_with_launch_enclave(&mut file,&sig,OptTok::None(None),&mut le_file,&le_sig).unwrap();
 
 	let h=enclave_interface::debug::install_segv_signal_handler(mapping.tcss()[0]);

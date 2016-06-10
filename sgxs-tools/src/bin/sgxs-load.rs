@@ -85,7 +85,7 @@ fn main() {
 	the new token will be written back to <token>.")
 		.get_matches();
 
-	let dev=isgx::Device::open(matches.value_of("device").unwrap_or("/dev/isgx")).unwrap();
+	let dev=isgx::Device::open(matches.value_of("device").unwrap_or("/dev/sgx")).unwrap();
 	let mut file=File::open(matches.value_of("sgxs").unwrap()).unwrap();
 	let sigstruct=read_sigstruct(matches.value_of("sigstruct").unwrap());
 	let use_le=matches.is_present("le-sgxs");
