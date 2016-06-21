@@ -9,14 +9,10 @@
  * any later version.
  */
 
-#![feature(custom_derive, plugin)]
-#![plugin(serde_macros)]
-
 #[macro_use]
 extern crate clap;
 extern crate libc;
-extern crate serde;
-extern crate serde_json;
+extern crate rustc_serialize;
 
 mod naming;
 mod exec;
@@ -33,20 +29,22 @@ use std::fmt;
 
 use clap::ArgMatches;
 
-use serde_json::error::Error as JsonError;
+use rustc_serialize::json::DecoderError as JsonError;
+use rustc_serialize::Decodable;
 
 use exec::{CommandExt,ExecError};
 use num::NumArg;
 
-trait JsonDeserialize: serde::Deserialize {
-	fn from_json_slice(v: &[u8]) -> Result<Self,JsonError> {
-		serde_json::from_slice(v)
+trait JsonDeserialize: Decodable {
+	fn from_json_slice(mut v: &[u8]) -> Result<Self,JsonError> {
+		use rustc_serialize::json::{Json,Decoder};
+		Decodable::decode(&mut Decoder::new(try!(Json::from_reader(&mut v))))
 	}
 }
 
-impl<T: serde::Deserialize> JsonDeserialize for T {}
+impl<T: Decodable> JsonDeserialize for T {}
 
-#[derive(Deserialize)]
+#[derive(RustcDecodable)]
 struct Manifest {
 	name: String,
 	id: String,
@@ -55,12 +53,12 @@ struct Manifest {
 	dependencies: Vec<ManifestDependency>,
 }
 
-#[derive(Deserialize)]
+#[derive(RustcDecodable)]
 struct ManifestTarget {
 	kind: Vec<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(RustcDecodable)]
 struct ManifestDependency {
 	name: String,
 	req: String,
