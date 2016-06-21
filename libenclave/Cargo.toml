@@ -1,7 +1,7 @@
 [package]
 name = "enclave"
 description = "Secure enclave runtime and library"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "AGPL-3.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/libenclave"

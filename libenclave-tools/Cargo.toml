@@ -1,7 +1,7 @@
 [package]
 name = "libenclave-tools"
 description = "Tools for building and linking enclaves using libenclave"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "GPL-2.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/libenclave-tools"
