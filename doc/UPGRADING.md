@@ -24,10 +24,10 @@ assembled for an external build in [this repository](../isgx). Build using:
 make -C /lib/modules/$(uname -r)/build M=$(pwd) modules
 ```
 
-In your code, replace every used of `sgxs::sgxdev` with `sgxs::isgx`. No other
+In your code, replace every use of `sgxs::sgxdev` with `sgxs::isgx`. No other
 changes should be needed.
 
-### Rearrange source file
+### Rearrange source files
 
 The build process was streamlined. The enclave and user artifacts are now in
 separate crates instead of combined in a single one. You'll need to split up
