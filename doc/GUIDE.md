@@ -9,7 +9,7 @@ Make sure to have the following installed:
 
 - Rust **nightly** and Cargo (e.g. from https://www.rust-lang.org/downloads.html)
 - `ld.gold` from binutils 2.26 or higher
-- SGX linux driver from [this repository](../linux-driver)
+- SGX linux driver from [this repository](../isgx)
 
 And have the following ready:
 
@@ -52,12 +52,17 @@ We're ready to roll! Let's download the example enclave and try to run it:
 
 ```sh
 $ cargo clone enclave-example
-$ cd enclave-example
+$ mv enclave-example trusted
+$ cargo clone enclave-example-runner
+$ mv enclave-example-runner untrusted
+$ cd trusted
 $ cargo build-enclave -H 0x10000 -S 0x10000
 $ cd target/debug
 $ openssl genrsa -3 3072 > private.pem
 $ sgxs-sign --key private.pem -d enclave_example.sgxs enclave_example.sig
-$ ./enclave-runner enclave_example.sgxs enclave_example.sig /path/to/le.sgxs /path/to/le_prod_css.bin 
+$ cd ../../../untrusted
+$ cargo build
+$ target/debug/enclave-runner ../trusted/target/debug/enclave_example.sgxs ../trusted/target/debug/enclave_example.sig /path/to/le.sgxs /path/to/le_prod_css.bin
 ```
 
 If everything went well, you should see the following output:
@@ -68,5 +73,5 @@ Enclave returned: 5678
 ```
 
 Congratulations, you have compiled Rust code and run it in enclave mode using 
-SGX! You can modify the source in the `enclave-example/` directory to do 
-whatever you want.
+SGX! You can of course modify the source in the `trusted/` and `untrusted/`
+directories to do whatever you want.
