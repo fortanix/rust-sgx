@@ -7,10 +7,15 @@ individual directories and files for copyright information.
 
 Documentation on various SGX file formats and ABIs.
 
+## isgx
+
+This is Intel's Linux SGX driver patchset assembled for an [external 
+build](https://www.kernel.org/doc/Documentation/kbuild/modules.txt).
+
 ## linux-driver
 
-Bare-bones SGX EPC driver. Exposes ENCLS pretty much directly to userspace. Not
-intended for production use.
+Bare-bones SGX EPC driver. Exposes ENCLS pretty much directly to userspace. 
+Included here for posterity. Don't use this. Use the isgx driver above.
 
 ## libenclave / libenclave-tools / enclave-interface
 
