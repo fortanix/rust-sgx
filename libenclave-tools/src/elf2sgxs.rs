@@ -9,8 +9,6 @@
  * any later version.
  */
 
-#![feature(float_extras)]
-
 #[macro_use]
 extern crate clap;
 extern crate sgxs as sgxs_crate;
@@ -31,10 +29,10 @@ use xmas_elf::program::{SegmentData,Type as PhType};
 
 use sgx_isa::{Tcs,PageType,secinfo_flags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated,Error as SgxsError};
+use sgxs_crate::util::{size_fit_page,size_fit_natural};
 
 #[derive(Debug)]
 pub enum Error {
-	EnclaveSizeTooBig,                                   // "Conversion for this size not supported!"
 	DynamicSymbolUndefined(String),                      // "Found undefined dynamic symbol: {}"
 	DynamicSymbolDuplicate(&'static str),                // "Found symbol twice: {}"
 	DynamicSymbolMissing(Vec<&'static str>),             // "These dynamic symbols are missing: {}"
@@ -71,23 +69,6 @@ impl From<SgxsError> for Error {
 	fn from(err: SgxsError) -> Error {
 		Error::Sgxs(err)
 	}
-}
-
-fn size_align_page_size(size: u64) -> u64 {
-	match size&0xfff {
-		0 => size,
-		residue => size+(0x1000-residue),
-	}
-}
-
-// Compute next highest power of 2 using float conversion
-fn enclave_size<'a>(last_page_address: u64) -> Result<u64,Error> {
-	if last_page_address==0 { return Ok(0); }
-	if last_page_address>=0x20000000000000 { return Err(Error::EnclaveSizeTooBig) }
-	let (mantissa,exponent,_)=(last_page_address as f64).integer_decode();
-	let mut adjust=53;
-	if mantissa^0x10000000000000==0 { adjust-=1 }
-	Ok(1<<((exponent+adjust) as u64))
 }
 
 #[allow(non_snake_case)]
@@ -353,7 +334,7 @@ impl<'a> LayoutInfo<'a> {
 				}
 			}
 
-			try!(writer.write_pages(Some(&mut data),(size_align_page_size(end-base)/0x1000) as usize,Some(base),secinfo))
+			try!(writer.write_pages(Some(&mut data),(size_fit_page(end-base)/0x1000) as usize,Some(base),secinfo))
 		}
 
 		Ok(())
@@ -365,12 +346,13 @@ impl<'a> LayoutInfo<'a> {
 				Some(ph.virtual_addr()+ph.mem_size())
 			} else { None }).max().ok_or(Error::NoLoadableSegments));
 
-		let heap_addr=size_align_page_size(max_addr);
+		let heap_addr=size_fit_page(max_addr);
 		let stack_addr=heap_addr+self.heap_size+0x10000;
 		let stack_tos=stack_addr+self.stack_size;
 		let tls_addr=stack_tos;
 		let tcs_addr=tls_addr+0x1000;
-		let enclave_size=try!(enclave_size(tcs_addr+(1+2*(self.ssaframesize as u64))*0x1000));
+		let nssa: u32=if self.debug { 2 } else { 1 };
+		let enclave_size=size_fit_natural(tcs_addr+(1+(nssa as u64)*(self.ssaframesize as u64))*0x1000);
 
 		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:enclave_size,ssaframesize:self.ssaframesize}));
 
@@ -391,7 +373,6 @@ impl<'a> LayoutInfo<'a> {
 		try!(writer.write_pages(Some(&mut &tls[..]),1,Some(tls_addr),secinfo));
 
 		// Output TCS, SSA
-		let nssa=if self.debug { 2 } else { 1 };
 		let tcs=Tcs {
 			ossa: tcs_addr+0x1000,
 			nssa: nssa,

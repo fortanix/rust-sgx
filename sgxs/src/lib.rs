@@ -31,6 +31,7 @@ pub mod sgxs;
 mod intelcall;
 pub mod loader;
 pub mod sigstruct;
+pub mod util;
 
 mod private {
 	pub mod loader {

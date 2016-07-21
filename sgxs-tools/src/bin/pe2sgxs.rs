@@ -9,8 +9,6 @@
  * any later version.
  */
 
-#![feature(float_extras)]
-
 #[macro_use]
 extern crate lazy_static;
 extern crate sgxs as sgxs_crate;
@@ -29,6 +27,7 @@ use broadcast::BroadcastWriter;
 use sgxs_crate::crypto::{Sha256Digest,Sha256};
 use sgx_isa::{Tcs,Sigstruct,PageType,secinfo_flags,SecinfoFlags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated};
+use sgxs_crate::util::{size_fit_page,size_fit_natural};
 
 use pe::types::{section_characteristics,SectionHeader,DataDirectory,DirectoryEntry};
 use pe::AsOsStr;
@@ -169,23 +168,6 @@ impl From<sgxs::Error> for Error {
 
 type Result<T> = ::std::result::Result<T, Error>;
 
-fn size_align_page_size(size: u64) -> u64 {
-	match size&0xfff {
-		0 => size,
-		residue => size+(0x1000-residue),
-	}
-}
-
-// Compute next highest power of 2 using float conversion
-fn enclave_size(last_page_address: u64) -> u64 {
-	if last_page_address==0 { return 0; }
-	if last_page_address>=0x20000000000000 { panic!("Conversion for this size not supported!") }
-	let (mantissa,exponent,_)=(last_page_address as f64).integer_decode();
-	let mut adjust=53;
-	if mantissa^0x10000000000000==0 { adjust-=1 }
-	1<<((exponent+adjust) as u64)
-}
-
 fn section_to_secinfo_flags(header: &SectionHeader) -> SecinfoFlags {
 	let mut flags=SecinfoFlags::empty();
 	if header.characteristics.contains(section_characteristics::IMAGE_SCN_MEM_READ) {
@@ -279,7 +261,7 @@ impl<'a> LayoutInfo<'a> {
 			UNKNOWN_VALUE_ENCOUNTERED.store(true,atomic::Ordering::Relaxed);
 		}
 
-		let tls_size=size_align_page_size(tls_s.virtual_size as u64);
+		let tls_size=size_fit_page(tls_s.virtual_size as u64);
 
 		let ssaframesize=1;
 
@@ -300,10 +282,10 @@ impl<'a> LayoutInfo<'a> {
 			Some(&RegularPeSection{header,..}) | Some(&TlsPeSection{header,..}) => header,
 			_ => unreachable!()
 		};
-		let heap_offset=(last_section.virtual_address.get() as u64)+size_align_page_size(last_section.virtual_size as u64);
+		let heap_offset=(last_section.virtual_address.get() as u64)+size_fit_page(last_section.virtual_size as u64);
 
 		layout.push(HeapSection{offset:heap_offset});
-		let mut cur_offset=heap_offset+size_align_page_size(sgxmeta.heap_size as u64)+0x10000;
+		let mut cur_offset=heap_offset+size_fit_page(sgxmeta.heap_size as u64)+0x10000;
 
 		for _ in 0..sgxmeta.threads {
 			layout.push(TcsSection{offset:cur_offset});
@@ -313,7 +295,7 @@ impl<'a> LayoutInfo<'a> {
 			layout.push(SsaSection{offset:cur_offset});
 			cur_offset+=((sgxmeta.tcs_nssa*ssaframesize) as u64)*0x1000+0x10000;
 			layout.push(StackSection{offset:cur_offset});
-			cur_offset+=size_align_page_size(sgxmeta.stack_size as u64);
+			cur_offset+=size_fit_page(sgxmeta.stack_size as u64);
 		}
 
 		Ok(LayoutInfo{
@@ -322,7 +304,7 @@ impl<'a> LayoutInfo<'a> {
 			is64bit:is64bit,
 			tls_size:tls_size,
 			heap_offset:heap_offset,
-			enclave_size:enclave_size(cur_offset),
+			enclave_size:size_fit_natural(cur_offset),
 			enclave_entry:enclave_entry,
 			pages_with_relocs:pages_with_relocs,
 			layout:layout,
@@ -331,7 +313,7 @@ impl<'a> LayoutInfo<'a> {
 
 	fn write_pe_section<R: Read,W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, data: &mut R, offset: u64, size: u64, secinfo: SecinfoTruncated) -> Result<()> {
 		let begin_p=offset>>12;
-		let end_p=size_align_page_size(offset+size)>>12;
+		let end_p=size_fit_page(offset+size)>>12;
 		for p in begin_p..end_p {
 			let mut secinfo=secinfo.clone();
 			if self.pages_with_relocs.contains(&p) {
@@ -351,7 +333,7 @@ impl<'a> LayoutInfo<'a> {
 					let mut header=header.clone();
 					let len=header.data.len();
 					let mut splice=header.splice();
-					try!(writer.write_pages(Some(&mut splice),(size_align_page_size(len as u64)/0x1000) as usize,Some(0),secinfo))
+					try!(writer.write_pages(Some(&mut splice),(size_fit_page(len as u64)/0x1000) as usize,Some(0),secinfo))
 				},
 				&RegularPeSection{header,mut data} => {
 					let secinfo=SecinfoTruncated{flags:section_to_secinfo_flags(header)|PageType::Reg.into()};
@@ -364,7 +346,7 @@ impl<'a> LayoutInfo<'a> {
 				},
 				&HeapSection{offset} => {
 					let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-					try!(writer.write_pages::<&[u8]>(None,(size_align_page_size(self.sgxmeta.heap_size as u64)/0x1000) as usize,Some(offset),secinfo));
+					try!(writer.write_pages::<&[u8]>(None,(size_fit_page(self.sgxmeta.heap_size as u64)/0x1000) as usize,Some(offset),secinfo));
 				},
 				&TcsSection{offset} => {
 					let tcs=Tcs {
@@ -391,7 +373,7 @@ impl<'a> LayoutInfo<'a> {
 				},
 				&StackSection{offset} => {
 					let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-					try!(writer.write_pages(Some(&mut io::repeat(0xcc)),(size_align_page_size(self.sgxmeta.stack_size as u64)/0x1000) as usize,Some(offset),secinfo));
+					try!(writer.write_pages(Some(&mut io::repeat(0xcc)),(size_fit_page(self.sgxmeta.stack_size as u64)/0x1000) as usize,Some(offset),secinfo));
 				},
 			}
 		}
@@ -402,11 +384,11 @@ impl<'a> LayoutInfo<'a> {
 		let ssa_tcs_offset=0x1000+self.tls_size+0x10000;
 		let gprsgx_tcs_offset=ssa_tcs_offset+0xf48;
 		let bos_tcs_offset=ssa_tcs_offset+((self.sgxmeta.tcs_nssa*self.ssaframesize) as u64)*0x1000+0x10000;
-		let tos_tcs_offset=bos_tcs_offset+size_align_page_size(self.sgxmeta.stack_size as u64);
+		let tos_tcs_offset=bos_tcs_offset+size_fit_page(self.sgxmeta.stack_size as u64);
 		let sgxmeta_field_7=self.sgxmeta.tls_field_8 as u8;
 		let heap_base_offset=self.heap_offset;
 		let enclave_size=self.enclave_size;
-		let heap_size=size_align_page_size(self.sgxmeta.heap_size as u64) as u32;
+		let heap_size=size_fit_page(self.sgxmeta.heap_size as u64) as u32;
 
 		let mut buf=Vec::<u8>::new();
 

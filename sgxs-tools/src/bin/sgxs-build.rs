@@ -9,8 +9,6 @@
  * any later version.
  */
 
-#![feature(float_extras)]
-
 extern crate sgxs as sgxs_crate;
 extern crate sgx_isa;
 
@@ -18,30 +16,14 @@ use std::fs::{self,File};
 use std::io::stdout;
 
 use sgx_isa::{Tcs,PageType,secinfo_flags,SecinfoFlags};
-use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated};
+use sgxs_crate::sgxs::{CanonicalSgxsWriter,self,SecinfoTruncated};
+use sgxs_crate::util::{size_fit_page,size_fit_natural};
 
 enum Block {
 	Blob{flags:SecinfoFlags,file:String,pages:usize},
 	TcsSsa{nssa:u32},
 }
 use Block::*;
-
-fn pages_for_size(size: u64) -> usize {
-	((match size&0xfff {
-		0 => size,
-		residue => size+(0x1000-residue),
-	})>>12) as usize
-}
-
-// Compute next highest power of 2 using float conversion
-fn enclave_size(last_page_address: u64) -> u64 {
-	if last_page_address==0 { return 0; }
-	if last_page_address>=0x20000000000000 { panic!("Conversion for this size not supported!") }
-	let (mantissa,exponent,_)=(last_page_address as f64).integer_decode();
-	let mut adjust=53;
-	if mantissa^0x10000000000000==0 { adjust-=1 }
-	1<<((exponent+adjust) as u64)
-}
 
 fn main() {
 	let mut args=std::env::args().peekable();
@@ -82,7 +64,7 @@ fn main() {
 					_ => unreachable!()
 				}
 			});
-			blocks.push(Blob{flags:flags,file:v.to_string(),pages:pages_for_size(fs::metadata(v).unwrap().len())});
+			blocks.push(Blob{flags:flags,file:v.to_string(),pages:(size_fit_page(fs::metadata(v).unwrap().len())>>12) as usize});
 		} else {
 			panic!("Invalid argument: «{}»",arg);
 		}
@@ -93,7 +75,7 @@ fn main() {
 	}).fold(0,std::ops::Add::add);
 
 	let mut out=stdout();
-	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:enclave_size((pages as u64)*0x1000),ssaframesize:ssaframesize}).unwrap();
+	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:size_fit_natural((pages as u64)*0x1000),ssaframesize:ssaframesize}).unwrap();
 
 	for block in blocks {
 		match block {
