@@ -27,12 +27,12 @@ pub fn size_fit_natural(size: u64) -> u64 {
 }
 
 #[test]
-fn enclave_size_test() {
+fn test_size_fit_natural() {
 	let mut i=0x1000;
 	loop {
-		assert_eq!(enclave_size(i-1),i);
-		assert_eq!(enclave_size(i),i);
-		assert_eq!(enclave_size(i+1),i<<1);
+		assert_eq!(size_fit_natural(i-1),i);
+		assert_eq!(size_fit_natural(i),i);
+		assert_eq!(size_fit_natural(i+1),i<<1);
 		if i>0x8000_0000_0000_0000 {
 			i<<=1;
 		} else {
