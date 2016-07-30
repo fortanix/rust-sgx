@@ -6,7 +6,7 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
-|       0.1.0 |        0.1.0-0.1.2 |                     0.1.0 |
+|       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
 
 ## Thread settings
 

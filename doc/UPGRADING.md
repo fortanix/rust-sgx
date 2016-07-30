@@ -9,7 +9,19 @@ enclave-interface of the same major version (minor version for 0.x versions)
 should be compatible. See also the [libenclave ABI compatibility
 chart](LIBENCLAVE-ABI.md#abi-version-compatibility).
 
+  * [Upgrading from enclave-interface 0.1.0 to 0.1.1](#upgrading-from-enclave-interface-010-to-011)
+  * [Upgrading from libenclave 0.1.2 to 0.1.3](#upgrading-from-libenclave-012-to-013)
   * [Upgrading from libenclave 0.1.0 to 0.1.2](#upgrading-from-libenclave-010-to-012)
+
+## Upgrading from enclave-interface 0.1.0 to 0.1.1
+
+The signatures of `sgxs::loader::Map::tcss` and `enclave_interface::tcs::enter`
+have changed. The returned mapping must now be mutable and you must pass a
+mutable reference to enter.
+
+## Upgrading from libenclave 0.1.2 to 0.1.3
+
+No changes required.
 
 ## Upgrading from libenclave 0.1.0 to 0.1.2
 
