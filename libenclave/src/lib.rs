@@ -27,9 +27,9 @@ extern crate alloc_buddy_simple;
 mod alloc;
 mod reloc;
 mod mem;
-#[doc(hidden)] // pub/doc(hidden) because we refer to functions in assembly
+#[doc(hidden)] // pub+doc(hidden) because we refer to functions in assembly
 pub mod panic;
-#[doc(hidden)] // pub/doc(hidden) because we refer to functions in assembly
+#[doc(hidden)] // pub+doc(hidden) because we refer to functions in assembly
 #[cfg(feature="debug")] pub mod debug;
 
 // library features
