@@ -20,7 +20,7 @@ use std::mem::transmute;
 
 use clap::{Arg,App};
 
-use sgxs::loader::{Map,Load,Address};
+use sgxs::loader::{Map,Load,Tcs};
 use sgxs::isgx;
 use sgx_isa::{Einittoken,Sigstruct,Enclu,attributes_flags};
 
@@ -40,7 +40,7 @@ fn read_sigstruct(path: &str) -> Sigstruct {
 	unsafe{transmute(buf)}
 }
 
-fn enclu_eenter(tcs: Address) {
+fn enclu_eenter(tcs: &mut Tcs) {
 	let result: u32;
 	unsafe{asm!("
 		lea aep(%rip),%rcx
@@ -52,7 +52,7 @@ enclu:
 		enclu
 post:
 "		: "={eax}"(result)
-		: "{eax}"(Enclu::EEnter), "{rbx}"(tcs)
+		: "{eax}"(Enclu::EEnter), "{rbx}"(u64::from(tcs.address()))
 		: "rcx"
 		: "volatile"
 	)};
@@ -89,7 +89,7 @@ fn main() {
 	let mut file=File::open(matches.value_of("sgxs").unwrap()).unwrap();
 	let sigstruct=read_sigstruct(matches.value_of("sigstruct").unwrap());
 	let use_le=matches.is_present("le-sgxs");
-	let mapping;
+	let mut mapping;
 	let mut token=None;
 	{
 		use sgxs::loader::OptionalEinittoken as OptTok;
@@ -132,6 +132,6 @@ fn main() {
 		}
 	}
 
-	let tcs=mapping.tcss()[0];
+	let tcs=&mut mapping.tcss()[0];
 	enclu_eenter(tcs);
 }
