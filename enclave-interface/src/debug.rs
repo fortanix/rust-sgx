@@ -11,10 +11,11 @@
 
 use libc;
 
+use std::sync::atomic::{AtomicBool,Ordering};
 use std::sync::{RwLock,RwLockReadGuard};
-use std::io::{stdout,stdin,Read,Write,Error as IoError,ErrorKind as IoErrorKind};
+use std::io::{stdout,stdin,Write,Error as IoError,ErrorKind as IoErrorKind};
 
-use sgxs::loader::Address;
+use sgxs::loader::{Tcs,Address};
 use sgx_isa::Enclu;
 
 lazy_static! {
@@ -23,23 +24,18 @@ lazy_static! {
 
 struct SignalHandler {
 	old_handler: libc::sighandler_t,
-	in_segv: bool,
+	in_segv: AtomicBool,
 	buf: [u64;512],
 	tcs: Address,
 }
 
 extern "C" fn segv_handler() -> ! {
-	{
-		let mut lock=SIGNAL_HANDLER.write().unwrap();
-		let handler=lock.as_mut().unwrap();
-		println!("Segmentation fault. Debug mode activated.");
-		if handler.in_segv {
-			panic!("Double segfault!")
-		}
-		handler.in_segv=true;
-	}
 	let lock=SIGNAL_HANDLER.read().unwrap();
 	let handler=lock.as_ref().unwrap();
+	println!("Segmentation fault. Debug mode activated.");
+	if handler.in_segv.swap(true,Ordering::Relaxed) {
+		panic!("Double segfault!")
+	}
 	loop {
 		let mut instr=String::new();
 
@@ -91,7 +87,9 @@ impl Drop for InstalledSignalHandler {
 /// Will block if a handler is already installed.
 ///
 /// The handler will be uninstalled if the returned value is dropped.
-pub fn install_segv_signal_handler(tcs: Address) -> Result<InstalledSignalHandler,IoError> {
+///
+/// It is not safe to install a signal handler on a multi-threaded enclave.
+pub fn install_segv_signal_handler(tcs: &mut Tcs) -> Result<InstalledSignalHandler,IoError> {
 	let mut lock=SIGNAL_HANDLER.write().unwrap();
 	if lock.is_some() {
 		return Err(IoError::new(IoErrorKind::AlreadyExists,"A signal handler is already installed"));
@@ -101,9 +99,9 @@ pub fn install_segv_signal_handler(tcs: Address) -> Result<InstalledSignalHandle
 		h @ _ => {
 			*lock=Some(SignalHandler{
 				old_handler:h,
-				in_segv:false,
+				in_segv:AtomicBool::new(false),
 				buf:[0;512],
-				tcs:tcs,
+				tcs:unsafe{tcs.address()}, // FIXME
 			});
 			drop(lock);
 			Ok(InstalledSignalHandler{lock:Some(SIGNAL_HANDLER.read().unwrap())})
