@@ -16,6 +16,7 @@
 extern crate rustc_unicode;
 extern crate alloc as rustc_alloc;
 extern crate sgx_isa;
+#[cfg(not(test))] pub extern crate core_io as io;
 
 extern crate spin;
 extern crate rlibc;
@@ -37,7 +38,6 @@ pub mod rand;
 pub mod aes;
 pub mod curve25519;
 pub mod sgx;
-#[cfg(not(test))] pub mod io;
 
 #[doc(hidden)]
 #[no_mangle]
