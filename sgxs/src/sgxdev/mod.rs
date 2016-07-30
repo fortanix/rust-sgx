@@ -21,13 +21,13 @@ use libc;
 use sgxs::{SgxsRead,PageReader};
 use abi::{Sigstruct,Einittoken,Encls};
 
-use loader::{Map,Load,Address};
+use loader::{Map,Load,Address,Tcs};
 use self::loader::{Pages,Uaddr,Kaddr};
 pub use self::loader::{Result,Error};
 
 pub struct Mapping<'a> {
 	_pages: Option<Pages<'a>>,
-	tcss: Vec<Uaddr>,
+	tcss: Vec<Tcs>,
 	base: Uaddr,
 	size: u64,
 }
@@ -50,8 +50,8 @@ impl<'a> Map for Mapping<'a> {
 		::private::loader::make_address(self.base.0)
 	}
 
-	fn tcss(&self) -> &[Address] {
-		unsafe{::std::mem::transmute(&self.tcss[..])}
+	fn tcss(&mut self) -> &mut [Tcs] {
+		&mut self.tcss
 	}
 }
 
@@ -135,7 +135,7 @@ impl<'dev> Load<'dev> for Device {
 		let (tcss,pages)=try!(loader::load(&self,reader,ecreate,mapping.base,k_base,secs,sigstruct,einittoken));
 
 		mapping._pages=Some(pages);
-		mapping.tcss=tcss;
+		mapping.tcss=tcss.into_iter().map(|a|::private::loader::make_tcs(a.0)).collect();
 		Ok(mapping)
 	}
 }

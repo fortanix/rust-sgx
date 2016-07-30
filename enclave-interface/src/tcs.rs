@@ -11,7 +11,7 @@
 
 use std;
 
-use sgxs::loader::Address;
+use sgxs::loader::Tcs;
 use sgx_isa::Enclu;
 
 #[doc(hidden)]
@@ -20,7 +20,7 @@ pub unsafe extern "C" fn handle_usercall(p1: u64, p2: u64, p3: u64, closure: *mu
 	(*closure)(p1,p2,p3,p4,p5)
 }
 
-pub fn enter<T: FnMut(u64,u64,u64,u64,u64) -> u64>(tcs: Address, mut on_usercall: T, p1: u64, p2: u64, p3: u64, p4: u64, p5: u64) -> u64 {
+pub fn enter<T: FnMut(u64,u64,u64,u64,u64) -> u64>(tcs: &mut Tcs, mut on_usercall: T, p1: u64, p2: u64, p3: u64, p4: u64, p5: u64) -> u64 {
 	let debug_buf=[0u8;1024];
 	let sgx_result: u32;
 	let retval: u64;
@@ -42,7 +42,8 @@ pub fn enter<T: FnMut(u64,u64,u64,u64,u64) -> u64>(tcs: Address, mut on_usercall
 		jmp 1b
 3:
 "		: "={eax}"(sgx_result), "={rdx}"(retval), "={rdi}"(exit_mode)
-		: "{r12}"(u64::from(tcs)), "{r10}"(debug_buf.as_ptr()), "{r13}"(&mut (&mut on_usercall as &mut FnMut(u64,u64,u64,u64,u64) -> u64))
+		: "{r12}"(u64::from(tcs.address())), "{r10}"(debug_buf.as_ptr()),
+		  "{r13}"(&mut (&mut on_usercall as &mut FnMut(u64,u64,u64,u64,u64) -> u64)),
 		  "{rdi}"(p1), "{rsi}"(p2), "{rdx}"(p3), "{r8}"(p4), "{r9}"(p5)
 		: "rbx", "rcx", "r11", "memory"
 		: "volatile"

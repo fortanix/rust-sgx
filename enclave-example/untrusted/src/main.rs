@@ -47,10 +47,10 @@ fn main() {
 	};
 
 	let dev=sgxs::isgx::Device::open("/dev/sgx").unwrap();
-	let mapping=dev.load_with_launch_enclave(&mut file,&sig,OptTok::None(None),&mut le_file,&le_sig).unwrap();
+	let mut mapping=dev.load_with_launch_enclave(&mut file,&sig,OptTok::None(None),&mut le_file,&le_sig).unwrap();
 
-	let h=enclave_interface::debug::install_segv_signal_handler(mapping.tcss()[0]);
-	let ret=tcs::enter(mapping.tcss()[0],|a,b,c,d,e|{println!("Usercall: {} {} {} {} {}",a,b,c,d,e);5678},1,2,3,4,5);
+	let h=enclave_interface::debug::install_segv_signal_handler(&mut mapping.tcss()[0]);
+	let ret=tcs::enter(&mut mapping.tcss()[0],|a,b,c,d,e|{println!("Usercall: {} {} {} {} {}",a,b,c,d,e);5678},1,2,3,4,5);
 	drop(h);
 
 	println!("Enclave returned: {}",ret);

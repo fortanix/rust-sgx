@@ -44,8 +44,26 @@ mod private {
 			}
 		}
 
+		// A `Tcs` represents the only reference to an in-memory TCS. Aliasing
+		// (or lack thereof) is supposed to prevent entering the same TCS more
+		// than once.
+		#[derive(PartialEq,Eq,Debug)]
+		pub struct Tcs(u64);
+
+		impl Tcs {
+			/// The caller must make sure that the Address is no longer in use when the
+			/// `Tcs` leaves its scope
+			pub unsafe fn address(&mut self) -> Address {
+				make_address(self.0)
+			}
+		}
+
 		pub fn make_address(a: u64) -> Address{
 			Address(a)
+		}
+
+		pub fn make_tcs(a: u64) -> Tcs{
+			Tcs(a)
 		}
 	}
 }
