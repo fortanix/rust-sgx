@@ -36,14 +36,12 @@ fn parse_num<T: NumArg, S: Borrow<str>>(s: S) -> Result<T,ParseIntError> {
 	}
 }
 
-impl NumArg for u32 {
-	fn from_str_radix(src: &str, radix: u32) -> Result<Self, ParseIntError> {
-		Self::from_str_radix(src,radix)
+macro_rules! impl_numarg(
+($($t:ty),+) => ($(
+	impl NumArg for $t {
+		fn from_str_radix(src: &str, radix: u32) -> Result<Self, ParseIntError> {
+			Self::from_str_radix(src,radix)
+		}
 	}
-}
-
-impl NumArg for u64 {
-	fn from_str_radix(src: &str, radix: u32) -> Result<Self, ParseIntError> {
-		Self::from_str_radix(src,radix)
-	}
-}
+)+););
+impl_numarg!(u32, u64);
