@@ -32,15 +32,12 @@ pub mod debug {
 
 	impl DebugMsgBuf {
 		fn new() -> DebugMsgBuf {
-			extern {
-				static DEBUG_PANIC_BUF_PTR: *mut u8;
-			}
+			extern "C" { fn get_debug_panic_buf_ptr() -> *mut u8; }
 
-			let mut buf=unsafe{::core::slice::from_raw_parts_mut(DEBUG_PANIC_BUF_PTR,1024)};
+			let mut buf=unsafe{::core::slice::from_raw_parts_mut(get_debug_panic_buf_ptr(),1024)};
 			DebugMsgBuf{slice:buf,ind:0}
 		}
 	}
-
 
 	#[lang = "panic_fmt"]
 	#[unwind]

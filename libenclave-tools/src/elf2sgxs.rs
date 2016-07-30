@@ -106,6 +106,7 @@ pub struct LayoutInfo<'a> {
 	ssaframesize: u32,
 	heap_size: u64,
 	stack_size: u64,
+	threads: usize,
 	debug: bool,
 }
 
@@ -262,7 +263,7 @@ impl<'a> LayoutInfo<'a> {
 		}
 	}
 
-	pub fn new(elf: ElfFile<'a>, ssaframesize: u32, heap_size: u64, stack_size: u64) -> Result<LayoutInfo<'a>,Error>  {
+	pub fn new(elf: ElfFile<'a>, ssaframesize: u32, heap_size: u64, stack_size: u64, threads: usize) -> Result<LayoutInfo<'a>,Error>  {
 		if let HeaderClass::SixtyFour=elf.header.pt1.class {} else {
 			return Err(Error::ElfClassNot64);
 		}
@@ -279,6 +280,7 @@ impl<'a> LayoutInfo<'a> {
 			heap_size:heap_size,
 			stack_size:stack_size,
 			debug:debug,
+			threads:threads,
 		})
 	}
 
@@ -347,12 +349,12 @@ impl<'a> LayoutInfo<'a> {
 			} else { None }).max().ok_or(Error::NoLoadableSegments));
 
 		let heap_addr=size_fit_page(max_addr);
-		let stack_addr=heap_addr+self.heap_size+0x10000;
-		let stack_tos=stack_addr+self.stack_size;
-		let tls_addr=stack_tos;
-		let tcs_addr=tls_addr+0x1000;
+		let mut thread_start=heap_addr+self.heap_size;
+		const THREAD_GUARD_SIZE: u64=0x10000;
+		const TLS_SIZE: u64=0x1000;
 		let nssa: u32=if self.debug { 2 } else { 1 };
-		let enclave_size=size_fit_natural(tcs_addr+(1+(nssa as u64)*(self.ssaframesize as u64))*0x1000);
+		let thread_size=THREAD_GUARD_SIZE+self.stack_size+TLS_SIZE+(1+(nssa as u64)*(self.ssaframesize as u64))*0x1000;
+		let enclave_size=size_fit_natural(thread_start+(self.threads as u64)*thread_size);
 
 		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:enclave_size,ssaframesize:self.ssaframesize}));
 
@@ -363,31 +365,40 @@ impl<'a> LayoutInfo<'a> {
 		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
 		try!(writer.write_pages::<&[u8]>(None,(self.heap_size as usize)/0x1000,Some(heap_addr),secinfo));
 
-		// Output stack
-		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-		try!(writer.write_pages::<&[u8]>(None,(self.stack_size as usize)/0x1000,Some(stack_addr),secinfo));
+		for _ in 0..self.threads {
+			let stack_addr=thread_start+THREAD_GUARD_SIZE;
+			let stack_tos=stack_addr+self.stack_size;
+			let tls_addr=stack_tos;
+			let tcs_addr=tls_addr+TLS_SIZE;
 
-		// Output TLS
-		let tls=unsafe{std::mem::transmute::<_,[u8;16]>([stack_tos,0u64])};
-		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-		try!(writer.write_pages(Some(&mut &tls[..]),1,Some(tls_addr),secinfo));
+			// Output stack
+			let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
+			try!(writer.write_pages::<&[u8]>(None,(self.stack_size as usize)/0x1000,Some(stack_addr),secinfo));
 
-		// Output TCS, SSA
-		let tcs=Tcs {
-			ossa: tcs_addr+0x1000,
-			nssa: nssa,
-			oentry: self.sym.sgx_entry.value(),
-			ofsbasgx: tls_addr,
-			ogsbasgx: stack_tos,
-			fslimit: 0xfff,
-			gslimit: 0xfff,
-			..Tcs::default()
-		};
-		let tcs=unsafe{std::mem::transmute::<_,[u8;4096]>(tcs)};
-		let secinfo=SecinfoTruncated{flags:PageType::Tcs.into()};
-		try!(writer.write_page(Some(&mut &tcs[..]),Some(tcs_addr),secinfo));
-		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
-		try!(writer.write_pages::<&[u8]>(None,(nssa*self.ssaframesize) as usize,None,secinfo));
+			// Output TLS
+			let tls=unsafe{std::mem::transmute::<_,[u8;24]>([stack_tos,0u64,0u64])};
+			let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
+			try!(writer.write_pages(Some(&mut &tls[..]),1,Some(tls_addr),secinfo));
+
+			// Output TCS, SSA
+			let tcs=Tcs {
+				ossa: tcs_addr+0x1000,
+				nssa: nssa,
+				oentry: self.sym.sgx_entry.value(),
+				ofsbasgx: tls_addr,
+				ogsbasgx: stack_tos,
+				fslimit: 0xfff,
+				gslimit: 0xfff,
+				..Tcs::default()
+			};
+			let tcs=unsafe{std::mem::transmute::<_,[u8;4096]>(tcs)};
+			let secinfo=SecinfoTruncated{flags:PageType::Tcs.into()};
+			try!(writer.write_page(Some(&mut &tcs[..]),Some(tcs_addr),secinfo));
+			let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
+			try!(writer.write_pages::<&[u8]>(None,(nssa*self.ssaframesize) as usize,None,secinfo));
+
+			thread_start+=thread_size;
+		}
 
 		Ok(())
 	}
@@ -423,14 +434,15 @@ fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>,IoError> {
 }
 
 fn main_result(args: ArgMatches) -> Result<(),DriverError> {
-	let ssaframesize=u32::parse_arg(args.value_of("ssaframesize").unwrap());
-	let heap_size=   u64::parse_arg(args.value_of("heap-size")   .unwrap());
-	let stack_size=  u64::parse_arg(args.value_of("stack-size")  .unwrap());
+	let ssaframesize=u32  ::parse_arg(args.value_of("ssaframesize").unwrap());
+	let heap_size=   u64  ::parse_arg(args.value_of("heap-size")   .unwrap());
+	let stack_size=  u64  ::parse_arg(args.value_of("stack-size")  .unwrap());
+	let threads=     usize::parse_arg(args.value_of("threads")     .unwrap());
 
 	let srclib=PathBuf::from(args.value_of("lib").unwrap());
 	let srcbuf=try!(read_file(&srclib).map_err(DriverError::ElfRead));
 	let srcelf=ElfFile::new(&srcbuf);
-	let layout=try!(LayoutInfo::new(srcelf,ssaframesize,heap_size,stack_size));
+	let layout=try!(LayoutInfo::new(srcelf,ssaframesize,heap_size,stack_size,threads));
 
 	let mut outfile=args.value_of("output").map(|out|File::create(out)).unwrap_or_else(||File::create(naming::output_lib_name(&srclib,"sgxs").expect("Missing filename"))).unwrap();
 	try!(layout.write(&mut outfile));
@@ -445,9 +457,10 @@ fn main() {
 		.about("Convert a libenclave dynamic library into an SGXS enclave")
 		.version(crate_version!())
 		.setting(AppSettings::UnifiedHelpMessage)
-		.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg).default_value("1").help("Specify SSAFRAMESIZE"))
-		.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify heap size"))
-		.arg(Arg::with_name("stack-size").short("S").long("stack-size")  .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify stack size"))
+		.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg  ).default_value("1").help("Specify SSAFRAMESIZE"))
+		.arg(Arg::with_name("threads")   .short("t").long("threads")     .value_name("N")    .validator(usize::validate_arg).default_value("1").help("Specify the number of threads"))
+		.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg  ).required(true)    .help("Specify heap size"))
+		.arg(Arg::with_name("stack-size").short("S").long("stack-size")  .value_name("BYTES").validator(u64::validate_arg  ).required(true)    .help("Specify stack size"))
 		.arg(Arg::with_name("output").short("o").long("output").value_name("FILE").help("Specify output file"))
 		.arg(Arg::with_name("lib").index(1).required(true).help("Path to the dynamic library to be converted"))
 		.get_matches();

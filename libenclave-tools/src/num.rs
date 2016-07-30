@@ -44,4 +44,4 @@ macro_rules! impl_numarg(
 		}
 	}
 )+););
-impl_numarg!(u32, u64);
+impl_numarg!(u32, u64, usize);

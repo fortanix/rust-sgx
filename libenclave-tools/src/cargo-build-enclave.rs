@@ -126,6 +126,7 @@ struct BuilderMode<'args> {
 	ssaframesize: u32,
 	heap_size: u64,
 	stack_size: u64,
+	threads: usize,
 	cargo_args: Vec<Cow<'args,OsStr>>,
 }
 
@@ -150,6 +151,7 @@ impl<'args> BuilderMode<'args> {
 			ssaframesize: u32::parse_arg(args.value_of("ssaframesize").unwrap()),
 			heap_size: u64::parse_arg(args.value_of("heap-size").unwrap()),
 			stack_size: u64::parse_arg(args.value_of("stack-size").unwrap()),
+			threads: usize::parse_arg(args.value_of("threads").unwrap()),
 			cargo_args: args.values_of_os("cargo-opts").map(|args|args.map(Cow::Borrowed).collect()).unwrap_or(vec![]),
 		}
 	}
@@ -266,7 +268,9 @@ impl<'args> Builder<'args> {
 		let mut cmd=try!(Self::find_elf2sgxs());
 
 		cmd.arg("--ssaframesize");
-		cmd.arg(format!("0x{:x}",self.mode.ssaframesize));
+		cmd.arg(format!("{}",self.mode.ssaframesize));
+		cmd.arg("--threads");
+		cmd.arg(format!("{}",self.mode.threads));
 		cmd.arg("--heap-size");
 		cmd.arg(format!("0x{:x}",self.mode.heap_size));
 		cmd.arg("--stack-size");
@@ -312,9 +316,10 @@ fn main() {
 			.arg(Arg::with_name("color").value_name("WHEN").possible_values(&["auto", "always", "never"]).default_value("auto").long("color").help("Coloring"))
 			.arg(Arg::with_name("debug").short("d").long("debug").help("(ignored)"))
 			.arg(Arg::with_name("cargo-opts").index(1).multiple(true).help("Options to be passed to `cargo build`"))
-			.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg).default_value("1").help("Specify SSAFRAMESIZE"))
-			.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify heap size"))
-			.arg(Arg::with_name("stack-size").short("S").long("stack-size")  .value_name("BYTES").validator(u64::validate_arg).required(true)    .help("Specify stack size"))
+			.arg(Arg::with_name("ssaframesize")         .long("ssaframesize").value_name("PAGES").validator(u32::validate_arg  ).default_value("1").help("Specify SSAFRAMESIZE"))
+			.arg(Arg::with_name("threads")   .short("t").long("threads")     .value_name("N")    .validator(usize::validate_arg).default_value("1").help("Specify the number of threads"))
+			.arg(Arg::with_name("heap-size") .short("H").long("heap-size")   .value_name("BYTES").validator(u64::validate_arg  ).required(true)    .help("Specify heap size"))
+			.arg(Arg::with_name("stack-size").short("S").long("stack-size")  .value_name("BYTES").validator(u64::validate_arg  ).required(true)    .help("Specify stack size"))
 		).get_matches();
 
 	let args=args.subcommand_matches("build-enclave").unwrap();

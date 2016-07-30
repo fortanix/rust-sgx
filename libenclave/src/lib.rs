@@ -38,11 +38,15 @@ pub mod rand;
 pub mod aes;
 pub mod curve25519;
 pub mod sgx;
+pub mod thread;
 
 #[doc(hidden)]
 #[no_mangle]
 #[cfg(not(test))]
-pub unsafe extern "C" fn init() {
-	reloc::relocate_elf_rela();
-	alloc::init();
+pub unsafe extern "C" fn thread_init() {
+	static GLOBAL_INIT: spin::Once<()> = spin::Once::new();
+	GLOBAL_INIT.call_once(||{
+		reloc::relocate_elf_rela();
+		alloc::init();
+	});
 }
