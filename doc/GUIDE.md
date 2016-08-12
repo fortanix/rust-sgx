@@ -8,7 +8,7 @@ This guide will get you started building SGX secure enclaves in Rust using
 Make sure to have the following installed:
 
 - Rust **nightly** and Cargo (e.g. from https://www.rust-lang.org/downloads.html)
-- `ld.gold` from binutils 2.26 or higher
+- `ld.gold` from binutils 2.26. Neither <=2.25 nor 2.27 work at this time.
 - SGX linux driver from [this repository](../isgx)
 
 And have the following ready:
