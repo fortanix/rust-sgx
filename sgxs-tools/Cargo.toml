@@ -1,0 +1,21 @@
+[package]
+name = "sgxs-tools"
+description = "Utilities for working with the SGX stream format"
+version = "0.5.0"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
+license = "GPL-2.0+"
+repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs-tools"
+
+[features]
+with-rust-crypto = ["sgxs/rust-crypto"]
+
+[dependencies]
+"sgxs" = "0.5.0"
+"libc" = "0.2"        # MIT/Apache-2.0
+"broadcast" = "0.1"   # MIT
+"lazy_static" = "0.1" # MIT
+"pe" = "0.1"          # GPL-2.0+
+"clap" = "2.0"        # MIT
+"regex" = "0.1"       # MIT/Apache-2.0
+"sgx-isa" = "0.1.2"   # MIT/Apache-2.0
+"num" = "0.1.31"      # MIT/Apache-2.0

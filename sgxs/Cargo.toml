@@ -1,0 +1,23 @@
+[package]
+name = "sgxs"
+description = "Library for working with the SGX stream format"
+version = "0.5.0"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
+license = "GPL-2.0+"
+repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
+
+[features]
+with-rust-crypto = ["rust-crypto"]
+
+[dependencies]
+"bitflags" = "0.4"    # MIT/Apache-2.0
+"byteorder" = "0.4"   # Unlicense/MIT
+"ioctl" = "0.3"       # MIT/Apache-2.0 (per 7205d48)
+"libc" = "0.2"        # MIT/Apache-2.0
+"openssl" = "0.7.7"   # Apache-2.0
+"sgx-isa" = "0.1"     # MIT/Apache-2.0
+"time" = "0.1"        # MIT/Apache-2.0
+
+[dependencies.rust-crypto]  # MIT/Apache-2.0
+version = "0.2"
+optional = true

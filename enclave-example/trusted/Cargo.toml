@@ -1,0 +1,19 @@
+[package]
+name = "enclave-example"
+description = "Example secure enclave written in Rust"
+version = "0.1.3"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
+license = "AGPL-3.0+"
+repository = "https://github.com/jethrogb/sgx-utils/tree/master/enclave-example"
+
+[lib]
+crate-type = ["dylib"]
+
+[dependencies]
+"sgx-isa" = "0.1.0"
+"enclave" = "=0.1.3" # This should be the same version as the libenclave-tools
+                     # you're using to build this crate. Also check the
+                     # libenclave/enclave-interface version compatibility chart
+
+[features]
+enclave_debug = ["enclave/debug"]
