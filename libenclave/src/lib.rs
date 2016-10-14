@@ -9,14 +9,10 @@
  * option) any later version.
  */
 
-#![feature(linkage,lang_items,unwind_attributes,asm,const_fn,collections,unicode,alloc,oom,heap_api)]
-#![no_std]
+#![feature(asm,const_fn,alloc,oom,heap_api)]
 
-#[macro_use] extern crate collections;
-extern crate rustc_unicode;
 extern crate alloc as rustc_alloc;
 extern crate sgx_isa;
-#[cfg(not(test))] pub extern crate core_io as io;
 
 extern crate spin;
 extern crate rlibc;
@@ -48,5 +44,6 @@ pub unsafe extern "C" fn thread_init() {
 	GLOBAL_INIT.call_once(||{
 		reloc::relocate_elf_rela();
 		alloc::init();
+		panic::init();
 	});
 }

@@ -11,5 +11,5 @@
 
 #[no_mangle]
 pub unsafe extern "C" fn debug_copy(dst: *mut u8, src: *const u8) {
-	::core::ptr::copy_nonoverlapping(src,dst,0x1000);
+	::std::ptr::copy_nonoverlapping(src,dst,0x1000);
 }

@@ -9,10 +9,9 @@
  * option) any later version.
  */
 
-use core::iter;
-use collections::Vec;
-use core::mem::forget as mem_forget;
-use core::slice::from_raw_parts_mut;
+use std::iter;
+use std::mem::forget as mem_forget;
+use std::slice::from_raw_parts_mut;
 
 use spin::Mutex;
 use alloc_buddy_simple::{FreeBlock,Heap};

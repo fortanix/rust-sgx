@@ -9,7 +9,7 @@
  * option) any later version.
  */
 
-use core;
+use std::ptr;
 
 mod asm_impl;
 use self::asm_impl::*;
@@ -155,7 +155,7 @@ impl AesGcm {
 		};
 		unsafe{intel_aes_gcmINIT(&mut gctx.htbl,&gctx.ks.ks,gctx.ks.nr)};
 		if iv.len()==12 {
-			unsafe{core::ptr::copy(iv.as_ptr(),gctx.ctr.as_mut_ptr(),12)};
+			unsafe{ptr::copy(iv.as_ptr(),gctx.ctr.as_mut_ptr(),12)};
 			gctx.ctr[15]=1;
 		} else {
 			panic!("Only 96-bit IV supported!")
@@ -176,7 +176,7 @@ impl AesGcm {
 		if partial!=0 {
 			let (a,b)=data.split_at(data.len()-partial);
 			data=a;
-			unsafe{core::ptr::copy(b.as_ptr(),data2.as_mut_ptr(),partial)};
+			unsafe{ptr::copy(b.as_ptr(),data2.as_mut_ptr(),partial)};
 			self.state=State::AadFinal;
 		} else {
 			self.state=State::Aad;
@@ -225,8 +225,7 @@ impl AesGcm {
 #[cfg(test)]
 mod tests {
 	use super::{cmac_128,AesGcm};
-	use core::iter::repeat;
-	use collections::Vec;
+	use std::iter::repeat;
 
 	fn hex_to_num(ascii: u8) -> u8 {
 		match ascii {

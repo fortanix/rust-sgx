@@ -10,10 +10,9 @@
  */
 
 use alloc;
-use core::cell::UnsafeCell;
-use core::mem::{size_of,align_of,transmute};
-use core::ptr;
-use collections::Vec;
+use std::cell::UnsafeCell;
+use std::mem::{size_of,align_of,transmute};
+use std::ptr;
 
 extern "C" { fn usercall(nr: u64, p1: u64, p2: u64, _ignore: u64, p3: u64, p4: u64) -> u64; }
 
@@ -75,7 +74,7 @@ impl<T: Copy> UserSlice<T> {
 	}
 
 	fn as_unsafe_cell(&self) -> &UnsafeCell<[T]> {
-		use core::slice::from_raw_parts;
+		use std::slice::from_raw_parts;
 		unsafe{transmute::<&[T],&UnsafeCell<[T]>>(from_raw_parts(self.data,self.len))}
 	}
 
@@ -89,7 +88,7 @@ impl<T: Copy> UserSlice<T> {
 
 	pub fn clone_into_enclave(&self,dst: &mut [T]) {
 		assert!(dst.len()<=self.len());
-		let len=::core::cmp::min(dst.len(),self.len());
+		let len=::std::cmp::min(dst.len(),self.len());
 		(&mut dst[..len]).clone_from_slice(&unsafe{&*self.as_unsafe_cell().get()}[..len]);
 	}
 

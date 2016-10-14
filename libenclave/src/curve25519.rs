@@ -15,8 +15,8 @@
  *   copy of the License at http://www.apache.org/licenses/LICENSE-2.0
  */
 
-use core::ops::{Add, Sub, Mul};
-use core::cmp::{Eq, PartialEq};
+use std::ops::{Add, Sub, Mul};
+use std::cmp::{Eq, PartialEq};
 
 /*
 fe means field element.

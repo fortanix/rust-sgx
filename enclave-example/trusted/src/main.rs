@@ -9,7 +9,6 @@
  * option) any later version.
  */
 
-#![no_std]
 #![no_main]
 
 extern crate enclave;
@@ -18,4 +17,3 @@ extern crate enclave;
 pub extern "C" fn entry(p1: u64, p2: u64, p3: u64, _ignore: u64, p4: u64, p5: u64) -> u64 {
 	return unsafe{enclave::usercall::do_usercall(p1+1,p2+1,p3+1,p4+1,p5+1)};
 }
-

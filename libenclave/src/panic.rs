@@ -11,7 +11,7 @@
 
 #[cfg(feature="debug")]
 pub mod debug {
-	use core::fmt::{self,Write};
+	use std::fmt::{self,Write};
 	use super::panic_exit;
 
 	struct DebugMsgBuf {
@@ -23,7 +23,7 @@ pub mod debug {
 		fn write_str(&mut self, s: &str) -> fmt::Result {
 			let src=s.as_bytes();
 			let dst=&mut self.slice[self.ind..];
-			let len=::core::cmp::min(dst.len(),src.len());
+			let len=::std::cmp::min(dst.len(),src.len());
 			(&mut dst[..len]).clone_from_slice(&src[..len]);
 			self.ind+=len;
 			Ok(())
@@ -34,42 +34,43 @@ pub mod debug {
 		fn new() -> DebugMsgBuf {
 			extern "C" { fn get_debug_panic_buf_ptr() -> *mut u8; }
 
-			let mut buf=unsafe{::core::slice::from_raw_parts_mut(get_debug_panic_buf_ptr(),1024)};
+			let mut buf=unsafe{::std::slice::from_raw_parts_mut(get_debug_panic_buf_ptr(),1024)};
 			DebugMsgBuf{slice:buf,ind:0}
 		}
 	}
 
-	#[lang = "panic_fmt"]
-	#[unwind]
-	#[cfg(not(test))]
-	pub extern fn panic_fmt(msg: fmt::Arguments, file: &'static str, line: u32) -> ! {
-		let mut bufp=DebugMsgBuf::new();
-		let p=&bufp as *const _;
-		let _=bufp.write_fmt(msg);
-		let _=bufp.write_fmt(format_args!("\nRSP:{:p}\n{}:{}",p,file,line));
-		unsafe{panic_exit();}
-	}
-
 	#[no_mangle]
-	pub extern "C" fn panic_msg(msg: &'static str) -> ! {
+	pub extern "C" fn panic_msg(msg: &str) -> ! {
 		let _=DebugMsgBuf::new().write_str(msg);
 		unsafe{panic_exit();}
 	}
+
+	pub fn init() {
+		::std::panic::set_hook(Box::new(|info|{
+			let msg = match info.payload().downcast_ref::<&'static str>() {
+				Some(s) => *s,
+				None => match info.payload().downcast_ref::<String>() {
+					Some(s) => &s,
+					None => "unknown panic payload",
+				}
+			};
+
+			if let Some(loc) = info.location() {
+				let _=write!(DebugMsgBuf::new(),"'{}' at {}:{}", msg, loc.file(), loc.line());
+				unsafe{panic_exit()}
+			} else {
+				panic_msg(msg)
+			}
+		}));
+	}
 }
 
-#[lang = "panic_fmt"]
-#[unwind]
-#[cfg(not(any(feature="debug",test)))]
-pub extern fn panic_fmt() -> ! { unsafe{panic_exit();} }
+#[cfg(feature="debug")]
+pub use self::debug::init;
 
-#[no_mangle]
-#[unwind]
-#[allow(non_snake_case)]
-#[cfg(not(test))]
-pub extern fn _Unwind_Resume() -> ! { unsafe{panic_exit();} }
-
-#[lang = "eh_personality"]
-#[cfg(not(test))]
-extern fn eh_personality() {}
+#[cfg(not(feature="debug"))]
+pub fn init() {
+	::std::panic::set_hook(Box::new(|_|unsafe{panic_exit()}));
+}
 
 extern "C" { pub fn panic_exit() -> !; }

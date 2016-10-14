@@ -9,7 +9,7 @@
  * option) any later version.
  */
 
-use core::slice::from_raw_parts;
+use std::slice::from_raw_parts;
 use mem;
 
 const R_X86_64_RELATIVE: u32 = 8;
@@ -27,9 +27,9 @@ pub fn relocate_elf_rela() {
 		static RELACOUNT: usize;
 	}
 
-	if RELACOUNT==0 { return }
+	if unsafe{RELACOUNT}==0 { return }  // unsafe ok: link-time constant
 
-	let relas=unsafe{from_raw_parts::<Rela<u64>>(mem::rel_ptr(RELA),RELACOUNT)};
+	let relas=unsafe{from_raw_parts::<Rela<u64>>(mem::rel_ptr(RELA),RELACOUNT)};  // unsafe ok: link-time constant
 	for rela in relas {
 		if rela.info != (/*0 << 32 |*/R_X86_64_RELATIVE as u64) {
 			panic!("Invalid relocation");

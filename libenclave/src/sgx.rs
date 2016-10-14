@@ -12,7 +12,7 @@
 use sgx_isa::Enclu;
 pub use sgx_isa::{Keyname,Keypolicy,Keyrequest,Report,Targetinfo,ErrorCode};
 use rustc_alloc::{heap,oom};
-use core::{ptr,mem};
+use std::{ptr,mem};
 use aes;
 
 pub fn egetkey(req: &Keyrequest) -> Result<[u8;16],ErrorCode> {
@@ -59,7 +59,7 @@ pub fn verify_report(report: &Report) -> bool {
 		..Default::default()
 	};
 	let key=egetkey(&req).expect("Couldn't get report key");
-	let mac_data=unsafe{::core::slice::from_raw_parts(report as *const _ as *const u8,384)};
+	let mac_data=unsafe{::std::slice::from_raw_parts(report as *const _ as *const u8,384)};
 	aes::cmac_128(&key,mac_data)==report.mac
 }
 

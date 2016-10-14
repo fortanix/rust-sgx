@@ -35,6 +35,8 @@ use rustc_serialize::Decodable;
 use exec::{CommandExt,ExecError};
 use num::NumArg;
 
+const TARGET_TRIPLE: &'static str = "x86_64-unknown-none-gnu";
+
 trait JsonDeserialize: Decodable {
 	fn from_json_slice(mut v: &[u8]) -> Result<Self,JsonError> {
 		use rustc_serialize::json::{Json,Decoder};
@@ -46,7 +48,6 @@ impl<T: Decodable> JsonDeserialize for T {}
 
 #[derive(RustcDecodable)]
 struct Manifest {
-	name: String,
 	id: String,
 	manifest_path: String,
 	targets: Vec<ManifestTarget>,
@@ -56,6 +57,7 @@ struct Manifest {
 #[derive(RustcDecodable)]
 struct ManifestTarget {
 	kind: Vec<String>,
+	name: String,
 }
 
 #[derive(RustcDecodable)]
@@ -66,8 +68,8 @@ struct ManifestDependency {
 
 impl Manifest {
 	fn check(&self) -> Result<(),Error> {
-		if !(self.targets.len()==1 && self.targets[0].kind==["dylib"]) {
-			return Err(Error::ManifestTargetNotDylib);
+		if !(self.targets.len()==1 && self.targets[0].kind==["bin"]) {
+			return Err(Error::ManifestTargetNotBin);
 		}
 		let dependency=try!(self.dependencies.iter().find(|dep|dep.name=="enclave").ok_or(Error::ManifestNoEnclaveDependency));
 		if dependency.req!=concat!("= ",crate_version!()) {
@@ -87,7 +89,7 @@ fn say_status<W: Write>(writer: &mut W, color: bool, status: &str, message: &str
 
 #[derive(Debug)]
 enum Error {
-	ManifestTargetNotDylib,
+	ManifestTargetNotBin,
 	ManifestNoEnclaveDependency,
 	ManifestEnclaveDependencyInvalidVersion(String),
 	CargoReadManifestInvalidCmdline,
@@ -104,7 +106,7 @@ impl fmt::Display for Error {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		use Error::*;
 		match *self {
-			ManifestTargetNotDylib => write!(fmt,"This crate's manifest specifies more than one target, or the only target is not a `dylib' target. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
+			ManifestTargetNotBin => write!(fmt,"This crate's manifest specifies more than one target, or the only target is not a `bin' target. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
 			ManifestNoEnclaveDependency => write!(fmt,"This crate does not seem to have a dependency on libenclave."),
 			ManifestEnclaveDependencyInvalidVersion(ref dep_v) => write!(fmt,"There is a version mismatch between libenclave-tools ({}) and the libenclave dependency version ({}).",crate_version!(),dep_v),
 			CargoReadManifestInvalidCmdline => write!(fmt,"There was an error executing `cargo read-manifest': the --manifest-path argument is invalid."),
@@ -160,14 +162,14 @@ impl<'args> BuilderMode<'args> {
 		let manifest=try!(self.read_manifest());
 		try!(manifest.check());
 
-		let dylib_artifact=try!(self.target_path(&manifest));
-		let map_tempfile=naming::output_lib_name(&dylib_artifact,"map").unwrap(/* panic here indicates bug in cargo */).into_os_string();
-		let sgxs_artifact=naming::output_lib_name(&dylib_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+		let bin_artifact=try!(self.target_path(&manifest));
+		let map_tempfile=naming::output_lib_name(&bin_artifact,"map").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+		let sgxs_artifact=naming::output_lib_name(&bin_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
 
 		let builder=Builder{
 			mode:self,
 			manifest:manifest,
-			dylib_artifact:dylib_artifact,
+			bin_artifact:bin_artifact,
 			map_tempfile:map_tempfile,
 			sgxs_artifact:sgxs_artifact,
 		};
@@ -200,25 +202,20 @@ impl<'args> BuilderMode<'args> {
 	}
 
 	fn target_path(&self, manifest: &Manifest) -> Result<OsString,Error> {
-		let mut buf=Path::new(&manifest.manifest_path).with_file_name("target");
-
 		let release=self.cargo_args.iter().any(|arg|&**arg=="--release");
 
+		let mut buf=Path::new(&manifest.manifest_path).with_file_name("target");
+		buf.push(TARGET_TRIPLE);
 		buf.push(if release { "release" } else { "debug" });
-
-		buf.push("lib");
-		let mut target=buf.into_os_string();
-		target.push(&manifest.name.replace("-","_"));
-		target.push(".so");
-
-		Ok(target)
+		buf.push(&manifest.targets[0].name);
+		Ok(buf.into())
 	}
 }
 
 struct Builder<'args> {
 	mode: BuilderMode<'args>,
 	manifest: Manifest,
-	dylib_artifact: OsString,
+	bin_artifact: OsString,
 	sgxs_artifact: OsString,
 	map_tempfile: OsString,
 }
@@ -228,7 +225,8 @@ impl<'args> Builder<'args> {
 		let mut cargo=Command::new("cargo");
 		cargo.env("LIBENCLAVE_NO_WARNING","1");
 		cargo.env("LIBENCLAVE_MAP_FILE",&self.map_tempfile);
-		cargo.args(&["rustc","--lib"]);
+		cargo.args(&["rustc","--bin"]);
+		cargo.arg(&self.manifest.targets[0].name);
 
 		if self.mode.verbose { cargo.arg("--verbose"); }
 		if self.mode.quiet { cargo.arg("--quiet"); }
@@ -236,6 +234,7 @@ impl<'args> Builder<'args> {
 		cargo.arg(if self.mode.color { "always" } else { "never" });
 
 		cargo.args(&self.mode.cargo_args);
+		cargo.args(&["--target",TARGET_TRIPLE]);
 
 		let mut link_args: OsString=("link-args=".to_string()+&[
 			"-fuse-ld=gold",
@@ -251,6 +250,7 @@ impl<'args> Builder<'args> {
 			"-Wl,--error-unresolved-symbols",
 			"-Wl,--no-undefined-version",
 			"-Wl,-Bsymbolic",
+			"-Wl,--export-dynamic",
 			"-Wl,--version-script="/*append later*/
 		].join(" ")).into();
 		link_args.push(&self.map_tempfile);
@@ -276,13 +276,13 @@ impl<'args> Builder<'args> {
 		cmd.arg("--stack-size");
 		cmd.arg(format!("0x{:x}",self.mode.stack_size));
 
-		cmd.arg(&self.dylib_artifact);
+		cmd.arg(&self.bin_artifact);
 		cmd.status_ext(self.mode.verbose).map_err(Error::ConvExec)
 	}
 
 	fn build(mut self) -> Result<(),Error> {
 		try!(self.cargo_rustc());
-		try!(fs::metadata(&self.dylib_artifact).map_err(Error::CargoRustcNoOutput));
+		try!(fs::metadata(&self.bin_artifact).map_err(Error::CargoRustcNoOutput));
 
 		self.say_status("SGXS Convert",&self.manifest.id);
 		try!(self.sgxsconv());

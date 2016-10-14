@@ -19,8 +19,7 @@
 
 #![allow(improper_ctypes)]
 
-use rustc_alloc::boxed::Box;
-use core;
+use std::ptr;
 
 // This magic number is (Nb_max * (Nr_max + 1))
 // where Nb_max is the maximum block size in 32-bit words,
@@ -45,7 +44,7 @@ impl Clone for KeySchedule {
 			nr:self.nr,
 			_freebl_cipher_func:self._freebl_cipher_func,
 			_iv:self._iv.clone(),
-			ks:unsafe{core::ptr::read(&self.ks)},
+			ks:unsafe{ptr::read(&self.ks)},
 		}
 	}
 }
@@ -55,7 +54,7 @@ impl KeySchedule {
 		KeySchedule{
 			_nb:0,
 			nr:0,
-			_freebl_cipher_func:core::ptr::null(),
+			_freebl_cipher_func:ptr::null(),
 			_iv:[0;AES_BLOCK_SIZE*2],
 			ks:[0u32;AES_MAX_EXP_KEY_SIZE],
 		}
