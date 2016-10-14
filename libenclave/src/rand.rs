@@ -9,6 +9,9 @@
  * option) any later version.
  */
 
+use std::io::{Read,Write,Result};
+use std;
+
 pub fn rand() -> u64 {
 	let ret;
 	let mut retry=10;
@@ -22,4 +25,20 @@ pub fn rand() -> u64 {
 	":"=r"(ret),"=r"(retry):"1"(retry)::"volatile")};
 	if retry==0 { panic!("RDRAND failure") }
 	ret
+}
+
+struct RandReader;
+
+impl Read for RandReader {
+	fn read(&mut self, mut buf: &mut [u8]) -> Result<usize> {
+		let rnd=unsafe{std::mem::transmute::<_,[u8;8]>(rand())};
+		buf.write(&rnd)
+	}
+}
+
+#[no_mangle]
+#[doc(hidden)]
+pub extern fn getrandom(buf: *mut u8, len: usize) {
+	let buf=unsafe{std::slice::from_raw_parts_mut(buf,len)};
+	RandReader.read_exact(buf).expect("RandReader failure");
 }
