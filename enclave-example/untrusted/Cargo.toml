@@ -14,3 +14,5 @@ name = "enclave-runner"
 "sgx-isa" = "0.1.0"
 "enclave-interface" = "0.1.1" # Check the libenclave/enclave-interface version
                               # compatibility chart when modifying this version
+enclave-example-usercalls = { git = "ssh://git@bitbucket.org/fortanix/sgx-utils.git" }
+libc = "0.2.12"

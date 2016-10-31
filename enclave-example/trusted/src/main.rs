@@ -12,8 +12,15 @@
 #![no_main]
 
 extern crate enclave;
+extern crate enclave_example_usercalls;
+
+use enclave::usercall::UserSlice;
 
 #[no_mangle]
-pub extern "C" fn entry(p1: u64, p2: u64, p3: u64, _ignore: u64, p4: u64, p5: u64) -> u64 {
-	return unsafe{enclave::usercall::do_usercall(p1+1,p2+1,p3+1,p4+1,p5+1)};
+pub extern "C" fn entry(user_heap_ptr: u64, user_heap_size: u64, _p3: u64, _ignore: u64, _p4: u64, _p5: u64) -> u64 {
+	enclave::usercall::init_user_heap(user_heap_ptr as _,user_heap_size as _);
+
+	let user_msg=UserSlice::clone_from("Hello world from inside SGX!".as_bytes());
+	unsafe{enclave_example_usercalls::print(user_msg.as_ptr(),user_msg.len())};
+	return 1234;
 }
