@@ -1,0 +1,7 @@
+[package]
+name = "enclave-example-usercalls"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+
+[dependencies]
+enclave-usercalls = { git = "ssh://git@bitbucket.org/fortanix/sgx-utils.git" }
