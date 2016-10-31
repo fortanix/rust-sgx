@@ -1,0 +1,7 @@
+[package]
+name = "enclave-usercalls"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+
+[target.'cfg(target_os="none")'.dependencies]
+enclave = "0.1"
