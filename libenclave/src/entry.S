@@ -147,9 +147,6 @@ no_debug:
 	mov %r14,%gs:tls_user_r14
 	mov %r15,%gs:tls_user_r15
 	mov %gs:tls_tos,%rsp
-// check for panic
-	bt $0,panicked(%rip)
-	jc reentry_panic
 // check for init
 	bt $0,%gs:tls_init_once
 	jc skip_init
@@ -171,6 +168,10 @@ no_debug:
 	mov %r14,%r8
 	mov %r15,%r9
 skip_init:
+// check for panic
+	bt $0,panicked(%rip)
+	jc reentry_panic
+// call into main entry point
 	call entry
 	mov %rax,%rdx  // RDX = return value
 	xor %rdi,%rdi  // RDI = normal exit
