@@ -10,15 +10,16 @@
  */
 
 use sgx_isa::Enclu;
-pub use sgx_isa::{Keyname,Keypolicy,Keyrequest,Report,Targetinfo};
+pub use sgx_isa::{Keyname,Keypolicy,Keyrequest,Report,Targetinfo,ErrorCode};
 use rustc_alloc::{heap,oom};
 use core::{ptr,mem};
 use aes;
 
-pub fn egetkey(req: &Keyrequest) -> [u8;16] {
+pub fn egetkey(req: &Keyrequest) -> Result<[u8;16],ErrorCode> {
 	let req_p;
 	let out_p;
 	let out;
+	let error;
 	unsafe {
 		// Keyrequest alignment: EGETKEY says 128 bytes, but KEYREQUEST says 512?
 		req_p=heap::allocate(mem::size_of::<Keyrequest>(),512) as *mut Keyrequest;
@@ -27,13 +28,17 @@ pub fn egetkey(req: &Keyrequest) -> [u8;16] {
 		if req_p==ptr::null_mut() || out_p==ptr::null_mut() { oom::oom() }
 		ptr::copy(req,req_p,1);
 
-		asm!("enclu"::"{eax}"(Enclu::EGetkey),"{rbx}"(req_p),"{rcx}"(out_p));
+		asm!("enclu":"={eax}"(error):"{eax}"(Enclu::EGetkey),"{rbx}"(req_p),"{rcx}"(out_p));
 
 		out=*out_p;
 		heap::deallocate(req_p as *mut _,mem::size_of::<Keyrequest>(),512);
 		heap::deallocate(out_p as *mut _,16,16);
 	}
-	out
+	match ErrorCode::from_repr(error) {
+		Some(ErrorCode::Success) => Ok(out),
+		Some(err) => Err(err),
+		None => panic!("EGETKEY returned invalid error code"),
+	}
 }
 
 pub fn ereport(tinfo: &Targetinfo, rdata: &[u8; 64]) -> Report {
@@ -53,7 +58,7 @@ pub fn verify_report(report: &Report) -> bool {
 		keyid: report.keyid,
 		..Default::default()
 	};
-	let key=egetkey(&req);
+	let key=egetkey(&req).expect("Couldn't get report key");
 	let mac_data=unsafe{::core::slice::from_raw_parts(report as *const _ as *const u8,384)};
 	aes::cmac_128(&key,mac_data)==report.mac
 }
