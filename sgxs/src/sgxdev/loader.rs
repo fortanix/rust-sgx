@@ -91,7 +91,6 @@ impl Add<u64> for Uaddr {
 struct Pre<T>(T);
 
 #[repr(C)]
-#[unsafe_no_drop_flag] // safe because Drop impl is empty
 struct RestrictedIoctlVecElem<'a>(IoctlVecElem,PhantomData<&'a Any>);
 
 // Prevent moving out of RestrictedIoctlVecElem
@@ -100,6 +99,8 @@ impl<'a> Drop for RestrictedIoctlVecElem<'a> {
 }
 
 #[allow(dead_code)]
+// If you get a compiler error here, it may be because your compiler is old and
+// adds a drop flag to RestrictedIoctlVecElem. Upgrade your compiler.
 fn assert_same_size_ioctlvecelem<'a>(a: IoctlVecElem) -> RestrictedIoctlVecElem<'a> {
 	unsafe{::std::mem::transmute(a)}
 }

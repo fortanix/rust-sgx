@@ -27,7 +27,7 @@ pub fn relocate_elf_rela() {
 		static RELACOUNT: usize;
 	}
 
-	if RELACOUNT==0 { return }
+	if unsafe{RELACOUNT}==0 { return }
 
 	let relas=unsafe{from_raw_parts::<Rela<u64>>(mem::rel_ptr(RELA),RELACOUNT)};
 	for rela in relas {
