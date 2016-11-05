@@ -10,6 +10,7 @@ should be compatible. See also the [libenclave ABI compatibility
 chart](LIBENCLAVE-ABI.md#abi-version-compatibility).
 
   * [Upgrading from enclave-interface 0.1.0 to 0.1.1](#upgrading-from-enclave-interface-010-to-011)
+  * [Upgrading from libenclave 0.1.3 to 0.1.4](#upgrading-from-libenclave-012-to-013)
   * [Upgrading from libenclave 0.1.2 to 0.1.3](#upgrading-from-libenclave-012-to-013)
   * [Upgrading from libenclave 0.1.0 to 0.1.2](#upgrading-from-libenclave-010-to-012)
 
@@ -18,6 +19,11 @@ chart](LIBENCLAVE-ABI.md#abi-version-compatibility).
 The signatures of `sgxs::loader::Map::tcss` and `enclave_interface::tcs::enter`
 have changed. The returned mapping must now be mutable and you must pass a
 mutable reference to enter.
+
+## Upgrading from libenclave 0.1.3 to 0.1.4
+
+The signature to `enclave::sgx::egetkey` has changed. It now returns a
+`Result`. You must adjust your code appropriately.
 
 ## Upgrading from libenclave 0.1.2 to 0.1.3
 
