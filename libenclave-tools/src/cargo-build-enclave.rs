@@ -26,6 +26,7 @@ use std::io::{Write,Error as IoError};
 use std::fs;
 use std::borrow::Cow;
 use std::fmt;
+use std::rc::Rc;
 
 use clap::ArgMatches;
 
@@ -49,6 +50,7 @@ impl<T: Decodable> JsonDeserialize for T {}
 #[derive(RustcDecodable)]
 struct Manifest {
 	id: String,
+	name: String,
 	manifest_path: String,
 	targets: Vec<ManifestTarget>,
 	dependencies: Vec<ManifestDependency>,
@@ -68,14 +70,37 @@ struct ManifestDependency {
 
 impl Manifest {
 	fn check(&self) -> Result<(),Error> {
-		if !(self.targets.len()==1 && self.targets[0].kind==["bin"]) {
-			return Err(Error::ManifestTargetNotBin);
-		}
 		let dependency=try!(self.dependencies.iter().find(|dep|dep.name=="enclave").ok_or(Error::ManifestNoEnclaveDependency));
 		if dependency.req!=concat!("= ",crate_version!()) {
 			return Err(Error::ManifestEnclaveDependencyInvalidVersion(dependency.req.to_owned().into()));
 		}
 		Ok(())
+	}
+
+	fn get_targets(&self, target_arg: Option<&[Cow<OsStr>]>) -> Result<(Vec<TargetArg>,bool),Error> {
+		if let Some(target_arg)=target_arg {
+			match target_arg[0].to_str().map(|s|&s[2..]) {
+				Some(k @ "bin") | Some(k @ "example") => {
+					// find matching target from manifest
+					self.targets.iter()
+						.find(|target| &*target_arg[1]==&*target.name && target.kind.iter().any(|el|el==k) )
+						.map(|target| (vec![TargetArg::new(&target_arg[0],&target.name)],false) )
+						.ok_or( Error::TargetNotFound(os_str_err(&target_arg[0]),os_str_err(&target_arg[1])) )
+				}
+				_ => Err(Error::TargetInvalidType(os_str_err(&target_arg[0])))
+			}
+		} else {
+			// find all bin targets in manifest
+			let targets: Vec<_>=self.targets.iter()
+				.filter(|target| target.kind.iter().any(|k|k=="bin") )
+				.map(|target| TargetArg::new("--bin",&target.name) )
+				.collect();
+			if targets.is_empty() {
+				Err(Error::TargetNoTargets)
+			} else {
+				Ok((targets,true))
+			}
+		}
 	}
 }
 
@@ -89,9 +114,12 @@ fn say_status<W: Write>(writer: &mut W, color: bool, status: &str, message: &str
 
 #[derive(Debug)]
 enum Error {
-	ManifestTargetNotBin,
 	ManifestNoEnclaveDependency,
 	ManifestEnclaveDependencyInvalidVersion(String),
+	TargetNoTargets,
+	TargetNotFound(String,String),
+	TargetInvalidType(String),
+	TargetInvalidCmdline(String),
 	CargoReadManifestInvalidCmdline,
 	CargoReadManifestExec(ExecError),
 	CargoReadManifestJson(JsonError),
@@ -102,13 +130,20 @@ enum Error {
 	ConvNoOutput(IoError),
 }
 
+fn os_str_err(s: &OsStr) -> String {
+	s.to_string_lossy().into_owned()
+}
+
 impl fmt::Display for Error {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		use Error::*;
 		match *self {
-			ManifestTargetNotBin => write!(fmt,"This crate's manifest specifies more than one target, or the only target is not a `bin' target. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
 			ManifestNoEnclaveDependency => write!(fmt,"This crate does not seem to have a dependency on libenclave."),
 			ManifestEnclaveDependencyInvalidVersion(ref dep_v) => write!(fmt,"There is a version mismatch between libenclave-tools ({}) and the libenclave dependency version ({}).",crate_version!(),dep_v),
+			TargetNoTargets => write!(fmt,"You didn't specify a target and there are no `bin' targets. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
+			TargetNotFound(ref e1, ref e2) => write!(fmt,"Target {} {} not found.",e1,e2),
+			TargetInvalidType(ref err) => write!(fmt,"A {} target was specified, but only --bin and --example targets are supported.",err),
+			TargetInvalidCmdline(ref err) => write!(fmt,"The {} argument is invalid.",err),
 			CargoReadManifestInvalidCmdline => write!(fmt,"There was an error executing `cargo read-manifest': the --manifest-path argument is invalid."),
 			CargoReadManifestExec(ref err) => write!(fmt,"There was an error executing `cargo read-manifest': {}",err),
 			CargoReadManifestJson(ref err) => write!(fmt,"There was an error parsing the JSON output of `cargo read-manifest': {}",err),
@@ -158,29 +193,57 @@ impl<'args> BuilderMode<'args> {
 		}
 	}
 
-	fn into_builder(self) -> Result<Builder<'args>,Error> {
+	fn into_builders(self) -> Result<Vec<Builder<'args>>,Error> {
 		let manifest=try!(self.read_manifest());
 		try!(manifest.check());
 
-		let bin_artifact=try!(self.target_path(&manifest));
-		let map_tempfile=naming::output_lib_name(&bin_artifact,"map").unwrap(/* panic here indicates bug in cargo */).into_os_string();
-		let sgxs_artifact=naming::output_lib_name(&bin_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+		let (targets,rustc_specify_target)=try!(manifest.get_targets(try!(self.target_arg())));
 
-		let builder=Builder{
-			mode:self,
-			manifest:manifest,
-			bin_artifact:bin_artifact,
-			map_tempfile:map_tempfile,
-			sgxs_artifact:sgxs_artifact,
-		};
+		let rc_builder=Rc::new(self);
+		let rc_manifest=Rc::new(manifest);
 
-		Ok(builder)
+		let map_tempfile=Rc::new(try!(rc_builder.target_path(&rc_manifest,&TargetArg::new("MAPFILE",format!("libenclave-{}.map",rc_manifest.name)))));
+
+		targets.into_iter().map(|target_arg| {
+			let rc_manifest=rc_manifest.clone();
+			let rc_builder=rc_builder.clone();
+
+			let bin_artifact=try!(rc_builder.target_path(&rc_manifest,&target_arg));
+			let sgxs_artifact=naming::output_lib_name(&bin_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
+
+			Ok(Builder{
+				mode:rc_builder,
+				manifest:rc_manifest,
+				target_arg:match rustc_specify_target {
+					true => Some(target_arg),
+					false => None,
+				},
+				bin_artifact:bin_artifact,
+				map_tempfile:map_tempfile.clone(),
+				sgxs_artifact:sgxs_artifact,
+			})
+		}).collect()
 	}
 
-	fn manifest_path_arg(&self) -> Result<Option<&[Cow<OsStr>]>,()> {
+	fn manifest_path_arg(&self) -> Result<Option<&[Cow<OsStr>]>,Error> {
 		if let Some(pos)=self.cargo_args.iter().rposition(|arg|&**arg=="--manifest-path") {
-			if pos+1>=self.cargo_args.len() { return Err(()) }
+			if pos+1>=self.cargo_args.len() { return Err(Error::CargoReadManifestInvalidCmdline) }
 			Ok(Some(&self.cargo_args[pos..pos+2]))
+		} else {
+			Ok(None)
+		}
+	}
+
+	fn target_arg(&self) -> Result<Option<&[Cow<OsStr>]>,Error> {
+		let target_flags: &[&OsStr] = &["--lib".as_ref(),"--bin".as_ref(),"--example".as_ref(),"--test".as_ref(),"--bench".as_ref()];
+
+		if let Some((pos,arg))=self.cargo_args.iter().enumerate().find(|&(_,arg)|target_flags.contains(&&**arg)) {
+			if &**arg=="--lib" {
+				Ok(Some(&self.cargo_args[pos..pos+1]))
+			} else {
+				if pos+1>=self.cargo_args.len() { return Err(Error::TargetInvalidCmdline(os_str_err(&arg))) }
+				Ok(Some(&self.cargo_args[pos..pos+2]))
+			}
 		} else {
 			Ok(None)
 		}
@@ -191,42 +254,59 @@ impl<'args> BuilderMode<'args> {
 		cargo.arg("read-manifest")
 		.stderr(ProcessIo::inherit());
 
-		match self.manifest_path_arg() {
-			Err(_) => return Err(Error::CargoReadManifestInvalidCmdline),
-			Ok(Some(extra_args)) => {cargo.args(extra_args);},
-			Ok(_) => {},
+		if let Some(extra_args)=try!(self.manifest_path_arg()) {
+			cargo.args(extra_args);
 		}
 
 		let out=try!(cargo.output_ext(self.verbose).map_err(Error::CargoReadManifestExec));
 		Manifest::from_json_slice(&out.stdout).map_err(Error::CargoReadManifestJson)
 	}
 
-	fn target_path(&self, manifest: &Manifest) -> Result<OsString,Error> {
+	fn target_path(&self, manifest: &Manifest, target_arg: &TargetArg) -> Result<OsString,Error> {
 		let release=self.cargo_args.iter().any(|arg|&**arg=="--release");
 
 		let mut buf=Path::new(&manifest.manifest_path).with_file_name("target");
 		buf.push(TARGET_TRIPLE);
 		buf.push(if release { "release" } else { "debug" });
-		buf.push(&manifest.targets[0].name);
+		if &target_arg.ty == "--example" { buf.push("examples") };
+		buf.push(&target_arg.name);
 		Ok(buf.into())
 	}
 }
 
+struct TargetArg {
+	ty: OsString,
+	name: OsString,
+}
+
+impl TargetArg {
+	fn new<T: AsRef<OsStr>, N: AsRef<OsStr>>(ty: T, name: N) -> TargetArg {
+		TargetArg {
+			ty: ty.as_ref().to_owned(),
+			name: name.as_ref().to_owned(),
+		}
+	}
+}
+
 struct Builder<'args> {
-	mode: BuilderMode<'args>,
-	manifest: Manifest,
+	mode: Rc<BuilderMode<'args>>,
+	manifest: Rc<Manifest>,
+	target_arg: Option<TargetArg>,
 	bin_artifact: OsString,
 	sgxs_artifact: OsString,
-	map_tempfile: OsString,
+	map_tempfile: Rc<OsString>,
 }
 
 impl<'args> Builder<'args> {
 	fn cargo_rustc(&mut self) -> Result<(),Error> {
 		let mut cargo=Command::new("cargo");
 		cargo.env("LIBENCLAVE_NO_WARNING","1");
-		cargo.env("LIBENCLAVE_MAP_FILE",&self.map_tempfile);
-		cargo.args(&["rustc","--bin"]);
-		cargo.arg(&self.manifest.targets[0].name);
+		cargo.env("LIBENCLAVE_MAP_FILE",&*self.map_tempfile);
+		cargo.arg("rustc");
+		if let Some(TargetArg{ref ty,ref name})=self.target_arg {
+			cargo.arg(ty);
+			cargo.arg(name);
+		}
 
 		if self.mode.verbose { cargo.arg("--verbose"); }
 		if self.mode.quiet { cargo.arg("--quiet"); }
@@ -253,7 +333,7 @@ impl<'args> Builder<'args> {
 			"-Wl,--export-dynamic",
 			"-Wl,--version-script="/*append later*/
 		].join(" ")).into();
-		link_args.push(&self.map_tempfile);
+		link_args.push(&*self.map_tempfile);
 		cargo.args(&["--","-C"]).arg(&link_args);
 
 		cargo.status_ext(self.mode.verbose).map_err(Error::CargoRustcExec)
@@ -329,8 +409,21 @@ fn main() {
 		std::process::exit(1);
 	}
 
-	if let Err(e)=BuilderMode::new(&args).into_builder().and_then(Builder::build) {
-		writeln!(std::io::stderr(),"ERROR: {}",e).expect("failed printing to stderr");
-		std::process::exit(1);
-	};
+	let mut error = false;
+	match BuilderMode::new(&args).into_builders() {
+		Err(e) => {
+			writeln!(std::io::stderr(),"ERROR: {}",e).expect("failed printing to stderr");
+			error = true;
+		}
+		Ok(builders) => {
+			for builder in builders {
+				if let Err(e) = builder.build() {
+					writeln!(std::io::stderr(),"ERROR: {}",e).expect("failed printing to stderr");
+					error = true;
+				}
+			}
+		}
+	}
+
+	if error { std::process::exit(1); }
 }
