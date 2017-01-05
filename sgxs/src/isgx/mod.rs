@@ -47,8 +47,9 @@ impl EinittokenError for Error {
 	#[allow(non_upper_case_globals)]
 	fn is_einittoken_error(&self) -> bool {
 		use self::Error::Init;
-		use self::SgxIoctlError::Ret;
+		use self::SgxIoctlError::{Ret, Io};
 		match self {
+			&Init(Io(ref e)) if e.kind() == ::std::io::ErrorKind::PermissionDenied => true,
 			&Init(Ret(ErrorCode::InvalidEinitToken)) |
 			&Init(Ret(ErrorCode::InvalidCpusvn)) |
 			&Init(Ret(ErrorCode::InvalidAttribute)) | // InvalidEinitAttribute according to PR, but does not exist.
