@@ -11,23 +11,22 @@
 
 use abi;
 
-#[repr(C)]
+#[repr(C,packed)]
 #[derive(Clone,Debug)]
 pub struct CreateData {
-	pub secs: *const abi::Secs, // with baseaddr set to 0
-	pub base: u64,
+	pub secs: *const abi::Secs, // with baseaddr set to actual base
 }
 
-#[repr(C)]
+#[repr(C,packed)]
 #[derive(Clone,Debug)]
 pub struct AddData {
 	pub dstpage: u64,
 	pub srcpage: *const [u8;4096],
 	pub secinfo: *const abi::Secinfo,
-	pub not_measured: u32,
+	pub chunks: u16,
 }
 
-#[repr(C)]
+#[repr(C,packed)]
 #[derive(Clone,Debug)]
 pub struct InitData {
 	pub base: u64,
@@ -35,14 +34,7 @@ pub struct InitData {
 	pub einittoken: *const abi::Einittoken,
 }
 
-#[repr(C)]
-#[derive(Clone,Debug)]
-pub struct DestroyData {
-	pub base: u64,
-}
-
-const SGX_IOCTL: u8 = 112;
-ioctl!(readwrite create with SGX_IOCTL, 0x02; CreateData);
-ioctl!(write add with SGX_IOCTL, 0x03; AddData);
-ioctl!(write init with SGX_IOCTL, 0x04; InitData);
-ioctl!(write destroy with SGX_IOCTL, 0x06; DestroyData);
+const SGX_IOCTL: u8 = 0xa4;
+ioctl!(write create with SGX_IOCTL, 0x00; CreateData);
+ioctl!(write add with SGX_IOCTL, 0x01; AddData);
+ioctl!(write init with SGX_IOCTL, 0x02; InitData);
