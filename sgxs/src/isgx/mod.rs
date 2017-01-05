@@ -15,6 +15,7 @@ use std::fs::OpenOptions;
 use std::path::Path;
 use std::os::unix::io::IntoRawFd;
 use std::io::{Result as IoResult,Error as IoError};
+use std::ptr;
 use libc;
 use sgxs::{SgxsRead,PageReader,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
 use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode};
@@ -30,11 +31,10 @@ pub enum SgxIoctlError {
 #[derive(Debug)]
 pub enum Error {
 	Sgxs(SgxsError),
+	Map(IoError),
 	Create(SgxIoctlError),
 	Add(SgxIoctlError),
 	Init(SgxIoctlError),
-	Destroy(SgxIoctlError),
-	ChunksNotSupported,
 }
 
 impl From<SgxsError> for Error {
@@ -75,12 +75,7 @@ pub struct Mapping<'a> {
 	device: &'a Device,
 	tcss: Vec<Tcs>,
 	base: u64,
-}
-
-impl<'a> Drop for Mapping<'a> {
-	fn drop(&mut self) {
-		let _=self.destroy();
-	}
+	size: u64,
 }
 
 impl<'a> Map for Mapping<'a> {
@@ -94,29 +89,34 @@ impl<'a> Map for Mapping<'a> {
 }
 
 impl<'a> Mapping<'a> {
-	fn create(dev: &'a Device, ecreate: MeasECreate, sigstruct: &Sigstruct, einittoken: &Einittoken) -> Result<Mapping<'a>> {
+	fn new(dev: &'a Device, size: u64) -> Result<Mapping<'a>> {
+		let ptr=unsafe{libc::mmap(ptr::null_mut(),size as usize,libc::PROT_READ|libc::PROT_WRITE|libc::PROT_EXEC,libc::MAP_SHARED,dev.fd,0)};
+		if ptr==ptr::null_mut() || ptr==libc::MAP_FAILED {
+			Err(Error::Map(IoError::last_os_error()))
+		} else {
+			Ok(Mapping{device:dev,base:ptr as u64,size:size,tcss:vec![]})
+		}
+	}
+
+	fn create(&mut self, ecreate: MeasECreate, sigstruct: &Sigstruct, einittoken: &Einittoken) -> Result<()> {
+		assert_eq!(self.size,ecreate.size);
 		let secs=Secs{
+			baseaddr: self.base,
 			size: ecreate.size,
 			ssaframesize: ecreate.ssaframesize,
 			miscselect: sigstruct.miscselect,
 			attributes: if einittoken.valid==1 { einittoken.attributes.clone() } else { sigstruct.attributes.clone() },
 			..Default::default()
 		};
-		let mut createdata=ioctl::CreateData{
+		let createdata=ioctl::CreateData{
 			secs:&secs,
-			base:0
 		};
-		try_ioctl_unsafe!(Create,ioctl::create(dev.fd,&mut createdata));
-		Ok(Mapping{device:dev,base:createdata.base,tcss:vec![]})
+		try_ioctl_unsafe!(Create,ioctl::create(self.device.fd,&createdata));
+		Ok(())
 	}
 
 	fn add(&mut self, page: (MeasEAdd,PageChunks,[u8;4096])) -> Result<()> {
 		let (eadd,chunks,data)=page;
-		let not_measured=match chunks.0 {
-			0xffff => 0,
-			0 => 1,
-			_ => return Err(Error::ChunksNotSupported),
-		};
 		let secinfo=Secinfo{
 			flags:eadd.secinfo.flags,
 			..Default::default()
@@ -125,12 +125,14 @@ impl<'a> Mapping<'a> {
 			dstpage:self.base+eadd.offset,
 			srcpage:&data,
 			secinfo:&secinfo,
-			not_measured:not_measured,
+			chunks:chunks.0,
 		};
 		try_ioctl_unsafe!(Add,ioctl::add(self.device.fd,&adddata));
+
 		if secinfo.flags.page_type()==PageType::Tcs as u8 {
 			self.tcss.push(::private::loader::make_tcs(adddata.dstpage));
 		}
+
 		Ok(())
 	}
 
@@ -143,13 +145,11 @@ impl<'a> Mapping<'a> {
 		try_ioctl_unsafe!(Init,ioctl::init(self.device.fd,&initdata));
 		Ok(())
 	}
+}
 
-	fn destroy(&self) -> Result<()> {
-		let destroydata=ioctl::DestroyData{
-			base:self.base,
-		};
-		try_ioctl_unsafe!(Destroy,ioctl::destroy(self.device.fd,&destroydata));
-		Ok(())
+impl<'a> Drop for Mapping<'a> {
+	fn drop(&mut self) {
+		unsafe{libc::munmap(self.base as usize as *mut _,self.size as usize)};
 	}
 }
 
@@ -174,7 +174,9 @@ impl<'dev> Load<'dev> for Device {
 
 		let (ecreate,mut reader)=try!(PageReader::new(reader));
 
-		let mut mapping=try!(Mapping::create(self,ecreate,sigstruct,einittoken));
+		let mut mapping=try!(Mapping::new(self,ecreate.size));
+
+		try!(mapping.create(ecreate,sigstruct,einittoken));
 
 		loop {
 			match try!(reader.read_page()) {
