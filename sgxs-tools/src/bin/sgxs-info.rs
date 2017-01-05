@@ -18,7 +18,7 @@ use std::ffi::OsStr;
 use std::fmt;
 
 use sgxs_crate::sgxs::{self,SgxsRead};
-use sgx_isa::secinfo_flags;
+use sgx_isa::{PageType,secinfo_flags};
 
 /// Ok(Some(_)) all data is _
 /// Ok(None) there is data, but not all bytes are the same
@@ -114,7 +114,7 @@ impl fmt::Display for PageCharacteristic {
 				if flags.contains(secinfo_flags::X) { perm[2]=b'x'; }
 
 				write!(f,"{:<4} {} {:>7} meas={}",
-					format!("{:?}",flags.page_type()),
+					format!("{:?}",PageType::from_repr(flags.page_type()).unwrap()),
 					unsafe{std::str::from_utf8_unchecked(&perm)},
 					data,
 					measured_chunks

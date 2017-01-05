@@ -13,7 +13,7 @@ use std::io::Write;
 
 use abi::{Sigstruct,Einittoken,Attributes,Enclu};
 use sgxs::SgxsRead;
-use loader::{Load,Map,Address,Error};
+use loader::{Load,Map,Tcs,Error};
 use loader::Error::*;
 use crypto::{Sha256Digest,Sha256};
 
@@ -63,7 +63,7 @@ struct GetTokenCall {
 
 pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstruct, enclave_token: &mut Einittoken, requested_attributes: &Attributes, le: &'r mut R, le_sig: &Sigstruct)
 	-> Result<(),Error<D::Error>> where D: Load<'dev>, R: SgxsRead + 'r {
-	let le_mapped=match device.load(le,le_sig,None) {
+	let mut le_mapped=match device.load(le,le_sig,None) {
 		Err(err) => return Err(LaunchEnclaveLoad(err)),
 		Ok(m) => m,
 	};
@@ -73,7 +73,7 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 	}
 
 	let flags=get_cpuid_flags().bits;
-	let (rdi,rsi)=enclu_eenter(le_mapped.tcss()[0],0xffffffff,&flags as *const _ as u64);
+	let (rdi,rsi)=enclu_eenter(&mut le_mapped.tcss()[0],0xffffffff,&flags as *const _ as u64);
 	if (rdi,rsi)!=(0xffffffffffffffff,0) {
 		return Err(LaunchEnclaveInit(rdi,rsi));
 	}
@@ -90,7 +90,7 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 		einittoken: enclave_token,
 	};
 
-	let (rdi,rsi)=enclu_eenter(le_mapped.tcss()[0],0,&callbuf as *const _ as u64);
+	let (rdi,rsi)=enclu_eenter(&mut le_mapped.tcss()[0],0,&callbuf as *const _ as u64);
 	if (rdi,rsi)!=(0xffffffffffffffff,0) {
 		return Err(LaunchEnclaveGetToken(rdi,rsi));
 	}
@@ -98,14 +98,14 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 	Ok(())
 }
 
-fn enclu_eenter(tcs: Address, mut rdi: u64, mut rsi: u64) -> (u64,u64) {
+fn enclu_eenter(tcs: &mut Tcs, mut rdi: u64, mut rsi: u64) -> (u64,u64) {
 	let eax: u32;
 	unsafe{asm!("
 		lea aep(%rip),%rcx
 aep:
 		enclu
 "		: "={eax}"(eax), "={rdi}"(rdi), "={rsi}"(rsi)
-		: "{eax}"(Enclu::EEnter), "{rbx}"(u64::from(tcs)), "{rdi}"(rdi), "{rsi}"(rsi)
+		: "{eax}"(Enclu::EEnter), "{rbx}"(u64::from(tcs.address())), "{rdi}"(rdi), "{rsi}"(rsi)
 		: "rcx", "rdx", "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"
 		: "volatile"
 	)};

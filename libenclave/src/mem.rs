@@ -39,11 +39,11 @@ fn image_base() -> u64 {
 pub fn is_enclave_range<T>(p: *const T, len: usize) -> bool {
 	let start=p as u64;
 	let end=start+(len as u64);
-	start >= image_base() && end <= image_base()+(ENCLAVE_SIZE as u64)
+	start >= image_base() && end <= image_base()+(unsafe{ENCLAVE_SIZE} as u64)
 }
 
 pub fn is_user_range<T>(p: *const T, len: usize) -> bool {
 	let start=p as u64;
 	let end=start+(len as u64);
-	end <= image_base() || start >= image_base()+(ENCLAVE_SIZE as u64)
+	end <= image_base() || start >= image_base()+(unsafe{ENCLAVE_SIZE} as u64)
 }

@@ -38,26 +38,30 @@ IMAGE_BASE:
 	globvar ENCLAVE_SIZE 8
 
 .data
-#ifdef DEBUG
-	globvar DEBUG_PANIC_BUF_PTR 8
-#endif
-init_once:
-	.byte 0
 panicked:
 	.byte 0
 
-// stack section
+#ifdef DEBUG
+.section .note.libenclave, "", @note
+	.int 17 // namesz
+	.int  0 // descsz
+	.int  0 // type
+	.asciz "libenclave DEBUG"
+	.align 4
+#endif
 
 // TLS section
 #define tls_tos        0x00 // initialized by loader to *offset* from image base to TOS
-#define tls_last_rsp   0x08 // initialized by loader to 0
-#define tls_user_rsp   0x10
-#define tls_user_retip 0x18
-#define tls_user_rbp   0x20
-#define tls_user_r12   0x28
-#define tls_user_r13   0x30
-#define tls_user_r14   0x38
-#define tls_user_r15   0x40
+#define tls_init_once  0x08 // initialized by loader to 0
+#define tls_last_rsp   0x10 // initialized by loader to 0
+#define tls_user_rsp   0x18
+#define tls_user_retip 0x20
+#define tls_user_rbp   0x28
+#define tls_user_r12   0x30
+#define tls_user_r13   0x38
+#define tls_user_r14   0x40
+#define tls_user_r15   0x48
+#define tls_debug_panic_buf_ptr 0x50
 
 /*************************
  ******* sgx_entry *******
@@ -132,7 +136,7 @@ no_debug:
 	test %r11,%r11
 	jnz usercall_ret
 #ifdef DEBUG
-	mov %r10,DEBUG_PANIC_BUF_PTR(%rip)
+	mov %r10,%gs:tls_debug_panic_buf_ptr
 #endif
 // save registers and setup stack
 	mov %rcx,%gs:tls_user_retip
@@ -143,30 +147,31 @@ no_debug:
 	mov %r14,%gs:tls_user_r14
 	mov %r15,%gs:tls_user_r15
 	mov %gs:tls_tos,%rsp
-// check for panic
-	bt $0,panicked(%rip)
-	jc panic_exit
 // check for init
-	bt $0,init_once(%rip)
+	bt $0,%gs:tls_init_once
 	jc skip_init
-	movb $1,init_once(%rip)
-// adjust stack -- NOTE: this needs to happen for every thread, not just once...
+	movb $1,%gs:tls_init_once
+// adjust stack
 	lea IMAGE_BASE(%rip),%rax
 	add %rax,%rsp
 	mov %rsp,%gs:tls_tos
-// call init
+// call thread_init
 	mov %rdi,%rbx
 	mov %rsi,%r12
 	mov %rdx,%r13
 	mov %r8,%r14
 	mov %r9,%r15
-	call init
+	call thread_init
 	mov %rbx,%rdi
 	mov %r12,%rsi
 	mov %r13,%rdx
 	mov %r14,%r8
 	mov %r15,%r9
 skip_init:
+// check for panic
+	bt $0,panicked(%rip)
+	jc reentry_panic
+// call into main entry point
 	call entry
 	mov %rax,%rdx  // RDX = return value
 	xor %rdi,%rdi  // RDI = normal exit
@@ -198,17 +203,34 @@ sgx_exit:
 
 #ifdef DEBUG
 .global panic_msg
+
+.global get_debug_panic_buf_ptr
+get_debug_panic_buf_ptr:
+	mov %gs:tls_debug_panic_buf_ptr,%rax
+	ret
+
 usercall_panic_msg:
 	.asciz "Invalid usercall#!"
 usercall_panic_msg_end:
+reentry_panic_msg:
+	.asciz "Re-entered panicked enclave!"
+reentry_panic_msg_end:
 #endif
 
 .global panic_exit
+reentry_panic:
+#ifdef DEBUG
+	lea reentry_panic_msg(%rip),%rdi
+	mov $reentry_panic_msg_end-reentry_panic_msg,%esi
+	or $8,%rsp
+	jmp panic_msg
+#endif
 usercall_panic:
 #ifdef DEBUG
 	lea usercall_panic_msg(%rip),%rdi
-	mov usercall_panic_msg_end-usercall_panic_msg,%esi
-	call panic_msg
+	mov $usercall_panic_msg_end-usercall_panic_msg,%esi
+	or $8,%rsp
+	jmp panic_msg
 #endif
 panic_exit:
 	movb $1,panicked(%rip)
@@ -256,4 +278,9 @@ usercall_ret:
 	pop %r13
 	pop %r14
 	pop %r15
+	ret
+
+.global get_thread_id
+get_thread_id:
+	mov %gs:tls_tos,%rax
 	ret

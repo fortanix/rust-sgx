@@ -11,6 +11,15 @@
 
 pub fn rand() -> u64 {
 	let ret;
-	unsafe{asm!("rdrand $0":"=r"(ret):::"volatile")};
+	let mut retry=10;
+	unsafe{asm!("
+1:
+		rdrand $0
+		jc 2f
+		dec $1
+		jnz 1b
+2:
+	":"=r"(ret),"=r"(retry):"1"(retry)::"volatile")};
+	if retry==0 { panic!("RDRAND failure") }
 	ret
 }

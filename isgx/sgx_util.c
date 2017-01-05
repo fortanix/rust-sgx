@@ -59,7 +59,7 @@ void sgx_put_backing(struct page *backing_page, bool write)
 	if (write)
 		set_page_dirty(backing_page);
 
-	page_cache_release(backing_page);
+	put_page(backing_page);
 }
 
 /**

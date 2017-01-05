@@ -15,10 +15,11 @@ use abi::{Sigstruct,Einittoken,Attributes};
 use sgxs::SgxsRead;
 
 pub use ::private::loader::Address;
+pub use ::private::loader::Tcs;
 
 pub trait Map: Drop {
 	fn base_address(&self) -> Address;
-	fn tcss(&self) -> &[Address];
+	fn tcss(&mut self) -> &mut [Tcs];
 }
 
 pub trait Load<'dev> {

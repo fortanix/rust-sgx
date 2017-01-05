@@ -9,13 +9,14 @@
  * option) any later version.
  */
 
-#![feature(linkage,lang_items,unwind_attributes,asm,raw,const_fn,collections,unicode,alloc,str_char,oom,heap_api)]
+#![feature(linkage,lang_items,unwind_attributes,asm,const_fn,collections,unicode,alloc,oom,heap_api)]
 #![no_std]
 
 #[macro_use] extern crate collections;
 extern crate rustc_unicode;
 extern crate alloc as rustc_alloc;
 extern crate sgx_isa;
+#[cfg(not(test))] pub extern crate core_io as io;
 
 extern crate spin;
 extern crate rlibc;
@@ -26,9 +27,9 @@ extern crate alloc_buddy_simple;
 mod alloc;
 mod reloc;
 mod mem;
-#[doc(hidden)] // pub/doc(hidden) because we refer to functions in assembly
+#[doc(hidden)] // pub+doc(hidden) because we refer to functions in assembly
 pub mod panic;
-#[doc(hidden)] // pub/doc(hidden) because we refer to functions in assembly
+#[doc(hidden)] // pub+doc(hidden) because we refer to functions in assembly
 #[cfg(feature="debug")] pub mod debug;
 
 // library features
@@ -37,12 +38,15 @@ pub mod rand;
 pub mod aes;
 pub mod curve25519;
 pub mod sgx;
-#[cfg(not(test))] pub mod io;
+pub mod thread;
 
 #[doc(hidden)]
 #[no_mangle]
 #[cfg(not(test))]
-pub unsafe extern "C" fn init() {
-	reloc::relocate_elf_rela();
-	alloc::init();
+pub unsafe extern "C" fn thread_init() {
+	static GLOBAL_INIT: spin::Once<()> = spin::Once::new();
+	GLOBAL_INIT.call_once(||{
+		reloc::relocate_elf_rela();
+		alloc::init();
+	});
 }

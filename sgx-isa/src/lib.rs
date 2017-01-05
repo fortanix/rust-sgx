@@ -20,10 +20,49 @@
 
 
 #![no_std]
+#![cfg_attr(feature="try_from",feature(try_from))]
 
 #[macro_use]
 extern crate bitflags;
 
+macro_rules! enum_def {
+	(
+		#[derive($($derive:meta),*)]
+		#[repr($repr:ident)]
+		pub enum $name:ident {
+			$($key:ident = $val:expr,)*
+		}
+	) => (
+		#[derive($($derive),*)]
+		#[repr($repr)]
+		pub enum $name {
+			$($key = $val,)*
+		}
+
+		#[cfg(feature="try_from")]
+		impl ::core::convert::TryFrom<$repr> for $name {
+			type Err=::core::num::TryFromIntError;
+			fn try_from(v: $repr) -> Result<Self, Self::Err> {
+				match v {
+					$($val => Ok($name::$key),)*
+					_ => Err(u8::try_from(256u16).unwrap_err()),
+				}
+			}
+		}
+
+		#[cfg(not(feature="try_from"))]
+		impl $name {
+			pub fn from_repr(v: $repr) -> Option<Self> {
+				match v {
+					$($val => Some($name::$key),)*
+					_ => None,
+				}
+			}
+		}
+	)
+}
+
+enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum Encls {
@@ -44,7 +83,9 @@ pub enum Encls {
 	EModpr  = 14,
 	EModt   = 15,
 }
+}
 
+enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum Enclu {
@@ -57,7 +98,9 @@ pub enum Enclu {
 	EModpe      = 6,
 	EAcceptcopy = 7,
 }
+}
 
+enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum ErrorCode {
@@ -88,6 +131,7 @@ pub enum ErrorCode {
 	UnmaskedEvent          = 128,
 	InvalidKeyname         = 256,
 }
+}
 
 pub const MEAS_ECREATE: u64 = 0x0045544145524345;
 pub const MEAS_EADD:    u64 = 0x0000000044444145;
@@ -96,6 +140,7 @@ pub const MEAS_EEXTEND: u64 = 0x00444E4554584545;
 pub const SIGSTRUCT_HEADER1: [u8; 16] = [0x06, 0x00, 0x00, 0x00, 0xE1, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00];
 pub const SIGSTRUCT_HEADER2: [u8; 16] = [0x01, 0x01, 0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00];
 
+enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u8)]
 pub enum PageType {
@@ -105,7 +150,9 @@ pub enum PageType {
 	Va   = 3,
 	Trim = 4,
 }
+}
 
+enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u16)]
 pub enum Keyname {
@@ -114,6 +161,7 @@ pub enum Keyname {
 	ProvisionSeal = 2,
 	Report        = 3,
 	Seal          = 4,
+}
 }
 
 #[repr(C,packed)]

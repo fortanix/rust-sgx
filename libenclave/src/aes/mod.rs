@@ -127,6 +127,9 @@ enum State {
 	Done,
 }
 
+/// Encryption/decryption state for the AES-GCM algorithm.
+///
+/// Usage requires AVX support to be enabled (XFRM bit 2).
 pub struct AesGcm {
 	gctx: GcmContext,
 	a_len: usize,

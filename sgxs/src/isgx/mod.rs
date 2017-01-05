@@ -20,7 +20,7 @@ use libc;
 use sgxs::{SgxsRead,PageReader,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
 use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode,secinfo_flags};
 
-use loader::{Map,Load,Address,EinittokenError};
+use loader::{Map,Load,Tcs,Address,EinittokenError};
 
 #[derive(Debug)]
 pub enum SgxIoctlError {
@@ -73,7 +73,7 @@ macro_rules! try_ioctl_unsafe {
 
 pub struct Mapping<'a> {
 	device: &'a Device,
-	tcss: Vec<Address>,
+	tcss: Vec<Tcs>,
 	base: u64,
 	size: u64,
 }
@@ -83,8 +83,8 @@ impl<'a> Map for Mapping<'a> {
 		::private::loader::make_address(self.base)
 	}
 
-	fn tcss(&self) -> &[Address] {
-		&self.tcss
+	fn tcss(&mut self) -> &mut [Tcs] {
+		&mut self.tcss
 	}
 }
 
@@ -131,7 +131,7 @@ impl<'a> Mapping<'a> {
 
 		let mut prot=libc::PROT_NONE;
 		if secinfo.flags.page_type()==PageType::Tcs as u8 {
-			self.tcss.push(::private::loader::make_address(adddata.dstpage));
+			self.tcss.push(::private::loader::make_tcs(adddata.dstpage));
 			prot=libc::PROT_READ|libc::PROT_WRITE;
 		} else {
 			if secinfo.flags.contains(secinfo_flags::R) {

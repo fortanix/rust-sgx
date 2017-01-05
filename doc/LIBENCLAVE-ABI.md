@@ -2,6 +2,12 @@
 
 This document describes the ABI of SGX enclaves built using `libenclave`.
 
+## ABI version compatibility
+
+| ABI version | libenclave version | enclave-interface version |
+| -----------:| ------------------:| -------------------------:|
+|       0.1.0 |        0.1.0-0.1.4 |               0.1.0-0.1.1 |
+
 ## Thread settings
 
 This section describes the requirements on the SGX thread control structure 
