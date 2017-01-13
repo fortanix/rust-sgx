@@ -28,7 +28,7 @@ pub trait Load<'dev> {
 
 	fn load<'r, R: SgxsRead + 'r>(&'dev self, reader: &'r mut R, sigstruct: &Sigstruct, einittoken: Option<&Einittoken>) -> Result<Self::Mapping,Self::Error>;
 
-	fn load_with_launch_enclave<'e,'le,RE,RL>(&'dev self, enclave: &'e mut RE, enclave_sig: &Sigstruct, enclave_token: OptionalEinittoken, le: &'e mut RL, le_sig: &Sigstruct)
+	fn load_with_launch_enclave<'e,'le,RE,RL>(&'dev self, enclave: &'e mut RE, enclave_sig: &Sigstruct, enclave_token: OptionalEinittoken, le: &'e mut RL, le_sig: &Sigstruct, whitelist: Option<&[u8]>)
 		-> Result<Self::Mapping,Error<Self::Error>> where RE: SgxsRead + Seek + 'e, RL: SgxsRead + 'le {
 		use self::OptionalEinittoken as OptTok;
 
@@ -51,7 +51,7 @@ pub trait Load<'dev> {
 			OptTok::Generate(t) | OptTok::UseOrGenerate(t) => { requested_attributes=t.attributes.clone(); *t=Default::default(); t },
 		};
 
-		try!(::intelcall::get_einittoken(self,enclave_sig,token,&requested_attributes,le,le_sig));
+		try!(::intelcall::get_einittoken(self,enclave_sig,token,&requested_attributes,le,le_sig,whitelist));
 
 		if token.valid==0 {
 			return Err(LaunchEnclaveNoToken);
@@ -112,6 +112,7 @@ pub enum Error<E: EinittokenError + ::std::fmt::Debug> {
 	LaunchEnclaveLoad(E),
 	LaunchEnclaveTcsCount,
 	LaunchEnclaveInit(u64,u64),
+	LaunchEnclaveLoadWhitelist(u64,u64),
 	LaunchEnclaveGetToken(u64,u64),
 	LaunchEnclaveNoToken,
 }

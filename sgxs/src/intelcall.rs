@@ -51,8 +51,7 @@ bitflags!{
 	}
 }
 
-#[allow(dead_code)]
-#[repr(packed)]
+#[repr(C,packed)]
 struct GetTokenCall {
 	unused: u64,
 	mrenclave: *const [u8;32],
@@ -61,7 +60,14 @@ struct GetTokenCall {
 	einittoken: *mut Einittoken,
 }
 
-pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstruct, enclave_token: &mut Einittoken, requested_attributes: &Attributes, le: &'r mut R, le_sig: &Sigstruct)
+#[repr(C,packed)]
+struct LoadWhitelistCall {
+	unused: u64,
+	whitelist: *const u8,
+	size: u32,
+}
+
+pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstruct, enclave_token: &mut Einittoken, requested_attributes: &Attributes, le: &'r mut R, le_sig: &Sigstruct, whitelist: Option<&[u8]>)
 	-> Result<(),Error<D::Error>> where D: Load<'dev>, R: SgxsRead + 'r {
 	let mut le_mapped=match device.load(le,le_sig,None) {
 		Err(err) => return Err(LaunchEnclaveLoad(err)),
@@ -81,6 +87,19 @@ pub fn get_einittoken<'dev,'r,D: ?Sized,R>(device: &'dev D, enclave_sig: &Sigstr
 	let mut sha=<Sha256 as Sha256Digest>::new();
 	sha.write(&enclave_sig.modulus).unwrap();
 	let mrsigner=sha.finish();
+
+	if let Some(whitelist)=whitelist {
+		let callbuf=LoadWhitelistCall{
+			unused:0,
+			whitelist: whitelist.as_ptr(),
+			size: whitelist.len() as u32,
+		};
+
+		let (rdi,rsi)=enclu_eenter(&mut le_mapped.tcss()[0],1,&callbuf as *const _ as u64);
+		if (rdi,rsi)!=(0xffffffffffffffff,0) {
+			return Err(LaunchEnclaveLoadWhitelist(rdi,rsi));
+		}
+	}
 
 	let callbuf=GetTokenCall{
 		unused:0,
