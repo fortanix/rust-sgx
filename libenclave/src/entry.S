@@ -131,14 +131,7 @@ sgx_entry:
 	jmp sgx_exit
 no_debug:
 #endif
-// check if returning from usercall
-	mov %gs:tls_last_rsp,%r11
-	test %r11,%r11
-	jnz usercall_ret
-#ifdef DEBUG
-	mov %r10,%gs:tls_debug_panic_buf_ptr
-#endif
-// save registers and setup stack
+// save registers
 	mov %rcx,%gs:tls_user_retip
 	mov %rsp,%gs:tls_user_rsp
 	mov %rbp,%gs:tls_user_rbp
@@ -146,6 +139,14 @@ no_debug:
 	mov %r13,%gs:tls_user_r13
 	mov %r14,%gs:tls_user_r14
 	mov %r15,%gs:tls_user_r15
+#ifdef DEBUG
+	mov %r10,%gs:tls_debug_panic_buf_ptr
+#endif
+// check if returning from usercall
+	mov %gs:tls_last_rsp,%r11
+	test %r11,%r11
+	jnz usercall_ret
+// setup stack
 	mov %gs:tls_tos,%rsp
 // check for init
 	bt $0,%gs:tls_init_once
