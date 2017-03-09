@@ -48,14 +48,14 @@ macro_rules! define_usercalls {
 			$($f,)*
 		}
 		pub trait Usercalls {
-			$(unsafe fn $f($($n: $t),*) $(-> $r)*;)*
+			$(unsafe fn $f(&mut self, $($n: $t),*) $(-> $r)*;)*
 		}
 		#[allow(unused_variables)]
-		pub fn dispatch<H: Usercalls>(n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> u64 {
+		pub fn dispatch<H: Usercalls>(handler: &mut H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> u64 {
 			// using if/else because you can't match an integer against enum variants
 			$(
 				if n == UsercallList::$f as Register {
-					RA::into_register(unsafe{enclave_usercalls_internal_define_usercalls!(replace_args a1,a2,a3,a4 $f($($n),*))})
+					RA::into_register(unsafe{enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))})
 				} else
 			)*
 			{
@@ -67,33 +67,37 @@ macro_rules! define_usercalls {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! enclave_usercalls_internal_define_usercalls {
-	(replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident, $n3:ident, $n4:ident)) => (
+	($h:ident, replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident, $n3:ident, $n4:ident)) => (
 		H::$f(
+			$h,
 			RA::from_register($a1),
 			RA::from_register($a2),
 			RA::from_register($a3),
 			RA::from_register($a4),
 		)
 	);
-	(replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident, $n3:ident)) => (
+	($h:ident, replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident, $n3:ident)) => (
 		H::$f(
+			$h,
 			RA::from_register($a1),
 			RA::from_register($a2),
 			RA::from_register($a3),
 		)
 	);
-	(replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident)) => (
+	($h:ident, replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident, $n2:ident)) => (
 		H::$f(
+			$h,
 			RA::from_register($a1),
 			RA::from_register($a2),
 		)
 	);
-	(replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident)) => (
+	($h:ident, replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident($n1:ident)) => (
 		H::$f(
+			$h,
 			RA::from_register($a1),
 		)
 	);
-	(replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident()) => (
-		H::$f()
+	($h:ident, replace_args $a1:ident,$a2:ident,$a3:ident,$a4:ident $f:ident()) => (
+		H::$f($h)
 	);
 }
