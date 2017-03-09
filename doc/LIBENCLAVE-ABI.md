@@ -1,4 +1,4 @@
-# libenclave ABI v0.1.0
+# libenclave ABI v0.2.0
 
 This document describes the ABI of SGX enclaves built using `libenclave`.
 
@@ -7,6 +7,15 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
 |       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
+|       0.2.0 |              0.2.0 |                     0.2.0 |
+
+## Changelog
+
+### Version 0.2.0
+
+* Usercall register saving semantics changed. The enclave no longer
+  distinguishes between normal enters and usercall enters for purposes of
+  saving user register state.
 
 ## Thread settings
 
@@ -73,9 +82,8 @@ Upon `EEXIT`, RDI will have one of the following values:
   entered again, it will immediately exit again with a negative value in RDI.
 - Positive: A “user call” is requested by the enclave. See below for register 
   usage. After servicing the user call request, execute EENTER again for the 
-  same TCS. A later normal exit will return to the point indicated by the 
-  original call and will restore the register state as it was before the 
-  original call as described above.
+  same TCS. A normal exit following a usercall entry will return to the new
+  entry point from where the usercall was returned.
 
 ### User call calling convention
   
@@ -95,7 +103,7 @@ The following registers will be saved by the caller (enclave):
 
 - all registers (callee can use any register)
 
-The following registers will be restored to the state they were in when the enclave was first entered:
+The following registers will be restored to the state they were in when the enclave was last entered:
 
 - RSP
 - RBP

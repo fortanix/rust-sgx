@@ -1,7 +1,7 @@
 [package]
 name = "enclave-interface"
 description = "Interface to interact with libenclave-based secure enclaves"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
 license = "GPL-2.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/enclave-interface"
