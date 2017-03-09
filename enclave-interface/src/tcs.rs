@@ -26,11 +26,13 @@ pub fn enter<T: FnMut(u64,u64,u64,u64,u64) -> u64>(tcs: &mut Tcs, mut on_usercal
 	}
 }
 
+#[derive(Debug)]
 pub enum CoResult<Y, R> {
 	Yield(Y),
 	Return(R),
 }
 
+#[derive(Debug)]
 pub struct Usercall<'tcs> {
 	tcs: &'tcs mut Tcs,
 	parameters: (u64,u64,u64,u64,u64)
