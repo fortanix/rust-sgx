@@ -50,6 +50,9 @@ macro_rules! define_usercalls {
 		pub trait Usercalls {
 			$(unsafe fn $f(&mut self, $($n: $t),*) $(-> $r)*;)*
 		}
+
+		pub const USERCALL_YIELD: u64 = 0x7fff_ffff_ffff_ffff;
+
 		#[allow(unused_variables)]
 		pub fn dispatch<H: Usercalls>(handler: &mut H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> u64 {
 			// using if/else because you can't match an integer against enum variants
@@ -58,7 +61,9 @@ macro_rules! define_usercalls {
 					RA::into_register(unsafe{enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))})
 				} else
 			)*
-			{
+			if n == USERCALL_YIELD {
+				return RA::into_register(());
+			} else {
 				panic!("Invalid usercall {}",n);
 			}
 		}

@@ -9,15 +9,15 @@
  * option) any later version.
  */
 
-#![feature(asm,const_fn,alloc,oom,heap_api)]
+#![feature(asm,const_fn,core_intrinsics,alloc,oom,heap_api)]
 
 extern crate alloc as rustc_alloc;
 extern crate sgx_isa;
 
-extern crate spin;
 extern crate rlibc;
 extern crate alloc_buddy_simple;
 #[macro_use] extern crate bitflags;
+extern crate core;
 
 // runtime features
 mod alloc;
@@ -35,6 +35,7 @@ pub mod aes;
 pub mod curve25519;
 pub mod sgx;
 pub mod thread;
+pub mod spin;
 
 #[doc(hidden)]
 #[no_mangle]

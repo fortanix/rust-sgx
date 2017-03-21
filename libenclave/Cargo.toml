@@ -9,8 +9,7 @@ build = "build.rs"
 
 [dependencies]
 rlibc = "1.0.0"  # MIT/Apache-2.0
-spin = "0.4.2"   # MIT
-alloc_buddy_simple2 = { version = "0.1.2" } # Apache-2.0/MIT
+alloc_buddy_simple = { version = "0.1.3", path = "../alloc_buddy_simple" } # Apache-2.0/MIT
 sgx-isa = "0.1"  # Apache-2.0/MIT
 bitflags = { version = "0.5", features = ["no_std"] } # MIT/Apache-2.0
 
@@ -20,7 +19,7 @@ gcc = "0.3"      # MIT/Apache-2.0
 [features]
 # Only disable default features when running `cargo test`
 default = ["allocator"]
-allocator = ["alloc_buddy_simple2/use-as-rust-allocator"]
+allocator = ["alloc_buddy_simple/use-as-rust-allocator"]
 
 # Enable debugging runtime
 debug = []

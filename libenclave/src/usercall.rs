@@ -21,6 +21,11 @@ pub unsafe fn do_usercall(nr: u64, p1: u64, p2: u64, p3: u64, p4: u64) -> u64 {
 	usercall(nr,p1,p2,0,p3,p4)
 }
 
+pub fn yield_now() {
+	const USERCALL_YIELD: u64 = 0x7fff_ffff_ffff_ffff;
+	unsafe { do_usercall(USERCALL_YIELD, 0, 0, 0, 0) };
+}
+
 pub use alloc::init_user as init_user_heap;
 
 pub struct UserBox<T: Copy>(*mut T);
