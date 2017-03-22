@@ -1,0 +1,13 @@
+[package]
+name = "alloc_buddy_simple"
+version = "0.1.3"
+authors = ["Jethro Beekman <jethro@jbeekman.nl>", "Eric Kidd <git@randomhacks.net>"]
+description = "Simple, drop-in replacement allocator for Rust running on bare metal (no_std)"
+readme = "README.md"
+keywords = ["no_std", "kernel", "allocator"]
+license = "Apache-2.0/MIT"
+
+[features]
+# When this feature is enabled, build this crate as the actual Rust system
+# allocator.
+use-as-rust-allocator = []

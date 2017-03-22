@@ -95,7 +95,14 @@ Upon `EEXIT`, parameters are passed in:
 - R8
 - R9
 
-See above under “exit value” which values can be passed in RDI. Upon `EENTER`, a value is returned in:
+As discussed above under “exit value”, only non-zero positive values can be
+passed in RDI. In addition, the following RDI values have special meaning:
+
+- `0x7fff_ffff_ffff_ffff` Yield. The enclave is yielding scheduling to
+  userspace. Userspace may resume the enclave at any time by returning from
+  this usercall.
+
+Upon `EENTER`, a value is returned in:
 
 - RDX
 
@@ -103,7 +110,8 @@ The following registers will be saved by the caller (enclave):
 
 - all registers (callee can use any register)
 
-The following registers will be restored to the state they were in when the enclave was last entered:
+The following registers will be restored to the state they were in when the
+enclave was last entered:
 
 - RSP
 - RBP
