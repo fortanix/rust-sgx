@@ -45,7 +45,7 @@ macro_rules! define_usercalls {
 		#[repr(C)]
 		enum UsercallList {
 			__enclave_usercalls_invalid,
-			$($f,)*
+			$(#[allow(non_camel_case_types)] $f,)*
 		}
 		pub trait Usercalls {
 			$(unsafe fn $f(&mut self, $($n: $t),*) $(-> $r)*;)*

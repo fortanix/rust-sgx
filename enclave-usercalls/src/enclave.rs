@@ -11,7 +11,7 @@ macro_rules! define_usercalls {
 		#[repr(C)]
 		enum Usercalls {
 			__enclave_usercalls_invalid,
-			$($f,)*
+			$(#[allow(non_camel_case_types)] $f,)*
 		}
 		$(enclave_usercalls_internal_define_usercalls!(def fn $f($($n: $t),*) $(-> $r)*);)*
 	);
