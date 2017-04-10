@@ -43,9 +43,10 @@ macro_rules! define_usercalls {
 		use $crate::{Register,RegisterArgument as RA};
 
 		#[repr(C)]
+		#[allow(non_camel_case_types)]
 		enum UsercallList {
 			__enclave_usercalls_invalid,
-			$(#[allow(non_camel_case_types)] $f,)*
+			$($f,)*
 		}
 		pub trait Usercalls {
 			$(unsafe fn $f(&mut self, $($n: $t),*) $(-> $r)*;)*
