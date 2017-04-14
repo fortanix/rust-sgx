@@ -10,7 +10,7 @@
  */
 
 use sgx_isa::Enclu;
-pub use sgx_isa::{Keyname,Keypolicy,Keyrequest,Report,Targetinfo,ErrorCode};
+pub use sgx_isa::{Keyname,Keypolicy,keypolicy,Keyrequest,Report,Targetinfo,ErrorCode};
 use rustc_alloc::{heap,oom};
 use std::{ptr,mem};
 use aes;
