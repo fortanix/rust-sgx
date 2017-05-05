@@ -17,6 +17,8 @@ extern crate ioctl as ioctl_crate;
 extern crate libc;
 extern crate byteorder;
 extern crate openssl;
+extern crate openssl_sys;
+extern crate foreign_types;
 #[cfg(feature="with-rust-crypto")]
 extern crate crypto as rust_crypto;
 extern crate core;
