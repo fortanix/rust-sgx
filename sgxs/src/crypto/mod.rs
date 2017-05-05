@@ -138,12 +138,7 @@ mod rsa_impl {
 			// The following `unsafe` block was copied from `fn sign_with_hash`
 			// https://github.com/sfackler/rust-openssl/tree/7515272692ea30ee320667563027f75508f1dc60.
 			let mut s_vec = unsafe {
-				let rsa = ffi::EVP_PKEY_get1_RSA(self.pkey.as_ptr());
-				if rsa.is_null() {
-				    panic!("Could not get RSA key for signing");
-				}
-				let len = ffi::RSA_size(rsa);
-				let mut r = repeat(0u8).take(len as usize + 1).collect::<Vec<_>>();
+				let mut r = repeat(0u8).take(self.rsa.size() + 1).collect::<Vec<_>>();
 
 				let mut len = 0;
 				let rv = ffi::RSA_sign(nid::SHA256.as_raw(),
@@ -151,7 +146,7 @@ mod rsa_impl {
 				                       hash.as_ref().len() as c_uint,
 				                       r.as_mut_ptr(),
 				                       &mut len,
-				                       rsa);
+				                       self.rsa.as_ptr());
 
 				if rv < 0 as c_int {
 					vec![]
@@ -164,24 +159,25 @@ mod rsa_impl {
 			if s_vec.len()==0 {
 				Err(SslError::get())
 			} else {
+				let mut s_2 = BigNum::new()?;
+				let mut s_3 = BigNum::new()?;
+				let mut q1 = BigNum::new()?;
+				let mut tmp1 = BigNum::new()?;
+				let mut tmp2 = BigNum::new()?;
+				let mut tmp3 = BigNum::new()?;
+				let mut q2 = BigNum::new()?;
+
 				let mut ctx = BigNumContext::new()?;
 				let s = BigNum::from_slice(&s_vec)?;
 				let n = self.rsa.n().expect("could not get rsa.n");
-				let mut s_2 = BigNum::new()?;
 				s_2.sqr(&s, &mut ctx)?;
-				let mut q1 = BigNum::new()?;
 				q1.checked_div(&s_2, &n, &mut ctx)?;
 
-				let mut tmp1 = BigNum::new()?;
-				tmp1.checked_mul(&s_2, &s, &mut ctx)?;
-				let mut tmp2 = BigNum::new()?;
-				tmp2.checked_mul(&q1, &s, &mut ctx)?;
-				let mut tmp3 = BigNum::new()?;
-				tmp3.checked_mul(&tmp2, &n, &mut ctx)?;
-				let mut tmp4 = BigNum::new()?;
-				tmp4.checked_sub(&tmp1, &tmp3)?;
-				let mut q2 = BigNum::new()?;
-				q2.checked_div(&tmp4, &n, &mut ctx)?;
+				s_3.checked_mul(&s_2, &s, &mut ctx)?;
+				tmp1.checked_mul(&q1, &s, &mut ctx)?;
+				tmp2.checked_mul(&tmp1, &n, &mut ctx)?;
+				tmp3.checked_sub(&s_3, &tmp2)?;
+				q2.checked_div(&tmp3, &n, &mut ctx)?;
 				let mut q1=q1.to_vec();
 				let mut q2=q2.to_vec();
 				q1.reverse();
