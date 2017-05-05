@@ -10,13 +10,15 @@ repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
 with-rust-crypto = ["rust-crypto"]
 
 [dependencies]
-"bitflags" = "0.4"    # MIT/Apache-2.0
-"byteorder" = "0.4"   # Unlicense/MIT
-"ioctl" = "0.3"       # MIT/Apache-2.0 (per 7205d48)
-"libc" = "0.2"        # MIT/Apache-2.0
-"openssl" = "0.7.7"   # Apache-2.0
-"sgx-isa" = "0.1"     # MIT/Apache-2.0
-"time" = "0.1"        # MIT/Apache-2.0
+"bitflags" = "0.4"       # MIT/Apache-2.0
+"byteorder" = "0.4"      # Unlicense/MIT
+"ioctl" = "0.3"          # MIT/Apache-2.0 (per 7205d48)
+"libc" = "0.2"           # MIT/Apache-2.0
+"openssl" = "0.9.11"     # Apache-2.0
+"openssl-sys" = "0.9.11" # Apache-2.0
+"sgx-isa" = "0.1"        # MIT/Apache-2.0
+"time" = "0.1"           # MIT/Apache-2.0
+foreign-types = "0.2"
 
 [dependencies.rust-crypto]  # MIT/Apache-2.0
 version = "0.2"

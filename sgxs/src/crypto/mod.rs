@@ -84,17 +84,17 @@ mod sha256impl {
 
 #[cfg(not(feature="with-rust-crypto"))]
 mod sha256impl {
-	use openssl::crypto::hash;
+	use openssl::hash;
 
 	pub type Hasher = hash::Hasher;
 
 	impl super::Sha256Digest for Hasher {
 		fn new() -> Hasher {
-			Hasher::new(hash::Type::SHA256)
+			Hasher::new(hash::MessageDigest::sha256()).expect("failed to create openssl hasher")
 		}
 
 		fn finish(mut self) -> Vec<u8> {
-			Hasher::finish(&mut self)
+			Hasher::finish2(&mut self).expect("failed to finish openssl hasher").to_vec()
 		}
 	}
 }
@@ -103,40 +103,85 @@ mod sha256impl {
 mod rsa_impl {
 	use std::io::Read;
 
-	use openssl::crypto::pkey::PKey;
-	use openssl::crypto::rsa::RSA;
-	use openssl::ssl::error::SslError;
-	use openssl::crypto::hash::Type as HashType;
-	use openssl::bn::BigNum;
+	use openssl::pkey::PKey;
+	use openssl::rsa::Rsa;
+	use openssl::error::ErrorStack as SslError;
+	use openssl::bn::{BigNum, BigNumContext};
 
 	pub struct RsaPrivateKey {
 		pkey: PKey,
-		rsa: RSA,
+		rsa: Rsa,
 	}
 
 	impl super::RsaPrivateKeyOps for RsaPrivateKey {
 		type E = SslError;
 
 		fn new<R: Read>(input: &mut R) -> Result<RsaPrivateKey,SslError> {
-			let pkey=try!(PKey::private_key_from_pem(input));
-			let rsa=pkey.get_rsa();
+			let mut data = Vec::new();
+			input.read_to_end(&mut data).expect("failed to read rsa private key file");
+			let pkey=try!(PKey::private_key_from_pem(&data));
+			let rsa=pkey.rsa()?;
 			Ok(RsaPrivateKey{pkey:pkey,rsa:rsa})
 		}
 
 		fn len(&self) -> usize {
-			self.pkey.size()*8
+			self.pkey.bits() as usize
 		}
 
 		fn sign_sha256_pkcs1v1_5_with_q1_q2<H: AsRef<[u8]>>(&self, hash: H) -> Result<(Vec<u8>,Vec<u8>,Vec<u8>),Self::E> {
-			let mut s_vec=self.pkey.sign_with_hash(hash.as_ref(),HashType::SHA256);
+			use openssl::nid;
+			use openssl_sys as ffi;
+			use foreign_types::ForeignType;
+			use std::iter::repeat;
+			use libc::{c_int, c_uint};
+
+			// The following `unsafe` block was copied from `fn sign_with_hash`
+			// https://github.com/sfackler/rust-openssl/tree/7515272692ea30ee320667563027f75508f1dc60.
+			let mut s_vec = unsafe {
+				let rsa = ffi::EVP_PKEY_get1_RSA(self.pkey.as_ptr());
+				if rsa.is_null() {
+				    panic!("Could not get RSA key for signing");
+				}
+				let len = ffi::RSA_size(rsa);
+				let mut r = repeat(0u8).take(len as usize + 1).collect::<Vec<_>>();
+
+				let mut len = 0;
+				let rv = ffi::RSA_sign(nid::SHA256.as_raw(),
+				                       hash.as_ref().as_ptr(),
+				                       hash.as_ref().len() as c_uint,
+				                       r.as_mut_ptr(),
+				                       &mut len,
+				                       rsa);
+
+				if rv < 0 as c_int {
+					vec![]
+				} else {
+					r.truncate(len as usize);
+					r
+				}
+			};
+
 			if s_vec.len()==0 {
 				Err(SslError::get())
 			} else {
-				let s=try!(BigNum::new_from_slice(&s_vec[..]));
-				let n=try!(self.rsa.n());
-				let s_2=try!(s.checked_sqr());
-				let q1=try!(s_2.checked_div(&n));
-				let q2=try!(try!(try!(s_2.checked_mul(&s)).checked_sub(&try!(try!(q1.checked_mul(&s)).checked_mul(&n)))).checked_div(&n));
+				let mut ctx = BigNumContext::new()?;
+				let s = BigNum::from_slice(&s_vec)?;
+				let n = self.rsa.n().expect("could not get rsa.n");
+				let mut s_2 = BigNum::new()?;
+				s_2.sqr(&s, &mut ctx)?;
+				let mut q1 = BigNum::new()?;
+				q1.checked_div(&s_2, &n, &mut ctx)?;
+
+				let mut tmp1 = BigNum::new()?;
+				tmp1.checked_mul(&s_2, &s, &mut ctx)?;
+				let mut tmp2 = BigNum::new()?;
+				tmp2.checked_mul(&q1, &s, &mut ctx)?;
+				let mut tmp3 = BigNum::new()?;
+				tmp3.checked_mul(&tmp2, &n, &mut ctx)?;
+				let mut tmp4 = BigNum::new()?;
+				tmp4.checked_sub(&tmp1, &tmp3)?;
+				let mut q2 = BigNum::new()?;
+				q2.checked_div(&tmp4, &n, &mut ctx)?;
 				let mut q1=q1.to_vec();
 				let mut q2=q2.to_vec();
 				q1.reverse();
@@ -147,11 +192,17 @@ mod rsa_impl {
 		}
 
 		fn e(&self) -> Result<Vec<u8>,Self::E> {
-			self.rsa.e().map(|e|{let mut v=e.to_vec();v.reverse();v})
+			let e = self.rsa.e().expect("could not get rsa.e");
+			let mut v = e.to_vec();
+			v.reverse();
+			Ok(v)
 		}
 
 		fn n(&self) -> Result<Vec<u8>,Self::E> {
-			self.rsa.n().map(|n|{let mut v=n.to_vec();v.reverse();v})
+			let n = self.rsa.n().expect("could not get rsa.n");
+			let mut v = n.to_vec();
+			v.reverse();
+			Ok(v)
 		}
 	}
 }
