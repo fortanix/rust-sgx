@@ -27,6 +27,15 @@ pub fn yield_now() {
 }
 
 pub use alloc::init_user as init_user_heap;
+pub use mem::{is_enclave_range, is_user_range};
+
+pub fn cfgdata_base() -> *const u8 {
+	extern {
+		static CFGDATA_BASE: u64;
+	}
+
+	unsafe { ::mem::rel_ptr(CFGDATA_BASE) }
+}
 
 pub struct UserBox<T: Copy>(*mut T);
 

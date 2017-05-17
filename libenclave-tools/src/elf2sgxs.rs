@@ -29,7 +29,7 @@ use xmas_elf::program::{SegmentData,Type as PhType};
 
 use sgx_isa::{Tcs,PageType,secinfo_flags};
 use sgxs_crate::sgxs::{SgxsWrite,CanonicalSgxsWriter,self,SecinfoTruncated,Error as SgxsError};
-use sgxs_crate::util::{size_fit_page,size_fit_natural};
+use sgxs_crate::util::size_fit_page;
 
 #[derive(Debug)]
 pub enum Error {
@@ -79,6 +79,7 @@ struct Symbols<'a> {
 	RELA: &'a DynSymEntry,
 	RELACOUNT: &'a DynSymEntry,
 	ENCLAVE_SIZE: &'a DynSymEntry,
+	CFGDATA_BASE: &'a DynSymEntry,
 }
 
 struct Dynamic<'a> {
@@ -148,13 +149,14 @@ impl<'a> LayoutInfo<'a> {
 	fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>,Error> {
 		if let Some(dynsym)=elf.find_section_by_name(".dynsym") {
 			if let SectionData::DynSymbolTable64(syms) = try!(dynsym.get_data(&elf)) {
-				let syms=read_syms!(sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE in syms : elf);
+				let syms=read_syms!(sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE in syms : elf);
 
 				check_size!(syms.HEAP_BASE    == 8);
 				check_size!(syms.HEAP_SIZE    == 8);
 				check_size!(syms.RELA         == 8);
 				check_size!(syms.RELACOUNT    == 8);
 				check_size!(syms.ENCLAVE_SIZE == 8);
+				check_size!(syms.CFGDATA_BASE == 8);
 
 				Ok(syms)
 			} else {
@@ -284,13 +286,13 @@ impl<'a> LayoutInfo<'a> {
 		})
 	}
 
-	pub fn write_elf_segments<W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, heap_addr: u64, enclave_size: u64) -> Result<(),Error> {
+	pub fn write_elf_segments<W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, heap_addr: u64, memory_size: u64) -> Result<(),Error> {
 		let mut splices=[
 			Splice(self.sym.HEAP_BASE.value(),heap_addr),
 			Splice(self.sym.HEAP_SIZE.value(),self.heap_size),
 			Splice(self.sym.RELA.value(),self.dyn.as_ref().and_then(|d|d.rela.get_ptr().ok()).unwrap_or(0)),
 			Splice(self.sym.RELACOUNT.value(),self.dyn.as_ref().and_then(|d|d.relacount.get_val().ok()).unwrap_or(0)),
-			Splice(self.sym.ENCLAVE_SIZE.value(),enclave_size),
+			Splice(self.sym.CFGDATA_BASE.value(),memory_size),
 		];
 		splices.sort(); // `Splice` sorts by address
 		let mut cur_splice=splices.iter().peekable();
@@ -354,12 +356,12 @@ impl<'a> LayoutInfo<'a> {
 		const TLS_SIZE: u64=0x1000;
 		let nssa: u32=if self.debug { 2 } else { 1 };
 		let thread_size=THREAD_GUARD_SIZE+self.stack_size+TLS_SIZE+(1+(nssa as u64)*(self.ssaframesize as u64))*0x1000;
-		let enclave_size=size_fit_natural(thread_start+(self.threads as u64)*thread_size);
+		let memory_size=thread_start+(self.threads as u64)*thread_size;
 
-		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:enclave_size,ssaframesize:self.ssaframesize}));
+		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:self.sym.ENCLAVE_SIZE.value(),ssaframesize:self.ssaframesize},false));
 
 		// Output ELF sections
-		try!(self.write_elf_segments(&mut writer,heap_addr,enclave_size));
+		try!(self.write_elf_segments(&mut writer,heap_addr,memory_size));
 
 		// Output heap
 		let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};

@@ -19,6 +19,8 @@ pub enum Error {
 	StreamNotCanonical,
 	InvalidMeasTag,
 	InvalidPageOffset,
+	/// An unsized stream was encountered but could not be handled
+	StreamUnsized,
 }
 
 impl From<IoError> for Error {
@@ -35,7 +37,18 @@ pub enum Meas {
 	EAdd(MeasEAdd),
 	EExtend { header: MeasEExtend, data: [u8;256] },
 	BareEExtend(MeasEExtend),
+	/// The start of an SGXS file with an unknown enclave size which can be
+	/// filled in later. The `size` member is an offset of where to write the
+	/// enclave size as a 64-bit unsigned little endian integer, in addition to
+	/// the `size` member itself of course.
+	Unsized(MeasECreate),
+	/// A 256-byte chunk of memory that should be loaded but not measured.
+	Unmeasured { header: MeasEExtend, data: [u8;256] },
+	BareUnmeasured(MeasEExtend),
 }
+
+pub const MEAS_UNSIZED: u64 = 0x0044455a49534e55;
+pub const MEAS_UNMEASRD: u64 = 0x44525341454d4e55;
 
 impl ::std::fmt::Debug for Meas {
 	fn fmt(&self, __arg_0: &mut ::std::fmt::Formatter)
@@ -61,6 +74,24 @@ impl ::std::fmt::Debug for Meas {
 			(&Meas::BareEExtend(ref __self_0),)
 			=> {
 				let mut builder = __arg_0.debug_tuple("EExtend");
+				builder.field(&&(*__self_0));
+				builder.finish()
+			}
+			(&Meas::Unsized(ref __self_0),) => {
+				let mut builder = __arg_0.debug_tuple("Unsized");
+				builder.field(&&(*__self_0));
+				builder.finish()
+			}
+			(&Meas::Unmeasured { header: ref __self_0, data: ref __self_1 },)
+			=> {
+				let mut builder = __arg_0.debug_struct("Unmeasured");
+				builder.field("header", &&(*__self_0));
+				builder.field("data", &"<blob>");
+				builder.finish()
+			}
+			(&Meas::BareUnmeasured(ref __self_0),)
+			=> {
+				let mut builder = __arg_0.debug_tuple("Unmeasured");
 				builder.field(&&(*__self_0));
 				builder.finish()
 			}
@@ -106,8 +137,9 @@ impl<R: Read> SgxsRead for R {
 
 		match headerp.read_u64::<LittleEndian>().unwrap() {
 			MEAS_ECREATE => Ok(Some(Meas::ECreate(unsafe{&*(headerp as *const _ as *const MeasECreate)}.clone()))),
+			MEAS_UNSIZED => Ok(Some(Meas::Unsized(unsafe{&*(headerp as *const _ as *const MeasECreate)}.clone()))),
 			MEAS_EADD    => Ok(Some(Meas::EAdd(unsafe{&*(headerp as *const _ as *const MeasEAdd)}.clone()))),
-			MEAS_EEXTEND => {
+			m @ MEAS_EEXTEND | m @ MEAS_UNMEASRD => {
 				let header=unsafe{&*(headerp as *const _ as *const MeasEExtend)}.clone();
 
 				let mut data=[0u8;256];
@@ -116,13 +148,18 @@ impl<R: Read> SgxsRead for R {
 						   "failed to fill whole buffer")));
 				}
 
-				Ok(Some(Meas::EExtend{header:header,data:data}))
+				if m == MEAS_EEXTEND {
+					Ok(Some(Meas::EExtend{header:header,data:data}))
+				} else {
+					Ok(Some(Meas::Unmeasured{header:header,data:data}))
+				}
 			},
 			_ => Err(Error::InvalidMeasTag),
 		}
 	}
 }
 
+// TODO: update to [PageChunk; 16]
 #[derive(Copy,Clone,PartialEq,Eq,Debug)]
 pub struct PageChunks(pub u16);
 
@@ -150,6 +187,7 @@ pub struct CanonicalSgxsReader<'a, R: SgxsRead + 'a> {
 	got_ecreate: bool,
 	last_offset: Option<u64>,
 	chunks_measured: PageChunks,
+	chunks_seen: PageChunks,
 }
 
 impl<'a, R: SgxsRead + 'a> CanonicalSgxsReader<'a,R> {
@@ -159,18 +197,22 @@ impl<'a, R: SgxsRead + 'a> CanonicalSgxsReader<'a,R> {
 			got_ecreate: false,
 			last_offset: None,
 			chunks_measured: PageChunks(0),
+			chunks_seen: PageChunks(0),
 		}
 	}
 
-	fn check_chunk_offset(&mut self, offset: u64) -> bool {
+	fn check_chunk_offset(&mut self, offset: u64, measured: bool) -> bool {
 		if (offset&0xff)!=0 { return false }
 		if let Some(last_offset)=self.last_offset {
 			if offset<last_offset { return false }
 			let chunk=(offset-last_offset)>>8;
 			if chunk>=16 { return false }
 			let chunk_bit=1<<chunk;
-			if self.chunks_measured.0&chunk_bit == 1 { return false }
-			self.chunks_measured.0|=chunk_bit;
+			if self.chunks_seen.0&chunk_bit == 1 { return false }
+			self.chunks_seen.0|=chunk_bit;
+			if measured {
+				self.chunks_measured.0|=chunk_bit;
+			}
 			return true;
 		}
 		return false;
@@ -182,7 +224,7 @@ impl<'a, R: SgxsRead + 'a> SgxsRead for CanonicalSgxsReader<'a,R> {
 		let meas=try!(self.reader.read_meas());
 
 		match meas {
-			Some(Meas::ECreate(_)) => {
+			Some(Meas::ECreate(_)) | Some(Meas::Unsized(_)) => {
 				if self.got_ecreate { return Err(Error::StreamNotCanonical) }
 				self.got_ecreate=true
 			},
@@ -192,13 +234,19 @@ impl<'a, R: SgxsRead + 'a> SgxsRead for CanonicalSgxsReader<'a,R> {
 				}
 				self.last_offset=Some(header.offset);
 				self.chunks_measured.0=0;
+				self.chunks_seen.0=0;
 			},
 			Some(Meas::EExtend{ref header,..}) => {
-				if !self.got_ecreate || !self.check_chunk_offset(header.offset) {
+				if !self.got_ecreate || !self.check_chunk_offset(header.offset, true) {
 					return Err(Error::StreamNotCanonical)
 				}
 			},
-			Some(Meas::BareEExtend(_)) => unreachable!(),
+			Some(Meas::Unmeasured{ref header,..}) => {
+				if !self.got_ecreate || !self.check_chunk_offset(header.offset, false) {
+					return Err(Error::StreamNotCanonical)
+				}
+			},
+			Some(Meas::BareEExtend(_)) | Some(Meas::BareUnmeasured(_)) => unreachable!(),
 			None => {},
 		}
 
@@ -211,13 +259,20 @@ pub struct PageReader<'a, R: SgxsRead + 'a> {
 	last_eadd: Option<MeasEAdd>,
 }
 
+pub struct CreateInfo {
+	pub ecreate: MeasECreate,
+	pub sized: bool,
+}
+
 impl<'a, R: SgxsRead + 'a> PageReader<'a,R> {
-	pub fn new(reader: &'a mut R) -> Result<(MeasECreate,Self)> {
+	pub fn new(reader: &'a mut R) -> Result<(CreateInfo, Self)> {
 		let mut cread=CanonicalSgxsReader::new(reader);
-		match try!(cread.read_meas()) {
-			Some(Meas::ECreate(header)) => Ok((header,PageReader{reader:cread,last_eadd:None})),
-			_ => Err(Error::StreamNotCanonical)
-		}
+		let cinfo = match try!(cread.read_meas()) {
+			Some(Meas::ECreate(ecreate)) => CreateInfo { ecreate, sized: true },
+			Some(Meas::Unsized(ecreate)) => CreateInfo { ecreate, sized: false },
+			_ => return Err(Error::StreamNotCanonical)
+		};
+		Ok((cinfo,PageReader{reader:cread,last_eadd:None}))
 	}
 
 	pub fn read_page(&mut self) -> Result<Option<(MeasEAdd,PageChunks,[u8;4096])>> {
@@ -240,7 +295,7 @@ impl<'a, R: SgxsRead + 'a> PageReader<'a,R> {
 						return Ok(None);
 					}
 				},
-				Some(Meas::EExtend{header,data}) => {
+				Some(Meas::EExtend{header,data}) | Some(Meas::Unmeasured{header,data}) => {
 					let offset=(header.offset&0xfff) as usize;
 					(&mut page[offset..offset+256]).write(&data).unwrap();
 				},
@@ -250,12 +305,38 @@ impl<'a, R: SgxsRead + 'a> PageReader<'a,R> {
 	}
 }
 
-pub type MeasuredData<'a,R>=Option<&'a mut R>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageChunk {
+	Skipped,
+	Included,
+	IncludedMeasured,
+}
+
+pub struct MeasuredData<'a, R: Read + 'a> {
+	chunks: [PageChunk; 16],
+	reader: Option<&'a mut R>
+}
+
+impl<'a, R: Read + 'a> From<Option<&'a mut R>> for MeasuredData<'a, R> {
+	fn from(reader: Option<&'a mut R>) -> Self {
+		use self::PageChunk::*;
+		MeasuredData {
+			chunks: [if reader.is_some() { IncludedMeasured } else { Skipped }; 16],
+			reader
+		}
+	}
+}
+
+impl<'a, R: Read + 'a> From<(&'a mut R, [PageChunk; 16])> for MeasuredData<'a, R> {
+	fn from((reader, chunks): (&'a mut R, [PageChunk; 16])) -> Self {
+		MeasuredData { chunks, reader: Some(reader) }
+	}
+}
 
 pub trait SgxsWrite {
 	fn write_meas(&mut self, meas: &Meas) -> Result<()>;
-	fn write_page<R: Read>(&mut self, data: MeasuredData<R>, offset: u64, secinfo: SecinfoTruncated) -> Result<()>;
-	fn write_pages<R: Read>(&mut self, data: MeasuredData<R>, n: usize, offset: u64, secinfo: SecinfoTruncated) -> Result<()>;
+	fn write_page<'a, R: Read + 'a, D: Into<MeasuredData<'a, R>>>(&mut self, data: D, offset: u64, secinfo: SecinfoTruncated) -> Result<()>;
+	fn write_pages<R: Read>(&mut self, data: Option<&mut R>, n: usize, offset: u64, secinfo: SecinfoTruncated) -> Result<()>;
 }
 
 impl<W: Write> SgxsWrite for W {
@@ -271,34 +352,41 @@ impl<W: Write> SgxsWrite for W {
 
 			match meas {
 				&ECreate(ref header) => { *tag=MEAS_ECREATE; ptr::write(headerdst as *mut _,header.clone()) },
+				&Unsized(ref header) => { *tag=MEAS_UNSIZED; ptr::write(headerdst as *mut _,header.clone()) },
 				&EAdd(ref header) => { *tag=MEAS_EADD; ptr::write(headerdst as *mut _,header.clone()) },
 				&EExtend{ref header,..} | &BareEExtend(ref header)  => { *tag=MEAS_EEXTEND; ptr::write(headerdst as *mut _,header.clone()) },
+				&Unmeasured{ref header,..} | &BareUnmeasured(ref header) => { *tag=MEAS_UNMEASRD; ptr::write(headerdst as *mut _,header.clone()) },
 			};
 		}
 		try!(self.write_all(&buf));
 
-		if let &EExtend{ref data,..}=meas {
-			try!(self.write_all(data));
+		match meas {
+			&EExtend{ref data,..} | &Unmeasured{ref data,..} => try!(self.write_all(data)),
+			_ => {}
 		}
 
 		Ok(())
 	}
 
-	fn write_page<R: Read>(&mut self, data: MeasuredData<R>, offset: u64, secinfo: SecinfoTruncated) -> Result<()> {
+	fn write_page<'a, R: Read + 'a, D: Into<MeasuredData<'a, R>>>(&mut self, data: D, offset: u64, secinfo: SecinfoTruncated) -> Result<()> {
 		try!(self.write_meas(&Meas::EAdd(MeasEAdd{offset:offset,secinfo:secinfo})));
 
-		if let Some(reader)=data {
-			let mut reader=reader.chain(io::repeat(0));
-			for i in 0..16 {
-				try!(self.write_meas(&Meas::BareEExtend(MeasEExtend{offset:offset+(i*256)})));
-				try!(io::copy(&mut (&mut reader).take(256),self));
+		let MeasuredData { chunks, reader } = data.into();
+		let mut reader=reader.map(|r|r.chain(io::repeat(0)));
+		for (i, chunk) in chunks.into_iter().enumerate() {
+			let eext = MeasEExtend{offset:offset+(i as u64*256)};
+			match *chunk {
+				PageChunk::Skipped => continue,
+				PageChunk::Included => try!(self.write_meas(&Meas::BareUnmeasured(eext))),
+				PageChunk::IncludedMeasured => try!(self.write_meas(&Meas::BareEExtend(eext))),
 			}
+			try!(io::copy(&mut reader.as_mut().unwrap().take(256),self));
 		}
 
 		Ok(())
 	}
 
-	fn write_pages<R: Read>(&mut self, mut data: MeasuredData<R>, n: usize, offset: u64, secinfo: SecinfoTruncated) -> Result<()> {
+	fn write_pages<R: Read>(&mut self, mut data: Option<&mut R>, n: usize, offset: u64, secinfo: SecinfoTruncated) -> Result<()> {
 		for i in 0..(n as u64) {
 			try!(self.write_page(data.as_mut(),offset+4096*i,secinfo.clone()));
 		}
@@ -312,27 +400,39 @@ pub struct CanonicalSgxsWriter<'a, W: SgxsWrite + 'a> {
 }
 
 impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a,W> {
-	pub fn new(mut writer: &'a mut W, ecreate: MeasECreate) -> Result<Self> {
-		try!(writer.write_meas(&Meas::ECreate(ecreate)));
+	pub fn new(mut writer: &'a mut W, ecreate: MeasECreate, sized: bool) -> Result<Self> {
+		if sized {
+			try!(writer.write_meas(&Meas::ECreate(ecreate)));
+		} else {
+			try!(writer.write_meas(&Meas::Unsized(ecreate)));
+		}
 		Ok(CanonicalSgxsWriter {
 			writer: writer,
 			next_offset: 0,
 		})
 	}
 
-	/// If offset is None, just append at the current offset.
-	pub fn write_page<R: Read>(&mut self, data: MeasuredData<R>, offset: Option<u64>, secinfo: SecinfoTruncated) -> Result<()> {
-		self.write_pages(data,1,offset,secinfo)
-	}
-
-	/// If offset is None, just append at the current offset.
-	pub fn write_pages<R: Read>(&mut self, data: MeasuredData<R>, n: usize, offset: Option<u64>, secinfo: SecinfoTruncated) -> Result<()> {
+	fn check_offset(&mut self, offset: Option<u64>) -> Result<()> {
 		match offset {
 			Some(offset) if offset&0xfff!=0 => { return Err(Error::InvalidPageOffset) },
 			Some(offset) if offset<self.next_offset => { return Err(Error::StreamNotCanonical) },
 			Some(offset) => { self.next_offset=offset }
 			None => {}
 		}
+		Ok(())
+	}
+
+	/// If offset is None, just append at the current offset.
+	pub fn write_page<'b, R: Read + 'b, D: Into<MeasuredData<'b, R>>>(&mut self, data: D, offset: Option<u64>, secinfo: SecinfoTruncated) -> Result<()> {
+		self.check_offset(offset)?;
+		try!(self.writer.write_page(data,self.next_offset,secinfo));
+		self.skip_page();
+		Ok(())
+	}
+
+	/// If offset is None, just append at the current offset.
+	pub fn write_pages<R: Read>(&mut self, data: Option<&mut R>, n: usize, offset: Option<u64>, secinfo: SecinfoTruncated) -> Result<()> {
+		self.check_offset(offset)?;
 		try!(self.writer.write_pages(data,n,self.next_offset,secinfo));
 		self.skip_pages(n);
 		Ok(())

@@ -311,7 +311,7 @@ impl<'a> LayoutInfo<'a> {
 		})
 	}
 
-	fn write_pe_section<R: Read,W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, data: &mut R, offset: u64, size: u64, secinfo: SecinfoTruncated) -> Result<()> {
+	fn write_pe_section<R: Read,W: SgxsWrite>(&self, writer: &mut CanonicalSgxsWriter<W>, mut data: &mut R, offset: u64, size: u64, secinfo: SecinfoTruncated) -> Result<()> {
 		let begin_p=offset>>12;
 		let end_p=size_fit_page(offset+size)>>12;
 		for p in begin_p..end_p {
@@ -319,13 +319,13 @@ impl<'a> LayoutInfo<'a> {
 			if self.pages_with_relocs.contains(&p) {
 				secinfo.flags.insert(secinfo_flags::W);
 			}
-			try!(writer.write_page(Some(data),Some(p<<12),secinfo));
+			try!(writer.write_page(Some(&mut data),Some(p<<12),secinfo));
 		}
 		Ok(())
 	}
 
 	pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<()> {
-		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:self.enclave_size,ssaframesize:self.ssaframesize}));
+		let mut writer=try!(CanonicalSgxsWriter::new(writer,sgxs::MeasECreate{size:self.enclave_size,ssaframesize:self.ssaframesize},true));
 		for section in &self.layout {
 			match section {
 				&PeHeaderSection(ref header) => {
