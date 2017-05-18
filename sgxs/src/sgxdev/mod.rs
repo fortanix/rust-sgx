@@ -18,7 +18,7 @@ use std::os::unix::io::IntoRawFd;
 use std::io::{Result as IoResult,Error as IoError};
 use std::borrow::{Borrow,BorrowMut};
 use libc;
-use sgxs::{SgxsRead,PageReader};
+use sgxs::{SgxsRead,PageReader,CreateInfo,Error as SgxsError};
 use abi::{Sigstruct,Einittoken,Encls};
 
 use loader::{Map,Load,Address,Tcs};
@@ -124,7 +124,12 @@ impl<'dev> Load<'dev> for Device {
 	type Error=Error;
 
 	fn load<'r, R: SgxsRead + 'r>(&'dev self, reader: &'r mut R, sigstruct: &Sigstruct, einittoken: Option<&Einittoken>) -> Result<Mapping<'dev>> {
-		let (ecreate,reader)=try!(PageReader::new(reader));
+		let (CreateInfo{ecreate, sized}, reader)=try!(PageReader::new(reader));
+
+		if !sized {
+			return Err(Error::Sgxs(SgxsError::StreamUnsized))
+		}
+
 		let size=ecreate.size;
 
 		let secs=try!(self.base_address());

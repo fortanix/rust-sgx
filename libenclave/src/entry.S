@@ -36,6 +36,7 @@ IMAGE_BASE:
 	globvar RELA 8
 	globvar RELACOUNT 8
 	globvar ENCLAVE_SIZE 8
+	globvar CFGDATA_BASE 8
 
 .data
 panicked:

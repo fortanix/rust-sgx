@@ -85,6 +85,7 @@ global:
 	RELA;
 	RELACOUNT;
 	ENCLAVE_SIZE;
+	CFGDATA_BASE;
 local:
 	*;
 };").unwrap();

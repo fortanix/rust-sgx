@@ -10,12 +10,13 @@
  */
 
 use std;
-use std::io::{self,Write};
+use std::io::{self,Write,BufReader};
 
 use time;
 
 use abi::{self,Sigstruct,Attributes,AttributesFlags,Miscselect,SIGSTRUCT_HEADER1,SIGSTRUCT_HEADER2};
 use crypto::{Sha256Digest,Sha256,RsaPrivateKeyOps,RsaPrivateKey};
+use sgxs::{SgxsRead, SgxsWrite, Meas, Error as SgxsError};
 
 #[derive(Clone,Debug)]
 pub struct Signer {
@@ -149,7 +150,21 @@ impl Signer {
 
 	pub fn enclavehash_from_stream<R: io::Read>(&mut self, stream: &mut R) -> Result<&mut Self,io::Error> {
 		let mut hasher=<Sha256 as Sha256Digest>::new();
-		try!(io::copy(stream,&mut hasher));
+
+		let sgxs_to_io = &|e| match e {
+			SgxsError::IoError(ioe) => ioe,
+			e => io::Error::new(io::ErrorKind::InvalidData, format!("SGXS error: {:?}", e)),
+		};
+
+		let mut reader = BufReader::new(stream);
+		while let Some(meas) = reader.read_meas().map_err(sgxs_to_io)? {
+				match meas {
+					Meas::Unsized(_) => return Err(sgxs_to_io(SgxsError::StreamUnsized)),
+					Meas::Unmeasured{..} => (),
+					meas => hasher.write_meas(&meas).map_err(sgxs_to_io)?
+				}
+		}
+
 		let mut hash=[0u8; 32];
 		(&mut hash[..]).write_all(&hasher.finish()).unwrap();
 		Ok(self.enclavehash(hash))
