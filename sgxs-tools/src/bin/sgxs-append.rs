@@ -264,7 +264,7 @@ fn result_main() -> Result<(), MainError> {
                     if n == 0 { break }
                     cur_addr += n as _;
                     r.end = r.start + n;
-                    for chunk in &mut chunks[(r.start/0x100)..(r.end/0x100 + 1)] {
+                    for chunk in &mut chunks[(r.start/0x100)..((r.end + 0xff)/0x100)] {
                         *chunk = if measured { PageChunk::IncludedMeasured } else { PageChunk::Included };
                     }
                 }
