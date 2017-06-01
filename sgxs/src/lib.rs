@@ -26,7 +26,6 @@ extern crate sgx_isa as abi;
 extern crate time;
 
 pub mod crypto;
-pub mod sgxdev;
 pub mod isgx;
 pub mod sgxs;
 mod intelcall;
