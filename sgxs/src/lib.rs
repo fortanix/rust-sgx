@@ -13,7 +13,7 @@
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate ioctl as ioctl_crate;
+extern crate nix as ioctl_crate;
 extern crate libc;
 extern crate byteorder;
 extern crate openssl;
