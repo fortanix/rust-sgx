@@ -26,6 +26,8 @@ use loader::{Map,Load,Tcs,Address,EinittokenError};
 pub enum SgxIoctlError {
 	Io(IoError),
 	Ret(ErrorCode),
+	PowerLostEnclave,
+	LeRollback,
 }
 
 #[derive(Debug)]
@@ -62,11 +64,15 @@ pub type Result<T> = ::std::result::Result<T, Error>;
 
 macro_rules! try_ioctl_unsafe {
 	( $f:ident, $v:expr ) => {{
-		let ret=unsafe{$v};
-		if ret == -1 {
-			return Err(Error::$f(SgxIoctlError::Io(IoError::last_os_error())));
-		} else if ret != 0 {
-			return Err(Error::$f(SgxIoctlError::Ret(unsafe{::std::mem::transmute(ret)})));
+		const SGX_POWER_LOST_ENCLAVE: i32 = 0x40000000;
+		const SGX_LE_ROLLBACK: i32 = 0x40000001;
+
+		match unsafe{$v} {
+			Err(_) => return Err(Error::$f(SgxIoctlError::Io(IoError::last_os_error()))),
+			Ok(0) => (),
+			Ok(SGX_POWER_LOST_ENCLAVE) => return Err(Error::$f(SgxIoctlError::PowerLostEnclave)),
+			Ok(SGX_LE_ROLLBACK) => return Err(Error::$f(SgxIoctlError::LeRollback)),
+			Ok(v) => return Err(Error::$f(SgxIoctlError::Ret(ErrorCode::from_repr(v as u32).expect("Invalid ioctl return value")))),
 		}
 	}}
 }

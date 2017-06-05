@@ -13,7 +13,7 @@
 #[macro_use]
 extern crate bitflags;
 #[macro_use]
-extern crate ioctl as ioctl_crate;
+extern crate nix as ioctl_crate;
 extern crate libc;
 extern crate byteorder;
 extern crate openssl;
@@ -26,7 +26,6 @@ extern crate sgx_isa as abi;
 extern crate time;
 
 pub mod crypto;
-pub mod sgxdev;
 pub mod isgx;
 pub mod sgxs;
 mod intelcall;
