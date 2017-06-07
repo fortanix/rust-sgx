@@ -10,9 +10,10 @@ repository = "https://github.com/jethrogb/sgx-utils/tree/master/enclave-example"
 name = "enclave-runner"
 
 [dependencies]
-"sgxs" = "0.5.0"
-"sgx-isa" = "0.1.0"
-"enclave-interface" = "0.1.1" # Check the libenclave/enclave-interface version
-                              # compatibility chart when modifying this version
-enclave-example-usercalls = { git = "ssh://git@bitbucket.org/fortanix/sgx-utils.git" }
+"sgxs" = { path = "../../sgxs" }
+"sgx-isa" = { path = "../../sgx-isa" }
+# Check the libenclave/enclave-interface version compatibility chart when
+# choosing a version of enclave-interface.
+enclave-interface = { path = "../../enclave-interface"}
+enclave-example-usercalls = { path = "../usercalls" }
 libc = "0.2.12"

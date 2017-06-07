@@ -7,11 +7,12 @@ license = "AGPL-3.0+"
 repository = "https://github.com/jethrogb/sgx-utils/tree/master/enclave-example"
 
 [dependencies]
-"sgx-isa" = "0.1.0"
-"enclave" = "=0.1.3" # This should be the same version as the libenclave-tools
-                     # you're using to build this crate. Also check the
-                     # libenclave/enclave-interface version compatibility chart
-enclave-example-usercalls = { git = "ssh://git@bitbucket.org/fortanix/sgx-utils.git" }
+"sgx-isa" = { path = "../../sgx-isa" }
+# The version of `enclave` should be the same as the version of
+# libenclave-tools you use to build. Also check the
+# libenclave/enclave-interface version compatibility chart
+enclave = { path = "../../libenclave" }
+enclave-example-usercalls = { path = "../usercalls" }
 
 [features]
 enclave_debug = ["enclave/debug"]

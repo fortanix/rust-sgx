@@ -15,8 +15,8 @@ name = "cargo-build-enclave"
 path = "src/cargo-build-enclave.rs"
 
 [dependencies]
-sgxs = { version = ">=0.4, <0.6", path = "../sgxs" }
-sgx-isa = { version = "0.1", path = "../sgx-isa" }
+sgxs = { path = "../sgxs" }
+sgx-isa = { path = "../sgx-isa" }
 xmas-elf = "0.3.0"         # Apache-2.0/MIT
 clap = "2.2.5"             # MIT
 rustc-serialize = "0.3.19" # MIT/Apache-2.0
