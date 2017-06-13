@@ -8,20 +8,20 @@
  * Free Software Foundation, either version 3 of the License, or (at your
  * option) any later version.
  */
+#![deny(unused_extern_crates)]
+#![deny(unused_imports)]
+#![deny(unused_import_braces, unused_qualifications)]
 
-#![feature(linkage,lang_items,unwind_attributes,asm,const_fn,collections,unicode,alloc,oom,heap_api)]
+#![feature(linkage,lang_items,unwind_attributes,asm,const_fn,collections,alloc,oom,heap_api)]
 #![no_std]
 
 extern crate collections;
-extern crate std_unicode;
 extern crate alloc as rustc_alloc;
 extern crate sgx_isa;
 #[cfg(not(test))] pub extern crate core_io as io;
 
 extern crate spin;
-extern crate rlibc;
 extern crate alloc_buddy_simple;
-extern crate bitflags;
 
 // runtime features
 mod alloc;

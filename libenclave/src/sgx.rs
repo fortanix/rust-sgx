@@ -25,7 +25,7 @@ pub fn egetkey(req: &Keyrequest) -> Result<[u8;16],ErrorCode> {
 		req_p=heap::allocate(mem::size_of::<Keyrequest>(),512) as *mut Keyrequest;
 		out_p=heap::allocate(16,16) as *mut [u8;16];
 
-		if req_p==ptr::null_mut() || out_p==ptr::null_mut() { oom::oom() }
+		if req_p==ptr::null_mut() || out_p==ptr::null_mut() { oom() }
 		ptr::copy(req,req_p,1);
 
 		asm!("enclu":"={eax}"(error):"{eax}"(Enclu::EGetkey),"{rbx}"(req_p),"{rcx}"(out_p));
@@ -75,7 +75,7 @@ fn ereport_internal(tinfo: Option<&Targetinfo>, rdata: Option<&[u8; 64]>) -> Rep
 		rdata_p=heap::allocate(64,128) as *mut [u8;64];
 		report_p=heap::allocate(mem::size_of::<Report>(),512) as *mut Report;
 
-		if tinfo_p==ptr::null_mut() || rdata_p==ptr::null_mut() || report_p==ptr::null_mut() { oom::oom() }
+		if tinfo_p==ptr::null_mut() || rdata_p==ptr::null_mut() || report_p==ptr::null_mut() { oom() }
 
 		match tinfo {
 			Some(tinfo) => ptr::copy(tinfo,tinfo_p,1),
