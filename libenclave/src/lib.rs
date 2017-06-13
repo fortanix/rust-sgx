@@ -8,7 +8,6 @@
  * Free Software Foundation, either version 3 of the License, or (at your
  * option) any later version.
  */
-#![deny(unused_extern_crates)]
 #![deny(unused_imports)]
 #![deny(unused_import_braces, unused_qualifications)]
 
@@ -21,6 +20,7 @@ extern crate sgx_isa;
 #[cfg(not(test))] pub extern crate core_io as io;
 
 extern crate spin;
+extern crate rlibc;
 extern crate alloc_buddy_simple;
 
 // runtime features

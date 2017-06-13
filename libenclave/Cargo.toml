@@ -8,6 +8,7 @@ repository = "https://github.com/jethrogb/sgx-utils/tree/master/libenclave"
 build = "build.rs"
 
 [dependencies]
+rlibc = "1.0.0"  # MIT/Apache-2.0
 spin = "0.4.2"   # MIT
 alloc_buddy_simple2 = { version = "0.1.2" } # Apache-2.0/MIT
 sgx-isa = "0.1"  # Apache-2.0/MIT
