@@ -48,31 +48,46 @@ trait JsonDeserialize: Decodable {
 impl<T: Decodable> JsonDeserialize for T {}
 
 #[derive(RustcDecodable)]
-struct Manifest {
+#[allow(dead_code)]
+struct Metadata {
+	packages: Vec<Package>,
+	resolve: Resolve,
+	workspace_members: Vec<String>,
+	target_directory: Option<String>,
+	version: u32,
+}
+
+#[derive(RustcDecodable,Clone)]
+struct Package {
 	id: String,
 	name: String,
 	manifest_path: String,
-	targets: Vec<ManifestTarget>,
-	dependencies: Vec<ManifestDependency>,
+	targets: Vec<PackageTarget>,
+	dependencies: Vec<PackageDependency>,
 }
 
-#[derive(RustcDecodable)]
-struct ManifestTarget {
+#[derive(RustcDecodable,Clone)]
+struct PackageTarget {
 	kind: Vec<String>,
 	name: String,
 }
 
-#[derive(RustcDecodable)]
-struct ManifestDependency {
+#[derive(RustcDecodable,Clone)]
+struct PackageDependency {
 	name: String,
 	req: String,
 }
 
-impl Manifest {
+#[derive(RustcDecodable)]
+struct Resolve {
+	root: String,
+}
+
+impl Package {
 	fn check(&self) -> Result<(),Error> {
-		let dependency=try!(self.dependencies.iter().find(|dep|dep.name=="enclave").ok_or(Error::ManifestNoEnclaveDependency));
+		let dependency=try!(self.dependencies.iter().find(|dep|dep.name=="enclave").ok_or(Error::PackageNoEnclaveDependency));
 		if dependency.req!=concat!("= ",crate_version!()) {
-			return Err(Error::ManifestEnclaveDependencyInvalidVersion(dependency.req.to_owned().into()));
+			return Err(Error::PackageEnclaveDependencyInvalidVersion(dependency.req.to_owned().into()));
 		}
 		Ok(())
 	}
@@ -114,15 +129,16 @@ fn say_status<W: Write>(writer: &mut W, color: bool, status: &str, message: &str
 
 #[derive(Debug)]
 enum Error {
-	ManifestNoEnclaveDependency,
-	ManifestEnclaveDependencyInvalidVersion(String),
+	PackageNoEnclaveDependency,
+	PackageEnclaveDependencyInvalidVersion(String),
 	TargetNoTargets,
 	TargetNotFound(String,String),
 	TargetInvalidType(String),
 	TargetInvalidCmdline(String),
-	CargoReadManifestInvalidCmdline,
-	CargoReadManifestExec(ExecError),
-	CargoReadManifestJson(JsonError),
+	CargoMetadataInvalidCmdline,
+	CargoMetadataExec(ExecError),
+	CargoMetadataJson(JsonError),
+	CargoMetadataRootNotFound(String),
 	CargoRustcExec(ExecError),
 	CargoRustcNoOutput(IoError),
 	ConvCantFindConv(IoError),
@@ -138,15 +154,16 @@ impl fmt::Display for Error {
 	fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
 		use Error::*;
 		match *self {
-			ManifestNoEnclaveDependency => write!(fmt,"This crate does not seem to have a dependency on libenclave."),
-			ManifestEnclaveDependencyInvalidVersion(ref dep_v) => write!(fmt,"There is a version mismatch between libenclave-tools ({}) and the libenclave dependency version ({}).",crate_version!(),dep_v),
+			PackageNoEnclaveDependency => write!(fmt,"This crate does not seem to have a dependency on libenclave."),
+			PackageEnclaveDependencyInvalidVersion(ref dep_v) => write!(fmt,"There is a version mismatch between libenclave-tools ({}) and the libenclave dependency version ({}).",crate_version!(),dep_v),
 			TargetNoTargets => write!(fmt,"You didn't specify a target and there are no `bin' targets. If you're getting this error after upgrading libenclave-tools, check out the upgrade instructions."),
 			TargetNotFound(ref e1, ref e2) => write!(fmt,"Target {} {} not found.",e1,e2),
 			TargetInvalidType(ref err) => write!(fmt,"A {} target was specified, but only --bin and --example targets are supported.",err),
 			TargetInvalidCmdline(ref err) => write!(fmt,"The {} argument is invalid.",err),
-			CargoReadManifestInvalidCmdline => write!(fmt,"There was an error executing `cargo read-manifest': the --manifest-path argument is invalid."),
-			CargoReadManifestExec(ref err) => write!(fmt,"There was an error executing `cargo read-manifest': {}",err),
-			CargoReadManifestJson(ref err) => write!(fmt,"There was an error parsing the JSON output of `cargo read-manifest': {}",err),
+			CargoMetadataInvalidCmdline => write!(fmt,"There was an error executing `cargo metadata': the --manifest-path argument is invalid."),
+			CargoMetadataExec(ref err) => write!(fmt,"There was an error executing `cargo metadata': {}",err),
+			CargoMetadataJson(ref err) => write!(fmt,"There was an error parsing the JSON output of `cargo metadata': {}",err),
+			CargoMetadataRootNotFound(ref pkg_id) => write!(fmt,"Root package {} not found in cargo metadata",pkg_id),
 			CargoRustcExec(ref err) => write!(fmt,"There was an error executing `cargo rustc': {}",err),
 			CargoRustcNoOutput(ref err) => write!(fmt,"Output artifact not found after executing `cargo rustc': {}",err),
 			ConvCantFindConv(ref err) => write!(fmt,"Couldn't find `libenclave-elf2sgxs' executable: {}",err),
@@ -194,26 +211,35 @@ impl<'args> BuilderMode<'args> {
 	}
 
 	fn into_builders(self) -> Result<Vec<Builder<'args>>,Error> {
-		let manifest=try!(self.read_manifest());
-		try!(manifest.check());
+		let metadata=try!(self.get_metadata());
 
-		let (targets,rustc_specify_target)=try!(manifest.get_targets(try!(self.target_arg())));
+		let package = metadata.packages.iter()
+			.find(|pkg| pkg.id == metadata.resolve.root)
+			.ok_or_else(|| Error::CargoMetadataRootNotFound(metadata.resolve.root.to_owned()))?;
+		try!(package.check());
+
+		let target_dir = match metadata.target_directory {
+			Some(ref path) => Path::new(path).to_owned(),
+			None => Path::new(&package.manifest_path).with_file_name("target"),
+		};
+
+		let (targets,rustc_specify_target)=try!(package.get_targets(try!(self.target_arg())));
 
 		let rc_builder=Rc::new(self);
-		let rc_manifest=Rc::new(manifest);
+		let rc_package=Rc::new(package.to_owned());
 
-		let map_tempfile=Rc::new(try!(rc_builder.target_path(&rc_manifest,&TargetArg::new("MAPFILE",format!("libenclave-{}.map",rc_manifest.name)))));
+		let map_tempfile=Rc::new(try!(rc_builder.target_path(&target_dir,&TargetArg::new("MAPFILE",format!("libenclave-{}.map",rc_package.name)))));
 
 		targets.into_iter().map(|target_arg| {
-			let rc_manifest=rc_manifest.clone();
+			let rc_package=rc_package.clone();
 			let rc_builder=rc_builder.clone();
 
-			let bin_artifact=try!(rc_builder.target_path(&rc_manifest,&target_arg));
+			let bin_artifact=try!(rc_builder.target_path(&target_dir,&target_arg));
 			let sgxs_artifact=naming::output_lib_name(&bin_artifact,"sgxs").unwrap(/* panic here indicates bug in cargo */).into_os_string();
 
 			Ok(Builder{
 				mode:rc_builder,
-				manifest:rc_manifest,
+				package:rc_package,
 				target_arg:match rustc_specify_target {
 					true => Some(target_arg),
 					false => None,
@@ -227,7 +253,7 @@ impl<'args> BuilderMode<'args> {
 
 	fn manifest_path_arg(&self) -> Result<Option<&[Cow<OsStr>]>,Error> {
 		if let Some(pos)=self.cargo_args.iter().rposition(|arg|&**arg=="--manifest-path") {
-			if pos+1>=self.cargo_args.len() { return Err(Error::CargoReadManifestInvalidCmdline) }
+			if pos+1>=self.cargo_args.len() { return Err(Error::CargoMetadataInvalidCmdline) }
 			Ok(Some(&self.cargo_args[pos..pos+2]))
 		} else {
 			Ok(None)
@@ -249,23 +275,25 @@ impl<'args> BuilderMode<'args> {
 		}
 	}
 
-	fn read_manifest(&self) -> Result<Manifest,Error> {
+	fn get_metadata(&self) -> Result<Metadata,Error> {
 		let mut cargo=Command::new("cargo");
-		cargo.arg("read-manifest")
-		.stderr(ProcessIo::inherit());
+		cargo.arg("metadata")
+			.arg("--format-version")
+			.arg("1")
+			.stderr(ProcessIo::inherit());
 
 		if let Some(extra_args)=try!(self.manifest_path_arg()) {
 			cargo.args(extra_args);
 		}
 
-		let out=try!(cargo.output_ext(self.verbose).map_err(Error::CargoReadManifestExec));
-		Manifest::from_json_slice(&out.stdout).map_err(Error::CargoReadManifestJson)
+		let out=try!(cargo.output_ext(self.verbose).map_err(Error::CargoMetadataExec));
+		Metadata::from_json_slice(&out.stdout).map_err(Error::CargoMetadataJson)
 	}
 
-	fn target_path(&self, manifest: &Manifest, target_arg: &TargetArg) -> Result<OsString,Error> {
+	fn target_path(&self, target_dir: &Path, target_arg: &TargetArg) -> Result<OsString,Error> {
 		let release=self.cargo_args.iter().any(|arg|&**arg=="--release");
 
-		let mut buf=Path::new(&manifest.manifest_path).with_file_name("target");
+		let mut buf=target_dir.to_owned();
 		buf.push(TARGET_TRIPLE);
 		buf.push(if release { "release" } else { "debug" });
 		if &target_arg.ty == "--example" { buf.push("examples") };
@@ -290,7 +318,7 @@ impl TargetArg {
 
 struct Builder<'args> {
 	mode: Rc<BuilderMode<'args>>,
-	manifest: Rc<Manifest>,
+	package: Rc<Package>,
 	target_arg: Option<TargetArg>,
 	bin_artifact: OsString,
 	sgxs_artifact: OsString,
@@ -364,7 +392,7 @@ impl<'args> Builder<'args> {
 		try!(self.cargo_rustc());
 		try!(fs::metadata(&self.bin_artifact).map_err(Error::CargoRustcNoOutput));
 
-		self.say_status("SGXS Convert",&self.manifest.id);
+		self.say_status("SGXS Convert",&self.package.id);
 		try!(self.sgxsconv());
 		try!(fs::metadata(&self.sgxs_artifact).map_err(Error::ConvNoOutput));
 
