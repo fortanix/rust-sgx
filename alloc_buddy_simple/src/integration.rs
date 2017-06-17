@@ -73,3 +73,10 @@ pub extern "C" fn __rust_reallocate_inplace(
 pub extern "C" fn __rust_usable_size(size: usize, _align: usize) -> usize {
     size
 }
+
+#[no_mangle]
+pub extern "C" fn __rust_allocate_zeroed(size: usize, align: usize) -> *mut u8 {
+    let ptr = __rust_allocate(size, align);
+    unsafe { ptr::write_bytes(ptr, 0, size) };
+    ptr
+}
