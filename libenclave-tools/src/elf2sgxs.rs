@@ -266,7 +266,7 @@ impl<'a> LayoutInfo<'a> {
 	}
 
 	pub fn new(elf: ElfFile<'a>, ssaframesize: u32, heap_size: u64, stack_size: u64, threads: usize) -> Result<LayoutInfo<'a>,Error>  {
-		if let HeaderClass::SixtyFour=elf.header.pt1.class {} else {
+		if let HeaderClass::SixtyFour=elf.header.pt1.class() {} else {
 			return Err(Error::ElfClassNot64);
 		}
 		let sym=try!(Self::check_symbols(&elf));
