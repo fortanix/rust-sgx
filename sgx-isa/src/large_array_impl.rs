@@ -15,7 +15,7 @@ use core::ptr;
 
 use super::*;
 
-macro_rules! impl_default_clone {
+macro_rules! impl_default_clone_eq {
 	($($t:ty, $size:expr;)*) => {$(
 		impl Default for $t {
 			fn default() -> $t {
@@ -27,10 +27,19 @@ macro_rules! impl_default_clone {
 				unsafe{ptr::read(self)}
 			}
 		}
+		impl PartialEq for $t {
+			fn eq(&self, other: &$t) -> bool {
+				let lhs: &[u8;$size] = unsafe{transmute(self)};
+				let rhs: &[u8;$size] = unsafe{transmute(other)};
+				lhs.get(..) == rhs.get(..)
+			}
+		}
+		// This cannot be derived because the derivation asserts that the members are Eq.
+		impl Eq for $t {}
 	)*}
 }
 
-impl_default_clone!{
+impl_default_clone_eq!{
 	Secs, 4096;
 	Tcs, 4096;
 	Secinfo, 64;

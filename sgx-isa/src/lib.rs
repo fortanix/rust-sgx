@@ -165,7 +165,7 @@ pub enum Keyname {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Secs {
 	pub size:         u64,
 	pub baseaddr:     u64,
@@ -183,7 +183,7 @@ pub struct Secs {
 }
 
 #[repr(C,packed)]
-#[derive(Clone,Debug,Default)]
+#[derive(Clone,Debug,Default,Eq,PartialEq)]
 pub struct Attributes {
 	pub flags: AttributesFlags,
 	pub xfrm: u64,
@@ -220,7 +220,7 @@ pub mod miscselect {
 pub use self::miscselect::Miscselect;
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Tcs {
 	pub _reserved1: u64,
 	pub flags:      TcsFlags,
@@ -250,7 +250,7 @@ pub mod tcs_flags {
 pub use self::tcs_flags::TcsFlags;
 
 #[repr(C,packed)]
-#[derive(Clone,Debug,Default)]
+#[derive(Clone,Debug,Default,Eq,PartialEq)]
 pub struct Pageinfo {
 	pub linaddr: u64,
 	pub srcpge:  u64,
@@ -259,7 +259,7 @@ pub struct Pageinfo {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Secinfo {
 	pub flags:      SecinfoFlags,
 	pub _reserved1: [u8; 56],
@@ -313,7 +313,7 @@ pub mod secinfo_flags {
 pub use self::secinfo_flags::SecinfoFlags;
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Pcmd {
 	pub secinfo:    Secinfo,
 	pub enclaveid:  u64,
@@ -322,7 +322,7 @@ pub struct Pcmd {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Sigstruct {
 	pub header:        [u8; 16],
 	pub vendor:        u32,
@@ -348,7 +348,7 @@ pub struct Sigstruct {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Einittoken {
 	pub valid:              u32, // debug in §38.14, valid in §41.3
 	pub _reserved1:         [u8; 44],
@@ -368,7 +368,7 @@ pub struct Einittoken {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Report {
 	pub cpusvn:     [u8; 16],
 	pub miscselect: Miscselect,
@@ -387,7 +387,7 @@ pub struct Report {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Targetinfo {
 	pub measurement: [u8; 32],
 	pub attributes:  Attributes,
@@ -408,7 +408,7 @@ impl From<Report> for Targetinfo {
 }
 
 #[repr(C,packed)]
-#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default))]
+#[cfg_attr(feature="large_array_derive",derive(Clone,Debug,Default,Eq,PartialEq))]
 pub struct Keyrequest {
 	pub keyname:       u16,
 	pub keypolicy:     Keypolicy,
@@ -437,3 +437,22 @@ pub use self::keypolicy::Keypolicy;
 
 #[cfg(not(feature="large_array_derive"))]
 mod large_array_impl;
+
+#[test]
+fn test_eq() {
+	let mut a = Keyrequest::default();
+	let mut b = Keyrequest::default();
+	assert!(a == b);
+
+	a.keyname = 22;
+	assert!(a != b);
+
+	b.keyname = 22;
+	assert!(a == b);
+
+	a.miscmask = 0xdeadbeef;
+	assert!(a != b);
+
+	b.miscmask = 0xdeadbeef;
+	assert!(a == b);
+}
