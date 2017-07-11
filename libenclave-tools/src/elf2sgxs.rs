@@ -108,7 +108,6 @@ pub struct LayoutInfo<'a> {
 	heap_size: u64,
 	stack_size: u64,
 	threads: usize,
-	debug: bool,
 }
 
 macro_rules! read_syms {
@@ -253,7 +252,7 @@ impl<'a> LayoutInfo<'a> {
 		Ok(())
 	}
 	
-	fn check_debug(elf: &ElfFile<'a>) -> Result<bool,Error> {
+	fn _check_debug(elf: &ElfFile<'a>) -> Result<bool,Error> {
 		if let Some(notes)=elf.find_section_by_name(".note.libenclave") {
 			if let SectionData::Note64(note,data) = try!(notes.get_data(&elf)) {
 				Ok(note.name(data)=="libenclave DEBUG")
@@ -272,7 +271,6 @@ impl<'a> LayoutInfo<'a> {
 		let sym=try!(Self::check_symbols(&elf));
 		let dyn=try!(Self::check_dynamic(&elf));
 		try!(Self::check_relocs(&elf,dyn.as_ref()));
-		let debug=try!(Self::check_debug(&elf));
 
 		Ok(LayoutInfo{
 			elf:elf,
@@ -281,7 +279,6 @@ impl<'a> LayoutInfo<'a> {
 			ssaframesize:ssaframesize,
 			heap_size:heap_size,
 			stack_size:stack_size,
-			debug:debug,
 			threads:threads,
 		})
 	}
@@ -354,7 +351,7 @@ impl<'a> LayoutInfo<'a> {
 		let mut thread_start=heap_addr+self.heap_size;
 		const THREAD_GUARD_SIZE: u64=0x10000;
 		const TLS_SIZE: u64=0x1000;
-		let nssa: u32=if self.debug { 2 } else { 1 };
+		let nssa=1u32;
 		let thread_size=THREAD_GUARD_SIZE+self.stack_size+TLS_SIZE+(1+(nssa as u64)*(self.ssaframesize as u64))*0x1000;
 		let memory_size=thread_start+(self.threads as u64)*thread_size;
 

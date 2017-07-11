@@ -1,4 +1,4 @@
-# libenclave ABI v0.2.0
+# libenclave ABI v0.2.1
 
 This document describes the ABI of SGX enclaves built using `libenclave`.
 
@@ -7,9 +7,14 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
 |       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
-|       0.2.0 |              0.2.0 |                     0.2.0 |
+|       0.2.0 |        0.2.0-0.2.1 |                     0.2.0 |
+|       0.2.1 |              0.2.1 |               0.2.0-0.2.1 |
 
 ## Changelog
+
+### Version 0.2.1
+
+* AEX debug handler removed.
 
 ### Version 0.2.0
 
@@ -125,10 +130,6 @@ enclave was last entered:
 This section describes the differences with the stated above when the enclave 
 is compiled in debug mode.
 
-### TCS
-
-- `NSSA` should be set to 2.
-
 ### Enclave calling convention
 
 Upon `EENTER`, a special parameter is passed in:
@@ -137,17 +138,3 @@ Upon `EENTER`, a special parameter is passed in:
 
 R10 should contain a pointer to a 1024-byte buffer in writable user memory. The 
 enclave can write debugging messages to this buffer upon panic exit.
-
-### Asynchronous Enclave Exit (AEX)
-
-When an enclave thread experiences an AEX event, that enclave thread can be 
-entered again to call this function:
-
-```rust
-unsafe extern "C" fn debug_copy(dst: *mut u8, src: *const u8) {
-	::core::ptr::copy_nonoverlapping(src,dst,0x1000);
-}
-```
-
-Use the standard System V calling convention, except ENCLU registers (RAX, RBX, 
-RCX) are also clobbered.
