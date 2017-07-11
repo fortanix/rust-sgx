@@ -21,6 +21,7 @@
 .macro globvar name size
 	.global \name
 	.protected \name
+	.align \size
 	.size \name , \size
 	\name :
 		.org .+\size
@@ -31,12 +32,32 @@
 IMAGE_BASE:
 
 .section .rodata
+// The XSAVE area needs to be a large chunk of readable memory, but since we are
+// going to restore everything to its initial state (XSTATE_BV=0), only certain
+// parts need to have a defined value. In particular:
+//
+//   * MXCSR in the legacy area. This register is always restored if RFBM[1] or
+//     RFBM[2] is set, regardless of the value of XSTATE_BV
+//   * XSAVE header
+.align 64
+xsave_clear:
+.org .+24
+xsave_mxcsr:
+	.int 0
+
+// We can store a bunch of data in the gap between MXCSR and the XSAVE header
 	globvar HEAP_BASE 8
 	globvar HEAP_SIZE 8
 	globvar RELA 8
 	globvar RELACOUNT 8
 	globvar ENCLAVE_SIZE 8
 	globvar CFGDATA_BASE 8
+
+.org xsave_clear+512
+xsave_header:
+	.int 0, 0 // XSTATE_BV
+	.int 0, 0 // XCOMP_BV
+	.org .+48 // reserved bits
 
 .data
 panicked:
@@ -54,6 +75,8 @@ panicked:
 // TLS section
 #define tls_tos        0x00 // initialized by loader to *offset* from image base to TOS
 #define tls_init_once  0x08 // initialized by loader to 0
+#define tls_user_fcw   0x0a
+#define tls_user_mxcsr 0x0c
 #define tls_last_rsp   0x10 // initialized by loader to 0
 #define tls_user_rsp   0x18
 #define tls_user_retip 0x20
@@ -140,6 +163,8 @@ no_debug:
 	mov %r13,%gs:tls_user_r13
 	mov %r14,%gs:tls_user_r14
 	mov %r15,%gs:tls_user_r15
+	stmxcsr %gs:tls_user_mxcsr
+	fnstcw %gs:tls_user_fcw
 #ifdef DEBUG
 	mov %r10,%gs:tls_debug_panic_buf_ptr
 #endif
@@ -190,13 +215,20 @@ exit:
 	xor %r9,%r9
 	xor %r10,%r10
 	xor %r11,%r11
+sgx_exit:
 	mov %gs:tls_user_r12,%r12
 	mov %gs:tls_user_r13,%r13
 	mov %gs:tls_user_r14,%r14
 	mov %gs:tls_user_r15,%r15
-sgx_exit:
 	mov %gs:tls_user_retip,%rbx
 	mov %gs:tls_user_rsp,%rsp
+	mov %rdx, %rcx
+	mov $-1, %rax
+	mov %rax, %rdx
+	xrstor xsave_clear(%rip)
+	mov %rcx, %rdx
+	fldcw %gs:tls_user_fcw
+	ldmxcsr %gs:tls_user_mxcsr
 	pushq $0
 	popfq
 	mov $0x4,%eax // EEXIT
@@ -252,11 +284,14 @@ usercall:
 	push %r12
 	push %rbp
 	push %rbx
+	sub $8, %rsp
+	fstcw 4(%rsp)
+	stmxcsr (%rsp)
 	// RAX overwritten by ENCLU
-	// RBX set later
+	// RBX set by sgx_exit
 	// RCX overwritten by ENCLU
 	// RDX contains parameter
-	// RSP set later
+	// RSP set by sgx_exit
 	mov %gs:tls_user_rbp,%rbp
 	// RDI contains parameter
 	// RSI contains parameter
@@ -264,16 +299,17 @@ usercall:
 	// R9 contains parameter
 	xor %r10,%r10
 	xor %r11,%r11
-	mov %gs:tls_user_r12,%r12
-	mov %gs:tls_user_r13,%r13
-	mov %gs:tls_user_r14,%r14
-	mov %gs:tls_user_r15,%r15
+	// R12 ~ R15 set by sgx_exit
+	// extended registers set by sgx_exit
 	movq %rsp,%gs:tls_last_rsp
 	jmp sgx_exit
 usercall_ret:
 	mov %r11,%rsp
 	movq $0,%gs:tls_last_rsp
 	mov %rdx,%rax
+	ldmxcsr (%rsp)
+	fldcw 4(%rsp)
+	add $8, %rsp
 	pop %rbx
 	pop %rbp
 	pop %r12
