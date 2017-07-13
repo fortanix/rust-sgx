@@ -195,13 +195,17 @@ fn result_main() -> Result<(), MainError> {
     // First read of SGXS, determine where to write enclave size
     let mut f0c = f0.clone();
     let mut cread = CanonicalSgxsReader::new(&mut f0c);
-    let offset;
-    match cread.read_meas().context("reading initial SGXS data")? {
-        Some(Meas::Unsized(ecr)) => offset = ecr.size,
-        Some(Meas::ECreate(_)) => return Err(MainError::Str("Can only append to unsized SGXS files".into())),
-        None => return Err(MainError::Str("Empty SGXS file".into())),
+    let offset = match cread.read_meas().context("reading initial SGXS data")? {
+        Some(Meas::Unsized(ecr)) =>
+            if (ecr.size & 7) == 0 {
+                Ok(ecr.size)
+            } else {
+                Err("Unsized size offset must be naturally aligned")
+            },
+        Some(Meas::ECreate(_)) => Err("Can only append to unsized SGXS files"),
+        None => Err("Empty SGXS file"),
         _ => unreachable!(),
-    }
+    }.map_err(|s|MainError::Str(s.into()))?;
 
     let mut enclave_size_foffset = None;
     let mut last_addr = None;
