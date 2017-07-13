@@ -9,5 +9,3 @@ repository = "https://github.com/jethrogb/sgx-utils/tree/master/enclave-interfac
 [dependencies]
 sgxs = { path = "../sgxs" }
 "sgx-isa" = { path = "../sgx-isa" }
-lazy_static = "0.2.0" # MIT
-libc = "0.2.10"       # MIT/Apache-2.0

@@ -12,10 +12,6 @@
 #![feature(asm)]
 extern crate sgx_isa;
 extern crate sgxs;
-extern crate libc;
-#[macro_use]
-extern crate lazy_static;
 
 pub mod tcs;
-pub mod debug;
 pub mod util;
