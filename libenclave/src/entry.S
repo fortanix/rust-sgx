@@ -75,6 +75,7 @@ panicked:
 // TLS section
 #define tls_tos        0x00 // initialized by loader to *offset* from image base to TOS
 #define tls_init_once  0x08 // initialized by loader to 0
+// 15 unused bits
 #define tls_user_fcw   0x0a
 #define tls_user_mxcsr 0x0c
 #define tls_last_rsp   0x10 // initialized by loader to 0
@@ -90,7 +91,7 @@ panicked:
 /*************************
  ******* sgx_entry *******
  *************************
- * TCS.NSSA should be 1 (except when compiled for debug).
+ * TCS.NSSA should be 1.
  *
  * >>calling convention<<
  *   parameters (in):
@@ -118,8 +119,6 @@ panicked:
  *    - 0: normal exit
  *    - negative: panic exit, abort. If entered again, will panic exit again
  *    - any other value: “usercall”. After usercall handler, execute EENTER again.
- *      A later normal exit will return to the point indicated by the original
- *      call.
  *
  * >>usercall calling convention<<
  *   parameters (in):
@@ -134,28 +133,13 @@ panicked:
  *    - all registers (callee can use any register)
  *
  *   RSP, RBP, R12, R13, R14, R15 are the same as when the enclave was entered
- *
- * >>debug<<
- *   When compiled for debug, use TCS.NSSA=2 (or more). Upon AEX, enter again
- *   to call the function debug_copy(dst: *mut u8, src: *const u8). This will
- *   call memcpy(dst,src,0x1000). Use the standard System V calling convention,
- *   except ENCLU registers (EAX, RBX, RCX) are also clobbered.
  *************************/
 
 .text
 .global sgx_entry
 .type sgx_entry,function
 sgx_entry:
-#ifdef DEBUG
-	test %eax,%eax // TCS.CSSA
-	jz no_debug
-	mov %rsp,%gs:tls_user_rsp
-	mov %rcx,%gs:tls_user_retip
-	call debug_copy
-	jmp sgx_exit
-no_debug:
-#endif
-// save registers
+// save user registers
 	mov %rcx,%gs:tls_user_retip
 	mov %rsp,%gs:tls_user_rsp
 	mov %rbp,%gs:tls_user_rbp
@@ -173,11 +157,11 @@ no_debug:
 	test %r11,%r11
 	jnz usercall_ret
 // setup stack
-	mov %gs:tls_tos,%rsp
-// check for init
-	bt $0,%gs:tls_init_once
+	mov %gs:tls_tos,%rsp // initially, RSP is not set to the correct value
+	                     // here. This is fixed below under "adjust stack".
+// check for thread init
+	bts $0,%gs:tls_init_once
 	jc skip_init
-	movb $1,%gs:tls_init_once
 // adjust stack
 	lea IMAGE_BASE(%rip),%rax
 	add %rax,%rsp
@@ -203,34 +187,41 @@ skip_init:
 	mov %rax,%rdx  // RDX = return value
 	xor %rdi,%rdi  // RDI = normal exit
 exit:
+// clear general purpose register state
 	// RAX overwritten by ENCLU
 	// RBX set later
 	// RCX overwritten by ENCLU
 	// RDX contains return value
 	// RSP set later
-	mov %gs:tls_user_rbp,%rbp
+	// RBP set later
 	// RDI contains exit mode
 	xor %rsi,%rsi
 	xor %r8,%r8
 	xor %r9,%r9
 	xor %r10,%r10
 	xor %r11,%r11
+	// R12 ~ R15 set by sgx_exit
 sgx_exit:
+// clear extended register state
+	mov %rdx, %rcx // save RDX
+	mov $-1, %rax
+	mov %rax, %rdx
+	xrstor xsave_clear(%rip)
+	mov %rcx, %rdx // restore RDX
+// clear flags
+	pushq $0
+	popfq
+// restore user registers
 	mov %gs:tls_user_r12,%r12
 	mov %gs:tls_user_r13,%r13
 	mov %gs:tls_user_r14,%r14
 	mov %gs:tls_user_r15,%r15
 	mov %gs:tls_user_retip,%rbx
 	mov %gs:tls_user_rsp,%rsp
-	mov %rdx, %rcx
-	mov $-1, %rax
-	mov %rax, %rdx
-	xrstor xsave_clear(%rip)
-	mov %rcx, %rdx
+	mov %gs:tls_user_rbp,%rbp
 	fldcw %gs:tls_user_fcw
 	ldmxcsr %gs:tls_user_mxcsr
-	pushq $0
-	popfq
+// exit enclave
 	mov $0x4,%eax // EEXIT
 	enclu
 // end sgx_entry
@@ -278,6 +269,7 @@ panic_exit:
 usercall:
 	test %rdi,%rdi
 	jle usercall_panic
+// save callee-saved state
 	push %r15
 	push %r14
 	push %r13
@@ -287,12 +279,14 @@ usercall:
 	sub $8, %rsp
 	fstcw 4(%rsp)
 	stmxcsr (%rsp)
+	movq %rsp,%gs:tls_last_rsp
+// clear general purpose register state
 	// RAX overwritten by ENCLU
 	// RBX set by sgx_exit
 	// RCX overwritten by ENCLU
 	// RDX contains parameter
 	// RSP set by sgx_exit
-	mov %gs:tls_user_rbp,%rbp
+	// RBP set by sgx_exit
 	// RDI contains parameter
 	// RSI contains parameter
 	// R8 contains parameter
@@ -300,13 +294,13 @@ usercall:
 	xor %r10,%r10
 	xor %r11,%r11
 	// R12 ~ R15 set by sgx_exit
-	// extended registers set by sgx_exit
-	movq %rsp,%gs:tls_last_rsp
+// extended registers/flags cleared by sgx_exit
+// exit
 	jmp sgx_exit
 usercall_ret:
-	mov %r11,%rsp
 	movq $0,%gs:tls_last_rsp
-	mov %rdx,%rax
+// restore callee-saved state
+	mov %r11,%rsp
 	ldmxcsr (%rsp)
 	fldcw 4(%rsp)
 	add $8, %rsp
@@ -316,6 +310,8 @@ usercall_ret:
 	pop %r13
 	pop %r14
 	pop %r15
+// return
+	mov %rdx,%rax
 	ret
 
 .global get_thread_id
