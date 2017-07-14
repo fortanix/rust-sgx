@@ -64,9 +64,6 @@ fn main() {
 	let dev=sgxs::isgx::Device::open("/dev/sgx").unwrap();
 	let mut mapping=dev.load_with_launch_enclave(&mut file,&sig,OptTok::None(None),&mut le_file,&le_sig).unwrap();
 
-	let h=enclave_interface::debug::install_segv_signal_handler(&mut mapping.tcss()[0]);
 	let ret=tcs::enter(&mut mapping.tcss()[0],enclave_example_usercalls::dispatch::<Handler>,user_heap,user_heap_size as _,0,0,0);
-	drop(h);
-
 	println!("Enclave returned: {}",ret);
 }
