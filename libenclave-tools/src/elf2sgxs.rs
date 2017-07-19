@@ -39,7 +39,6 @@ pub enum Error {
 	DynamicSymbolIncorrectSize{name:&'static str,expected:u64,actual:u64},
 	DynamicSymbolTableNotInDynsymSection,                // ".dynsym section is not a dynamic symbol table!"
 	DynamicSymbolTableNotFound,                          // "Could not found dynamic symbol table!"
-	DynamicSymbolEnclaveSizeNotAligned,                  // "ENCLAVE_SIZE symbol is not naturally aligned"
 	DynEntryUnsupportedPLTGOT,                           // "Unsupported dynamic entry: PLT/GOT"
 	DynEntryUnsupportedInitFunction,                     // "Unsupported dynamic entry: .init functions"
 	DynEntryUnsupportedFiniFunction,                     // "Unsupported dynamic entry: .fini functions"
@@ -155,10 +154,6 @@ impl<'a> LayoutInfo<'a> {
 				check_size!(syms.RELA         == 8);
 				check_size!(syms.RELACOUNT    == 8);
 				check_size!(syms.ENCLAVE_SIZE == 8);
-
-				if (syms.ENCLAVE_SIZE.value() & (syms.ENCLAVE_SIZE.size()-1)) != 0 {
-					return Err(Error::DynamicSymbolEnclaveSizeNotAligned);
-				}
 
 				Ok(syms)
 			} else {
