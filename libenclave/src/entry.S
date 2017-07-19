@@ -51,7 +51,6 @@ xsave_mxcsr:
 	globvar RELA 8
 	globvar RELACOUNT 8
 	globvar ENCLAVE_SIZE 8
-	globvar CFGDATA_BASE 8
 
 .org xsave_clear+512
 xsave_header:

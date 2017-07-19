@@ -17,7 +17,7 @@ use std::os::unix::io::IntoRawFd;
 use std::io::{Result as IoResult,Error as IoError};
 use std::ptr;
 use libc;
-use sgxs::{SgxsRead,PageReader,CreateInfo,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
+use sgxs::{SgxsRead,PageReader,MeasECreate,MeasEAdd,PageChunks,Error as SgxsError};
 use abi::{Sigstruct,Einittoken,Secs,Secinfo,PageType,ErrorCode};
 
 use loader::{Map,Load,Tcs,Address,EinittokenError};
@@ -178,11 +178,7 @@ impl<'dev> Load<'dev> for Device {
 		let einittoken_default;
 		let einittoken=einittoken.unwrap_or({einittoken_default=Default::default();&einittoken_default});
 
-		let (CreateInfo{ecreate, sized}, mut reader)=try!(PageReader::new(reader));
-
-		if !sized {
-			return Err(Error::Sgxs(SgxsError::StreamUnsized))
-		}
+		let (ecreate,mut reader)=try!(PageReader::new(reader));
 
 		let mut mapping=try!(Mapping::new(self,ecreate.size));
 

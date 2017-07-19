@@ -75,7 +75,7 @@ fn main() {
 	}).fold(0,std::ops::Add::add);
 
 	let mut out=stdout();
-	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:size_fit_natural((pages as u64)*0x1000),ssaframesize:ssaframesize},true).unwrap();
+	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:size_fit_natural((pages as u64)*0x1000),ssaframesize:ssaframesize}).unwrap();
 
 	for block in blocks {
 		match block {

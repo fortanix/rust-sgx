@@ -121,7 +121,7 @@ fn main() {
 		if use_le {
 			let mut le=File::open(matches.value_of("le-sgxs").unwrap()).unwrap();
 			let le_sig=read_sigstruct(matches.value_of("le-sigstruct").unwrap());
-			mapping=dev.load_with_launch_enclave(&mut file,&sigstruct,token_opt,&mut le,&le_sig,None).unwrap();
+			mapping=dev.load_with_launch_enclave(&mut file,&sigstruct,token_opt,&mut le,&le_sig).unwrap();
 		} else {
 			mapping=dev.load(&mut file,&sigstruct,token_opt.as_option()).unwrap();
 		}

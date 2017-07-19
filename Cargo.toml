@@ -1,2 +1,0 @@
-[workspace]
-members = ["alloc_buddy_simple", "enclave-example/trusted", "enclave-example/untrusted", "enclave-example/usercalls", "enclave-interface", "enclave-usercalls", "libenclave", "libenclave-tools", "sgx-isa", "sgxs", "sgxs-tools"]

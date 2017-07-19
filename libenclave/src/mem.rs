@@ -35,13 +35,14 @@ fn image_base() -> u64 {
 	base
 }
 
-pub fn is_enclave_range(p: *const u8, len: usize) -> bool {
+#[allow(dead_code)]
+pub fn is_enclave_range<T>(p: *const T, len: usize) -> bool {
 	let start=p as u64;
 	let end=start+(len as u64);
 	start >= image_base() && end <= image_base()+(unsafe{ENCLAVE_SIZE} as u64) // unsafe ok: link-time constant
 }
 
-pub fn is_user_range(p: *const u8, len: usize) -> bool {
+pub fn is_user_range<T>(p: *const T, len: usize) -> bool {
 	let start=p as u64;
 	let end=start+(len as u64);
 	end <= image_base() || start >= image_base()+(unsafe{ENCLAVE_SIZE} as u64) // unsafe ok: link-time constant

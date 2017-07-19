@@ -19,4 +19,3 @@ with-rust-crypto = ["sgxs/rust-crypto"]
 "regex" = "0.1"       # MIT/Apache-2.0
 "sgx-isa" = { path = "../sgx-isa" } # MIT/Apache-2.0
 "num" = "0.1.31"      # MIT/Apache-2.0
-"byteorder" = "1.0"   # Unlicense/MIT
