@@ -1,0 +1,28 @@
+[package]
+name = "fortanix-sgx-tools"
+version = "0.1.0-rc1"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Tools for building and running enclaves for the Fortanix SGX ABI.
+
+This contains `ftxsgx-runner` to run generic `x86_64-fortanix-unknown-sgx`
+enclaves, as well as `ftxsgx-elf2sgxs`, which is used in the build process for
+the `x86_64-fortanix-unknown-sgx` target.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+keywords = ["sgx", "enclave", "ftxsgx-runner"]
+categories = ["development-tools::build-utils", "command-line-utilities"]
+
+[dependencies]
+# Project dependencies
+aesm-client = { version = "0.1.0-rc1", path = "../aesm-client", features = ["sgxs"] }
+sgxs-loaders = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
+enclave-runner = { version = "0.1.0-rc1", path = "../enclave-runner" }
+sgxs = { version = "0.6.0-rc1", path = "../sgxs" }
+sgx-isa = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+xmas-elf = "0.6.0" # Apache-2.0/MIT
+clap = "2.2.5"     # MIT
+failure = "0.1.1"  # MIT/Apache-2.0

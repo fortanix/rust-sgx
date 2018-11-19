@@ -1,0 +1,25 @@
+[package]
+name = "sgxs-loaders"
+version = "0.1.0-rc1"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Platform-specific loaders for SGX enclaves.
+
+Currently, only isgx is supported.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/sgxs-loaders/"
+keywords = ["sgx", "enclave", "sgxs", "isgx"]
+categories = ["os", "hardware-support"]
+
+[dependencies]
+# Project dependencies
+"sgxs" = { version = "0.6.0-rc1", path = "../sgxs" }
+"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+nix = "0.11"             # MIT
+libc = "0.2"             # MIT/Apache-2.0
+failure = "0.1.1"        # MIT/Apache-2.0
+failure_derive = "0.1.1" # MIT/Apache-2.0

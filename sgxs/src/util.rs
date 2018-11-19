@@ -1,3 +1,9 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 /// Given a size in bytes, return the size in bytes of the total full pages
 /// required to cover the size.
 pub fn size_fit_page(size: u64) -> u64 {

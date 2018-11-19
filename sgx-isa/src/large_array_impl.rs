@@ -1,21 +1,15 @@
-/*
- * Constants and structures related to the Intel SGX ISA extension.
+/* Copyright (c) Jethro G. Beekman and Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * Licensed under the Apache License, Version 2.0
- * <COPYING-APACHE or http://www.apache.org/licenses/LICENSE-2.0> or the MIT
- * license <COPYING-MIT or http://opensource.org/licenses/MIT>, at your
- * option. All files in the project carrying such notice may not be copied,
- * modified, or distributed except according to those terms.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use core::mem::transmute;
 use core::ptr;
 
 use super::*;
 
-macro_rules! impl_default_clone {
+macro_rules! impl_default_clone_eq {
 	($($t:ty, $size:expr;)*) => {$(
 		impl Default for $t {
 			fn default() -> $t {
@@ -27,10 +21,19 @@ macro_rules! impl_default_clone {
 				unsafe{ptr::read(self)}
 			}
 		}
+		impl PartialEq for $t {
+			fn eq(&self, other: &$t) -> bool {
+				let lhs: &[u8;$size] = unsafe{transmute(self)};
+				let rhs: &[u8;$size] = unsafe{transmute(other)};
+				lhs.get(..) == rhs.get(..)
+			}
+		}
+		// This cannot be derived because the derivation asserts that the members are Eq.
+		impl Eq for $t {}
 	)*}
 }
 
-impl_default_clone!{
+impl_default_clone_eq!{
 	Secs, 4096;
 	Tcs, 4096;
 	Secinfo, 64;

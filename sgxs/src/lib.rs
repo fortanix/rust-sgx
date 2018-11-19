@@ -1,70 +1,28 @@
-/*
- * The Rust SGXS library.
+/* Copyright (c) Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![feature(asm)]
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate ioctl as ioctl_crate;
-extern crate libc;
 extern crate byteorder;
+#[cfg(feature="crypto-openssl")]
 extern crate openssl;
-#[cfg(feature="with-rust-crypto")]
-extern crate crypto as rust_crypto;
-extern crate core;
+#[cfg(feature="crypto-openssl")]
+extern crate openssl_sys;
+#[cfg(feature="crypto-openssl")]
+extern crate foreign_types;
 extern crate sgx_isa as abi;
 extern crate time;
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 
 pub mod crypto;
-pub mod sgxdev;
-pub mod isgx;
-pub mod sgxs;
-mod intelcall;
+pub mod einittoken;
 pub mod loader;
+pub mod sgxs;
 pub mod sigstruct;
 pub mod util;
 
-mod private {
-	pub mod loader {
-		#[derive(Clone,Copy,PartialEq,Eq,Debug)]
-		pub struct Address(u64);
-
-		impl From<Address> for u64 {
-			fn from(a: Address) -> u64 {
-				a.0
-			}
-		}
-
-		// A `Tcs` represents the only reference to an in-memory TCS. Aliasing
-		// (or lack thereof) is supposed to prevent entering the same TCS more
-		// than once.
-		#[derive(PartialEq,Eq,Debug)]
-		pub struct Tcs(u64);
-
-		impl Tcs {
-			/// The caller must make sure that the Address is no longer in use when the
-			/// `Tcs` leaves its scope
-			pub unsafe fn address(&mut self) -> Address {
-				make_address(self.0)
-			}
-		}
-
-		pub fn make_address(a: u64) -> Address{
-			Address(a)
-		}
-
-		pub fn make_tcs(a: u64) -> Tcs{
-			Tcs(a)
-		}
-	}
-}
-
-#[cfg(target_endian="big")] const E:ENDIANNESS_NOT_SUPPORTED=();
+#[cfg(target_endian="big")]
+compile_error!("Big endianness not supported");

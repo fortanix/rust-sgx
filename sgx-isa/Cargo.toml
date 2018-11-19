@@ -1,14 +1,23 @@
 [package]
 name = "sgx-isa"
-description = "Constants and structures related to the Intel SGX ISA extension"
-version = "0.1.2"
-authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
-license = "MIT/Apache-2.0"
-repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgx-isa"
+version = "0.2.0-rc1"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Constants and structures related to the Intel SGX ISA extension.
+
+These definitions correspond to those found in the Intel Software Developers
+Manual (SDM), volume 3.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/sgx-isa/"
+keywords = ["sgx", "enclave"]
+categories = ["hardware-support"]
 
 [dependencies]
-"bitflags" = "0.5" # MIT/Apache-2.0
+# External dependencies
+bitflags = "1" # MIT/Apache-2.0
 
 [features]
-"try_from" = []
-"large_array_derive" = []
+try_from = []
+large_array_derive = []

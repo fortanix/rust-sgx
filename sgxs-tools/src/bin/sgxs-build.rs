@@ -1,13 +1,8 @@
-/*
- * Build an SGXS by concatenating input files.
+/* Copyright (c) Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate sgxs as sgxs_crate;
 extern crate sgx_isa;
@@ -15,7 +10,7 @@ extern crate sgx_isa;
 use std::fs::{self,File};
 use std::io::stdout;
 
-use sgx_isa::{Tcs,PageType,secinfo_flags,SecinfoFlags};
+use sgx_isa::{Tcs,PageType,SecinfoFlags};
 use sgxs_crate::sgxs::{CanonicalSgxsWriter,self,SecinfoTruncated};
 use sgxs_crate::util::{size_fit_page,size_fit_natural};
 
@@ -58,9 +53,9 @@ fn main() {
 		} else if k=="r" || k=="rw" || k=="rx" || k=="rwx" {
 			let flags=k.as_bytes().iter().fold(PageType::Reg.into(),|f,&c|{
 				f|match c {
-					b'r' =>secinfo_flags::R,
-					b'w' =>secinfo_flags::W,
-					b'x' =>secinfo_flags::X,
+					b'r' =>SecinfoFlags::R,
+					b'w' =>SecinfoFlags::W,
+					b'x' =>SecinfoFlags::X,
 					_ => unreachable!()
 				}
 			});
@@ -75,7 +70,7 @@ fn main() {
 	}).fold(0,std::ops::Add::add);
 
 	let mut out=stdout();
-	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:size_fit_natural((pages as u64)*0x1000),ssaframesize:ssaframesize}).unwrap();
+	let mut writer=CanonicalSgxsWriter::new(&mut out,sgxs::MeasECreate{size:size_fit_natural((pages as u64)*0x1000),ssaframesize:ssaframesize},true).unwrap();
 
 	for block in blocks {
 		match block {
@@ -97,7 +92,7 @@ fn main() {
 				let tcs=unsafe{std::mem::transmute::<_,[u8;4096]>(tcs)};
 				let secinfo=SecinfoTruncated{flags:PageType::Tcs.into()};
 				writer.write_page(Some(&mut &tcs[..]),None,secinfo).unwrap();
-				let secinfo=SecinfoTruncated{flags:secinfo_flags::R|secinfo_flags::W|PageType::Reg.into()};
+				let secinfo=SecinfoTruncated{flags:SecinfoFlags::R|SecinfoFlags::W|PageType::Reg.into()};
 				writer.write_pages(Some(&mut &[][..]),(nssa*ssaframesize) as usize,None,secinfo).unwrap();
 			}
 		}

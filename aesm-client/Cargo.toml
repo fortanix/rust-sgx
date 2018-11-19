@@ -1,0 +1,37 @@
+[package]
+name = "aesm-client"
+version = "0.1.0-rc1"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = """
+RPC client for Intel SGX AESM (Architectural Enclave Service Manager).
+
+With this client, applications can obtain launch tokens for enclaves and turn
+attestation reports into quotes.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/aesm-client/"
+keywords = ["sgx", "enclave", "psw", "aesm", "aesmd"]
+categories = ["api-bindings"]
+
+[dependencies]
+# Project dependencies
+sgxs = { version = "0.6.0-rc1", path = "../sgxs", optional = true }
+
+# External dependencies
+byteorder = "1.0"          # Unlicense/MIT
+lazy_static = "1"          # MIT/Apache-2.0
+protobuf = "1.2.2"         # MIT/Apache-2.0
+failure = "0.1.1"          # MIT/Apache-2.0
+failure_derive = "0.1.1"   # MIT/Apache-2.0
+# We require a version of unix-socket with the following change:
+# https://github.com/rust-lang-nursery/unix-socket/pull/30 . Alternatively, in
+# the future, https://github.com/rust-lang/rust/issues/42048 might provide std
+# support.
+unix_socket2 = "0.5.1"     # MIT/Apache-2.0
+
+[build-dependencies]
+protoc-rust = "1.4" # MIT/Apache-2.0
+
+[dev-dependencies]
+sgx-isa = { version = "0.2.0-rc1", path = "../sgx-isa" }

@@ -1,23 +1,31 @@
 [package]
 name = "sgxs"
-description = "Library for working with the SGX stream format"
-version = "0.5.1"
-authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
-license = "GPL-2.0+"
-repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs"
-
-[features]
-with-rust-crypto = ["rust-crypto"]
+version = "0.6.0-rc1"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Library for working with the SGX stream format.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/sgxs/"
+keywords = ["sgx", "enclave", "sgxs"]
+categories = ["parsing", "encoding"]
 
 [dependencies]
-"bitflags" = "0.4"    # MIT/Apache-2.0
-"byteorder" = "0.4"   # Unlicense/MIT
-"ioctl" = "0.3"       # MIT/Apache-2.0 (per 7205d48)
-"libc" = "0.2"        # MIT/Apache-2.0
-"openssl" = "0.7.7"   # Apache-2.0
-"sgx-isa" = "0.1"     # MIT/Apache-2.0
-"time" = "0.1"        # MIT/Apache-2.0
+# Project dependencies
+sgx-isa = { version = "0.2.0-rc1", path = "../sgx-isa" }
 
-[dependencies.rust-crypto]  # MIT/Apache-2.0
-version = "0.2"
-optional = true
+# External dependencies
+byteorder = "1.0"                                     # Unlicense/MIT
+time = "0.1"                                          # MIT/Apache-2.0
+failure = "0.1.1"                                     # MIT/Apache-2.0
+failure_derive = "0.1.1"                              # MIT/Apache-2.0
+openssl = { version = "0.10", optional = true }       # Apache-2.0
+openssl-sys = { version = "0.9.24", optional = true } # Apache-2.0
+foreign-types = { version = "0.3", optional = true }  # MIT/Apache-2.0
+
+[features]
+crypto-openssl = ["openssl", "openssl-sys", "foreign-types"]
+
+[dev-dependencies]
+crypto-hash = "0.3" # MIT

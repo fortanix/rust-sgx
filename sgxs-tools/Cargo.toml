@@ -1,21 +1,40 @@
 [package]
 name = "sgxs-tools"
-description = "Utilities for working with the SGX stream format"
-version = "0.5.0"
-authors = ["Jethro Beekman <jethro@jbeekman.nl>"]
-license = "GPL-2.0+"
-repository = "https://github.com/jethrogb/sgx-utils/tree/master/sgxs-tools"
+version = "0.6.0-rc1"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Utilities for working with the SGX stream format.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+keywords = ["sgx", "enclave", "sgxs", "sgxs-sign", "sgxs-append"]
+categories = ["command-line-utilities"]
 
-[features]
-with-rust-crypto = ["sgxs/rust-crypto"]
+autobins = true
+
+[[bin]]
+name = "isgx-pe2sgx"
+required-features = ["pe2sgx"]
 
 [dependencies]
-"sgxs" = "0.5.0"
-"libc" = "0.2"        # MIT/Apache-2.0
-"broadcast" = "0.1"   # MIT
-"lazy_static" = "0.1" # MIT
-"pe" = "0.1"          # GPL-2.0+
-"clap" = "2.0"        # MIT
-"regex" = "0.1"       # MIT/Apache-2.0
-"sgx-isa" = "0.1.2"   # MIT/Apache-2.0
-"num" = "0.1.31"      # MIT/Apache-2.0
+# Project dependencies
+"sgxs" = { version = "0.6.0-rc1", path = "../sgxs", features = ["crypto-openssl"] }
+"sgxs-loaders" = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
+"aesm-client" = { version = "0.1.0-rc1", path = "../aesm-client", features = ["sgxs"] }
+"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+lazy_static = "1"                                # MIT/Apache-2.0
+clap = "2.2.5"                                   # MIT
+regex = "1"                                      # MIT/Apache-2.0
+num = "0.2"                                      # MIT/Apache-2.0
+byteorder = "1.0"                                # Unlicense/MIT
+openssl = "0.10"                                 # Apache-2.0
+failure = "0.1.1"                                # MIT/Apache-2.0
+failure_derive = "0.1.1"                         # MIT/Apache-2.0
+crypto-hash = "0.3"                              # MIT
+broadcast = { version = "0.1", optional = true } # MIT
+pe = { version = "0.1", optional = true }        # GPL
+
+[features]
+pe2sgx = ["pe", "broadcast"]

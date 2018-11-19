@@ -1,13 +1,8 @@
-/*
- * SGXS information utility.
+/* Copyright (c) Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate sgxs as sgxs_crate;
 extern crate sgx_isa;
@@ -18,7 +13,8 @@ use std::ffi::OsStr;
 use std::fmt;
 
 use sgxs_crate::sgxs::{self,SgxsRead};
-use sgx_isa::{PageType,secinfo_flags};
+use sgxs_crate::util::size_fit_natural;
+use sgx_isa::{PageType,SecinfoFlags};
 
 /// Ok(Some(_)) all data is _
 /// Ok(None) there is data, but not all bytes are the same
@@ -57,12 +53,16 @@ fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 		if let Some(meas)=try!(file.read_meas()) {
 			match meas {
 				sgxs::Meas::ECreate(ecreate) =>
-					println!("ECREATE size=0x{:x} ssaframesize={}",ecreate.size,ecreate.ssaframesize),
+					println!("ECREATE size=0x{:x} ssaframesize={}",{ecreate.size},{ecreate.ssaframesize}),
+				sgxs::Meas::Unsized(ecreate) =>
+					println!("UNSIZED offset=0x{:x} ssaframesize={}",{ecreate.size},{ecreate.ssaframesize}),
 				sgxs::Meas::EAdd(eadd) =>
-					println!("EADD offset=0x{:8x} pagetype={:?} flags={:?}",eadd.offset,eadd.secinfo.flags.page_type(),eadd.secinfo.flags&!secinfo_flags::PT_MASK),
+					println!("EADD offset=0x{:8x} pagetype={:?} flags={:?}",eadd.offset,eadd.secinfo.flags.page_type(),eadd.secinfo.flags&!SecinfoFlags::PT_MASK),
 				sgxs::Meas::EExtend{header,data} =>
 					println!("EEXTEND offset=0x{:8x} data={}",header.offset,classify_data(&data)),
-				sgxs::Meas::BareEExtend(_) => unreachable!()
+				sgxs::Meas::Unmeasured{header,data} =>
+					println!("UNMEASRD offset=0x{:8x} data={}",header.offset,classify_data(&data)),
+				sgxs::Meas::BareEExtend(_) | sgxs::Meas::BareUnmeasured(_) => unreachable!()
 			}
 		} else {
 			break;
@@ -73,14 +73,18 @@ fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 
 fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 	let mut file=try!(File::open(path));
-	let (ecreate,mut reader)=try!(sgxs::PageReader::new(&mut file));
-	println!("ECREATE size=0x{:x} ssaframesize={}",ecreate.size,ecreate.ssaframesize);
+	let (sgxs::CreateInfo{ecreate, sized}, mut reader)=try!(sgxs::PageReader::new(&mut file));
+	if sized {
+		println!("ECREATE size=0x{:x} ssaframesize={}",{ecreate.size},{ecreate.ssaframesize});
+	} else {
+		println!("UNSIZED offset=0x{:x} ssaframesize={}",{ecreate.size},{ecreate.ssaframesize});
+	}
 	loop {
 		if let Some((eadd,chunks,data))=try!(reader.read_page()) {
 			println!("EADD offset=0x{:8x} pagetype={:<4} flags={:<9} data={:>7} measured={}",
 				eadd.offset,
 				format!("{:?}",eadd.secinfo.flags.page_type()),
-				format!("{:?}",eadd.secinfo.flags&!secinfo_flags::PT_MASK),
+				format!("{:?}",eadd.secinfo.flags&!SecinfoFlags::PT_MASK),
 				classify_data(&data),
 				chunks
 			);
@@ -95,7 +99,7 @@ fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 enum PageCharacteristic {
 	Gap,
 	Page {
-		flags: secinfo_flags::SecinfoFlags,
+		flags: SecinfoFlags,
 		measured_chunks: sgxs::PageChunks,
 		data: DataClass,
 	},
@@ -109,9 +113,9 @@ impl fmt::Display for PageCharacteristic {
 			Gap => write!(f,"(unmapped)"),
 			Page{ref flags,measured_chunks,ref data} => {
 				let mut perm=[b'-';3];
-				if flags.contains(secinfo_flags::R) { perm[0]=b'r'; }
-				if flags.contains(secinfo_flags::W) { perm[1]=b'w'; }
-				if flags.contains(secinfo_flags::X) { perm[2]=b'x'; }
+				if flags.contains(SecinfoFlags::R) { perm[0]=b'r'; }
+				if flags.contains(SecinfoFlags::W) { perm[1]=b'w'; }
+				if flags.contains(SecinfoFlags::X) { perm[2]=b'x'; }
 
 				write!(f,"{:<4} {} {:>7} meas={}",
 					format!("{:?}",PageType::from_repr(flags.page_type()).unwrap()),
@@ -128,7 +132,7 @@ struct Pages<'a, R: sgxs::SgxsRead + 'a> {
 	reader: sgxs::PageReader<'a,R>,
 	last_offset: Option<u64>,
 	last_read_page: Option<(u64,PageCharacteristic)>,
-	size: u64,
+	size: Option<u64>,
 }
 
 impl<'a, R: sgxs::SgxsRead + 'a> Iterator for Pages<'a,R> {
@@ -147,7 +151,10 @@ impl<'a, R: sgxs::SgxsRead + 'a> Iterator for Pages<'a,R> {
 				}
 			}
 		} else { // gaps until the end
-			if cur_offset>=self.size {
+			if self.size.is_none() {
+				self.size = Some(size_fit_natural(cur_offset));
+			};
+			if cur_offset>=self.size.unwrap() {
 				None
 			} else {
 				Some(Ok((cur_offset,PageCharacteristic::Gap)))
@@ -168,8 +175,13 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a,R> {
 	}
 
 	fn new(reader: &'a mut R) -> sgxs::Result<Self> {
-		let (ecreate,reader)=try!(sgxs::PageReader::new(reader));
-		let mut ret=Pages{reader:reader,last_offset:None,last_read_page:None,size:ecreate.size};
+		let (info, reader)=try!(sgxs::PageReader::new(reader));
+		let size = if info.sized {
+			Some(info.ecreate.size)
+		} else {
+			None
+		};
+		let mut ret=Pages{reader:reader,last_offset:None,last_read_page:None,size};
 		ret.last_read_page=try!(ret.next_page());
 		Ok(ret)
 	}
@@ -178,7 +190,12 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a,R> {
 fn summary<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 	let mut file=try!(File::open(path));
 	let mut pages=try!(Pages::new(&mut file));
-	let w=format!("{:x}",pages.size-1).len();
+	let w = if let Some(s) = pages.size {
+		format!("{:x}",s-1).len()
+	} else {
+		println!("(unsized)");
+		8
+	};
 	let mut last=None;
 	let mut last_offset=0;
 	loop {

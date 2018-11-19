@@ -1,118 +1,45 @@
-/*
- * The Rust SGXS library.
+/* Copyright (c) Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use std::io::{Error as IoError,Seek,SeekFrom};
+use std::os::raw::c_void;
+use std::fmt::Debug;
 
-use abi::{Sigstruct,Einittoken,Attributes};
+use failure::Error;
+
+use abi::{Sigstruct, Attributes, Miscselect};
 use sgxs::SgxsRead;
 
-pub use ::private::loader::Address;
-pub use ::private::loader::Tcs;
-
-pub trait Map: Drop {
-	fn base_address(&self) -> Address;
-	fn tcss(&mut self) -> &mut [Tcs];
+/// An owned `Tcs` is the only reference to a particular Thread Control
+/// Structure (TCS) in an enclave.
+pub trait Tcs: 'static + Debug + Send {
+	/// The address of the TCS.
+	fn address(&self) -> *mut c_void;
 }
 
-pub trait Load<'dev> {
-	type Mapping: Map + 'dev;
-	type Error: EinittokenError + ::std::fmt::Debug;
+/// An enclave that's been loaded into memory.
+pub trait MappingInfo: 'static + Debug {
+	/// The base address of the enclave.
+	fn address(&self) -> *mut c_void;
 
-	fn load<'r, R: SgxsRead + 'r>(&'dev self, reader: &'r mut R, sigstruct: &Sigstruct, einittoken: Option<&Einittoken>) -> Result<Self::Mapping,Self::Error>;
-
-	fn load_with_launch_enclave<'e,'le,RE,RL>(&'dev self, enclave: &'e mut RE, enclave_sig: &Sigstruct, enclave_token: OptionalEinittoken, le: &'e mut RL, le_sig: &Sigstruct)
-		-> Result<Self::Mapping,Error<Self::Error>> where RE: SgxsRead + Seek + 'e, RL: SgxsRead + 'le {
-		use self::OptionalEinittoken as OptTok;
-
-		let pos=match enclave.seek(SeekFrom::Current(0)) {
-			Err(e) => { return Err(EnclaveSeek(e)) },
-			Ok(p) => p,
-		};
-
-		match self.load(enclave,enclave_sig,enclave_token.as_option()) {
-			Err(ref e) if e.is_einittoken_error() => {/*fall through to try new init token*/},
-			Err(e) => { return Err(EnclaveLoad(e)) },
-			Ok(m) => { return Ok(m) },
-		};
-
-		let mut save_token;
-		let requested_attributes: Attributes;
-		let token=match enclave_token {
-			OptTok::None(None) => { requested_attributes=enclave_sig.attributes.clone(); save_token=Default::default(); &mut save_token },
-			OptTok::None(Some(ref a)) | OptTok::Use(&Einittoken{attributes:ref a,..}) => { requested_attributes=a.clone(); save_token=Default::default(); &mut save_token },
-			OptTok::Generate(t) | OptTok::UseOrGenerate(t) => { requested_attributes=t.attributes.clone(); *t=Default::default(); t },
-		};
-
-		try!(::intelcall::get_einittoken(self,enclave_sig,token,&requested_attributes,le,le_sig));
-
-		if token.valid==0 {
-			return Err(LaunchEnclaveNoToken);
-		}
-
-		match enclave.seek(SeekFrom::Start(pos)) {
-			Err(e) => { return Err(EnclaveSeek(e)) },
-			Ok(_) => {},
-		};
-
-		match self.load(enclave,enclave_sig,Some(&*token)) {
-			Err(err) => Err(EnclaveLoad(err)),
-			Ok(v) => Ok(v),
-		}
-	}
+	/// The size of the enclave (ELRANGE).
+	fn size(&self) -> usize;
 }
 
-pub enum OptionalEinittoken<'a> {
-	/// If an init token needed to be generated to load, it will be discarded
-	/// after use. You can optionally specify the requested attributes,
-	/// otherwise they will be taken from sigstruct.
-	None(Option<Attributes>),
-	/// If an init token needed to be generated to load, it will be written
-	/// back here. The requested attributes will be taken from the attributes
-	/// field, the rest of the input token is discarded.
-	Generate(&'a mut Einittoken),
-	/// Try to use the supplied init token. If it doesn't work, a new init
-	/// token will be generated with the same attributes, and it will be
-	/// discarded after use.
-	Use(&'a Einittoken),
-	/// Try to use the supplied init token. If it doesn't work, a new init
-	/// token will be generated with the same attributes, and it will be
-	/// written back here.
-	UseOrGenerate(&'a mut Einittoken),
+pub struct Mapping<T: Load + ?Sized> {
+	pub info: T::MappingInfo,
+	pub tcss: Vec<T::Tcs>,
 }
 
-impl<'a> OptionalEinittoken<'a> {
-	pub fn as_option(&self) -> Option<&Einittoken> {
-		use self::OptionalEinittoken as OptTok;
+/// An interface that is able to load an enclave into memory.
+pub trait Load {
+	type MappingInfo: MappingInfo;
+	type Tcs: Tcs;
 
-		match self {
-			&OptTok::None(_) | &OptTok::Generate(_) => None,
-			&OptTok::Use(t) => Some(t),
-			&OptTok::UseOrGenerate(ref t) => Some(&**t),
-		}
-	}
+	/// Load an enclave.
+	///
+	/// The enclave will be unloaded once all returned values are dropped.
+	fn load<R: SgxsRead>(&mut self, reader: &mut R, sigstruct: &Sigstruct, attributes: Attributes, miscselect: Miscselect) -> Result<Mapping<Self>, Error>;
 }
-
-pub trait EinittokenError {
-	/// Was this error generated by an invalid Einittoken?
-	fn is_einittoken_error(&self) -> bool;
-}
-
-#[derive(Debug)]
-pub enum Error<E: EinittokenError + ::std::fmt::Debug> {
-	EnclaveLoad(E),
-	EnclaveSeek(IoError),
-	LaunchEnclaveLoad(E),
-	LaunchEnclaveTcsCount,
-	LaunchEnclaveInit(u64,u64),
-	LaunchEnclaveGetToken(u64,u64),
-	LaunchEnclaveNoToken,
-}
-use self::Error::*;

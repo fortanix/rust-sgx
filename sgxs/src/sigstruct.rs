@@ -1,21 +1,56 @@
-/*
- * The Rust SGXS library.
+/* Copyright (c) Fortanix, Inc.
  *
- * (C) Copyright 2016 Jethro G. Beekman
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the Free
- * Software Foundation; either version 2 of the License, or (at your option)
- * any later version.
- */
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use std;
-use std::io::{self,Write};
+use std::io::{Read, Write, Result as IoResult};
 
 use time;
+use failure::Error;
 
-use abi::{self,Sigstruct,Attributes,AttributesFlags,Miscselect,SIGSTRUCT_HEADER1,SIGSTRUCT_HEADER2};
-use crypto::{Sha256Digest,Sha256,RsaPrivateKeyOps,RsaPrivateKey};
+pub use abi::{Sigstruct, Attributes, AttributesFlags, Miscselect};
+use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
+use sgxs::{SgxsRead, copy_measured};
+use crypto::{SgxHashOps, SgxRsaOps, Hash};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EnclaveHash {
+	hash: Hash
+}
+
+impl EnclaveHash {
+	pub fn new(hash: Hash) -> Self {
+		EnclaveHash { hash }
+	}
+
+	pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
+		struct WriteToHasher<H> {
+			hasher: H
+		}
+
+		impl<H: SgxHashOps> Write for WriteToHasher<H> {
+			fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+				self.hasher.update(buf);
+				Ok(buf.len())
+			}
+
+			fn flush(&mut self) -> IoResult<()> { Ok(()) }
+		}
+
+		let mut out = WriteToHasher { hasher: H::new() };
+		copy_measured(stream, &mut out)?;
+		Ok(Self::new(out.hasher.finish()))
+	}
+}
+
+/// # Panics
+///
+/// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
+pub fn verify<K: SgxRsaOps, H: SgxHashOps>(sig: &Sigstruct, key: &K) -> Result<(), K::Error> {
+	Signer::check_key(key);
+	key.verify_sha256_pkcs1v1_5(&sig.signature[..], Signer::sighash::<H>(sig))
+}
 
 #[derive(Clone,Debug)]
 pub struct Signer {
@@ -27,37 +62,48 @@ pub struct Signer {
 	attributemask: [u64; 2],
 	isvprodid:     u16,
 	isvsvn:        u16,
-	enclavehash:   Option<[u8; 32]>,
+	enclavehash:   EnclaveHash,
 }
 
 impl Signer {
 	/// Create a new `Signer` with default attributes (64-bit, XFRM: `0x3`) and
 	/// today's date.
-	pub fn new() -> Signer {
+	pub fn new(enclavehash: EnclaveHash) -> Signer {
 		Signer {
 			date:          u32::from_str_radix(&time::strftime("%Y%m%d",&time::now()).unwrap(),16).unwrap(),
 			swdefined:     0,
 			miscselect:    Miscselect::default(),
 			miscmask:      !0,
-			attributes:    Attributes{flags:abi::attributes_flags::MODE64BIT,xfrm:0x3},
-			attributemask: [!abi::attributes_flags::DEBUG.bits(),!0x3],
+			attributes:    Attributes{flags:abi::AttributesFlags::MODE64BIT,xfrm:0x3},
+			attributemask: [!abi::AttributesFlags::DEBUG.bits(),!0x3],
 			isvprodid:     0,
 			isvsvn:        0,
-			enclavehash:   None,
+			enclavehash,
 		}
+	}
+
+	fn check_key<K: SgxRsaOps>(key: &K) {
+		if key.len()!=3072 {
+			panic!("Key size is not 3072 bits");
+		}
+		if key.e()!=[3] {
+			panic!("Key public exponent is not 3");
+		}
+	}
+
+	fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
+		let sig: &[u8] = sig.as_ref();
+		let mut hasher = H::new();
+		hasher.update(&sig[0..128]);
+		hasher.update(&sig[900..1028]);
+		hasher.finish()
 	}
 
 	/// # Panics
 	///
-	/// Panics if called before `enclavehash` is called. Panics if key is not
-	/// 3072 bits. Panics if the public exponent of key is not 3.
-	pub fn sign(self, key: &RsaPrivateKey) -> Result<Sigstruct,<RsaPrivateKey as RsaPrivateKeyOps>::E> {
-		if key.len()!=3072 {
-			panic!("Key size is not 3072 bits");
-		}
-		if key.e().unwrap()!=[3] {
-			panic!("Key public exponent is not 3");
-		}
+	/// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
+	pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
+		Self::check_key(key);
 
 		let mut sig=Sigstruct {
 			header:        SIGSTRUCT_HEADER1,
@@ -74,7 +120,7 @@ impl Signer {
 			_reserved2:    [0;20],
 			attributes:    self.attributes,
 			attributemask: self.attributemask,
-			enclavehash:   self.enclavehash.expect("Must set hash before calling sign"),
+			enclavehash:   self.enclavehash.hash,
 			_reserved3:    [0;32],
 			isvprodid:     self.isvprodid,
 			isvsvn:        self.isvsvn,
@@ -83,18 +129,10 @@ impl Signer {
 			q2:            [0;384],
 		};
 
-		let sighash;
-		{
-			let sig_buf=unsafe{std::slice::from_raw_parts(&sig as *const _ as *const u8,std::mem::size_of::<Sigstruct>())};
-			let mut hasher=<Sha256 as Sha256Digest>::new();
-			hasher.write(&sig_buf[0..128]).unwrap();
-			hasher.write(&sig_buf[900..1028]).unwrap();
-			sighash=hasher.finish();
-		}
+		let (s,q1,q2)=try!(key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig)));
+		let n=key.n();
 
-		let (s,q1,q2)=try!(key.sign_sha256_pkcs1v1_5_with_q1_q2(&sighash));
-		let n=key.n().unwrap();
-
+		// Pad to 384 bytes
 		(&mut sig.modulus[..]).write_all(&n).unwrap();
 		(&mut sig.signature[..]).write_all(&s).unwrap();
 		(&mut sig.q1[..]).write_all(&q1).unwrap();
@@ -142,16 +180,14 @@ impl Signer {
 		self
 	}
 
-	pub fn enclavehash(&mut self, hash: [u8; 32]) -> &mut Self {
-		self.enclavehash=Some(hash);
+	pub fn enclavehash(&mut self, hash: EnclaveHash) -> &mut Self {
+		self.enclavehash=hash;
 		self
 	}
+}
 
-	pub fn enclavehash_from_stream<R: io::Read>(&mut self, stream: &mut R) -> Result<&mut Self,io::Error> {
-		let mut hasher=<Sha256 as Sha256Digest>::new();
-		try!(io::copy(stream,&mut hasher));
-		let mut hash=[0u8; 32];
-		(&mut hash[..]).write_all(&hasher.finish()).unwrap();
-		Ok(self.enclavehash(hash))
-	}
+pub fn read<R: Read>(reader: &mut R) -> IoResult<Sigstruct> {
+	let mut buf = [0u8; 1808];
+	reader.read_exact(&mut buf)?;
+	Sigstruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
 }
