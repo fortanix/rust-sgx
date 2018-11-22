@@ -248,7 +248,7 @@ impl AesmClient {
         // thing to us, regardless of how much space QE needed. Trim the excess.
         // The signature length is a little endian word at offset 432 in the quote
         // structure. See "QUOTE Structure" in the IAS API Spec.
-        let sig_len = (&quote[432..436]).read_u32::<LittleEndian>().unwrap();
+        let sig_len = (&quote[432..436]).read_u32::<LittleEndian>()?;
         let new_len = 436 + sig_len as usize;
         if quote.len() < new_len {
             // Quote is already too short, should not happen.
