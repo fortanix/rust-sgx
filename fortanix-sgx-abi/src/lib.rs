@@ -165,6 +165,7 @@ pub mod entry {
 ///
 /// [`free`]: ./struct.Usercalls.html#method.launch_thread
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ByteBuffer {
     pub data: *const u8,
     pub len: usize
@@ -177,6 +178,7 @@ pub struct ByteBuffer {
 ///
 /// [std::io::ErrorKind]: https://doc.rust-lang.org/std/io/enum.ErrorKind.html
 #[repr(i32)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Error {
     PermissionDenied  =        0x01,
     NotFound          =        0x02,
@@ -594,6 +596,7 @@ pub mod async {
 
     /// An identified usercall.
     #[repr(C)]
+    #[derive(Copy, Clone)]
     pub struct Usercall {
         /// `0` indicates this slot is empty.
         pub id: u64,
@@ -604,6 +607,7 @@ pub mod async {
 
     /// The return value of an identified usercall.
     #[repr(C)]
+    #[derive(Copy, Clone)]
     pub struct Return {
         /// `0` indicates this slot is empty.
         pub id: u64,
@@ -668,6 +672,16 @@ pub mod async {
         /// offset.
         pub offsets: *const AtomicUsize,
     }
+
+    // not using `#[derive]` because that would require T: Clone
+    impl<T> Clone for FifoDescriptor<T> {
+        fn clone(&self) -> Self {
+            *self
+        }
+    }
+
+    // not using `#[derive]` because that would require T: Copy
+    impl<T> Copy for FifoDescriptor<T> {}
 
     /// # Asynchronous usercalls
     ///
