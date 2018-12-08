@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-sgx-abi"
-version = "0.1.0-rc1"
+version = "0.3.0"
 authors = ["Jethro Beekman <jethro@fortanix.com>"]
 license = "MPL-2.0"
 description = """
