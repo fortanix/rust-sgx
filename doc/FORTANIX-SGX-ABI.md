@@ -6,7 +6,8 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 
 | ABI version | Rust std version | enclave-runner version |
 | -----------:| ----------------:| ----------------------:|
-|       0.3.0 |          nightly |                  0.1.0 |
+|       0.3.1 |              TBD |                  0.1.0 |
+|       0.3.0 |        15a2607.. |                  0.1.0 |
 
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
@@ -18,6 +19,11 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 |       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
 
 ## Changelog
+
+### Version 0.3.1
+
+* *No semantic changes.*
+* Changes to allow building as a crates.io dependency of `std`.
 
 ### Version 0.3.0
 
