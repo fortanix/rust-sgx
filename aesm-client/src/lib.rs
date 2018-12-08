@@ -220,6 +220,15 @@ impl AesmClient {
         Ok(res)
     }
 
+    /// Test the connection with AESM.
+    ///
+    /// This should only be used for diagnostic purposes. This method returning
+    /// `Ok` is not a guarantee that any of the other methods will function
+    /// correctly.
+    pub fn try_connect(&self) -> Result<()> {
+        self.open_socket().map(|_| ())
+    }
+
     /// Obtain target info from QE.
     pub fn init_quote(&self) -> Result<QuoteInfo> {
         let mut req = Request_InitQuoteRequest::new();
