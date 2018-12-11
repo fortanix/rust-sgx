@@ -239,6 +239,7 @@ pub struct Attributes {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct AttributesFlags: u64 {
         const INIT          = 0b0000_0001;
         const DEBUG         = 0b0000_0010;
@@ -255,6 +256,7 @@ impl Default for AttributesFlags {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct Miscselect: u32 {
         const EXINFO = 0b0000_0001;
     }
@@ -287,6 +289,7 @@ pub struct Tcs {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct TcsFlags: u64 {
         const DBGOPTIN = 0b0000_0001;
     }
@@ -318,6 +321,7 @@ pub struct Secinfo {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct SecinfoFlags: u64 {
         const R        = 0b0000_0000_0000_0001;
         const W        = 0b0000_0000_0000_0010;
@@ -491,6 +495,7 @@ pub struct Keyrequest {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct Keypolicy: u16 {
         const MRENCLAVE = 0b0000_0001;
         const MRSIGNER  = 0b0000_0010;
