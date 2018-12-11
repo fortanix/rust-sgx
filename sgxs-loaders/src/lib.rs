@@ -14,9 +14,12 @@ extern crate sgx_isa as abi;
 extern crate sgxs as sgxs_crate;
 #[macro_use]
 extern crate failure_derive;
+#[macro_use]
+extern crate bitflags;
 
 mod generic;
 pub mod isgx;
+pub mod sgx_enclave_common;
 
 use std::fmt::Debug;
 use std::os::raw::c_void;
