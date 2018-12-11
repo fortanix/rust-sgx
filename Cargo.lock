@@ -165,7 +165,7 @@ dependencies = [
  "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "fortanix-sgx-abi 0.3.0",
+ "fortanix-sgx-abi 0.3.1",
  "openssl 0.10.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "sgx-isa 0.2.0-rc1",
  "sgxs 0.6.0-rc1",
@@ -215,7 +215,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "fortanix-sgx-abi"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "compiler_builtins 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-std-workspace-core 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
