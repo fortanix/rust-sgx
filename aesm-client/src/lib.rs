@@ -304,7 +304,7 @@ impl EinittokenProvider for AesmClient {
         Einittoken::try_copy_from(&token).ok_or(Error::InvalidTokenSize.into())
     }
 
-    fn can_retry(self) -> bool {
+    fn can_retry(&self) -> bool {
         false
     }
 }
