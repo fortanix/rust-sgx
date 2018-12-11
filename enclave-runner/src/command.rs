@@ -13,23 +13,26 @@ use loader::{EnclaveBuilder, ErasedTcs};
 use usercalls::EnclaveState;
 
 pub struct Command {
-	main: ErasedTcs,
-	threads: Vec<ErasedTcs>,
+    main: ErasedTcs,
+    threads: Vec<ErasedTcs>,
 }
 
 impl Command {
-	/// # Panics
-	/// Panics if the number of TCSs is 0.
-	pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>) -> Command {
-		let main = tcss.remove(0);
-		Command { main, threads: tcss }
-	}
+    /// # Panics
+    /// Panics if the number of TCSs is 0.
+    pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>) -> Command {
+        let main = tcss.remove(0);
+        Command {
+            main,
+            threads: tcss,
+        }
+    }
 
-	pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error> {
-		EnclaveBuilder::new(enclave_path).build(loader)
-	}
+    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error> {
+        EnclaveBuilder::new(enclave_path).build(loader)
+    }
 
-	pub fn run(self) -> Result<(), Error> {
-		EnclaveState::main_entry(self.main, self.threads)
-	}
+    pub fn run(self) -> Result<(), Error> {
+        EnclaveState::main_entry(self.main, self.threads)
+    }
 }

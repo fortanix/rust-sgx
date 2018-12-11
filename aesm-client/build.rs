@@ -18,14 +18,15 @@ fn main() {
         out_dir: out_dir.to_str().expect("OUT_DIR must be valid UTF-8"),
         input: &["src/aesm_proto.proto"],
         includes: &[],
-    }).expect("protoc");
+    })
+    .expect("protoc");
 
     // Because of https://github.com/rust-lang/rfcs/issues/752, we can't `include!` the generated
     // protobufs directly. Instead, we generate a second generated file that can be `include!`-ed.
     // This trick borrowed from rust-mbedtls.
 
-    let mod_aesm_proto=out_dir.join("mod_aesm_proto.rs");
-    File::create(&mod_aesm_proto).and_then(|mut f|
-        f.write_all(b"mod aesm_proto;\n")
-    ).expect("mod_aesm_proto.rs I/O error");
+    let mod_aesm_proto = out_dir.join("mod_aesm_proto.rs");
+    File::create(&mod_aesm_proto)
+        .and_then(|mut f| f.write_all(b"mod aesm_proto;\n"))
+        .expect("mod_aesm_proto.rs I/O error");
 }

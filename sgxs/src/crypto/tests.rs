@@ -16,20 +16,20 @@ const Q1: &'static [u8] = include_bytes!("../../tests/data/sig1.q1.bin");
 const Q2: &'static [u8] = include_bytes!("../../tests/data/sig1.q2.bin");
 
 fn test_rsa<K: SgxRsaOps>(key: &K) {
-	assert_eq!(key.len(), 3072);
-	assert_eq!(&key.n()[..], N);
-	assert_eq!(&key.e()[..], [3]);
-	let (sig, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(H).unwrap();
-	assert_eq!(&sig[..], S);
-	assert_eq!(&q1[..], Q1);
-	assert_eq!(&q2[..], Q2);
+    assert_eq!(key.len(), 3072);
+    assert_eq!(&key.n()[..], N);
+    assert_eq!(&key.e()[..], [3]);
+    let (sig, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(H).unwrap();
+    assert_eq!(&sig[..], S);
+    assert_eq!(&q1[..], Q1);
+    assert_eq!(&q2[..], Q2);
 }
 
-#[cfg(feature="crypto-openssl")]
+#[cfg(feature = "crypto-openssl")]
 #[test]
 fn openssl_rsa() {
-	use openssl::pkey::PKey;
+    use openssl::pkey::PKey;
 
-	let key = PKey::private_key_from_pem(KEY).unwrap();
-	test_rsa(&*key.rsa().unwrap())
+    let key = PKey::private_key_from_pem(KEY).unwrap();
+    test_rsa(&*key.rsa().unwrap())
 }

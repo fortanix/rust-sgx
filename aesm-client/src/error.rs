@@ -44,7 +44,7 @@ pub enum AesmError {
     KdfMismatch_28,
     OutOfEpc_29,
     ServiceUnavailable_30,
-    Unknown(u32)
+    Unknown(u32),
 }
 
 impl From<u32> for AesmError {
@@ -81,7 +81,7 @@ impl From<u32> for AesmError {
             28 => KdfMismatch_28,
             29 => OutOfEpc_29,
             30 => ServiceUnavailable_30,
-            _ => Unknown(n)
+            _ => Unknown(n),
         }
     }
 }

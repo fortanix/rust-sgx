@@ -190,7 +190,13 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         $a4:ident
         $f:ident($n1:ident, $n2:ident, $n3:ident)
     ) => {{
-        assert_eq!($a4, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "4th");
+        assert_eq!(
+            $a4,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "4th"
+        );
         H::$f(
             $h,
             RegisterArgument::from_register($a1),
@@ -206,8 +212,20 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         $a4:ident
         $f:ident($n1:ident, $n2:ident)
     ) => {{
-        assert_eq!($a3, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "3rd");
-        assert_eq!($a4, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "4th");
+        assert_eq!(
+            $a3,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "3rd"
+        );
+        assert_eq!(
+            $a4,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "4th"
+        );
         H::$f(
             $h,
             RegisterArgument::from_register($a1),
@@ -215,16 +233,58 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
         )
     }};
     ($h:ident,replace_args $a1:ident, $a2:ident, $a3:ident, $a4:ident $f:ident($n1:ident)) => {{
-        assert_eq!($a2, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "2nd");
-        assert_eq!($a3, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "3rd");
-        assert_eq!($a4, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "4th");
+        assert_eq!(
+            $a2,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "2nd"
+        );
+        assert_eq!(
+            $a3,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "3rd"
+        );
+        assert_eq!(
+            $a4,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "4th"
+        );
         H::$f($h, RegisterArgument::from_register($a1))
     }};
     ($h:ident,replace_args $a1:ident, $a2:ident, $a3:ident, $a4:ident $f:ident()) => {{
-        assert_eq!($a1, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "1st");
-        assert_eq!($a2, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "2nd");
-        assert_eq!($a3, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "3rd");
-        assert_eq!($a4, 0, "Usercall {}: expected {} argument to be 0", stringify!($f), "4th");
+        assert_eq!(
+            $a1,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "1st"
+        );
+        assert_eq!(
+            $a2,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "2nd"
+        );
+        assert_eq!(
+            $a3,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "3rd"
+        );
+        assert_eq!(
+            $a4,
+            0,
+            "Usercall {}: expected {} argument to be 0",
+            stringify!($f),
+            "4th"
+        );
         H::$f($h)
     }};
 }

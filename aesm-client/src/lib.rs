@@ -15,25 +15,25 @@ extern crate failure_derive;
 #[macro_use]
 extern crate lazy_static;
 extern crate protobuf;
-extern crate unix_socket;
-#[cfg(feature="sgxs")]
+#[cfg(feature = "sgxs")]
 extern crate sgxs;
+extern crate unix_socket;
 
 use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::os::unix::ffi::OsStrExt;
-use std::path::{PathBuf, Path};
-#[cfg(feature="sgxs")]
+use std::path::{Path, PathBuf};
+#[cfg(feature = "sgxs")]
 use std::result::Result as StdResult;
 
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use protobuf::{Message, ProtobufResult};
 use unix_socket::UnixStream;
 
-#[cfg(feature="sgxs")]
-use sgxs::sigstruct::{Sigstruct, Attributes};
-#[cfg(feature="sgxs")]
-use sgxs::einittoken::{EinittokenProvider, Einittoken};
+#[cfg(feature = "sgxs")]
+use sgxs::einittoken::{Einittoken, EinittokenProvider};
+#[cfg(feature = "sgxs")]
+use sgxs::sigstruct::{Attributes, Sigstruct};
 
 include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
 mod error;
@@ -149,7 +149,7 @@ impl QuoteResult {
 
 #[derive(Default, Debug, Clone)]
 pub struct AesmClient {
-    path: Option<PathBuf>
+    path: Option<PathBuf>,
 }
 
 impl AesmClient {
@@ -159,7 +159,7 @@ impl AesmClient {
 
     pub fn with_path<P: AsRef<Path>>(path: P) -> Self {
         AesmClient {
-            path: Some(path.as_ref().to_owned())
+            path: Some(path.as_ref().to_owned()),
         }
     }
 
@@ -192,11 +192,14 @@ impl AesmClient {
 
         Ok(UnixStream::connect(path)?)
     }
-    
+
     fn transact<T: AesmRequest>(&self, req: T) -> Result<T::Response> {
         let mut sock = self.open_socket()?;
 
-        let req_bytes = req.into().write_to_bytes().expect("Failed to serialize protobuf");
+        let req_bytes = req
+            .into()
+            .write_to_bytes()
+            .expect("Failed to serialize protobuf");
         sock.write_u32::<NativeEndian>(req_bytes.len() as u32)?;
         sock.write_all(&req_bytes)?;
 
@@ -220,14 +223,17 @@ impl AesmClient {
         // AESM gives it to us little-endian, we want big-endian for writing into IAS URL with to_hex()
         gid.reverse();
 
-        Ok(QuoteInfo {
-            target_info,
-            gid,
-        })
+        Ok(QuoteInfo { target_info, gid })
     }
 
     /// Obtain remote attestation quote from QE.
-    pub fn get_quote(&self, session: &QuoteInfo, report: Vec<u8>, spid: Vec<u8>, sig_rl: Vec<u8>) -> Result<QuoteResult> {
+    pub fn get_quote(
+        &self,
+        session: &QuoteInfo,
+        report: Vec<u8>,
+        spid: Vec<u8>,
+        sig_rl: Vec<u8>,
+    ) -> Result<QuoteResult> {
         let mut req = Request_GetQuoteRequest::new();
         req.set_report(report);
         req.set_quote_type(QuoteType::Linkable.into());
@@ -261,7 +267,12 @@ impl AesmClient {
     }
 
     /// Obtain launch token
-    pub fn get_launch_token(&self, mr_enclave: Vec<u8>, signer_modulus: Vec<u8>, attributes: Vec<u8>) -> Result<Vec<u8>> {
+    pub fn get_launch_token(
+        &self,
+        mr_enclave: Vec<u8>,
+        signer_modulus: Vec<u8>,
+        attributes: Vec<u8>,
+    ) -> Result<Vec<u8>> {
         let mut req = Request_GetLaunchTokenRequest::new();
         req.set_mr_enclave(mr_enclave);
         // The field in the request protobuf is called mr_signer, but it wants the modulus.
@@ -277,22 +288,33 @@ impl AesmClient {
     }
 }
 
-#[cfg(feature="sgxs")]
+#[cfg(feature = "sgxs")]
 impl EinittokenProvider for AesmClient {
-    fn token(&mut self, sigstruct: &Sigstruct, attributes: Attributes, _retry: bool) -> StdResult<Einittoken, ::failure::Error> {
-        let token = self.get_launch_token(sigstruct.enclavehash.to_vec(), sigstruct.modulus.to_vec(), attributes.as_ref().to_vec())?;
+    fn token(
+        &mut self,
+        sigstruct: &Sigstruct,
+        attributes: Attributes,
+        _retry: bool,
+    ) -> StdResult<Einittoken, ::failure::Error> {
+        let token = self.get_launch_token(
+            sigstruct.enclavehash.to_vec(),
+            sigstruct.modulus.to_vec(),
+            attributes.as_ref().to_vec(),
+        )?;
         Einittoken::try_copy_from(&token).ok_or(Error::InvalidTokenSize.into())
     }
 
-	fn can_retry(self) -> bool { false }
+    fn can_retry(self) -> bool {
+        false
+    }
 }
 
-trait AesmRequest : protobuf::Message + Into<Request> {
-    type Response : protobuf::Message + FromResponse;
+trait AesmRequest: protobuf::Message + Into<Request> {
+    type Response: protobuf::Message + FromResponse;
 }
 
 // This could be replaced with TryFrom when stable.
-trait FromResponse : Sized {
+trait FromResponse: Sized {
     fn from_response(res: ProtobufResult<Response>) -> Result<Self>;
 }
 
@@ -317,8 +339,8 @@ impl FromResponse for Response_InitQuoteResponse {
                     AESM_SUCCESS => Ok(body),
                     code => Err(Error::aesm_code(code)),
                 }
-            },
-            _ => Err(Error::aesm_bad_response("InitQuoteResponse"))
+            }
+            _ => Err(Error::aesm_bad_response("InitQuoteResponse")),
         }
     }
 }
@@ -344,8 +366,8 @@ impl FromResponse for Response_GetQuoteResponse {
                     AESM_SUCCESS => Ok(body),
                     code => Err(Error::aesm_code(code)),
                 }
-            },
-            _ => Err(Error::aesm_bad_response("GetQuoteResponse"))
+            }
+            _ => Err(Error::aesm_bad_response("GetQuoteResponse")),
         }
     }
 }
@@ -371,8 +393,8 @@ impl FromResponse for Response_GetLaunchTokenResponse {
                     AESM_SUCCESS => Ok(body),
                     code => Err(Error::aesm_code(code)),
                 }
-            },
-            _ => Err(Error::aesm_bad_response("GetLaunchTokenResponse"))
+            }
+            _ => Err(Error::aesm_bad_response("GetLaunchTokenResponse")),
         }
     }
 }
@@ -390,7 +412,10 @@ mod tests {
     #[test]
     fn test_init_quote() {
         let quote = AesmClient::new().init_quote().unwrap();
-        assert_eq!(quote.target_info().len(), ::std::mem::size_of::<Targetinfo>());
+        assert_eq!(
+            quote.target_info().len(),
+            ::std::mem::size_of::<Targetinfo>()
+        );
         assert!(quote.gid().len() != 0);
     }
 
@@ -403,13 +428,19 @@ mod tests {
 
         let quote = client.init_quote().unwrap();
 
-        let quote = client.get_quote(
-            &quote,
-            vec![0u8; Report::size()],
-            vec![0u8; SPID_SIZE],
-            vec![],
-        ).unwrap_err();
+        let quote = client
+            .get_quote(
+                &quote,
+                vec![0u8; Report::size()],
+                vec![0u8; SPID_SIZE],
+                vec![],
+            )
+            .unwrap_err();
 
-        assert!(if let Error::AesmCode(_) = quote { true } else { false });
+        assert!(if let Error::AesmCode(_) = quote {
+            true
+        } else {
+            false
+        });
     }
 }

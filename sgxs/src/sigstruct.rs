@@ -4,190 +4,196 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use std::io::{Read, Write, Result as IoResult};
+use std::io::{Read, Result as IoResult, Write};
 
-use time;
 use failure::Error;
+use time;
 
-pub use abi::{Sigstruct, Attributes, AttributesFlags, Miscselect};
 use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
-use sgxs::{SgxsRead, copy_measured};
-use crypto::{SgxHashOps, SgxRsaOps, Hash};
+pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use crypto::{Hash, SgxHashOps, SgxRsaOps};
+use sgxs::{copy_measured, SgxsRead};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EnclaveHash {
-	hash: Hash
+    hash: Hash,
 }
 
 impl EnclaveHash {
-	pub fn new(hash: Hash) -> Self {
-		EnclaveHash { hash }
-	}
+    pub fn new(hash: Hash) -> Self {
+        EnclaveHash { hash }
+    }
 
-	pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
-		struct WriteToHasher<H> {
-			hasher: H
-		}
+    pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
+        struct WriteToHasher<H> {
+            hasher: H,
+        }
 
-		impl<H: SgxHashOps> Write for WriteToHasher<H> {
-			fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-				self.hasher.update(buf);
-				Ok(buf.len())
-			}
+        impl<H: SgxHashOps> Write for WriteToHasher<H> {
+            fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+                self.hasher.update(buf);
+                Ok(buf.len())
+            }
 
-			fn flush(&mut self) -> IoResult<()> { Ok(()) }
-		}
+            fn flush(&mut self) -> IoResult<()> {
+                Ok(())
+            }
+        }
 
-		let mut out = WriteToHasher { hasher: H::new() };
-		copy_measured(stream, &mut out)?;
-		Ok(Self::new(out.hasher.finish()))
-	}
+        let mut out = WriteToHasher { hasher: H::new() };
+        copy_measured(stream, &mut out)?;
+        Ok(Self::new(out.hasher.finish()))
+    }
 }
 
 /// # Panics
 ///
 /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
 pub fn verify<K: SgxRsaOps, H: SgxHashOps>(sig: &Sigstruct, key: &K) -> Result<(), K::Error> {
-	Signer::check_key(key);
-	key.verify_sha256_pkcs1v1_5(&sig.signature[..], Signer::sighash::<H>(sig))
+    Signer::check_key(key);
+    key.verify_sha256_pkcs1v1_5(&sig.signature[..], Signer::sighash::<H>(sig))
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct Signer {
-	date:          u32,
-	swdefined:     u32,
-	miscselect:    Miscselect,
-	miscmask:      u32,
-	attributes:    Attributes,
-	attributemask: [u64; 2],
-	isvprodid:     u16,
-	isvsvn:        u16,
-	enclavehash:   EnclaveHash,
+    date: u32,
+    swdefined: u32,
+    miscselect: Miscselect,
+    miscmask: u32,
+    attributes: Attributes,
+    attributemask: [u64; 2],
+    isvprodid: u16,
+    isvsvn: u16,
+    enclavehash: EnclaveHash,
 }
 
 impl Signer {
-	/// Create a new `Signer` with default attributes (64-bit, XFRM: `0x3`) and
-	/// today's date.
-	pub fn new(enclavehash: EnclaveHash) -> Signer {
-		Signer {
-			date:          u32::from_str_radix(&time::strftime("%Y%m%d",&time::now()).unwrap(),16).unwrap(),
-			swdefined:     0,
-			miscselect:    Miscselect::default(),
-			miscmask:      !0,
-			attributes:    Attributes{flags:abi::AttributesFlags::MODE64BIT,xfrm:0x3},
-			attributemask: [!abi::AttributesFlags::DEBUG.bits(),!0x3],
-			isvprodid:     0,
-			isvsvn:        0,
-			enclavehash,
-		}
-	}
+    /// Create a new `Signer` with default attributes (64-bit, XFRM: `0x3`) and
+    /// today's date.
+    pub fn new(enclavehash: EnclaveHash) -> Signer {
+        Signer {
+            date: u32::from_str_radix(&time::strftime("%Y%m%d", &time::now()).unwrap(), 16)
+                .unwrap(),
+            swdefined: 0,
+            miscselect: Miscselect::default(),
+            miscmask: !0,
+            attributes: Attributes {
+                flags: abi::AttributesFlags::MODE64BIT,
+                xfrm: 0x3,
+            },
+            attributemask: [!abi::AttributesFlags::DEBUG.bits(), !0x3],
+            isvprodid: 0,
+            isvsvn: 0,
+            enclavehash,
+        }
+    }
 
-	fn check_key<K: SgxRsaOps>(key: &K) {
-		if key.len()!=3072 {
-			panic!("Key size is not 3072 bits");
-		}
-		if key.e()!=[3] {
-			panic!("Key public exponent is not 3");
-		}
-	}
+    fn check_key<K: SgxRsaOps>(key: &K) {
+        if key.len() != 3072 {
+            panic!("Key size is not 3072 bits");
+        }
+        if key.e() != [3] {
+            panic!("Key public exponent is not 3");
+        }
+    }
 
-	fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
-		let sig: &[u8] = sig.as_ref();
-		let mut hasher = H::new();
-		hasher.update(&sig[0..128]);
-		hasher.update(&sig[900..1028]);
-		hasher.finish()
-	}
+    fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
+        let sig: &[u8] = sig.as_ref();
+        let mut hasher = H::new();
+        hasher.update(&sig[0..128]);
+        hasher.update(&sig[900..1028]);
+        hasher.finish()
+    }
 
-	/// # Panics
-	///
-	/// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
-	pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
-		Self::check_key(key);
+    /// # Panics
+    ///
+    /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
+    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
+        Self::check_key(key);
 
-		let mut sig=Sigstruct {
-			header:        SIGSTRUCT_HEADER1,
-			vendor:        0,
-			date:          self.date,
-			header2:       SIGSTRUCT_HEADER2,
-			swdefined:     self.swdefined,
-			_reserved1:    [0;84],
-			modulus:       [0;384],
-			exponent:      3,
-			signature:     [0;384],
-			miscselect:    self.miscselect,
-			miscmask:      self.miscmask,
-			_reserved2:    [0;20],
-			attributes:    self.attributes,
-			attributemask: self.attributemask,
-			enclavehash:   self.enclavehash.hash,
-			_reserved3:    [0;32],
-			isvprodid:     self.isvprodid,
-			isvsvn:        self.isvsvn,
-			_reserved4:    [0;12],
-			q1:            [0;384],
-			q2:            [0;384],
-		};
+        let mut sig = Sigstruct {
+            header: SIGSTRUCT_HEADER1,
+            vendor: 0,
+            date: self.date,
+            header2: SIGSTRUCT_HEADER2,
+            swdefined: self.swdefined,
+            _reserved1: [0; 84],
+            modulus: [0; 384],
+            exponent: 3,
+            signature: [0; 384],
+            miscselect: self.miscselect,
+            miscmask: self.miscmask,
+            _reserved2: [0; 20],
+            attributes: self.attributes,
+            attributemask: self.attributemask,
+            enclavehash: self.enclavehash.hash,
+            _reserved3: [0; 32],
+            isvprodid: self.isvprodid,
+            isvsvn: self.isvsvn,
+            _reserved4: [0; 12],
+            q1: [0; 384],
+            q2: [0; 384],
+        };
 
-		let (s,q1,q2)=try!(key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig)));
-		let n=key.n();
+        let (s, q1, q2) = try!(key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig)));
+        let n = key.n();
 
-		// Pad to 384 bytes
-		(&mut sig.modulus[..]).write_all(&n).unwrap();
-		(&mut sig.signature[..]).write_all(&s).unwrap();
-		(&mut sig.q1[..]).write_all(&q1).unwrap();
-		(&mut sig.q2[..]).write_all(&q2).unwrap();
+        // Pad to 384 bytes
+        (&mut sig.modulus[..]).write_all(&n).unwrap();
+        (&mut sig.signature[..]).write_all(&s).unwrap();
+        (&mut sig.q1[..]).write_all(&q1).unwrap();
+        (&mut sig.q2[..]).write_all(&q2).unwrap();
 
-		Ok(sig)
-	}
+        Ok(sig)
+    }
 
-	pub fn date(&mut self, year: u16, month: u8, day: u8) -> &mut Self {
-		// could be faster with manual BCD conversion
-		self.date=u32::from_str_radix(&format!("{:04}{:02}{:02}",year,month,day),16).unwrap();
-		self
-	}
+    pub fn date(&mut self, year: u16, month: u8, day: u8) -> &mut Self {
+        // could be faster with manual BCD conversion
+        self.date = u32::from_str_radix(&format!("{:04}{:02}{:02}", year, month, day), 16).unwrap();
+        self
+    }
 
-	pub fn swdefined(&mut self, swdefined: u32) -> &mut Self {
-		self.swdefined=swdefined;
-		self
-	}
+    pub fn swdefined(&mut self, swdefined: u32) -> &mut Self {
+        self.swdefined = swdefined;
+        self
+    }
 
-	pub fn isvprodid(&mut self, isvprodid: u16) -> &mut Self {
-		self.isvprodid=isvprodid;
-		self
-	}
+    pub fn isvprodid(&mut self, isvprodid: u16) -> &mut Self {
+        self.isvprodid = isvprodid;
+        self
+    }
 
-	pub fn isvsvn(&mut self, isvsvn: u16) -> &mut Self {
-		self.isvsvn=isvsvn;
-		self
-	}
+    pub fn isvsvn(&mut self, isvsvn: u16) -> &mut Self {
+        self.isvsvn = isvsvn;
+        self
+    }
 
-	pub fn miscselect(&mut self, miscselect: Miscselect, mask: u32) -> &mut Self {
-		self.miscselect=miscselect;
-		self.miscmask=mask;
-		self
-	}
+    pub fn miscselect(&mut self, miscselect: Miscselect, mask: u32) -> &mut Self {
+        self.miscselect = miscselect;
+        self.miscmask = mask;
+        self
+    }
 
-	pub fn attributes_flags(&mut self, flags: AttributesFlags, mask: u64) -> &mut Self {
-		self.attributes.flags=flags;
-		self.attributemask[0]=mask;
-		self
-	}
+    pub fn attributes_flags(&mut self, flags: AttributesFlags, mask: u64) -> &mut Self {
+        self.attributes.flags = flags;
+        self.attributemask[0] = mask;
+        self
+    }
 
-	pub fn attributes_xfrm(&mut self, xfrm: u64, mask: u64) -> &mut Self {
-		self.attributes.xfrm=xfrm;
-		self.attributemask[1]=mask;
-		self
-	}
+    pub fn attributes_xfrm(&mut self, xfrm: u64, mask: u64) -> &mut Self {
+        self.attributes.xfrm = xfrm;
+        self.attributemask[1] = mask;
+        self
+    }
 
-	pub fn enclavehash(&mut self, hash: EnclaveHash) -> &mut Self {
-		self.enclavehash=hash;
-		self
-	}
+    pub fn enclavehash(&mut self, hash: EnclaveHash) -> &mut Self {
+        self.enclavehash = hash;
+        self
+    }
 }
 
 pub fn read<R: Read>(reader: &mut R) -> IoResult<Sigstruct> {
-	let mut buf = [0u8; 1808];
-	reader.read_exact(&mut buf)?;
-	Sigstruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
+    let mut buf = [0u8; 1808];
+    reader.read_exact(&mut buf)?;
+    Sigstruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
 }

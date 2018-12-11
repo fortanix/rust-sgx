@@ -3,9 +3,15 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-#![cfg_attr(not(feature="docs"), doc="**You are viewing the internals documentation.")]
-#![cfg_attr(not(feature="docs"), doc="You probably want to compile the documentation with the “docs” feature.**")]
-#![cfg_attr(not(feature="docs"), doc="---")]
+#![cfg_attr(
+    not(feature = "docs"),
+    doc = "**You are viewing the internals documentation."
+)]
+#![cfg_attr(
+    not(feature = "docs"),
+    doc = "You probably want to compile the documentation with the “docs” feature.**"
+)]
+#![cfg_attr(not(feature = "docs"), doc = "---")]
 //! The Fortanix SGX ABI (compiler target `x86_64-fortanix-unknown-sgx`) is an
 //! interface for Intel SGX enclaves. It is a small yet functional interface
 //! suitable for writing larger enclaves. In contrast to other enclave
@@ -716,22 +722,22 @@ macro_rules! docs {
     ($($tt:tt)*) => ($($tt)*)
 }
 
-#[cfg(feature="docs")]
+#[cfg(feature = "docs")]
 invoke_with_abi_spec!(docs);
 
 // types: flatten the module structure and ignore any items that are not types.
 macro_rules! types {
     // flatten modules
-    ($(#[$meta:meta])* pub mod $modname:ident { $($contents:tt)* } $($remainder:tt)*) => 
+    ($(#[$meta:meta])* pub mod $modname:ident { $($contents:tt)* } $($remainder:tt)*) =>
         { types!($($contents)*); types!($($remainder)*); };
     // ignore impls
-    ($(#[$meta:meta])* impl Usercalls { $($contents:tt)* } $($remainder:tt)* ) => 
+    ($(#[$meta:meta])* impl Usercalls { $($contents:tt)* } $($remainder:tt)* ) =>
         { types!($($remainder)*); };
     // ignore `struct Usercalls`
-    ($(#[$meta:meta])* pub struct Usercalls; $($remainder:tt)* ) => 
+    ($(#[$meta:meta])* pub struct Usercalls; $($remainder:tt)* ) =>
         { types!($($remainder)*); };
     // ignore free functions
-    ($(#[$meta:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:ty)* { unimplemented!() } $($remainder:tt)* ) => 
+    ($(#[$meta:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:ty)* { unimplemented!() } $($remainder:tt)* ) =>
         { types!($($remainder)*); };
     // ignore use statements
     (use $($tt:tt)::*; $($remainder:tt)* ) =>
@@ -742,7 +748,7 @@ macro_rules! types {
     () => {};
 }
 
-#[cfg(not(feature="docs"))]
+#[cfg(not(feature = "docs"))]
 invoke_with_abi_spec!(types);
 
 // Define a macro that will call a second macro providing the list of all
@@ -778,5 +784,5 @@ macro_rules! define_invoke_with_usercalls {
     }
 }
 
-#[cfg(not(feature="docs"))]
+#[cfg(not(feature = "docs"))]
 invoke_with_abi_spec!(define_invoke_with_usercalls);

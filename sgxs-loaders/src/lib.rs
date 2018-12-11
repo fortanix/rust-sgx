@@ -8,10 +8,10 @@
 
 #[macro_use]
 extern crate nix as ioctl_crate;
+extern crate failure;
 extern crate libc;
 extern crate sgx_isa as abi;
 extern crate sgxs as sgxs_crate;
-extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 

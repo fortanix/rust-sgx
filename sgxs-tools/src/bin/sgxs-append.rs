@@ -5,27 +5,29 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate byteorder;
-extern crate sgxs as sgxs_crate;
 extern crate sgx_isa;
+extern crate sgxs as sgxs_crate;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 
-use std::fs::{File, OpenOptions};
-use std::io::{Result as IoResult, Read, Write, Seek, SeekFrom, Cursor, self};
-use std::env;
 use std::borrow::Cow;
-use std::ffi::{OsString, OsStr};
+use std::cell::RefCell;
+use std::env;
+use std::ffi::{OsStr, OsString};
+use std::fs::{File, OpenOptions};
+use std::io::{self, Cursor, Read, Result as IoResult, Seek, SeekFrom, Write};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
-use std::cell::RefCell;
 
-use byteorder::{WriteBytesExt, LittleEndian};
+use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{Error, ResultExt};
 
 use sgx_isa::{PageType, SecinfoFlags};
-use sgxs_crate::sgxs::{CanonicalSgxsReader, SgxsRead, SgxsWrite, Meas, PageChunk, SecinfoTruncated};
+use sgxs_crate::sgxs::{
+    CanonicalSgxsReader, Meas, PageChunk, SecinfoTruncated, SgxsRead, SgxsWrite,
+};
 use sgxs_crate::util::size_fit_natural;
 
 #[derive(Debug, Fail)]
@@ -48,7 +50,11 @@ impl NamedFile {
     }
 
     fn open_rw(p: OsString, w: bool) -> Result<Self, Error> {
-        let file = OpenOptions::new().read(true).write(w).open(&p).context(file_error("open", &*p))?;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(w)
+            .open(&p)
+            .context(file_error("open", &*p))?;
         Ok(NamedFile { file, name: p })
     }
 
@@ -71,21 +77,43 @@ impl DerefMut for NamedFile {
 }
 
 enum Operation {
-    File { perm: SecinfoFlags, measured: bool, file: NamedFile },
+    File {
+        perm: SecinfoFlags,
+        measured: bool,
+        file: NamedFile,
+    },
     Align(u64),
 }
 
 fn parse_op(arg: OsString, next_arg: Option<OsString>) -> Result<Operation, Error> {
-    let arg = arg.to_str().ok_or(UsageError(format!("Unable to parse `{}': expected -<mode> or -align", arg.to_string_lossy()).into()))?;
-    let param = next_arg.ok_or(UsageError(format!("After `{}': expected parameter", arg).into()))?;
+    let arg = arg.to_str().ok_or(UsageError(
+        format!(
+            "Unable to parse `{}': expected -<mode> or -align",
+            arg.to_string_lossy()
+        )
+        .into(),
+    ))?;
+    let param = next_arg.ok_or(UsageError(
+        format!("After `{}': expected parameter", arg).into(),
+    ))?;
     if arg == "-align" {
-        let align = param.to_str().and_then(|s|s.parse::<u64>().ok())
-            .ok_or(UsageError(format!("Unable to parse `{}': expected unsigned integer", param.to_string_lossy()).into()))?;
+        let align = param
+            .to_str()
+            .and_then(|s| s.parse::<u64>().ok())
+            .ok_or(UsageError(
+                format!(
+                    "Unable to parse `{}': expected unsigned integer",
+                    param.to_string_lossy()
+                )
+                .into(),
+            ))?;
         Ok(Operation::Align(align))
     } else {
         let mut argchars = arg.chars();
         if argchars.next() != Some('-') {
-            bail!(UsageError(format!("Unable to parse `{}': expected -<mode> or -align", arg).into()));
+            bail!(UsageError(
+                format!("Unable to parse `{}': expected -<mode> or -align", arg).into()
+            ));
         }
         let mut perm = SecinfoFlags::from(PageType::Reg);
         let mut measured = false;
@@ -95,11 +123,21 @@ fn parse_op(arg: OsString, next_arg: Option<OsString>) -> Result<Operation, Erro
                 'w' => perm.insert(SecinfoFlags::W),
                 'x' => perm.insert(SecinfoFlags::X),
                 'm' => measured = true,
-                c => bail!(UsageError(format!("Unable to parse `{}': got `{}', expected `m', `r', `w', or `x'", arg, c).into()))
+                c => bail!(UsageError(
+                    format!(
+                        "Unable to parse `{}': got `{}', expected `m', `r', `w', or `x'",
+                        arg, c
+                    )
+                    .into()
+                )),
             }
         }
         let file = NamedFile::open_r(param)?;
-        Ok(Operation::File{perm, measured, file})
+        Ok(Operation::File {
+            perm,
+            measured,
+            file,
+        })
     }
 }
 
@@ -164,12 +202,13 @@ fn result_main() -> Result<(), Error> {
     let mut f0c = f0.clone();
     let mut cread = CanonicalSgxsReader::new(&mut f0c);
     let offset = match cread.read_meas().context("reading initial SGXS data")? {
-        Some(Meas::Unsized(ecr)) =>
+        Some(Meas::Unsized(ecr)) => {
             if (ecr.size & 7) == 0 {
                 ecr.size
             } else {
                 bail!("Unsized size offset must be naturally aligned")
-            },
+            }
+        }
         Some(Meas::ECreate(_)) => bail!("Can only append to unsized SGXS files"),
         None => bail!("Empty SGXS file"),
         _ => unreachable!(),
@@ -180,17 +219,21 @@ fn result_main() -> Result<(), Error> {
     while let Some(meas) = cread.read_meas().context("reading SGXS data")? {
         match meas {
             Meas::EAdd(eadd) => last_addr = Some(eadd.offset),
-            Meas::EExtend{header:eext,..} =>
+            Meas::EExtend { header: eext, .. } => {
                 if eext.offset <= offset && offset < (eext.offset + 256) {
-                    let pos = f0.seek(SeekFrom::Current(0)).context("Determining enclave size position")?;
+                    let pos = f0
+                        .seek(SeekFrom::Current(0))
+                        .context("Determining enclave size position")?;
                     enclave_size_foffset = Some(pos - 256 + (offset & 0xff));
-                },
-            _ => unreachable!()
+                }
+            }
+            _ => unreachable!(),
         }
     }
 
-    let mut cur_addr = last_addr.ok_or_else(||format_err!("No data found in SGXS"))? + 0x1000;
-    let enclave_size_foffset = enclave_size_foffset.ok_or_else(||format_err!("Unable to find enclave size position in SGXS"))?;
+    let mut cur_addr = last_addr.ok_or_else(|| format_err!("No data found in SGXS"))? + 0x1000;
+    let enclave_size_foffset = enclave_size_foffset
+        .ok_or_else(|| format_err!("Unable to find enclave size position in SGXS"))?;
 
     // Append new data
     fn align_to(value: &mut u64, align: u64) {
@@ -209,7 +252,11 @@ fn result_main() -> Result<(), Error> {
     for op in ops {
         match op {
             Operation::Align(n) => align_to(&mut cur_addr, n),
-            Operation::File { perm, measured, mut file } => {
+            Operation::File {
+                perm,
+                measured,
+                mut file,
+            } => {
                 let align = match (last_mode, perm, measured) {
                     (Some((lp, lm)), np, nm) if (lp, lm) == (np, nm) => 1,
                     (Some((lp, _)), np, _) if lp == np => 0x100,
@@ -224,7 +271,12 @@ fn result_main() -> Result<(), Error> {
                             panic!("Advanced to address {:x} in another page, but it is not at a page boundary. Previous page = {:x}", cur_addr, page_addr);
                         }
                         if chunks != EMPTY_CHUNKS {
-                            f0.write_page((&mut&page[..], chunks), page_addr, SecinfoTruncated{flags:perm}).context("writing SGXS data to output")?;
+                            f0.write_page(
+                                (&mut &page[..], chunks),
+                                page_addr,
+                                SecinfoTruncated { flags: perm },
+                            )
+                            .context("writing SGXS data to output")?;
                         }
                         page_addr = cur_addr;
                         page = EMPTY_PAGE;
@@ -232,12 +284,22 @@ fn result_main() -> Result<(), Error> {
                     }
 
                     let mut r = (cur_addr as usize & 0xfff)..0x1000;
-                    let n = io::copy(&mut (&mut*file).take((r.end-r.start) as _), &mut &mut page[r.clone()]).context(file.error("read"))? as usize;
-                    if n == 0 { break }
+                    let n = io::copy(
+                        &mut (&mut *file).take((r.end - r.start) as _),
+                        &mut &mut page[r.clone()],
+                    )
+                    .context(file.error("read"))? as usize;
+                    if n == 0 {
+                        break;
+                    }
                     cur_addr += n as u64;
                     r.end = r.start + n;
-                    for chunk in &mut chunks[(r.start/0x100)..((r.end + 0xff)/0x100)] {
-                        *chunk = if measured { PageChunk::IncludedMeasured } else { PageChunk::Included };
+                    for chunk in &mut chunks[(r.start / 0x100)..((r.end + 0xff) / 0x100)] {
+                        *chunk = if measured {
+                            PageChunk::IncludedMeasured
+                        } else {
+                            PageChunk::Included
+                        };
                     }
                 }
             }
@@ -245,26 +307,39 @@ fn result_main() -> Result<(), Error> {
     }
 
     if chunks != EMPTY_CHUNKS {
-        f0.write_page((&mut&page[..], chunks), page_addr, SecinfoTruncated{flags:last_mode.unwrap().0}).context("writing SGXS data to buffer")?;
+        f0.write_page(
+            (&mut &page[..], chunks),
+            page_addr,
+            SecinfoTruncated {
+                flags: last_mode.unwrap().0,
+            },
+        )
+        .context("writing SGXS data to buffer")?;
         page_addr += 0x1000;
     }
 
     // Determine and write out enclave size
     let enclave_size = size_fit_natural(page_addr);
-    f0.seek(SeekFrom::Start(0)).context("seeking in output file")?;
+    f0.seek(SeekFrom::Start(0))
+        .context("seeking in output file")?;
     match f0.read_meas().context("reading SGXS data")? {
         Some(Meas::Unsized(mut ecr)) => {
             ecr.size = enclave_size;
-            f0.seek(SeekFrom::Start(0)).context("seeking in output file")?;
-            f0.write_meas(&Meas::ECreate(ecr)).context("writing SGXS data to output")?;
+            f0.seek(SeekFrom::Start(0))
+                .context("seeking in output file")?;
+            f0.write_meas(&Meas::ECreate(ecr))
+                .context("writing SGXS data to output")?;
         }
-        _ => unreachable!()
+        _ => unreachable!(),
     }
-    f0.seek(SeekFrom::Start(enclave_size_foffset)).context("seeking in output file")?;
-    f0.write_u64::<LittleEndian>(enclave_size).context("writing enclave size to output")?;
+    f0.seek(SeekFrom::Start(enclave_size_foffset))
+        .context("seeking in output file")?;
+    f0.write_u64::<LittleEndian>(enclave_size)
+        .context("writing enclave size to output")?;
 
     if !in_place {
-        f0.seek(SeekFrom::Start(0)).context("seeking in output buffer")?;
+        f0.seek(SeekFrom::Start(0))
+            .context("seeking in output buffer")?;
         let stdout = io::stdout();
         io::copy(&mut f0, &mut stdout.lock()).context("outputting buffer")?;
     }
@@ -275,8 +350,8 @@ fn result_main() -> Result<(), Error> {
 fn main() {
     if let Err(e) = result_main() {
         match e.downcast::<UsageError>() {
-            Ok(UsageError(s)) => {
-                println!("Usage:
+            Ok(UsageError(s)) => println!(
+                "Usage:
 \tsgxs-append [-i|--] <file0> [-<mode> <file1>|-align <num>] ...
 
 \t-i               Modify <file0> in place.
@@ -291,9 +366,10 @@ fn main() {
 \t                 permissions are the same but the measurement is different,
 \t                 or 4096 if the page permissions are different.
 
-ERROR: {}", s)
-            },
-            Err(e) => println!("ERROR: {}", e)
+ERROR: {}",
+                s
+            ),
+            Err(e) => println!("ERROR: {}", e),
         }
         std::process::exit(1);
     }

@@ -9,24 +9,24 @@ use abi;
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct CreateData {
-	pub secs: *const abi::Secs, // with baseaddr set to actual base
+    pub secs: *const abi::Secs, // with baseaddr set to actual base
 }
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct AddData {
-	pub dstpage: u64,
-	pub srcpage: *const [u8;4096],
-	pub secinfo: *const abi::Secinfo,
-	pub chunks: u16,
+    pub dstpage: u64,
+    pub srcpage: *const [u8; 4096],
+    pub secinfo: *const abi::Secinfo,
+    pub chunks: u16,
 }
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct InitData {
-	pub base: u64,
-	pub sigstruct: *const abi::Sigstruct,
-	pub einittoken: *const abi::Einittoken,
+    pub base: u64,
+    pub sigstruct: *const abi::Sigstruct,
+    pub einittoken: *const abi::Einittoken,
 }
 
 const SGX_IOCTL: u8 = 0xa4;

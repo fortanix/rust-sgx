@@ -5,15 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate byteorder;
-#[cfg(feature="crypto-openssl")]
-extern crate openssl;
-#[cfg(feature="crypto-openssl")]
-extern crate openssl_sys;
-#[cfg(feature="crypto-openssl")]
+extern crate failure;
+#[cfg(feature = "crypto-openssl")]
 extern crate foreign_types;
+#[cfg(feature = "crypto-openssl")]
+extern crate openssl;
+#[cfg(feature = "crypto-openssl")]
+extern crate openssl_sys;
 extern crate sgx_isa as abi;
 extern crate time;
-extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 
@@ -24,5 +24,5 @@ pub mod sgxs;
 pub mod sigstruct;
 pub mod util;
 
-#[cfg(target_endian="big")]
+#[cfg(target_endian = "big")]
 compile_error!("Big endianness not supported");

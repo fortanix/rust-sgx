@@ -6,15 +6,15 @@
 
 #![feature(asm)]
 
+extern crate openssl;
 extern crate sgx_isa;
 extern crate sgxs;
-extern crate openssl;
 #[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
-extern crate fortanix_sgx_abi;
 extern crate fnv;
+extern crate fortanix_sgx_abi;
 
 mod command;
 mod library;
