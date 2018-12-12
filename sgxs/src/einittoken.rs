@@ -25,7 +25,13 @@ pub trait EinittokenProvider {
     ) -> Result<Einittoken, Error>;
 
     /// Will this provider exhibit different behavior if `retry` is `true`?
-    fn can_retry(self) -> bool;
+    fn can_retry(&self) -> bool;
+}
+
+impl<P: EinittokenProvider + 'static> From<P> for Box<dyn EinittokenProvider> {
+    fn from(p: P) -> Self {
+        Box::new(p)
+    }
 }
 
 pub fn read<R: Read>(reader: &mut R) -> IoResult<Einittoken> {
