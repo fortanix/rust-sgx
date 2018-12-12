@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"aesm-client",
+	"dcap-ql-sys",
 	"enclave-runner",
 	"fortanix-sgx-tools",
 	"report-test",
