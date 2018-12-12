@@ -1,0 +1,39 @@
+[package]
+name = "dcap-ql"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+Idiomatic Rust bindings for libsgx_dcap_ql.
+
+SGX: Software Guard Extensions
+DCAP: DataCenter Attestation Primitives
+QL: Quoting Library
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/dcap-ql/"
+keywords = ["sgx", "dcap", "quote"]
+categories = ["api-bindings"]
+
+[features]
+# If set, will link to libsgx_dcap_ql. Otherwise, will use the dynamic loader
+# to access the library at runtime.
+link = ["dcap-ql-sys/link"]
+
+[dependencies]
+# Project dependencies
+"dcap-ql-sys" = { version = "0.1.0", path = "../dcap-ql-sys" }
+"sgxs-loaders" = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
+"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+byteorder = "1.1.0" # Unlicense/MIT
+failure = "0.1.1"   # MIT/Apache-2.0
+lazy_static = "1"   # MIT/Apache-2.0
+libc = "0.2"        # MIT/Apache-2.0
+num-derive = "0.2"  # MIT/Apache-2.0
+num-traits = "0.2"  # MIT/Apache-2.0
+
+[dev-dependencies]
+"report-test" = { version = "0.1.0", path = "../report-test" }
+"sgxs" = { version = "0.6.0-rc1", path = "../sgxs" }

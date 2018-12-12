@@ -2,6 +2,7 @@
 members = [
 	"aesm-client",
 	"dcap-ql-sys",
+	"dcap-ql",
 	"enclave-runner",
 	"fortanix-sgx-tools",
 	"report-test",
