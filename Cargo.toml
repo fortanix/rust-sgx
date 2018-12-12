@@ -1,6 +1,7 @@
 [workspace]
 members = [
 	"aesm-client",
+	"dcap-provider",
 	"dcap-ql-sys",
 	"dcap-ql",
 	"enclave-runner",
