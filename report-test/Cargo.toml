@@ -1,0 +1,23 @@
+[package]
+name = "report-test"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0"
+description = """
+A simple interface to get a local SGX attestation (“report”).
+
+This is useful for testing remote attestation.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/report-test/"
+keywords = ["sgx", "enclave", "attestation", "ereport"]
+categories = ["development-tools"]
+
+[dependencies]
+# Project dependencies
+"enclave-runner" = { version = "0.1.0-rc1", path = "../enclave-runner" }
+"sgxs" = { version = "0.6.0-rc1", path = "../sgxs" }
+"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+failure = "0.1.1"   # MIT/Apache-2.0

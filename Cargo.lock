@@ -527,6 +527,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "report-test"
+version = "0.1.0"
+dependencies = [
+ "enclave-runner 0.1.0-rc1",
+ "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sgx-isa 0.2.0-rc1",
+ "sgxs 0.6.0-rc1",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

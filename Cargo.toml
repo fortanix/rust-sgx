@@ -1,2 +1,12 @@
 [workspace]
-members = ["aesm-client", "enclave-runner", "fortanix-sgx-tools", "sgx-isa", "sgxs", "sgxs-tools", "fortanix-sgx-abi", "sgxs-loaders"]
+members = [
+	"aesm-client",
+	"enclave-runner",
+	"fortanix-sgx-tools",
+	"report-test",
+	"sgx-isa",
+	"sgxs",
+	"sgxs-tools",
+	"fortanix-sgx-abi",
+	"sgxs-loaders"
+]
