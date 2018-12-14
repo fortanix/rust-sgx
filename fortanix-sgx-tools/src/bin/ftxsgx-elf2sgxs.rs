@@ -44,6 +44,14 @@ struct Symbols<'a> {
     ENCLAVE_SIZE: &'a DynSymEntry,
     CFGDATA_BASE: &'a DynSymEntry,
     DEBUG: &'a DynSymEntry,
+    EH_FRM_HDR_BASE: &'a DynSymEntry,
+    EH_FRM_HDR_SIZE: &'a DynSymEntry,
+    TEXT_BASE: &'a DynSymEntry,
+    TEXT_SIZE: &'a DynSymEntry,
+}
+struct SectionRange {
+    offset: u64,
+    size: u64,
 }
 
 struct Dynamic<'a> {
@@ -87,6 +95,8 @@ pub struct LayoutInfo<'a> {
     threads: usize,
     debug: bool,
     library: bool,
+    ehfrm: SectionRange,
+    text: SectionRange,
 }
 
 macro_rules! read_syms {
@@ -144,7 +154,18 @@ impl<'a> LayoutInfo<'a> {
                 bail!(".dynsym section is not a dynamic symbol table!");
             };
 
-        let syms = read_syms!(sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG in syms : elf);
+        let syms = read_syms!(sgx_entry,
+                              HEAP_BASE,
+                              HEAP_SIZE,
+                              RELA,
+                              RELACOUNT,
+                              ENCLAVE_SIZE,
+                              CFGDATA_BASE,
+                              DEBUG,
+                              EH_FRM_HDR_BASE,
+                              EH_FRM_HDR_SIZE,
+                              TEXT_BASE,
+                              TEXT_SIZE in syms : elf);
 
         check_size!(syms.HEAP_BASE == 8);
         check_size!(syms.HEAP_SIZE == 8);
@@ -153,6 +174,10 @@ impl<'a> LayoutInfo<'a> {
         check_size!(syms.ENCLAVE_SIZE == 8);
         check_size!(syms.CFGDATA_BASE == 8);
         check_size!(syms.DEBUG == 1);
+        check_size!(syms.EH_FRM_HDR_BASE == 8);
+        check_size!(syms.EH_FRM_HDR_SIZE == 8);
+        check_size!(syms.TEXT_BASE == 8);
+        check_size!(syms.TEXT_SIZE == 8);
 
         if (syms.ENCLAVE_SIZE.value() & (syms.ENCLAVE_SIZE.size() - 1)) != 0 {
             // ENCLAVE_SIZE should be naturally aligned such that `sgxs-append`
@@ -161,6 +186,16 @@ impl<'a> LayoutInfo<'a> {
         }
 
         Ok(syms)
+    }
+
+    fn check_section(elf: &ElfFile<'a>, section_name: &str) -> Result<SectionRange, Error> {
+        let sec = elf
+            .find_section_by_name(&section_name)
+            .ok_or_else(|| format_err!("Could not find {}!", section_name))?;
+        Ok(SectionRange {
+            offset: sec.address(),
+            size: sec.size(),
+        })
     }
 
     fn check_dynamic(elf: &ElfFile<'a>) -> Result<Option<Dynamic<'a>>, Error> {
@@ -293,6 +328,8 @@ impl<'a> LayoutInfo<'a> {
         let sym = try!(Self::check_symbols(&elf));
         let dyn = try!(Self::check_dynamic(&elf));
         try!(Self::check_relocs(&elf, dyn.as_ref()));
+        let ehfrm = try!(Self::check_section(&elf, ".eh_frame_hdr"));
+        let text = try!(Self::check_section(&elf, ".text"));
 
         Ok(LayoutInfo {
             elf,
@@ -304,6 +341,8 @@ impl<'a> LayoutInfo<'a> {
             threads,
             debug,
             library,
+            ehfrm,
+            text,
         })
     }
 
@@ -336,6 +375,16 @@ impl<'a> LayoutInfo<'a> {
             ),
             Splice(self.sym.CFGDATA_BASE.value(), u64_to_bytes(memory_size)),
             Splice(self.sym.DEBUG.value(), vec![if self.debug { 1 } else { 0 }]),
+            Splice(
+                self.sym.EH_FRM_HDR_BASE.value(),
+                u64_to_bytes(self.ehfrm.offset),
+            ),
+            Splice(
+                self.sym.EH_FRM_HDR_SIZE.value(),
+                u64_to_bytes(self.ehfrm.size),
+            ),
+            Splice(self.sym.TEXT_BASE.value(), u64_to_bytes(self.text.offset)),
+            Splice(self.sym.TEXT_SIZE.value(), u64_to_bytes(self.text.size)),
         ];
         splices.sort(); // `Splice` sorts by address
         let mut cur_splice = splices.iter().peekable();
@@ -436,7 +485,7 @@ impl<'a> LayoutInfo<'a> {
             writer,
             sgxs::MeasECreate {
                 size: self.sym.ENCLAVE_SIZE.value(),
-                ssaframesize: self.ssaframesize
+                ssaframesize: self.ssaframesize,
             },
             false
         ));
