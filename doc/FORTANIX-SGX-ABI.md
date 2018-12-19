@@ -20,6 +20,11 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 
 ## Changelog
 
+### Version 0.3.2
+
+* *No semantic changes.*
+* More changes to allow building as a crates.io dependency of `std`.
+
 ### Version 0.3.1
 
 * *No semantic changes.*
