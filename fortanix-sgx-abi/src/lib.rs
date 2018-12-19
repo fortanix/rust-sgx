@@ -75,6 +75,8 @@
 //! synchronously or asynchronously.
 #![allow(unused)]
 #![no_std]
+#![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
+#![cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;
@@ -172,6 +174,7 @@ pub mod entry {
 /// [`free`]: ./struct.Usercalls.html#method.launch_thread
 #[repr(C)]
 #[derive(Copy, Clone)]
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub struct ByteBuffer {
     pub data: *const u8,
     pub len: usize
@@ -185,6 +188,7 @@ pub struct ByteBuffer {
 /// [std::io::ErrorKind]: https://doc.rust-lang.org/std/io/enum.ErrorKind.html
 #[repr(i32)]
 #[derive(Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub enum Error {
     PermissionDenied  =        0x01,
     NotFound          =        0x02,
@@ -213,12 +217,14 @@ pub enum Error {
 }
 
 /// A value indicating that the operation was succesful.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const RESULT_SUCCESS: Result = 0;
 
 /// The first return value of usercalls that might fail.
 ///
 /// [`RESULT_SUCCESS`](constant.RESULT_SUCCESS.html) or an error code from the
 /// [`Error`](enum.Error.html) type.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub type Result = i32;
 
 /// The list of all usercalls.
@@ -240,19 +246,25 @@ pub type Result = i32;
 /// from userspace, the enclave must verify that the entire pointed-to memory
 /// space is outside the enclave memory range. It must then copy all data in
 /// user memory to enclave memory before operating on it.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub struct Usercalls;
 
 /// Usercall numbers with this bit set will never be defined by this specification.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const USERCALL_USER_DEFINED: u64 = 0x8000_0000;
 
 /// A file descriptor.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub type Fd = u64;
 
 /// Standard input file descriptor. Input read this way is not secure.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const FD_STDIN: Fd = 0;
 /// Standard output file descriptor. This is not a secure output channel.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const FD_STDOUT: Fd = 1;
 /// Standard error file descriptor. This is not a secure output channel.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const FD_STDERR: Fd = 2;
 
 /// # Streams
@@ -418,18 +430,24 @@ impl Usercalls {
 
 /// The absolute address of a TCS in the current enclave.
 // FIXME: `u8` should be some `extern type` instead.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub type Tcs = NonNull<u8>;
 
 /// An event that will be triggered by userspace when the usercall queue is not
 /// or no longer full.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const EV_USERCALLQ_NOT_FULL: u64 = 0b0000_0000_0000_0001;
 /// An event that will be triggered by userspace when the return queue is not
 /// or no longer empty.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const EV_RETURNQ_NOT_EMPTY: u64 = 0b0000_0000_0000_0010;
 /// An event that enclaves can use for synchronization.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const EV_UNPARK: u64 = 0b0000_0000_0000_0100;
 
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const WAIT_NO: u64 = 0;
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const WAIT_INDEFINITE: u64 = !0;
 
 /// # Execution control
@@ -603,6 +621,7 @@ pub mod async {
     /// An identified usercall.
     #[repr(C)]
     #[derive(Copy, Clone)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct Usercall {
         /// `0` indicates this slot is empty.
         pub id: u64,
@@ -614,6 +633,7 @@ pub mod async {
     /// The return value of an identified usercall.
     #[repr(C)]
     #[derive(Copy, Clone)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct Return {
         /// `0` indicates this slot is empty.
         pub id: u64,
@@ -665,6 +685,7 @@ pub mod async {
     /// 7. Store the new read offset.
     /// 8. If the queue was full in step 1, signal the writer to wake up.
     #[repr(C)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct FifoDescriptor<T> {
         /// Pointer to the queue memory. Must have a size of
         /// `len * size_of::<T>()` bytes and have alignment `align_of::<T>`.
@@ -680,6 +701,7 @@ pub mod async {
     }
 
     // not using `#[derive]` because that would require T: Clone
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     impl<T> Clone for FifoDescriptor<T> {
         fn clone(&self) -> Self {
             *self
@@ -687,6 +709,7 @@ pub mod async {
     }
 
     // not using `#[derive]` because that would require T: Copy
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     impl<T> Copy for FifoDescriptor<T> {}
 
     /// # Asynchronous usercalls
@@ -774,6 +797,7 @@ macro_rules! define_invoke_with_usercalls {
         /// ($(fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)*; )*)
         /// ```
         #[macro_export]
+        #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
         macro_rules! invoke_with_usercalls {
             ($m:ident) => { $m! $accumulated; }
         }
