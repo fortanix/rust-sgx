@@ -200,7 +200,7 @@ The following calls seem to exist in every enclave.
 | --------------------:| ------------ | ------------------ |
 |                   -1 | Module init? | `*const Cpuinfo`   |
 
-#### Enclave specificic: LE
+#### Enclave specific: LE
 
 The following known calls pertain to the Launch Enclave.
 
@@ -226,39 +226,39 @@ from CPUID. The encoding is obtained from the function at address
 `0x1800011a0...0x18000163f` in `sgx_urts.dll` version 1.0.26826.1391 (SHA-256:
 `edfa9670679a2ea8b6df31630ea0b70232dff484f0637a03b888d29114c3e591`).
 
-Bit | Feature name | Condition
----:| ------------ | -------------------------------------------
-  0 | (always set) |
-  1 | fpu          | `cpuid(1).edx[0]`
-  2 | cmov         | `cpuid(1).edx[15]`
-  3 | mmx          | `cpuid(1).edx[23]`
-  4 | fxsr         | `cpuid(1).edx[24]`
-  5 | sse          | `cpuid(1).edx[25] && fxsr`
-  6 | sse2         | `cpuid(1).edx[26] && fxsr`
-  7 | sse3         | `cpuid(1).ecx[0] && fxsr`
-  8 | ssse3        | `cpuid(1).ecx[9] && fxsr`
-  9 | sse4.1       | `cpuid(1).ecx[19] && fxsr`
- 10 | sse4.2       | `cpuid(1).ecx[20] && fxsr`
- 11 | popcnt       | `cpuid(1).ecx[23] && fxsr`
- 12 | movbe        | `cpuid(1).ecx[22] && fxsr`
- 13 | pclmulqdq    | `cpuid(1).ecx[1] && fxsr`
- 14 | aes          | `cpuid(1).ecx[25] && fxsr`
-    | osxsave      | `cpuid(1).ecx[27]`
- 15 | f16c         | `cpuid(1).ecx[29] && osxsave`
- 16 | avx          | `cpuid(1).ecx[28] && osxsave`
- 17 | rdrnd        | `cpuid(1).ecx[30]`
- 18 | fma3         | `cpuid(1).ecx[12] && osxsave`
- 19 | bmi1+bmi2    | `cpuid(7).ebx[3] && cpuid(7).ebx[8]`
- 20 | lzcnt        | `cpuid(0x80000001).ecx[5]`
- 21 | hle          | `cpuid(7).ebx[4]`
- 22 | rtm          | `cpuid(7).ebx[11]`
- 23 | avx2         | `cpuid(7).ebx[5] && osxsave`
- 24 | (reserved?)  |
- 25 | prefetchw    | `cpuid(0x80000001).ecx[8]`
- 26 | rdseed       | `cpuid(7).ebx[18]`
- 27 | adx          | `cpuid(7).ebx[19]`
-    | model        | `cpuid(1).eax[19:16]:cpuid(1).eax[7:4]`
- 28 | atom         | `model==0x1c || model==0x26 || model==0x27`
+| Bit | Feature name | Condition
+| ---:| ------------ | -------------------------------------------
+|   0 | (always set) |
+|   1 | fpu          | `cpuid(1).edx[0]`
+|   2 | cmov         | `cpuid(1).edx[15]`
+|   3 | mmx          | `cpuid(1).edx[23]`
+|   4 | fxsr         | `cpuid(1).edx[24]`
+|   5 | sse          | `cpuid(1).edx[25] && fxsr`
+|   6 | sse2         | `cpuid(1).edx[26] && fxsr`
+|   7 | sse3         | `cpuid(1).ecx[0] && fxsr`
+|   8 | ssse3        | `cpuid(1).ecx[9] && fxsr`
+|   9 | sse4.1       | `cpuid(1).ecx[19] && fxsr`
+|  10 | sse4.2       | `cpuid(1).ecx[20] && fxsr`
+|  11 | popcnt       | `cpuid(1).ecx[23] && fxsr`
+|  12 | movbe        | `cpuid(1).ecx[22] && fxsr`
+|  13 | pclmulqdq    | `cpuid(1).ecx[1] && fxsr`
+|  14 | aes          | `cpuid(1).ecx[25] && fxsr`
+|     | osxsave      | `cpuid(1).ecx[27]`
+|  15 | f16c         | `cpuid(1).ecx[29] && osxsave`
+|  16 | avx          | `cpuid(1).ecx[28] && osxsave`
+|  17 | rdrnd        | `cpuid(1).ecx[30]`
+|  18 | fma3         | `cpuid(1).ecx[12] && osxsave`
+|  19 | bmi1+bmi2    | `cpuid(7).ebx[3] && cpuid(7).ebx[8]`
+|  20 | lzcnt        | `cpuid(0x80000001).ecx[5]`
+|  21 | hle          | `cpuid(7).ebx[4]`
+|  22 | rtm          | `cpuid(7).ebx[11]`
+|  23 | avx2         | `cpuid(7).ebx[5] && osxsave`
+|  24 | (reserved?)  |
+|  25 | prefetchw    | `cpuid(0x80000001).ecx[8]`
+|  26 | rdseed       | `cpuid(7).ebx[18]`
+|  27 | adx          | `cpuid(7).ebx[19]`
+|     | model        | `cpuid(1).eax[19:16]:cpuid(1).eax[7:4]`
+|  28 | atom         | `model==0x1c || model==0x26 || model==0x27`
 
 All other bits are clear.
 
