@@ -13,8 +13,8 @@ use std::fs::File;
 use std::path::Path;
 
 use sgx_isa::{PageType, SecinfoFlags};
-use sgxs_crate::sgxs::{self, SgxsRead};
-use sgxs_crate::util::size_fit_natural;
+use crate::sgxs_crate::sgxs::{self, SgxsRead};
+use crate::sgxs_crate::util::size_fit_natural;
 
 /// Ok(Some(_)) all data is _
 /// Ok(None) there is data, but not all bytes are the same
@@ -40,7 +40,7 @@ fn classify_data(data: &[u8]) -> DataClass {
 
 impl fmt::Display for DataClass {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use DataClass::*;
+        use crate::DataClass::*;
         match *self {
             Same(0) | Absent => f.pad("(empty)"),
             Same(value) => write!(f, "[0x{:02x}]*", value),
@@ -50,9 +50,9 @@ impl fmt::Display for DataClass {
 }
 
 fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
-    let mut file = try!(File::open(path));
+    let mut file = File::open(path)?;
     loop {
-        if let Some(meas) = try!(file.read_meas()) {
+        if let Some(meas) = file.read_meas()? {
             match meas {
                 sgxs::Meas::ECreate(ecreate) => {
                     println!("ECREATE size=0x{:x} ssaframesize={}", { ecreate.size }, {
@@ -90,8 +90,8 @@ fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 }
 
 fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
-    let mut file = try!(File::open(path));
-    let (sgxs::CreateInfo { ecreate, sized }, mut reader) = try!(sgxs::PageReader::new(&mut file));
+    let mut file = File::open(path)?;
+    let (sgxs::CreateInfo { ecreate, sized }, mut reader) = sgxs::PageReader::new(&mut file)?;
     if sized {
         println!("ECREATE size=0x{:x} ssaframesize={}", { ecreate.size }, {
             ecreate.ssaframesize
@@ -102,7 +102,7 @@ fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
         });
     }
     loop {
-        if let Some((eadd, chunks, data)) = try!(reader.read_page()) {
+        if let Some((eadd, chunks, data)) = reader.read_page()? {
             println!(
                 "EADD offset=0x{:8x} pagetype={:<4} flags={:<9} data={:>7} measured={}",
                 eadd.offset,
@@ -130,7 +130,7 @@ enum PageCharacteristic {
 
 impl fmt::Display for PageCharacteristic {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use PageCharacteristic::*;
+        use crate::PageCharacteristic::*;
         match *self {
             Gap => write!(f, "(unmapped)"),
             Page {
@@ -202,7 +202,7 @@ impl<'a, R: sgxs::SgxsRead + 'a> Iterator for Pages<'a, R> {
 
 impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
     fn next_page(&mut self) -> sgxs::Result<Option<(u64, PageCharacteristic)>> {
-        Ok(try!(self.reader.read_page()).map(|(eadd, chunks, data)| {
+        Ok(self.reader.read_page()?.map(|(eadd, chunks, data)| {
             (
                 eadd.offset,
                 PageCharacteristic::Page {
@@ -215,7 +215,7 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
     }
 
     fn new(reader: &'a mut R) -> sgxs::Result<Self> {
-        let (info, reader) = try!(sgxs::PageReader::new(reader));
+        let (info, reader) = sgxs::PageReader::new(reader)?;
         let size = if info.sized {
             Some(info.ecreate.size)
         } else {
@@ -227,14 +227,14 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
             last_read_page: None,
             size,
         };
-        ret.last_read_page = try!(ret.next_page());
+        ret.last_read_page = ret.next_page()?;
         Ok(ret)
     }
 }
 
 fn summary<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
-    let mut file = try!(File::open(path));
-    let mut pages = try!(Pages::new(&mut file));
+    let mut file = File::open(path)?;
+    let mut pages = Pages::new(&mut file)?;
     let w = if let Some(s) = pages.size {
         format!("{:x}", s - 1).len()
     } else {
@@ -246,7 +246,7 @@ fn summary<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
     loop {
         let mut cur_offset = None;
         let cur = if let Some(res) = pages.next() {
-            let cur = try!(res);
+            let cur = res?;
             cur_offset = Some(cur.0);
             Some(cur)
         } else {
@@ -280,11 +280,11 @@ fn summary<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 fn dump_mem<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
     use std::io::{copy, repeat, stdout, Read, Write};
 
-    let mut file = try!(File::open(path));
-    let (_, mut reader) = try!(sgxs::PageReader::new(&mut file));
+    let mut file = File::open(path)?;
+    let (_, mut reader) = sgxs::PageReader::new(&mut file)?;
     let mut last_offset = None;
     loop {
-        if let Some((eadd, _, data)) = try!(reader.read_page()) {
+        if let Some((eadd, _, data)) = reader.read_page()? {
             copy(
                 &mut repeat(0).take(eadd.offset - last_offset.map_or(0, |lo| lo + 4096)),
                 &mut stdout(),

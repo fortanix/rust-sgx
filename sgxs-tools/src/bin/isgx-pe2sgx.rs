@@ -204,7 +204,7 @@ enum LayoutSection<'a> {
         offset: u64,
     },
 }
-use LayoutSection::*;
+use self::LayoutSection::*;
 
 struct LayoutInfo<'a> {
     sgxmeta: &'a Sgxmeta,
@@ -227,7 +227,7 @@ impl<'a> LayoutInfo<'a> {
         };
 
         // Load PE sections, and identify sgxmeta and .tls sections.
-        let mut layout = vec![PeHeaderSection(try!(PeHeader::new(pe)))];
+        let mut layout = vec![PeHeaderSection(PeHeader::new(pe)?)];
         let mut opt_sgxmeta = None;
         let mut opt_tls = None;
         let tls_minsize = if is64bit {
@@ -373,20 +373,20 @@ impl<'a> LayoutInfo<'a> {
             if self.pages_with_relocs.contains(&p) {
                 secinfo.flags.insert(SecinfoFlags::W);
             }
-            try!(writer.write_page(Some(&mut data), Some(p << 12), secinfo));
+            writer.write_page(Some(&mut data), Some(p << 12), secinfo)?;
         }
         Ok(())
     }
 
     pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<()> {
-        let mut writer = try!(CanonicalSgxsWriter::new(
+        let mut writer = CanonicalSgxsWriter::new(
             writer,
             sgxs::MeasECreate {
                 size: self.enclave_size,
                 ssaframesize: self.ssaframesize
             },
             true
-        ));
+        )?;
         for section in &self.layout {
             match section {
                 &PeHeaderSection(ref header) => {
@@ -396,48 +396,48 @@ impl<'a> LayoutInfo<'a> {
                     let mut header = header.clone();
                     let len = header.data.len();
                     let mut splice = header.splice();
-                    try!(writer.write_pages(
+                    writer.write_pages(
                         Some(&mut splice),
                         (size_fit_page(len as u64) / 0x1000) as usize,
                         Some(0),
                         secinfo
-                    ))
+                    )?
                 }
                 &RegularPeSection { header, mut data } => {
                     let secinfo = SecinfoTruncated {
                         flags: section_to_secinfo_flags(header) | PageType::Reg.into(),
                     };
-                    try!(self.write_pe_section(
+                    self.write_pe_section(
                         &mut writer,
                         &mut data,
                         header.virtual_address.get() as u64,
                         header.virtual_size as u64,
                         secinfo
-                    ));
+                    )?;
                 }
                 &TlsPeSection { header, mut data } => {
                     let secinfo = SecinfoTruncated {
                         flags: section_to_secinfo_flags(header) | PageType::Reg.into(),
                     };
                     let mut splice = self.tls_splice(&mut data);
-                    try!(self.write_pe_section(
+                    self.write_pe_section(
                         &mut writer,
                         &mut splice[..].chain(&mut data),
                         header.virtual_address.get() as u64,
                         header.virtual_size as u64,
                         secinfo
-                    ));
+                    )?;
                 }
                 &HeapSection { offset } => {
                     let secinfo = SecinfoTruncated {
                         flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
-                    try!(writer.write_pages::<&[u8]>(
+                    writer.write_pages::<&[u8]>(
                         None,
                         (size_fit_page(self.sgxmeta.heap_size as u64) / 0x1000) as usize,
                         Some(offset),
                         secinfo
-                    ));
+                    )?;
                 }
                 &TcsSection { offset } => {
                     let tcs = Tcs {
@@ -454,40 +454,40 @@ impl<'a> LayoutInfo<'a> {
                     let secinfo = SecinfoTruncated {
                         flags: PageType::Tcs.into(),
                     };
-                    try!(writer.write_page(Some(&mut &tcs[..]), Some(offset), secinfo));
+                    writer.write_page(Some(&mut &tcs[..]), Some(offset), secinfo)?;
                 }
                 &TlsSection { offset } => {
                     let secinfo = SecinfoTruncated {
                         flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
-                    try!(writer.write_pages(
+                    writer.write_pages(
                         Some(&mut io::repeat(0)),
                         (self.tls_size / 0x1000) as usize,
                         Some(offset),
                         secinfo
-                    ));
+                    )?;
                 }
                 &SsaSection { offset } => {
                     let secinfo = SecinfoTruncated {
                         flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
-                    try!(writer.write_pages(
+                    writer.write_pages(
                         Some(&mut io::repeat(0)),
                         (self.sgxmeta.tcs_nssa * self.ssaframesize) as usize,
                         Some(offset),
                         secinfo
-                    ));
+                    )?;
                 }
                 &StackSection { offset } => {
                     let secinfo = SecinfoTruncated {
                         flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
-                    try!(writer.write_pages(
+                    writer.write_pages(
                         Some(&mut io::repeat(0xcc)),
                         (size_fit_page(self.sgxmeta.stack_size as u64) / 0x1000) as usize,
                         Some(offset),
                         secinfo
-                    ));
+                    )?;
                 }
             }
         }

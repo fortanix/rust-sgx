@@ -11,8 +11,8 @@ use std::fs::{self, File};
 use std::io::stdout;
 
 use sgx_isa::{PageType, SecinfoFlags, Tcs};
-use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated};
-use sgxs_crate::util::{size_fit_natural, size_fit_page};
+use crate::sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated};
+use crate::sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 enum Block {
     Blob {
@@ -24,7 +24,7 @@ enum Block {
         nssa: u32,
     },
 }
-use Block::*;
+use crate::Block::*;
 
 fn main() {
     let mut args = std::env::args().peekable();
