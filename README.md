@@ -1,9 +1,23 @@
-# Fortanix Rust development platform for Intel SGX
+# Fortanix Rust Enclave Development Platform
+
+[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack)](https://fortanix.com/runtime-encryption-slack)
+
+The Fortanix Rust EDP is the preferred way to write Intel SGX enclaves from scratch.
+
+## [Get started now.](https://github.com/fortanix/rust-sgx/issues/49)
 
 # Contributing
 
-We gratefully accept bug reports and contributions from the community.
+We gratefully accept contributions from the community.
 By participating in this community, you agree to abide by [Code of Conduct](./CODE_OF_CONDUCT.md).
+
+Here are some ways to contribute:
+
+1. Participate in the `#rust-sgx` channel of the [Runtime Encryption community on Slack](https://fortanix.com/runtime-encryption-slack).
+2. File [bug reports](https://github.com/fortanix/rust-sgx/issues/new).
+3. Help design [new features](https://github.com/fortanix/rust-sgx/issues?q=is%3Aopen+is%3Aissue+label%3Aneeds-design).
+4. Contribute code via [pull requests](https://github.com/fortanix/rust-sgx/pulls).
+
 All contributions are covered under the Developer's Certificate of Origin (DCO).
 
 ## Developer's Certificate of Origin 1.1
