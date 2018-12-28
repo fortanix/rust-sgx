@@ -29,7 +29,7 @@ impl Command {
     }
 
     pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error> {
-        EnclaveBuilder::new(enclave_path).build(loader)
+        EnclaveBuilder::new(enclave_path.as_ref()).build(loader)
     }
 
     pub fn run(self) -> Result<(), Error> {

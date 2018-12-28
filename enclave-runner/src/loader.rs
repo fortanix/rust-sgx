@@ -5,9 +5,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std::fs::File;
-use std::io::{Read, Result as IoResult};
+use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
 use std::os::raw::c_void;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::{arch, str};
 
 use failure::{Error, ResultExt};
@@ -22,8 +22,39 @@ use sgxs::sigstruct::{self, EnclaveHash, Signer};
 use tcs::DebugBuffer;
 use {Command, Library};
 
-pub struct EnclaveBuilder {
-    path: PathBuf,
+enum EnclaveSource<'a> {
+    Path(&'a Path),
+    File(File),
+    Data(&'a [u8]),
+}
+
+impl<'a> EnclaveSource<'a> {
+    fn try_clone(&self) -> Option<Self> {
+        match *self {
+            EnclaveSource::Path(path) => Some(EnclaveSource::Path(path)),
+            EnclaveSource::Data(data) => Some(EnclaveSource::Data(data)),
+            EnclaveSource::File(_) => None,
+        }
+    }
+}
+
+impl<'a> Read for EnclaveSource<'a> {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        if let &mut EnclaveSource::Path(path) = self {
+            let file = File::open(path)?;
+            *self = EnclaveSource::File(file);
+        }
+
+        match *self {
+            EnclaveSource::File(ref mut file) => file.read(buf),
+            EnclaveSource::Data(ref mut data) => data.read(buf),
+            EnclaveSource::Path(_) => unreachable!(),
+        }
+    }
+}
+
+pub struct EnclaveBuilder<'a> {
+    enclave: EnclaveSource<'a>,
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
@@ -80,10 +111,23 @@ impl Tcs for ErasedTcs {
     }
 }
 
-impl EnclaveBuilder {
-    pub fn new<P: AsRef<Path>>(enclave_path: P) -> EnclaveBuilder {
+impl<'a> EnclaveBuilder<'a> {
+    pub fn new(enclave_path: &'a Path) -> EnclaveBuilder<'a> {
         let mut ret = EnclaveBuilder {
-            path: enclave_path.as_ref().to_owned(),
+            enclave: EnclaveSource::Path(enclave_path),
+            attributes: None,
+            miscselect: None,
+            signature: None,
+        };
+
+        let _ = ret.coresident_signature();
+
+        ret
+    }
+
+    pub fn new_from_memory(enclave_data: &'a [u8]) -> EnclaveBuilder<'a> {
+        let mut ret = EnclaveBuilder {
+            enclave: EnclaveSource::Data(enclave_data),
             attributes: None,
             miscselect: None,
             signature: None,
@@ -99,8 +143,8 @@ impl EnclaveBuilder {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
 
-        let mut file = File::open(&self.path)?;
-        let mut signer = Signer::new(EnclaveHash::from_stream::<_, Hasher>(&mut file)?);
+        let mut enclave = self.enclave.try_clone().unwrap();
+        let mut signer = Signer::new(EnclaveHash::from_stream::<_, Hasher>(&mut enclave)?);
 
         let attributes = self.attributes.unwrap_or_else(|| Attributes {
             flags: AttributesFlags::DEBUG | AttributesFlags::MODE64BIT,
@@ -124,8 +168,15 @@ impl EnclaveBuilder {
     }
 
     pub fn coresident_signature(&mut self) -> IoResult<&mut Self> {
-        let sigfile = self.path.with_extension("sig");
-        self.signature(sigfile)
+        if let EnclaveSource::Path(path) = self.enclave {
+            let sigfile = path.with_extension("sig");
+            self.signature(sigfile)
+        } else {
+            Err(IoError::new(
+                ErrorKind::NotFound,
+                "Can't load coresident signature for non-file enclave",
+            ))
+        }
     }
 
     pub fn signature<P: AsRef<Path>>(&mut self, path: P) -> IoResult<&mut Self> {
@@ -149,27 +200,7 @@ impl EnclaveBuilder {
         self
     }
 
-    fn load<T: Load>(self, loader: &mut T) -> Result<Vec<ErasedTcs>, Error> {
-        enum OpenAndRead<'a> {
-            Unopened(&'a Path),
-            Reading(File),
-        }
-
-        impl<'a> Read for OpenAndRead<'a> {
-            fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-                if let &mut OpenAndRead::Unopened(path) = self {
-                    let file = File::open(path)?;
-                    *self = OpenAndRead::Reading(file);
-                }
-
-                if let &mut OpenAndRead::Reading(ref mut file) = self {
-                    file.read(buf)
-                } else {
-                    unreachable!()
-                }
-            }
-        }
-
+    fn load<T: Load>(mut self, loader: &mut T) -> Result<Vec<ErasedTcs>, Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -178,12 +209,7 @@ impl EnclaveBuilder {
         };
         let attributes = self.attributes.unwrap_or(signature.attributes);
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
-        let mapping = loader.load(
-            &mut OpenAndRead::Unopened(&self.path),
-            &signature,
-            attributes,
-            miscselect,
-        )?;
+        let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
         if mapping.tcss.is_empty() {
             unimplemented!()
         }
@@ -194,7 +220,7 @@ impl EnclaveBuilder {
         Ok(Command::internal_new(self.load(loader)?))
     }
 
-    pub fn build_library<T: Load>(self, _loader: &mut T) -> Result<Library, Error> {
-        unimplemented!()
+    pub fn build_library<T: Load>(self, loader: &mut T) -> Result<Library, Error> {
+        Ok(Library::internal_new(self.load(loader)?))
     }
 }

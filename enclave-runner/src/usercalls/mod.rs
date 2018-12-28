@@ -229,59 +229,99 @@ struct RunningTcs {
     event_queue: Receiver<u8>,
 }
 
-pub(crate) struct EnclaveState {
+enum EnclaveKind {
+    Command(Command),
+    Library(Library)
+}
+
+struct Command {
     threads: Mutex<Vec<StoppedTcs>>,
+}
+
+struct Library {
+    threads: Mutex<Receiver<StoppedTcs>>,
+    thread_sender: Mutex<Sender<StoppedTcs>>,
+}
+
+impl EnclaveKind {
+    fn as_command(&self) -> Option<&Command> {
+        match self {
+            EnclaveKind::Command(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    fn as_library(&self) -> Option<&Library> {
+        match self {
+            EnclaveKind::Library(l) => Some(l),
+            _ => None,
+        }
+    }
+}
+
+pub(crate) struct EnclaveState {
+    kind: EnclaveKind,
     event_queues: FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
     fds: Mutex<FnvHashMap<Fd, Arc<FileDesc>>>,
     last_fd: AtomicUsize,
 }
 
 impl EnclaveState {
-    pub(crate) fn main_entry(
-        main: ErasedTcs,
-        threads: Vec<ErasedTcs>,
-    ) -> StdResult<(), failure::Error> {
-        let mut event_queues =
-            FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
-        let (main_send, main_recv) = channel();
-        event_queues.insert(main.address(), Mutex::new(main_send));
-
-        let mut threads2 = Vec::with_capacity(threads.len());
-        for thread in threads {
-            let (send, recv) = channel();
-            if event_queues
-                .insert(thread.address(), Mutex::new(send))
-                .is_some()
-            {
-                panic!("duplicate TCS address: {:p}", thread.address())
-            }
-            threads2.push(StoppedTcs {
-                tcs: thread,
-                event_queue: recv,
-            });
+    fn event_queue_add_tcs(
+        event_queues: &mut FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
+        tcs: ErasedTcs,
+    ) -> StoppedTcs {
+        let (send, recv) = channel();
+        if event_queues
+            .insert(tcs.address(), Mutex::new(send))
+            .is_some()
+        {
+            panic!("duplicate TCS address: {:p}", tcs.address())
         }
+        StoppedTcs {
+            tcs,
+            event_queue: recv,
+        }
+    }
 
+    fn new(
+        kind: EnclaveKind,
+        event_queues: FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
+    ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
         fds.insert(FD_STDIN, Arc::new(FileDesc::stream(Shared(io::stdin()))));
         fds.insert(FD_STDOUT, Arc::new(FileDesc::stream(Shared(io::stdout()))));
         fds.insert(FD_STDERR, Arc::new(FileDesc::stream(Shared(io::stderr()))));
         let last_fd = AtomicUsize::new(fds.keys().cloned().max().unwrap() as _);
 
-        let enclave = Arc::new(EnclaveState {
-            threads: Mutex::new(threads2),
+        Arc::new(EnclaveState {
+            kind,
             event_queues,
             fds: Mutex::new(fds),
             last_fd,
+        })
+    }
+
+    pub(crate) fn main_entry(
+        main: ErasedTcs,
+        threads: Vec<ErasedTcs>,
+    ) -> StdResult<(), failure::Error> {
+        let mut event_queues =
+            FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
+        let main = Self::event_queue_add_tcs(&mut event_queues, main);
+
+        let threads = threads
+            .into_iter()
+            .map(|thread| Self::event_queue_add_tcs(&mut event_queues, thread))
+            .collect();
+
+        let kind = EnclaveKind::Command(Command {
+            threads: Mutex::new(threads),
         });
 
-        match RunningTcs::entry(
-            enclave,
-            StoppedTcs {
-                tcs: main,
-                event_queue: main_recv,
-            },
-            true,
-        ) {
+        let enclave = EnclaveState::new(kind, event_queues);
+
+        match RunningTcs::entry(enclave, main, EnclaveEntry::ExecutableMain) {
             Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
             Err(EnclaveAbort::IndefiniteWait) => {
                 bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
@@ -292,13 +332,83 @@ impl EnclaveState {
             Err(EnclaveAbort::MainReturned) => bail!(
                 "The enclave returned from the main entrypoint in violation of the specification."
             ),
-            Ok(_tcs) => Ok(()),
+            Ok(_) => Ok(()),
         }
     }
 
-    fn thread_entry(enclave: &Arc<EnclaveState>, tcs: StoppedTcs) -> StoppedTcs {
-        RunningTcs::entry(enclave.clone(), tcs, false).unwrap()
+    fn thread_entry(enclave: &Arc<Self>, tcs: StoppedTcs) -> StoppedTcs {
+        let (tcs, result) =
+            RunningTcs::entry(enclave.clone(), tcs, EnclaveEntry::ExecutableNonMain).unwrap();
+        assert_eq!(
+            result,
+            (0, 0),
+            "Expected enclave thread entrypoint to return zero"
+        );
+        tcs
     }
+
+    pub(crate) fn library(threads: Vec<ErasedTcs>) -> Arc<Self> {
+        let mut event_queues =
+            FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
+        let (send, recv) = channel();
+
+        for thread in threads {
+            send.send(Self::event_queue_add_tcs(&mut event_queues, thread))
+                .unwrap();
+        }
+
+        let kind = EnclaveKind::Library(Library {
+            threads: Mutex::new(recv),
+            thread_sender: Mutex::new(send),
+        });
+
+        EnclaveState::new(kind, event_queues)
+    }
+
+    pub(crate) fn library_entry(
+        enclave: &Arc<Self>,
+        p1: u64,
+        p2: u64,
+        p3: u64,
+        p4: u64,
+        p5: u64,
+    ) -> StdResult<(u64, u64), failure::Error> {
+        // There is no other way than `Self::library` to get an `Arc<Self>`
+        let library = enclave.kind.as_library().unwrap();
+
+        let thread = library.threads.lock().unwrap().recv().unwrap();
+        match RunningTcs::entry(
+            enclave.clone(),
+            thread,
+            EnclaveEntry::Library { p1, p2, p3, p4, p5 },
+        ) {
+            Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+            Err(EnclaveAbort::IndefiniteWait) => {
+                bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
+            }
+            Err(EnclaveAbort::InvalidUsercall(n)) => {
+                bail!("The enclave performed an invalid usercall 0x{:x}", n)
+            }
+            Err(EnclaveAbort::MainReturned) => unreachable!(),
+            Ok((tcs, result)) => {
+                library.thread_sender.lock().unwrap().send(tcs).unwrap();
+                Ok(result)
+            }
+        }
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum EnclaveEntry {
+    ExecutableMain,
+    ExecutableNonMain,
+    Library {
+        p1: u64,
+        p2: u64,
+        p3: u64,
+        p4: u64,
+        p5: u64,
+    },
 }
 
 #[allow(unused_variables)]
@@ -306,8 +416,8 @@ impl RunningTcs {
     fn entry(
         enclave: Arc<EnclaveState>,
         tcs: StoppedTcs,
-        main: bool,
-    ) -> StdResult<StoppedTcs, EnclaveAbort<EnclavePanic>> {
+        mode: EnclaveEntry,
+    ) -> StdResult<(StoppedTcs, (u64, u64)), EnclaveAbort<EnclavePanic>> {
         let buf = RefCell::new([0u8; 1024]);
 
         let mut state = RunningTcs {
@@ -320,7 +430,11 @@ impl RunningTcs {
         let (tcs, result) = {
             let on_usercall =
                 |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state), p1, p2, p3, p4, p5);
-            tcs::enter(tcs.tcs, on_usercall, 0, 0, 0, 0, 0, Some(&buf))
+            let (p1, p2, p3, p4, p5) = match mode {
+                EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
+                _ => (0, 0, 0, 0, 0),
+            };
+            tcs::enter(tcs.tcs, on_usercall, p1, p2, p3, p4, p5, Some(&buf))
         };
 
         let tcs = StoppedTcs {
@@ -332,12 +446,12 @@ impl RunningTcs {
             Err(EnclaveAbort::Exit { panic: true }) => Err(EnclaveAbort::Exit {
                 panic: EnclavePanic::from(buf.into_inner()),
             }),
-            Err(EnclaveAbort::Exit { panic: false }) => Ok(tcs), // TODO: exit all threads
+            Err(EnclaveAbort::Exit { panic: false }) => Ok((tcs, (0, 0))), // TODO: exit all threads if executable
             Err(EnclaveAbort::IndefiniteWait) => Err(EnclaveAbort::IndefiniteWait), // TODO: join all threads
             Err(EnclaveAbort::InvalidUsercall(n)) => Err(EnclaveAbort::InvalidUsercall(n)),
             Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
-            Ok(_) if main => Err(EnclaveAbort::MainReturned),
-            Ok(_) => Ok(tcs), // TODO: check return value
+            Ok(_) if mode == EnclaveEntry::ExecutableMain => Err(EnclaveAbort::MainReturned),
+            Ok(result) => Ok((tcs, result)),
         }
     }
 
@@ -443,9 +557,14 @@ impl RunningTcs {
 
     #[inline(always)]
     fn launch_thread(&self) -> IoResult<()> {
-        // WouldBlock: see https://github.com/rust-lang/rust/issues/46345
-        let new_tcs = self
+        let command = self
             .enclave
+            .kind
+            .as_command()
+            .ok_or(IoErrorKind::InvalidInput)?;
+
+        // WouldBlock: see https://github.com/rust-lang/rust/issues/46345
+        let new_tcs = command
             .threads
             .lock()
             .unwrap()
@@ -456,7 +575,14 @@ impl RunningTcs {
         let result = thread::Builder::new().spawn(move || {
             let tcs = recv.recv().unwrap();
             let tcs = EnclaveState::thread_entry(&enclave, tcs);
-            enclave.threads.lock().unwrap().push(tcs);
+            enclave
+                .kind
+                .as_command()
+                .unwrap()
+                .threads
+                .lock()
+                .unwrap()
+                .push(tcs);
         });
         match result {
             Ok(_join_handle) => {
@@ -465,7 +591,7 @@ impl RunningTcs {
                 Ok(())
             }
             Err(e) => {
-                self.enclave.threads.lock().unwrap().push(new_tcs);
+                command.threads.lock().unwrap().push(new_tcs);
                 Err(e)
             }
         }
