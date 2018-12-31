@@ -92,7 +92,6 @@ macro_rules! enum_def {
 			}
 		}
 
-		#[cfg(not(feature="try_from"))]
 		impl $name {
 			pub fn from_repr(v: $repr) -> Option<Self> {
 				match v {
@@ -149,7 +148,7 @@ pub enum ErrorCode {
     Success                =   0,
     InvalidSigStruct       =   1,
     InvalidAttribute       =   2,
-    Blkstate               =   3, // Blstate in §41.1.3, Blkstate in §41.3
+    Blkstate               =   3, // Blstate in §40.1.4, Blkstate in §40.3
     InvalidMeasurement     =   4,
     Notblockable           =   5,
     PgInvld                =   6,
@@ -202,7 +201,7 @@ enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u16)]
 pub enum Keyname {
-    EinitToken    = 0, // EinitToken in §38.17.1, Launch in §41.3
+    Einittoken    = 0,
     Provision     = 1,
     ProvisionSeal = 2,
     Report        = 3,
@@ -210,7 +209,7 @@ pub enum Keyname {
 }
 }
 
-#[repr(C)]
+#[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -268,7 +267,7 @@ impl Default for Miscselect {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -301,7 +300,7 @@ impl Default for TcsFlags {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(32))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Pageinfo {
     pub linaddr: u64,
@@ -310,7 +309,7 @@ pub struct Pageinfo {
     pub secs: u64,
 }
 
-#[repr(C)]
+#[repr(C, align(64))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -367,7 +366,7 @@ impl From<PageType> for SecinfoFlags {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(128))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -379,7 +378,7 @@ pub struct Pcmd {
     pub mac: [u8; 16],
 }
 
-#[repr(C)]
+#[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -408,13 +407,13 @@ pub struct Sigstruct {
     pub q2: [u8; 384],
 }
 
-#[repr(C)]
+#[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
 pub struct Einittoken {
-    pub valid: u32, // debug in §38.14, valid in §41.3
+    pub valid: u32,
     pub _reserved1: [u8; 44],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
@@ -431,7 +430,7 @@ pub struct Einittoken {
     pub mac: [u8; 16],
 }
 
-#[repr(C)]
+#[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -453,7 +452,7 @@ pub struct Report {
     pub mac: [u8; 16],
 }
 
-#[repr(C)]
+#[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
@@ -477,7 +476,7 @@ impl From<Report> for Targetinfo {
     }
 }
 
-#[repr(C)]
+#[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
