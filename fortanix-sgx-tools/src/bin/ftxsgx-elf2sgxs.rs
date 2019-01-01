@@ -567,18 +567,6 @@ impl<'a> LayoutInfo<'a> {
     }
 }
 
-fn check_heap_size(heap_size: u64) {
-    if !heap_size
-        .checked_sub(0x1000)
-        .map(u64::is_power_of_two)
-        .unwrap_or(false)
-    {
-        println!(
-            "WARNING: heap size is not a power of two plus one page, possible waste of memory"
-        );
-    }
-}
-
 /////////////////
 // Driver code //
 /////////////////
@@ -654,8 +642,6 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
         .unwrap_or_else(|| File::create(srclib.with_extension("sgxs")))
         .unwrap();
     layout.write(&mut outfile)?;
-
-    check_heap_size(heap_size);
 
     Ok(())
 }
