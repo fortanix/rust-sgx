@@ -7,24 +7,40 @@
 use std::path::Path;
 
 use failure::Error;
-use sgxs::loader::Load;
+use sgxs::loader::{Load, MappingInfo};
 
 use loader::{EnclaveBuilder, ErasedTcs};
+use std::os::raw::c_void;
 use usercalls::EnclaveState;
 
+#[derive(Debug)]
 pub struct Command {
     main: ErasedTcs,
     threads: Vec<ErasedTcs>,
+    address: *mut c_void,
+    size: usize,
+}
+
+impl MappingInfo for Command {
+    fn address(&self) -> *mut c_void {
+        self.address
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
 }
 
 impl Command {
     /// # Panics
     /// Panics if the number of TCSs is 0.
-    pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>) -> Command {
+    pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize) -> Command {
         let main = tcss.remove(0);
         Command {
             main,
             threads: tcss,
+            address,
+            size,
         }
     }
 

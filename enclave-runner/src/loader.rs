@@ -16,7 +16,7 @@ use openssl::hash::Hasher;
 use openssl::pkey::PKey;
 
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
-use sgxs::loader::{Load, Tcs};
+use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use tcs::DebugBuffer;
@@ -200,7 +200,7 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    fn load<T: Load>(mut self, loader: &mut T) -> Result<Vec<ErasedTcs>, Error> {
+    fn load<T: Load>(mut self, loader: &mut T) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -213,14 +213,19 @@ impl<'a> EnclaveBuilder<'a> {
         if mapping.tcss.is_empty() {
             unimplemented!()
         }
-        Ok(mapping.tcss.into_iter().map(ErasedTcs::new).collect())
+        Ok((
+            mapping.tcss.into_iter().map(ErasedTcs::new).collect(),
+            mapping.info.address(),
+            mapping.info.size(),
+        ))
     }
 
     pub fn build<T: Load>(self, loader: &mut T) -> Result<Command, Error> {
-        Ok(Command::internal_new(self.load(loader)?))
+        self.load(loader).map(|(t, a, s)|  Command::internal_new(t, a, s))
     }
 
     pub fn build_library<T: Load>(self, loader: &mut T) -> Result<Library, Error> {
-        Ok(Library::internal_new(self.load(loader)?))
+        self.load(loader)
+            .map(|(t, a, s)| Library::internal_new(t, a, s))
     }
 }
