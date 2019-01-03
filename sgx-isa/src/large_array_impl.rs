@@ -4,45 +4,32 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use core::mem::transmute;
-use core::ptr;
-
 use super::*;
 
 macro_rules! impl_default_clone_eq {
-	($($t:ty, $size:expr;)*) => {$(
-		impl Default for $t {
-			fn default() -> $t {
-				unsafe{transmute([0u8;$size])}
-			}
-		}
-		impl Clone for $t {
-			fn clone(&self) -> $t {
-				unsafe{ptr::read(self)}
-			}
-		}
-		impl PartialEq for $t {
-			fn eq(&self, other: &$t) -> bool {
-				let lhs: &[u8;$size] = unsafe{transmute(self)};
-				let rhs: &[u8;$size] = unsafe{transmute(other)};
-				lhs.get(..) == rhs.get(..)
-			}
-		}
-		// This cannot be derived because the derivation asserts that the members are Eq.
-		impl Eq for $t {}
-	)*}
-}
-
-impl_default_clone_eq! {
-    Secs, 4096;
-    Tcs, 4096;
-    Secinfo, 64;
-    Pcmd, 128;
-    Sigstruct, 1808;
-    Einittoken, 304;
-    Report, 432;
-    Targetinfo, 512;
-    Keyrequest, 512;
+    ($t:ident) => {
+        impl Default for $t {
+            fn default() -> $t {
+                unsafe { ::core::mem::zeroed() }
+            }
+        }
+        impl Clone for $t {
+            fn clone(&self) -> $t {
+                unsafe { ::core::ptr::read(self) }
+            }
+        }
+        impl PartialEq for $t {
+            fn eq(&self, other: &$t) -> bool {
+                unsafe {
+                    let lhs: &[u8; Self::UNPADDED_SIZE] = ::core::mem::transmute(self);
+                    let rhs: &[u8; Self::UNPADDED_SIZE] = ::core::mem::transmute(other);
+                    lhs.get(..) == rhs.get(..)
+                }
+            }
+        }
+        // This cannot be derived because the derivation asserts that the members are Eq.
+        impl Eq for $t {}
+    }
 }
 
 impl ::core::fmt::Debug for Secs {
