@@ -17,55 +17,11 @@
 #[macro_use]
 extern crate bitflags;
 
-macro_rules! impl_bytes_access {
-	($($t:ty, $size:expr;)*) => {$(
-		impl AsRef<[u8]> for $t {
-			fn as_ref(&self) -> &[u8] {
-				unsafe {
-					::core::slice::from_raw_parts(self as *const $t as *const u8, $size)
-				}
-			}
-		}
-
-		impl $t {
-			// TODO: Requires associated constants
-			//pub const SIZE: usize = $size;
-
-			pub fn size() -> usize { $size }
-
-			/// If `src` has the correct length for this type, returns `Some<T>`
-			/// copied from `src`, else returns `None`.
-			pub fn try_copy_from(src: &[u8]) -> Option<$t> {
-				if src.len() == $size {
-					unsafe {
-						Some(::core::ptr::read_unaligned(src.as_ptr() as *const $t))
-					}
-				} else {
-					None
-				}
-			}
-
-			// Compile time check that the size argument is correct.
-			// Not otherwise used.
-			unsafe fn _check_size(t: $t) -> [u8; $size] {
-				::core::mem::transmute(t)
-			}
-		}
-	)*}
-}
-
-impl_bytes_access! {
-    Secs, 4096;
-    Tcs, 4096;
-    Secinfo, 64;
-    Pcmd, 128;
-    Sigstruct, 1808;
-    Einittoken, 304;
-    Report, 432;
-    Targetinfo, 512;
-    Keyrequest, 512;
-    Attributes, 16;
-}
+#[cfg(not(feature = "large_array_derive"))]
+#[macro_use]
+mod large_array_impl;
+#[cfg(feature = "large_array_derive")]
+macro_rules! impl_default_clone_eq { ($n:ident) => {} }
 
 macro_rules! enum_def {
 	(
@@ -101,6 +57,69 @@ macro_rules! enum_def {
 			}
 		}
 	)
+}
+
+macro_rules! struct_def {
+    (
+        #[repr(C $(, align($align:expr))*)]
+        $(#[cfg_attr(feature = "large_array_derive", derive($($cfgderive:meta),*))])*
+        $(#[derive($($derive:meta),*)])*
+        pub struct $name:ident $impl:tt
+    ) => {
+        $(
+            impl_default_clone_eq!($name);
+            #[cfg_attr(feature = "large_array_derive", derive($($cfgderive),*))]
+        )*
+        #[repr(C $(, align($align))*)]
+        $(#[derive($($derive),*)])*
+        pub struct $name $impl
+
+        impl $name {
+			/// If `src` has the correct length for this type, returns `Some<T>`
+			/// copied from `src`, else returns `None`.
+			pub fn try_copy_from(src: &[u8]) -> Option<Self> {
+				if src.len() == Self::UNPADDED_SIZE {
+					unsafe {
+                        let mut ret = ::core::mem::zeroed();
+                        ::core::ptr::copy_nonoverlapping(src.as_ptr() as *const $name, &mut ret, Self::UNPADDED_SIZE);
+						Some(ret)
+					}
+				} else {
+					None
+				}
+			}
+
+            // Compile time check that the size argument is correct.
+            // Not otherwise used.
+            fn _type_tests() {
+                #[repr(C)]
+                struct _Unaligned $impl
+
+                impl _Unaligned {
+                    unsafe fn _check_size(self) -> [u8; $name::UNPADDED_SIZE] {
+                        ::core::mem::transmute(self)
+                    }
+                }
+            }
+		}
+
+        $(
+        // check that alignment is set correctly
+        #[test]
+        #[allow(non_snake_case)]
+        fn $name() {
+            assert_eq!($align, ::core::mem::align_of::<$name>());
+        }
+        )*
+
+		impl AsRef<[u8]> for $name {
+			fn as_ref(&self) -> &[u8] {
+				unsafe {
+					::core::slice::from_raw_parts(self as *const $name as *const u8, Self::UNPADDED_SIZE)
+				}
+			}
+		}
+    };
 }
 
 enum_def! {
@@ -209,6 +228,7 @@ pub enum Keyname {
 }
 }
 
+struct_def! {
 #[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -229,12 +249,23 @@ pub struct Secs {
     pub isvsvn: u16,
     pub padding: [u8; 3836],
 }
+}
 
+impl Secs {
+    pub const UNPADDED_SIZE: usize = 4096;
+}
+
+struct_def! {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct Attributes {
     pub flags: AttributesFlags,
     pub xfrm: u64,
+}
+}
+
+impl Attributes {
+    pub const UNPADDED_SIZE: usize = 16;
 }
 
 bitflags! {
@@ -267,6 +298,7 @@ impl Default for Miscselect {
     }
 }
 
+struct_def! {
 #[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -286,6 +318,11 @@ pub struct Tcs {
     pub gslimit: u32,
     pub _reserved3: [u8; 4024],
 }
+}
+
+impl Tcs {
+    pub const UNPADDED_SIZE: usize = 4096;
+}
 
 bitflags! {
     #[repr(C)]
@@ -300,6 +337,7 @@ impl Default for TcsFlags {
     }
 }
 
+struct_def! {
 #[repr(C, align(32))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Pageinfo {
@@ -308,7 +346,13 @@ pub struct Pageinfo {
     pub secinfo: u64,
     pub secs: u64,
 }
+}
 
+impl Pageinfo {
+    pub const UNPADDED_SIZE: usize = 32;
+}
+
+struct_def! {
 #[repr(C, align(64))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -317,6 +361,11 @@ pub struct Pageinfo {
 pub struct Secinfo {
     pub flags: SecinfoFlags,
     pub _reserved1: [u8; 56],
+}
+}
+
+impl Secinfo {
+    pub const UNPADDED_SIZE: usize = 64;
 }
 
 bitflags! {
@@ -366,6 +415,7 @@ impl From<PageType> for SecinfoFlags {
     }
 }
 
+struct_def! {
 #[repr(C, align(128))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -377,7 +427,13 @@ pub struct Pcmd {
     pub _reserved1: [u8; 40],
     pub mac: [u8; 16],
 }
+}
 
+impl Pcmd {
+    pub const UNPADDED_SIZE: usize = 128;
+}
+
+struct_def! {
 #[repr(C, align(4096))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -406,7 +462,13 @@ pub struct Sigstruct {
     pub q1: [u8; 384],
     pub q2: [u8; 384],
 }
+}
 
+impl Sigstruct {
+    pub const UNPADDED_SIZE: usize = 1808;
+}
+
+struct_def! {
 #[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -429,7 +491,13 @@ pub struct Einittoken {
     pub keyid: [u8; 32],
     pub mac: [u8; 16],
 }
+}
 
+impl Einittoken {
+    pub const UNPADDED_SIZE: usize = 304;
+}
+
+struct_def! {
 #[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -451,7 +519,13 @@ pub struct Report {
     pub keyid: [u8; 32],
     pub mac: [u8; 16],
 }
+}
 
+impl Report {
+    pub const UNPADDED_SIZE: usize = 432;
+}
+
+struct_def! {
 #[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -463,6 +537,11 @@ pub struct Targetinfo {
     pub _reserved1: [u8; 4],
     pub miscselect: Miscselect,
     pub _reserved2: [u8; 456],
+}
+}
+
+impl Targetinfo {
+    pub const UNPADDED_SIZE: usize = 512;
 }
 
 impl From<Report> for Targetinfo {
@@ -476,6 +555,7 @@ impl From<Report> for Targetinfo {
     }
 }
 
+struct_def! {
 #[repr(C, align(512))]
 #[cfg_attr(
     feature = "large_array_derive",
@@ -492,6 +572,11 @@ pub struct Keyrequest {
     pub miscmask: u32,
     pub _reserved2: [u8; 436],
 }
+}
+
+impl Keyrequest {
+    pub const UNPADDED_SIZE: usize = 512;
+}
 
 bitflags! {
     #[repr(C)]
@@ -506,9 +591,6 @@ impl Default for Keypolicy {
         Self::empty()
     }
 }
-
-#[cfg(not(feature = "large_array_derive"))]
-mod large_array_impl;
 
 #[test]
 fn test_eq() {

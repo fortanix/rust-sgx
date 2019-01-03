@@ -431,7 +431,7 @@ mod tests {
         let quote = client
             .get_quote(
                 &quote,
-                vec![0u8; Report::size()],
+                vec![0u8; Report::UNPADDED_SIZE],
                 vec![0u8; SPID_SIZE],
                 vec![],
             )

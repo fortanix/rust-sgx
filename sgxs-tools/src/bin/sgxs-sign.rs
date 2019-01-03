@@ -14,7 +14,6 @@ extern crate sgxs;
 use std::borrow::Borrow;
 use std::fs::File;
 use std::io::{Read, Write};
-use std::mem::transmute;
 
 use num::{Num, Unsigned};
 use openssl::hash::Hasher;
@@ -27,7 +26,7 @@ use sgxs::sigstruct::{self, EnclaveHash, Signer};
 fn write_sigstruct(path: &str, sig: Sigstruct) {
     File::create(path)
         .expect("Unable to open output file")
-        .write_all(&unsafe { transmute::<_, [u8; 1808]>(sig) })
+        .write_all(sig.as_ref())
         .expect("Unable to write output file");
 }
 
@@ -273,7 +272,7 @@ fn test_sig() {
     sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap()).unwrap();
 
     assert_eq!(
-        &unsafe { std::mem::transmute::<_, [u8; 1808]>(sig) }[..],
+        sig.as_ref(),
         SIGSTRUCT
     );
 }
