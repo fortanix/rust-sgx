@@ -80,8 +80,10 @@ macro_rules! struct_def {
 			pub fn try_copy_from(src: &[u8]) -> Option<Self> {
 				if src.len() == Self::UNPADDED_SIZE {
 					unsafe {
-                        let mut ret = ::core::mem::zeroed();
-                        ::core::ptr::copy_nonoverlapping(src.as_ptr() as *const $name, &mut ret, Self::UNPADDED_SIZE);
+                        let mut ret : Self = ::core::mem::zeroed();
+                        ::core::ptr::copy_nonoverlapping(src.as_ptr(),
+                                                         &mut ret as *mut _ as *mut _,
+                                                         Self::UNPADDED_SIZE);
 						Some(ret)
 					}
 				} else {
