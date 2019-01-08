@@ -1,0 +1,8 @@
+language: rust
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install protobuf-compiler
+rust:
+  - nightly
+script:
+  - RUST_BACKTRACE=1 cargo build --verbose --all
