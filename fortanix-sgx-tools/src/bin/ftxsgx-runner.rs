@@ -34,8 +34,10 @@ fn main() -> Result<(), Error> {
             bail!("Missing <ENCLAVE> parameter on command line");
         }
     };
-    let mut device = IsgxDevice::open(DEFAULT_DEVICE_PATH, AesmClient::new())
-        .context("While opening SGX device")?;
+    let mut device = IsgxDevice::open(DEFAULT_DEVICE_PATH)
+        .context("While opening SGX device")?
+        .einittoken_provider(AesmClient::new())
+        .build();
     let enclave = Command::new(&file, &mut device).context("While loading SGX enclave")?;
     enclave.run().context("While executing SGX enclave")?;
     Ok(())

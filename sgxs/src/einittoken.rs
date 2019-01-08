@@ -4,13 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use failure::Error;
+use std::fmt;
 use std::io::{Read, Result as IoResult};
+
+use failure::Error;
 
 pub use abi::Einittoken;
 use abi::{Attributes, Sigstruct};
 
-pub trait EinittokenProvider {
+pub trait EinittokenProvider: fmt::Debug {
     /// Obtain an `EINITTOKEN` for the enclave specified by this `SIGSTRUCT`
     /// and `ATTRIBUTES`.
     ///

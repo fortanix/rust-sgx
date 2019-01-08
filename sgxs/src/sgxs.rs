@@ -179,6 +179,12 @@ impl<R: Read> SgxsRead for R {
     }
 }
 
+impl SgxsRead for &mut dyn SgxsRead {
+    fn read_meas(&mut self) -> Result<Option<Meas>> {
+        (*self).read_meas()
+    }
+}
+
 // TODO: update to [PageChunk; 16]
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct PageChunks(pub u16);

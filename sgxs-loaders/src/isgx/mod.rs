@@ -9,35 +9,20 @@ mod ioctl;
 use libc;
 use std::fs::{File, OpenOptions};
 use std::io::{Error as IoError, Result as IoResult};
-use std::os::raw::c_void;
 use std::os::unix::io::AsRawFd;
 use std::path::Path;
 use std::ptr;
 use std::sync::Arc;
 
-use failure::ResultExt;
-
+use abi::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct};
 use sgxs_crate::einittoken::EinittokenProvider;
 use sgxs_crate::loader;
-use sgxs_crate::sgxs::{
-    CreateInfo, Error as SgxsError, MeasEAdd, MeasECreate, PageChunks, PageReader, SgxsRead,
-};
+use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
-use abi::{Attributes, Einittoken, ErrorCode, Miscselect, PageType, Secinfo, Secs, Sigstruct};
+use crate::{MappingInfo, Tcs};
+use generic::{self, EinittokenError, EnclaveLoad, Mapping};
 
 pub const DEFAULT_DEVICE_PATH: &'static str = "/dev/isgx";
-
-#[derive(Debug)]
-pub struct Tcs {
-    _mapping: Arc<Mapping>,
-    address: u64,
-}
-
-impl loader::Tcs for Tcs {
-    fn address(&self) -> *mut c_void {
-        self.address as _
-    }
-}
 
 #[derive(Fail, Debug)]
 pub enum SgxIoctlError {
@@ -63,7 +48,7 @@ pub enum Error {
     Init(#[cause] SgxIoctlError),
 }
 
-impl Error {
+impl EinittokenError for Error {
     fn is_einittoken_error(&self) -> bool {
         use self::Error::Init;
         use self::SgxIoctlError::Ret;
@@ -76,8 +61,6 @@ impl Error {
 		}
     }
 }
-
-pub type Result<T> = ::std::result::Result<T, Error>;
 
 macro_rules! try_ioctl_unsafe {
     ( $f:ident, $v:expr ) => {{
@@ -98,63 +81,37 @@ macro_rules! try_ioctl_unsafe {
     }};
 }
 
-#[derive(Debug)]
-struct Mapping {
-    device: Arc<InnerDevice>,
-    tcss: Vec<u64>,
-    base: u64,
-    size: u64,
-}
+impl EnclaveLoad for InnerDevice {
+    type Error = Error;
 
-#[derive(Debug)]
-pub struct MappingInfo {
-    mapping: Arc<Mapping>,
-}
-
-impl loader::MappingInfo for MappingInfo {
-    fn address(&self) -> *mut c_void {
-        self.mapping.base as _
-    }
-
-    fn size(&self) -> usize {
-        self.mapping.size as _
-    }
-}
-
-impl Mapping {
-    fn new(dev: Arc<InnerDevice>, size: u64) -> Result<Mapping> {
-        let ptr = unsafe {
-            libc::mmap(
-                ptr::null_mut(),
-                size as usize,
-                libc::PROT_READ | libc::PROT_WRITE | libc::PROT_EXEC,
-                libc::MAP_SHARED,
-                dev.fd.as_raw_fd(),
-                0,
-            )
-        };
-        if ptr == ptr::null_mut() || ptr == libc::MAP_FAILED {
-            Err(Error::Map(IoError::last_os_error()))
-        } else {
-            Ok(Mapping {
-                device: dev,
-                base: ptr as u64,
-                size: size,
-                tcss: vec![],
-            })
-        }
-    }
-
-    fn create(
-        &mut self,
+    fn new(
+        device: Arc<InnerDevice>,
         ecreate: MeasECreate,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> Result<()> {
-        let size = ecreate.size; // aligned copy
-        assert_eq!(self.size, size);
+    ) -> Result<Mapping<Self>, Self::Error> {
+        let ptr = unsafe {
+            libc::mmap(
+                ptr::null_mut(),
+                ecreate.size as usize,
+                libc::PROT_READ | libc::PROT_WRITE | libc::PROT_EXEC,
+                libc::MAP_SHARED,
+                device.fd.as_raw_fd(),
+                0,
+            )
+        };
+        if ptr.is_null() || ptr == libc::MAP_FAILED {
+            return Err(Error::Map(IoError::last_os_error()));
+        }
+        let mapping = Mapping {
+            device,
+            base: ptr as u64,
+            size: ecreate.size,
+            tcss: vec![],
+        };
+
         let secs = Secs {
-            baseaddr: self.base,
+            baseaddr: mapping.base,
             size: ecreate.size,
             ssaframesize: ecreate.ssaframesize,
             miscselect,
@@ -164,46 +121,50 @@ impl Mapping {
         let createdata = ioctl::CreateData { secs: &secs };
         try_ioctl_unsafe!(
             Create,
-            ioctl::create(self.device.fd.as_raw_fd(), &createdata)
+            ioctl::create(mapping.device.fd.as_raw_fd(), &createdata)
         );
-        Ok(())
+        Ok(mapping)
     }
 
-    fn add(&mut self, page: (MeasEAdd, PageChunks, [u8; 4096])) -> Result<()> {
+    fn add(
+        mapping: &mut Mapping<Self>,
+        page: (MeasEAdd, PageChunks, [u8; 4096]),
+    ) -> Result<(), Self::Error> {
         let (eadd, chunks, data) = page;
         let secinfo = Secinfo {
             flags: eadd.secinfo.flags,
             ..Default::default()
         };
         let adddata = ioctl::AddData {
-            dstpage: self.base + eadd.offset,
+            dstpage: mapping.base + eadd.offset,
             srcpage: &data,
             secinfo: &secinfo,
             chunks: chunks.0,
         };
-        try_ioctl_unsafe!(Add, ioctl::add(self.device.fd.as_raw_fd(), &adddata));
-
-        if secinfo.flags.page_type() == PageType::Tcs as u8 {
-            self.tcss.push(adddata.dstpage);
-        }
+        try_ioctl_unsafe!(Add, ioctl::add(mapping.device.fd.as_raw_fd(), &adddata));
 
         Ok(())
     }
 
-    fn init(&self, sigstruct: &Sigstruct, einittoken: &Einittoken) -> Result<()> {
+    fn init(
+        mapping: &Mapping<Self>,
+        sigstruct: &Sigstruct,
+        einittoken: Option<&Einittoken>,
+    ) -> Result<(), Self::Error> {
         let initdata = ioctl::InitData {
-            base: self.base,
-            sigstruct: sigstruct,
-            einittoken: einittoken,
+            base: mapping.base,
+            sigstruct,
+            einittoken: match einittoken {
+                None => &Einittoken::default(),
+                Some(t) => t,
+            },
         };
-        try_ioctl_unsafe!(Init, ioctl::init(self.device.fd.as_raw_fd(), &initdata));
+        try_ioctl_unsafe!(Init, ioctl::init(mapping.device.fd.as_raw_fd(), &initdata));
         Ok(())
     }
-}
 
-impl Drop for Mapping {
-    fn drop(&mut self) {
-        unsafe { libc::munmap(self.base as usize as *mut _, self.size as usize) };
+    fn destroy(mapping: &mut Mapping<Self>) {
+        unsafe { libc::munmap(mapping.base as usize as *mut _, mapping.size as usize) };
     }
 }
 
@@ -212,22 +173,30 @@ struct InnerDevice {
     fd: File,
 }
 
-pub struct Device<P> {
-    inner: Arc<InnerDevice>,
-    einittoken_provider: P,
+#[derive(Debug)]
+pub struct Device {
+    inner: generic::Device<InnerDevice>,
 }
 
-impl<P> Device<P> {
-    pub fn open<T: AsRef<Path>>(path: T, einittoken_provider: P) -> IoResult<Device<P>> {
+pub struct DeviceBuilder {
+    inner: generic::DeviceBuilder<InnerDevice>,
+}
+
+impl Device {
+    pub fn open<T: AsRef<Path>>(path: T) -> IoResult<DeviceBuilder> {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
-        Ok(Device {
-            inner: Arc::new(InnerDevice { fd: file }),
-            einittoken_provider,
+        Ok(DeviceBuilder {
+            inner: generic::DeviceBuilder {
+                device: generic::Device {
+                    inner: Arc::new(InnerDevice { fd: file }),
+                    einittoken_provider: None,
+                },
+            },
         })
     }
 }
 
-impl<P: EinittokenProvider> loader::Load for Device<P> {
+impl loader::Load for Device {
     type MappingInfo = MappingInfo;
     type Tcs = Tcs;
 
@@ -238,51 +207,24 @@ impl<P: EinittokenProvider> loader::Load for Device<P> {
         attributes: Attributes,
         miscselect: Miscselect,
     ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
-        let einittoken = self
-            .einittoken_provider
-            .token(sigstruct, attributes, false)
-            .context("The EINITTOKEN provider didn't provide a token")?;
+        self.inner
+            .load(reader, sigstruct, attributes, miscselect)
+            .map(Into::into)
+    }
+}
 
-        let (CreateInfo { ecreate, sized }, mut reader) = try!(PageReader::new(reader));
+impl DeviceBuilder {
+    pub fn einittoken_provider<P: Into<Box<EinittokenProvider>>>(
+        mut self,
+        einittoken_provider: P,
+    ) -> Self {
+        self.inner.einittoken_provider(einittoken_provider.into());
+        self
+    }
 
-        if !sized {
-            return Err(SgxsError::StreamUnsized.into());
+    pub fn build(self) -> Device {
+        Device {
+            inner: self.inner.build(),
         }
-
-        let mut mapping = try!(Mapping::new(self.inner.clone(), ecreate.size));
-
-        try!(mapping.create(ecreate, attributes, miscselect));
-
-        loop {
-            match try!(reader.read_page()) {
-                Some(page) => try!(mapping.add(page)),
-                None => break,
-            }
-        }
-
-        match mapping.init(sigstruct, &einittoken) {
-            Err(ref e) if e.is_einittoken_error() => {
-                let einittoken = self
-                    .einittoken_provider
-                    .token(sigstruct, attributes, true)
-                    .context("The EINITTOKEN provider didn't provide a token")?;
-                mapping.init(sigstruct, &einittoken)?
-            }
-            v => v?,
-        }
-
-        let mapping = Arc::new(mapping);
-
-        Ok(loader::Mapping {
-            tcss: mapping
-                .tcss
-                .iter()
-                .map(|&tcs| Tcs {
-                    _mapping: mapping.clone(),
-                    address: tcs,
-                })
-                .collect(),
-            info: MappingInfo { mapping },
-        })
     }
 }
