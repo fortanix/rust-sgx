@@ -1,0 +1,9 @@
+language: rust
+before_install:
+  - sudo apt-get update
+  - sudo apt-get install protobuf-compiler
+rust:
+  - nightly
+script:
+  - RUST_BACKTRACE=1 cargo test --no-run
+  - RUST_BACKTRACE=1 cargo test --verbose --all --exclude aesm-client
