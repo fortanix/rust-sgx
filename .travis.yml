@@ -5,4 +5,5 @@ before_install:
 rust:
   - nightly
 script:
-  - RUST_BACKTRACE=1 cargo build --verbose --all
+  - RUST_BACKTRACE=1 cargo test --no-run
+  - RUST_BACKTRACE=1 cargo test --verbose --all --exclude aesm-client
