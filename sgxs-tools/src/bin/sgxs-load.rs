@@ -77,11 +77,13 @@ fn main() {
         )
         .get_matches();
 
-    let mut dev = isgx::Device::open(
-        matches.value_of("device").unwrap_or("/dev/sgx"),
-        AesmClient::new(),
-    )
-    .unwrap();
+    let dev = matches
+        .value_of("device")
+        .unwrap_or(isgx::DEFAULT_DEVICE_PATH);
+    let mut dev = isgx::Device::open(dev)
+        .unwrap()
+        .einittoken_provider(AesmClient::new())
+        .build();
     let mut file = File::open(matches.value_of("sgxs").unwrap()).unwrap();
     let sigstruct =
         read_sigstruct(&mut File::open(matches.value_of("sigstruct").unwrap()).unwrap()).unwrap();
