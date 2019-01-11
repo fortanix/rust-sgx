@@ -1,0 +1,22 @@
+Usage:
+    1. Parse stack trace from stored output:
+           stack-trace-resolve [-o <opt>] [-s] -e <executable_path> -f <stack_trace_file>
+    2. Parse stack trace from output of an enclave over pipe:
+           <output_stream> | stack-trace-resolve [-o <opt>] [-s] -e <executable_path>
+    3. Paste stack trace prints from an output in raw mode.
+           stack-trace-resolve [-o <opt>] [-s] -e <executable_path> -r
+Note:
+    1. -o <opt>:
+       This option lets user customize the output format of the stack trace translation.
+       Here, opt indicates options passed to addr2line, default being [default: -Cfp].
+       Please refer to manpage of addr2line for further details about options.
+    2. -s:
+       This option suppresses the output that does not pertain to stack trace.
+       Without -s, lines of output before and after the stack trace would be echoed on the screen.
+    3. -r:
+       This option lets user run the script in raw mode and parses only stack trace prints.
+       Without -r option, only stack trace lines continuously following "stack backtrace:" are parsed.
+       User could start this script with -r option and copy-paste actual stack trace in stdin, until,
+       the script detects EOF (ctrl-d).
+       Alternatively, in raw mode, a file with a list of only stack trace prints (one on each line)
+       could be provided as an input with the -f option.

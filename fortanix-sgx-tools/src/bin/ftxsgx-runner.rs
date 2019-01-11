@@ -39,6 +39,8 @@ fn main() -> Result<(), Error> {
         .einittoken_provider(AesmClient::new())
         .build();
     let enclave = Command::new(&file, &mut device).context("While loading SGX enclave")?;
-    enclave.run().context("While executing SGX enclave")?;
-    Ok(())
+    enclave.run().map_err(|e| {
+        println!("Error while executing SGX enclave.\n{}", e);
+        std::process::exit(-1)
+    })
 }

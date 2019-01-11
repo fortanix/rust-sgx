@@ -8,19 +8,44 @@ use std::path::Path;
 use std::sync::Arc;
 
 use failure::Error;
-use sgxs::loader::Load;
+use sgxs::loader::{Load, MappingInfo};
 
 use loader::{EnclaveBuilder, ErasedTcs};
+use std::fmt;
+use std::os::raw::c_void;
 use usercalls::EnclaveState;
 
 pub struct Library {
     enclave: Arc<EnclaveState>,
+    address: *mut c_void,
+    size: usize,
+}
+
+impl fmt::Debug for Library {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Library")
+            .field("address", &self.address)
+            .field("size", &self.size)
+            .finish()
+    }
+}
+
+impl MappingInfo for Library {
+    fn address(&self) -> *mut c_void {
+        self.address
+    }
+
+    fn size(&self) -> usize {
+        self.size
+    }
 }
 
 impl Library {
-    pub(crate) fn internal_new(tcss: Vec<ErasedTcs>) -> Library {
+    pub(crate) fn internal_new(tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize) -> Library {
         Library {
             enclave: EnclaveState::library(tcss),
+            address,
+            size,
         }
     }
 
