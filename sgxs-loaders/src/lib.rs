@@ -8,9 +8,10 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
-#[macro_use]
+#[cfg(unix)] #[macro_use]
 extern crate nix as ioctl_crate;
 extern crate failure;
+#[cfg(unix)]
 extern crate libc;
 extern crate sgx_isa as abi;
 extern crate sgxs as sgxs_crate;
@@ -18,10 +19,12 @@ extern crate sgxs as sgxs_crate;
 extern crate failure_derive;
 #[macro_use]
 extern crate bitflags;
+#[cfg(windows)] extern crate winapi;
 
 mod generic;
-pub mod isgx;
+#[cfg(unix)] pub mod isgx;
 pub mod sgx_enclave_common;
+#[cfg(windows)] pub mod enclaveapi;
 
 use std::fmt::Debug;
 use std::os::raw::c_void;
