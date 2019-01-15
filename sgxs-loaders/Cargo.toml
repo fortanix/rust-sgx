@@ -20,6 +20,9 @@ categories = ["os", "hardware-support", "api-bindings"]
 "sgxs" = { version = "0.6.0-rc1", path = "../sgxs" }
 "sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
 
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["enclaveapi","memoryapi"] }
+
 # External dependencies
 bitflags = "1"           # MIT/Apache-2.0
 nix = "0.11"             # MIT

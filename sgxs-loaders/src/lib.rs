@@ -16,10 +16,13 @@ extern crate sgxs as sgxs_crate;
 extern crate failure_derive;
 #[macro_use]
 extern crate bitflags;
+#[cfg(windows)] extern crate winapi;
 
 mod generic;
-pub mod isgx;
-pub mod sgx_enclave_common;
+#[cfg(unix)] pub mod isgx;
+#[cfg(unix)] pub mod sgx_enclave_common;
+#[cfg(windows)] pub mod win_sgx;
+
 
 use std::fmt::Debug;
 use std::os::raw::c_void;
