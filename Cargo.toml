@@ -13,3 +13,6 @@ members = [
 	"fortanix-sgx-abi",
 	"sgxs-loaders"
 ]
+
+[patch.crates-io]
+winapi = { path = 'C:\Users\Parth Sane\code\winapi-rs' }
