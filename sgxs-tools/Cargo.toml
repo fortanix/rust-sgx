@@ -14,7 +14,7 @@ autobins = true
 
 [[bin]]
 name = "isgx-pe2sgx"
-required-features = ["pe2sgx"]
+required-features = ["pe2sgxs"]
 
 [dependencies]
 # Project dependencies
@@ -37,4 +37,4 @@ broadcast = { version = "0.1", optional = true } # MIT
 pe = { version = "0.1", optional = true }        # GPL
 
 [features]
-pe2sgx = ["pe", "broadcast"]
+pe2sgxs = ["pe", "broadcast"]
