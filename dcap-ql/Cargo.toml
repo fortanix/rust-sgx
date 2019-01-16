@@ -14,11 +14,18 @@ repository = "https://github.com/fortanix/rust-sgx"
 documentation = "https://docs.rs/dcap-ql/"
 keywords = ["sgx", "dcap", "quote"]
 categories = ["api-bindings"]
+autotests = true
+
+[[test]]
+name = "live_quote"
+required-features = ["test-sgx-flc"]
 
 [features]
 # If set, will link to libsgx_dcap_ql. Otherwise, will use the dynamic loader
 # to access the library at runtime.
 link = ["dcap-ql-sys/link"]
+# Enable tests that can only be run on an SGX-enabled environment with FLC
+test-sgx-flc = []
 
 [dependencies]
 # Project dependencies

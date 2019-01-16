@@ -39,8 +39,8 @@ macro_rules! enum_def {
 
 		#[cfg(feature="try_from")]
 		impl ::core::convert::TryFrom<$repr> for $name {
-			type Err=::core::num::TryFromIntError;
-			fn try_from(v: $repr) -> Result<Self, Self::Err> {
+			type Error = ::core::num::TryFromIntError;
+			fn try_from(v: $repr) -> Result<Self, Self::Error> {
 				match v {
 					$($val => Ok($name::$key),)*
 					_ => Err(u8::try_from(256u16).unwrap_err()),

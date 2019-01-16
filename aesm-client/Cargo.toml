@@ -14,6 +14,10 @@ documentation = "https://docs.rs/aesm-client/"
 keywords = ["sgx", "enclave", "psw", "aesm", "aesmd"]
 categories = ["api-bindings"]
 
+[features]
+# Enable tests that can only be run on an SGX-enabled environment
+test-sgx = []
+
 [dependencies]
 # Project dependencies
 sgxs = { version = "0.6.0-rc1", path = "../sgxs", optional = true }
