@@ -399,7 +399,7 @@ impl FromResponse for Response_GetLaunchTokenResponse {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "test-sgx"))]
 mod tests {
     // These tests require that aesmd is running and correctly configured.
     extern crate sgx_isa;
