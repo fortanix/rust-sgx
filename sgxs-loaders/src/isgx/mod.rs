@@ -8,9 +8,9 @@ mod ioctl;
 
 use libc;
 use std::fs::{File, OpenOptions};
-use std::io::{Error as IoError, Result as IoResult};
+use std::io::{self, Error as IoError, Result as IoResult};
 use std::os::unix::io::AsRawFd;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::Arc;
 
@@ -21,8 +21,6 @@ use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
 use generic::{self, EinittokenError, EnclaveLoad, Mapping};
-
-pub const DEFAULT_DEVICE_PATH: &'static str = "/dev/isgx";
 
 #[derive(Fail, Debug)]
 pub enum SgxIoctlError {
@@ -62,21 +60,19 @@ impl EinittokenError for Error {
     }
 }
 
-macro_rules! try_ioctl_unsafe {
+macro_rules! ioctl_unsafe {
     ( $f:ident, $v:expr ) => {{
         const SGX_POWER_LOST_ENCLAVE: i32 = 0x40000000;
         const SGX_LE_ROLLBACK: i32 = 0x40000001;
 
         match unsafe { $v } {
-            Err(_) => return Err(Error::$f(SgxIoctlError::Io(IoError::last_os_error()))),
-            Ok(0) => (),
-            Ok(SGX_POWER_LOST_ENCLAVE) => return Err(Error::$f(SgxIoctlError::PowerLostEnclave)),
-            Ok(SGX_LE_ROLLBACK) => return Err(Error::$f(SgxIoctlError::LeRollback)),
-            Ok(v) => {
-                return Err(Error::$f(SgxIoctlError::Ret(
-                    ErrorCode::from_repr(v as u32).expect("Invalid ioctl return value"),
-                )))
-            }
+            Err(_) => Err(Error::$f(SgxIoctlError::Io(IoError::last_os_error()))),
+            Ok(0) => Ok(()),
+            Ok(SGX_POWER_LOST_ENCLAVE) => Err(Error::$f(SgxIoctlError::PowerLostEnclave)),
+            Ok(SGX_LE_ROLLBACK) => Err(Error::$f(SgxIoctlError::LeRollback)),
+            Ok(v) => Err(Error::$f(SgxIoctlError::Ret(
+                ErrorCode::from_repr(v as u32).expect("Invalid ioctl return value"),
+            ))),
         }
     }};
 }
@@ -119,10 +115,10 @@ impl EnclaveLoad for InnerDevice {
             ..Default::default()
         };
         let createdata = ioctl::CreateData { secs: &secs };
-        try_ioctl_unsafe!(
+        ioctl_unsafe!(
             Create,
             ioctl::create(mapping.device.fd.as_raw_fd(), &createdata)
-        );
+        )?;
         Ok(mapping)
     }
 
@@ -141,9 +137,7 @@ impl EnclaveLoad for InnerDevice {
             secinfo: &secinfo,
             chunks: chunks.0,
         };
-        try_ioctl_unsafe!(Add, ioctl::add(mapping.device.fd.as_raw_fd(), &adddata));
-
-        Ok(())
+        ioctl_unsafe!(Add, ioctl::add(mapping.device.fd.as_raw_fd(), &adddata))
     }
 
     fn init(
@@ -151,16 +145,60 @@ impl EnclaveLoad for InnerDevice {
         sigstruct: &Sigstruct,
         einittoken: Option<&Einittoken>,
     ) -> Result<(), Self::Error> {
-        let initdata = ioctl::InitData {
-            base: mapping.base,
-            sigstruct,
-            einittoken: match einittoken {
-                None => &Einittoken::default(),
-                Some(t) => t,
-            },
-        };
-        try_ioctl_unsafe!(Init, ioctl::init(mapping.device.fd.as_raw_fd(), &initdata));
-        Ok(())
+        // ioctl() may return ENOTTY if the specified request does not apply to
+        // the kind of object that the descriptor fd references.
+        fn is_enotty(result: &Result<(), Error>) -> bool {
+            match result {
+                Err(Error::Init(SgxIoctlError::Io(ref err))) => {
+                    err.raw_os_error() == Some(libc::ENOTTY)
+                }
+                _ => false,
+            }
+        }
+
+        fn ioctl_init(mapping: &Mapping<InnerDevice>, sigstruct: &Sigstruct) -> Result<(), Error> {
+            let initdata = ioctl::InitData {
+                base: mapping.base,
+                sigstruct,
+            };
+            ioctl_unsafe!(Init, ioctl::init(mapping.device.fd.as_raw_fd(), &initdata))
+        }
+
+        fn ioctl_init_with_token(
+            mapping: &Mapping<InnerDevice>,
+            sigstruct: &Sigstruct,
+            einittoken: &Einittoken,
+        ) -> Result<(), Error> {
+            let initdata = ioctl::InitDataWithToken {
+                base: mapping.base,
+                sigstruct,
+                einittoken,
+            };
+            ioctl_unsafe!(
+                Init,
+                ioctl::init_with_token(mapping.device.fd.as_raw_fd(), &initdata)
+            )
+        }
+
+        // Try either EINIT ioctl(), in the order that makes most sense given
+        // the function arguments
+        if let Some(einittoken) = einittoken {
+            let res = ioctl_init_with_token(mapping, sigstruct, einittoken);
+
+            if is_enotty(&res) {
+                ioctl_init(mapping, sigstruct)
+            } else {
+                res
+            }
+        } else {
+            let res = ioctl_init(mapping, sigstruct);
+
+            if is_enotty(&res) {
+                ioctl_init_with_token(mapping, sigstruct, &Default::default())
+            } else {
+                res
+            }
+        }
     }
 
     fn destroy(mapping: &mut Mapping<Self>) {
@@ -171,6 +209,7 @@ impl EnclaveLoad for InnerDevice {
 #[derive(Debug)]
 struct InnerDevice {
     fd: File,
+    path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -183,16 +222,35 @@ pub struct DeviceBuilder {
 }
 
 impl Device {
+    /// Open `/dev/isgx`, or if that doesn't exist, `/dev/sgx`.
+    pub fn new() -> IoResult<DeviceBuilder> {
+        const DEFAULT_DEVICE_PATH1: &'static str = "/dev/isgx";
+        const DEFAULT_DEVICE_PATH2: &'static str = "/dev/sgx";
+
+        match Self::open(DEFAULT_DEVICE_PATH1) {
+            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Self::open(DEFAULT_DEVICE_PATH2),
+            v => v,
+        }
+    }
+
     pub fn open<T: AsRef<Path>>(path: T) -> IoResult<DeviceBuilder> {
+        let path = path.as_ref();
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         Ok(DeviceBuilder {
             inner: generic::DeviceBuilder {
                 device: generic::Device {
-                    inner: Arc::new(InnerDevice { fd: file }),
+                    inner: Arc::new(InnerDevice {
+                        fd: file,
+                        path: path.to_owned(),
+                    }),
                     einittoken_provider: None,
                 },
             },
         })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.inner.inner.path
     }
 }
 

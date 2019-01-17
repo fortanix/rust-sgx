@@ -15,7 +15,7 @@ use std::path::Path;
 use aesm_client::AesmClient;
 use enclave_runner::Command;
 use failure::{Error, ResultExt};
-use sgxs_loaders::isgx::{Device as IsgxDevice, DEFAULT_DEVICE_PATH};
+use sgxs_loaders::isgx::Device as IsgxDevice;
 
 fn main() -> Result<(), Error> {
     let mut args = std::env::args_os();
@@ -34,7 +34,7 @@ fn main() -> Result<(), Error> {
             bail!("Missing <ENCLAVE> parameter on command line");
         }
     };
-    let mut device = IsgxDevice::open(DEFAULT_DEVICE_PATH)
+    let mut device = IsgxDevice::new()
         .context("While opening SGX device")?
         .einittoken_provider(AesmClient::new())
         .build();
