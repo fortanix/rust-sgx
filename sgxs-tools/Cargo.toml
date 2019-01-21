@@ -20,7 +20,6 @@ required-features = ["pe2sgxs"]
 # Project dependencies
 "sgxs" = { version = "0.6.0-rc1", path = "../sgxs", features = ["crypto-openssl"] }
 "sgxs-loaders" = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
-"aesm-client" = { version = "0.1.0-rc1", path = "../aesm-client", features = ["sgxs"] }
 "sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
 
 # External dependencies

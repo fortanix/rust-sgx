@@ -19,6 +19,7 @@ use crate::{MappingInfo, Tcs};
 use std::path::Path;
 
 
+pub const DEFAULT_DEVICE_PATH: &'static str = "C:/isgx";
 
 #[derive(Fail, Debug)]
 pub enum LibraryError {
@@ -64,6 +65,8 @@ pub enum LibraryError {
     NotInitialized,
     #[fail(display = "Unknown error ({}) in SGX device interface", _0)]
     Other(u32),
+    #[fail(display = "OS error ({})", _0)]
+    OS(IoError),
 }
 impl From<u32> for LibraryError {
     fn from(error: u32) -> Self {
@@ -172,27 +175,30 @@ impl EnclaveLoad for WinInnerLibrary {
         {
             return Err(Error::Add(LibraryError::InvalidParameter));
         }
-        if eadd.secinfo.flags.contains(SecinfoFlags::R | SecinfoFlags::W | SecinfoFlags::X) {
-            flags.insert(WinPageProperties::PAGE_EXECUTE_READWRITE);
+        if eadd.secinfo.flags.intersects(SecinfoFlags::R | SecinfoFlags::W | SecinfoFlags::X) {
+            if eadd.secinfo.flags.contains(SecinfoFlags::R | SecinfoFlags::W | SecinfoFlags::X) {
+                flags.insert(WinPageProperties::PAGE_EXECUTE_READWRITE);
+            }
+            else if eadd.secinfo.flags.contains(SecinfoFlags::R | SecinfoFlags::W) {
+                flags.insert(WinPageProperties::PAGE_READWRITE);
+            }
+            else if eadd.secinfo.flags.contains(SecinfoFlags::X | SecinfoFlags::R) {
+                flags.insert(WinPageProperties::PAGE_EXECUTE_READ);
+            }
+            else if eadd.secinfo.flags.contains(SecinfoFlags::W | SecinfoFlags::X) {
+                return Err(Error::Add(LibraryError::InvalidParameter));
+            }
+            else if eadd.secinfo.flags.contains(SecinfoFlags::R) {
+                flags.insert(WinPageProperties::PAGE_READONLY);
+            }
+            else if eadd.secinfo.flags.contains(SecinfoFlags::X) {
+                flags.insert(WinPageProperties::PAGE_EXECUTE);
+            }
+            else {
+                return Err(Error::Add(LibraryError::InvalidParameter));
+            }
         }
-        else if eadd.secinfo.flags.contains(SecinfoFlags::R | SecinfoFlags::W) {
-            flags.insert(WinPageProperties::PAGE_READWRITE);
-        }
-        else if eadd.secinfo.flags.contains(SecinfoFlags::X | SecinfoFlags::R) {
-            flags.insert(WinPageProperties::PAGE_EXECUTE_READ);
-        }
-        else if eadd.secinfo.flags.contains(SecinfoFlags::W | SecinfoFlags::X) {
-            return Err(Error::Add(LibraryError::InvalidParameter));
-        }
-        else if eadd.secinfo.flags.contains(SecinfoFlags::R) {
-            flags.insert(WinPageProperties::PAGE_READONLY);
-        }
-        else if eadd.secinfo.flags.contains(SecinfoFlags::X){
-            flags.insert(WinPageProperties::PAGE_EXECUTE);
-        }
-        else {
-            return Err(Error::Add(LibraryError::InvalidParameter));
-        }
+
         match PageType::from_repr(eadd.secinfo.flags.page_type()) {
             Some(PageType::Reg) => {}
             Some(PageType::Tcs) => flags.insert(WinPageProperties::PAGE_TCS),
@@ -204,12 +210,17 @@ impl EnclaveLoad for WinInnerLibrary {
             _ => return Err(Error::Add(LibraryError::InvalidParameter)),
         }
 
+        if flags.contains(WinPageProperties::PAGE_TCS) {
+            // NOTE: For some reason the windows API needs the Read flag set but then removes it
+            assert_eq!(eadd.secinfo.flags.contains(SecinfoFlags::R | SecinfoFlags::W | SecinfoFlags::X), false);
+            flags.insert(WinPageProperties::PAGE_READONLY);
+        }
         unsafe {
             let mut error = 0;
             let mut dataLoaded : usize = 0;
             let pDataLoaded: *mut usize = &mut dataLoaded;
             let curhandle: HANDLE = GetCurrentProcess();
-            LoadEnclaveData(
+            let ret = LoadEnclaveData(
                 curhandle,
                 (mapping.base + eadd.offset) as _,
 
@@ -220,10 +231,11 @@ impl EnclaveLoad for WinInnerLibrary {
                 0,
                 pDataLoaded,
                 &mut error
-            );
-            if dataLoaded != 0x1000 {
-                return Err(Error::Add(error.into()));
+            ) ;
+            if ret == 0 {
+                return Err(Error::Add(LibraryError::OS(IoError::last_os_error())));
             }
+            assert_eq!(dataLoaded, 0x1000);
         }
         Ok(())
     }
@@ -239,9 +251,6 @@ impl EnclaveLoad for WinInnerLibrary {
             EInitToken: [0 ; 304],
             Reserved2 : [0 ; 1744],
         };
-        //let mut clonedSigstruct = sigstruct.clone();
-//        /sigstruct.as_ref()[0..1808].clone_from_slice(&initInfo.SigStruct);
-        //initInfo.SigStruct = sigstruct.as_ref()[0 .. 1808];
         initInfo.SigStruct.clone_from_slice(&sigstruct.as_ref());
         if einittoken.is_some() {
             initInfo.EInitToken.clone_from_slice(&einittoken.unwrap().as_ref());
@@ -250,7 +259,6 @@ impl EnclaveLoad for WinInnerLibrary {
             let mut error = 0;
 
             let curhandle: HANDLE = GetCurrentProcess();
-            //let initInfo_ptr: *const c_void = &mut initInfo as *mut _ as *const c_void;
             if InitializeEnclave(
                 curhandle,
                 mapping.base as _,
@@ -258,7 +266,7 @@ impl EnclaveLoad for WinInnerLibrary {
                 4096,
                 Some(&mut error).unwrap()
             ) == 0 {
-                return Err(Error::Init(error.into()));
+                return Err(Error::Init(LibraryError::OS(IoError::last_os_error())));
             }
 
             Ok(())
@@ -292,8 +300,7 @@ pub struct DeviceBuilder {
 }
 
 impl Device {
-    pub fn open<T: AsRef<Path>>(path: T) -> IoResult<DeviceBuilder> {
-        let file = OpenOptions::new().read(true).write(true).open(path)?;
+    pub fn open() -> IoResult<DeviceBuilder> {
         Ok(DeviceBuilder {
             inner: generic::DeviceBuilder {
                 device: generic::Device {
