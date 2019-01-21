@@ -1,0 +1,164 @@
+#! /bin/bash
+
+
+set -e
+
+
+terminal=
+script_name="$(basename ${0})"
+stack_pattern="stack backtrace:"
+reset_state="waiting_stack"
+executable=
+trace_file=
+default_options="-Cfp"
+options="${default_options}"
+supress=0
+stack_trace_pattern_1="^[[:blank:]]*[0-9]*:[[:blank:]]*0x[[:xdigit:]]*$"
+stack_trace_pattern_2="^[[:blank:]]*[0-9]*:.*\(0x.[[:xdigit:]]*\)$"
+
+detect_term()
+{
+    if [ -t 0 ]; then
+        terminal=1
+    else
+        terminal=0
+    fi
+}
+
+drain()
+{
+    local line=;
+    if [ ${terminal} == 0 ]; then
+        while read -r line; do
+        :
+        done
+    fi
+    exit -1
+}
+
+echo_opt()
+{
+    if [ "${supress}" == "0" ]; then
+        printf %s "${1}"
+	printf "\n"
+    fi
+}
+
+err_print()
+{
+    printf %s "${1}" 1>&2;
+    printf "\n" 1>&2
+}
+
+
+parse_line()
+{
+    local line=$1
+    if [[ $line = *[![:ascii:]]* ]]; then
+        err_print "Non Ascii Characters detected in input\n"
+        usage
+        drain
+    fi
+    line=`printf "%s" "${line}" | awk '{$1=$1};1'`
+
+    if [ "${state}" == "waiting_stack" ]; then
+        echo_opt "${line}"
+        if [ "${line}" == "${stack_pattern}" ]; then
+            state="printing"
+        fi
+    elif  [ "${state}" == "printing" ]; then
+        sr_no=`printf %s "${line}" | awk '{print $1}'`
+        offset=`printf %s "${line}" | awk '{print $NF}'`
+        offset=`printf %s "${offset}" | sed 's/(//g' | sed 's/)//g'`
+        if [[ "${line}" =~ ${stack_trace_pattern_1} || "${line}" =~ ${stack_trace_pattern_2} ]]; then
+            echo "$sr_no `addr2line ${options} -e ${executable} ${offset}`"
+        else
+            state=${reset_state}
+            if [ ${state} != "printing" ]; then
+                parse_line "${line}"
+            else
+                echo_opt "${line}"
+            fi
+        fi
+    fi
+}
+
+parse_input()
+{
+    local line=
+    while IFS='' read -r line || [[ -n "$line" ]]; do
+        parse_line "${line}"
+    done
+}
+
+parse_file() {
+    local line=
+    while IFS='' read -r line || [[ -n "$line" ]]; do
+        parse_line "${line}"
+    done < "$1"
+    check_state
+}
+
+usage() {
+    echo \
+"USAGE:
+    ${script_name} [OPTIONS] -e <ELF>
+OPTIONS:
+    -e <ELF>       Specify the path to the ELF file containing the symbol table
+    -h             Print this help message
+    -f <INPUT>     Read the stack trace from INPUT [default: /dev/stdin]
+    -r             Parse only stack trace lines.
+    -o <OPT>       Options to pass to addr2line for symbol resolution
+                   [default: ${default_options}]
+    -s             Don't print parts of the output that are not part of the
+                   stack trace"
+}
+
+detect_term
+while getopts "h?o:e:f:sr:" opt; do
+    case "$opt" in
+    h|\?)
+        usage
+	exit 0
+        ;;
+    e) executable=$OPTARG
+        ;;
+    o) options=$OPTARG
+        ;;
+    f)  trace_file=$OPTARG
+        ;;
+    s) supress=1
+        ;;
+    r)
+        reset_state="printing"
+        start_address=$OPTARG
+        ;; 
+    esac
+done
+
+shift $((OPTIND-1))
+
+if [ ! -z $1 ]; then
+    err_print "Extra Arguments detected $@"
+    usage
+    drain
+fi
+
+if [ -z ${executable} ]; then
+    err_print "No executable file given"
+    usage
+    drain
+fi
+
+state=${reset_state}
+
+#Options must begin with -
+if [[ ! $options =~ -.* ]]; then
+    options="-${options}"
+fi
+
+if [ -z ${trace_file} ]; then
+    parse_input
+else
+        parse_file "${trace_file}"
+fi

@@ -85,11 +85,15 @@ impl<D: EnclaveLoad> Device<D> {
         miscselect: Miscselect,
     ) -> ::std::result::Result<LoadResult, ::failure::Error> {
         let mut tokprov = self.einittoken_provider.as_mut();
+        let mut tokprov_err = None;
         let einittoken = if let Some(ref mut p) = tokprov {
-            Some(
-                p.token(sigstruct, attributes, false)
-                    .context("The EINITTOKEN provider didn't provide a token")?,
-            )
+            match p.token(sigstruct, attributes, false) {
+                Ok(token) => Some(token),
+                Err(err) => {
+                    tokprov_err = Some(err);
+                    None
+                }
+            }
         } else {
             None
         };
@@ -121,8 +125,16 @@ impl<D: EnclaveLoad> Device<D> {
             }
         }
 
-        match D::init(&mapping, sigstruct, einittoken.as_ref()) {
-            Err(ref e)
+        match (
+            D::init(&mapping, sigstruct, einittoken.as_ref()),
+            tokprov_err,
+        ) {
+            (Err(ref e), ref mut tokprov_err @ Some(_)) if e.is_einittoken_error() => {
+                return Err(tokprov_err.take().unwrap())
+                    .context("The EINITTOKEN provider didn't provide a token")
+                    .map_err(Into::into);
+            }
+            (Err(ref e), _)
                 if e.is_einittoken_error() && tokprov.as_ref().map_or(false, |p| p.can_retry()) =>
             {
                 let einittoken = tokprov
@@ -131,7 +143,7 @@ impl<D: EnclaveLoad> Device<D> {
                     .context("The EINITTOKEN provider didn't provide a token")?;
                 D::init(&mapping, sigstruct, Some(&einittoken))?
             }
-            v => v?,
+            (v, _) => v?,
         }
 
         let mapping = Arc::new(mapping);

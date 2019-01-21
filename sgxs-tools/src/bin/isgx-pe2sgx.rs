@@ -23,7 +23,7 @@ use std::sync::atomic;
 use broadcast::BroadcastWriter;
 use crypto_hash::{Algorithm, Hasher};
 
-use sgx_isa::{secinfo_flags, PageType, SecinfoFlags, Sigstruct, Tcs};
+use sgx_isa::{PageType, SecinfoFlags, Sigstruct, Tcs};
 use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
@@ -57,7 +57,7 @@ struct Sgxmeta {
     requested_attributes: u64,
     // The XFRM attributes that should be enabled, if supported by the platform.
     requested_attributes_xfrm: u64,
-    sigstruct: Sigstruct,
+    sigstruct: [u8; 1808],
 }
 
 #[allow(dead_code)]
@@ -157,19 +157,19 @@ fn section_to_secinfo_flags(header: &SectionHeader) -> SecinfoFlags {
         .characteristics
         .contains(section_characteristics::IMAGE_SCN_MEM_READ)
     {
-        flags.insert(secinfo_flags::R);
+        flags.insert(SecinfoFlags::R);
     }
     if header
         .characteristics
         .contains(section_characteristics::IMAGE_SCN_MEM_WRITE)
     {
-        flags.insert(secinfo_flags::W);
+        flags.insert(SecinfoFlags::W);
     }
     if header
         .characteristics
         .contains(section_characteristics::IMAGE_SCN_MEM_EXECUTE)
     {
-        flags.insert(secinfo_flags::X);
+        flags.insert(SecinfoFlags::X);
     }
     flags
 }
@@ -371,7 +371,7 @@ impl<'a> LayoutInfo<'a> {
         for p in begin_p..end_p {
             let mut secinfo = secinfo.clone();
             if self.pages_with_relocs.contains(&p) {
-                secinfo.flags.insert(secinfo_flags::W);
+                secinfo.flags.insert(SecinfoFlags::W);
             }
             try!(writer.write_page(Some(&mut data), Some(p << 12), secinfo));
         }
@@ -391,7 +391,7 @@ impl<'a> LayoutInfo<'a> {
             match section {
                 &PeHeaderSection(ref header) => {
                     let secinfo = SecinfoTruncated {
-                        flags: secinfo_flags::R | PageType::Reg.into(),
+                        flags: SecinfoFlags::R | PageType::Reg.into(),
                     };
                     let mut header = header.clone();
                     let len = header.data.len();
@@ -430,7 +430,7 @@ impl<'a> LayoutInfo<'a> {
                 }
                 &HeapSection { offset } => {
                     let secinfo = SecinfoTruncated {
-                        flags: secinfo_flags::R | secinfo_flags::W | PageType::Reg.into(),
+                        flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
                     try!(writer.write_pages::<&[u8]>(
                         None,
@@ -458,7 +458,7 @@ impl<'a> LayoutInfo<'a> {
                 }
                 &TlsSection { offset } => {
                     let secinfo = SecinfoTruncated {
-                        flags: secinfo_flags::R | secinfo_flags::W | PageType::Reg.into(),
+                        flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
                     try!(writer.write_pages(
                         Some(&mut io::repeat(0)),
@@ -469,7 +469,7 @@ impl<'a> LayoutInfo<'a> {
                 }
                 &SsaSection { offset } => {
                     let secinfo = SecinfoTruncated {
-                        flags: secinfo_flags::R | secinfo_flags::W | PageType::Reg.into(),
+                        flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
                     try!(writer.write_pages(
                         Some(&mut io::repeat(0)),
@@ -480,7 +480,7 @@ impl<'a> LayoutInfo<'a> {
                 }
                 &StackSection { offset } => {
                     let secinfo = SecinfoTruncated {
-                        flags: secinfo_flags::R | secinfo_flags::W | PageType::Reg.into(),
+                        flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
                     };
                     try!(writer.write_pages(
                         Some(&mut io::repeat(0xcc)),
@@ -641,7 +641,7 @@ fn main() {
 
     let hash = hasher.finish();
     let msg;
-    if layout.sgxmeta.sigstruct.enclavehash != &hash[..] {
+    if Sigstruct::try_copy_from(&layout.sgxmeta.sigstruct).unwrap().enclavehash != &hash[..] {
         msg = "\nWARNING: does not match SIGSTRUCT.ENCLAVEHASH!";
     } else {
         msg = " (OK)";
@@ -653,12 +653,6 @@ fn main() {
     }
 
     if let Some(sigfile) = sigfile {
-        let sigstruct = unsafe {
-            ::std::slice::from_raw_parts(
-                &layout.sgxmeta.sigstruct as *const _ as *const u8,
-                size_of::<Sigstruct>(),
-            )
-        };
-        File::create(sigfile).unwrap().write_all(sigstruct).unwrap();
+        File::create(sigfile).unwrap().write_all(&layout.sgxmeta.sigstruct).unwrap();
     }
 }

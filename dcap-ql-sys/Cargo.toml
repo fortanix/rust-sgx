@@ -1,0 +1,30 @@
+[package]
+name = "dcap-ql-sys"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+links = "sgx_dcap_ql"
+build = "build.rs"
+license = "MPL-2.0"
+description = """
+Bindings for libsgx_dcap_ql.
+
+SGX: Software Guard Extensions
+DCAP: DataCenter Attestation Primitives
+QL: Quoting Library
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/dcap-ql-sys/"
+keywords = ["sgx", "dcap", "quote"]
+categories = ["api-bindings"]
+
+[features]
+# If set, will link to libsgx_dcap_ql.
+link = []
+
+[dependencies]
+# Project dependencies
+"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+
+# External dependencies
+num-derive = "0.2" # MIT/Apache-2.0
+num-traits = "0.2" # MIT/Apache-2.0

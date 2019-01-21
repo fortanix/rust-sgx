@@ -7,12 +7,21 @@ branches:
     # Not really necessary, just to get a green badge on “master”
     - master
 language: rust
-before_install:
-  - sudo apt-get update
-  - sudo apt-get install protobuf-compiler
+dist: xenial
+addons:
+  apt:
+    sources:
+    - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu xenial main'
+      key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
+    packages:
+    - protobuf-compiler
+    - libsgx-dcap-ql-dev
 rust:
   - nightly
+env:
+  - RUST_BACKTRACE=1
 script:
-  - RUST_BACKTRACE=1 cargo test --no-run
-  # aesm-client requires SGX support
-  - RUST_BACKTRACE=1 cargo test --verbose --all --exclude aesm-client
+  - cargo test --verbose --all
+  - cargo test --verbose -p sgx-isa --features try_from -Z package-features
+  - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
+  - cargo test --verbose -p dcap-ql --features link -Z package-features

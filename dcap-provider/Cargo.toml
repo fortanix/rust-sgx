@@ -1,0 +1,45 @@
+[package]
+name = "dcap-provider"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+edition = "2018"
+license = "MPL-2.0"
+description = """
+DCAP quote provider using the Intel Trusted Services API as a backend.
+
+This crate compiles into `libdcap_quoteprov.so`, which is needed as a backend
+when using `libsgx_dcap_ql`.
+
+To use this library, the dynamic linker needs to be able to find it. This means
+you should install it in your system's library path or set the
+`LD_LIBRARY_PATH` environment variable.
+
+You must set your API key in the `OCP_APIM_SUBSCRIPTION_KEY` environment
+variable. You can sign up for a service subscription at
+https://api.portal.trustedservices.intel.com/.
+
+SGX: Software Guard Extensions
+DCAP: DataCenter Attestation Primitives
+QL: Quoting Library
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/dcap-provider/"
+keywords = ["sgx", "dcap", "quote", "pck"]
+categories = ["api-bindings"]
+
+[lib]
+name = "dcap_quoteprov"
+crate-type = ["cdylib"]
+
+[dependencies]
+# Project dependencies
+"dcap-ql" = { version = "0.1.0", path = "../dcap-ql", features = ["link"] }
+"report-test" = { version = "0.1.0", path = "../report-test" }
+
+# External dependencies
+byteorder = "1.1.0"        # Unlicense/MIT
+env_logger = "0.6"         # MIT/Apache-2.0
+lazy_static = "1"          # MIT/Apache-2.0
+log = "0.4"                # MIT/Apache-2.0
+reqwest = "0.9"            # MIT/Apache-2.0
+rustc-serialize = "0.3.24" # MIT/Apache-2.0
