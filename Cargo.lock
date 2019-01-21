@@ -48,7 +48,7 @@ name = "ansi_term"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -66,7 +66,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "termion 1.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -84,7 +84,7 @@ dependencies = [
  "cfg-if 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-demangle 0.1.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -264,7 +264,7 @@ dependencies = [
  "commoncrypto 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl 0.10.16 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -595,7 +595,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "cc 1.0.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -998,7 +998,7 @@ dependencies = [
  "libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand_core 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rdrand 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -1165,7 +1165,7 @@ name = "remove_dir_all"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -1353,7 +1353,7 @@ dependencies = [
  "nix 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sgx-isa 0.2.0-rc1",
  "sgxs 0.6.0-rc1",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -1513,7 +1513,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)",
  "redox_syscall 0.1.50 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.6",
+ "winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
@@ -1761,14 +1761,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "winapi"
 version = "0.3.6"
+source = "git+https://github.com/parthsane/winapi-rs?branch=enclaveapi#067bf379e8d57a88ba15f44f960170e796a3df39"
 dependencies = [
- "winapi-i686-pc-windows-gnu 0.4.0",
- "winapi-x86_64-pc-windows-gnu 0.4.0",
+ "winapi-i686-pc-windows-gnu 0.4.0 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
+ "winapi-x86_64-pc-windows-gnu 0.4.0 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)",
 ]
 
 [[package]]
 name = "winapi-i686-pc-windows-gnu"
 version = "0.4.0"
+source = "git+https://github.com/parthsane/winapi-rs?branch=enclaveapi#067bf379e8d57a88ba15f44f960170e796a3df39"
 
 [[package]]
 name = "winapi-util"
@@ -1781,6 +1783,7 @@ dependencies = [
 [[package]]
 name = "winapi-x86_64-pc-windows-gnu"
 version = "0.4.0"
+source = "git+https://github.com/parthsane/winapi-rs?branch=enclaveapi#067bf379e8d57a88ba15f44f960170e796a3df39"
 
 [[package]]
 name = "wincolor"
@@ -2009,5 +2012,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum vec_map 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)" = "05c78687fb1a80548ae3250346c3db86a80a7cdd77bda190189f2d0a0987c81a"
 "checksum version_check 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "914b1a6776c4c929a602fafd8bc742e06365d4bcbe48c30f9cca5824f70dc9dd"
 "checksum void 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
+"checksum winapi 0.3.6 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)" = "<none>"
+"checksum winapi-i686-pc-windows-gnu 0.4.0 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)" = "<none>"
+"checksum winapi-x86_64-pc-windows-gnu 0.4.0 (git+https://github.com/parthsane/winapi-rs?branch=enclaveapi)" = "<none>"
 "checksum xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)" = "22678df5df766e8d1e5d609da69f0c3132d794edf6ab5e75e7abcd2270d4cf58"
 "checksum zero 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5f1bc8a6b2005884962297587045002d8cfb8dcec9db332f4ca216ddc5de82c5"

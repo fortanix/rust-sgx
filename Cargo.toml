@@ -15,4 +15,4 @@ members = [
 ]
 
 [patch.crates-io]
-winapi = { path = 'C:\Users\Parth Sane\code\winapi-rs' }
+winapi = { git = 'https://github.com/parthsane/winapi-rs', branch="enclaveapi"}
