@@ -19,8 +19,6 @@ use crate::{MappingInfo, Tcs};
 use std::path::Path;
 
 
-pub const DEFAULT_DEVICE_PATH: &'static str = "C:/isgx";
-
 #[derive(Fail, Debug)]
 pub enum LibraryError {
     #[fail(
@@ -274,8 +272,6 @@ impl EnclaveLoad for WinInnerLibrary {
     }
     fn destroy(mapping: &mut Mapping<Self>) {
         unsafe {
-            // This returns a boolean
-            // Need to do error checking using boolean
             if VirtualFree(
                 mapping.base  as _,
                 0,
