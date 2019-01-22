@@ -16,7 +16,7 @@ const SSAFRAMESIZE: u32 = 1;
 const STACK_SIZE: u32 = 0x20000;
 const DEBUG: bool = true;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 #[serde(rename_all = "kebab-case")]
 struct Target {
     heap_size: Option<u64>,
@@ -26,14 +26,16 @@ struct Target {
     debug: Option<bool>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 #[serde(rename_all = "kebab-case")]
 struct Metadata {
+    #[serde(default)]
     fortanix_sgx: Target
 }
 
 #[derive(Deserialize, Debug)]
 struct Package {
+    #[serde(default)]
     metadata: Metadata
 }
 
@@ -67,12 +69,13 @@ fn run() -> Result<(), Error> {
     let mut content = String::new();
     file.read_to_string(&mut content).context("Unable to read the manifest")?;
     let config: Config = toml::from_str(&content).context("Unable to parse the manifest")?;
-    let heap_size = config.package.metadata.fortanix_sgx.heap_size.unwrap_or(HEAP_SIZE).to_string();
-    let ssaframesize = config.package.metadata.fortanix_sgx.ssaframesize.unwrap_or(SSAFRAMESIZE).to_string();
-    let stack_size = config.package.metadata.fortanix_sgx.stack_size.unwrap_or(STACK_SIZE).to_string();
+    let custom_values  = config.package.metadata.fortanix_sgx;
+    let heap_size = custom_values.heap_size.unwrap_or(HEAP_SIZE).to_string();
+    let ssaframesize = custom_values.ssaframesize.unwrap_or(SSAFRAMESIZE).to_string();
+    let stack_size = custom_values.stack_size.unwrap_or(STACK_SIZE).to_string();
     let available_cpus = num_cpus::get() as u32;
-    let threads = config.package.metadata.fortanix_sgx.threads.unwrap_or(available_cpus).to_string();
-    let debug = config.package.metadata.fortanix_sgx.debug.unwrap_or(DEBUG);
+    let threads = custom_values.threads.unwrap_or(available_cpus).to_string();
+    let debug = custom_values.debug.unwrap_or(DEBUG);
 
     let args: Vec<String> = env::args().collect();
     let mut ftxsgx_elf2sgxs_command = Command::new("ftxsgx-elf2sgxs");
@@ -97,7 +100,10 @@ fn run() -> Result<(), Error> {
     run_command(sgxs_append_command)?;
 
     let mut ftxsgx_runner_command = Command::new("ftxsgx-runner");
-    ftxsgx_runner_command.arg(&bin_with_ext);
+    ftxsgx_runner_command.arg(&bin_with_ext)
+        .arg("--signature")
+        .arg("dummy");
+
     run_command(ftxsgx_runner_command)?;
 
     Ok(())
