@@ -25,6 +25,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 #[cfg(feature = "sgxs")]
 use std::result::Result as StdResult;
+use std::time::Duration;
 
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use protobuf::{Message, ProtobufResult};
@@ -190,11 +191,15 @@ impl AesmClient {
             &**AESM_SOCKET_ABSTRACT_PATH
         };
 
-        Ok(UnixStream::connect(path)?)
+        let sock = UnixStream::connect_timeout(path, Duration::from_micros(LOCAL_AESM_TIMEOUT_US as _))?;
+        let _ = sock.set_write_timeout(Some(Duration::from_micros(LOCAL_AESM_TIMEOUT_US as _)))?;
+        Ok(sock)
     }
 
     fn transact<T: AesmRequest>(&self, req: T) -> Result<T::Response> {
         let mut sock = self.open_socket()?;
+
+        let _ = sock.set_read_timeout(req.get_timeout().map(|t| Duration::from_micros(t as _)))?;
 
         let req_bytes = req
             .into()
@@ -311,6 +316,8 @@ impl EinittokenProvider for AesmClient {
 
 trait AesmRequest: protobuf::Message + Into<Request> {
     type Response: protobuf::Message + FromResponse;
+
+    fn get_timeout(&self) -> Option<u32>;
 }
 
 // This could be replaced with TryFrom when stable.
@@ -320,6 +327,14 @@ trait FromResponse: Sized {
 
 impl AesmRequest for Request_InitQuoteRequest {
     type Response = Response_InitQuoteResponse;
+
+    fn get_timeout(&self) -> Option<u32> {
+        if self.has_timeout() {
+            Some(Self::get_timeout(self))
+        } else {
+            None
+        }
+    }
 }
 
 impl From<Request_InitQuoteRequest> for Request {
@@ -347,6 +362,14 @@ impl FromResponse for Response_InitQuoteResponse {
 
 impl AesmRequest for Request_GetQuoteRequest {
     type Response = Response_GetQuoteResponse;
+
+    fn get_timeout(&self) -> Option<u32> {
+        if self.has_timeout() {
+            Some(Self::get_timeout(self))
+        } else {
+            None
+        }
+    }
 }
 
 impl From<Request_GetQuoteRequest> for Request {
@@ -374,6 +397,14 @@ impl FromResponse for Response_GetQuoteResponse {
 
 impl AesmRequest for Request_GetLaunchTokenRequest {
     type Response = Response_GetLaunchTokenResponse;
+
+    fn get_timeout(&self) -> Option<u32> {
+        if self.has_timeout() {
+            Some(Self::get_timeout(self))
+        } else {
+            None
+        }
+    }
 }
 
 impl From<Request_GetLaunchTokenRequest> for Request {

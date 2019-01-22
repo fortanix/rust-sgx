@@ -31,8 +31,9 @@ failure_derive = "0.1.1"   # MIT/Apache-2.0
 # We require a version of unix-socket with the following change:
 # https://github.com/rust-lang-nursery/unix-socket/pull/30 . Alternatively, in
 # the future, https://github.com/rust-lang/rust/issues/42048 might provide std
-# support.
-unix_socket2 = "0.5.1"     # MIT/Apache-2.0
+# support. In addition, we need UnixStream::connect_timeout, which may be
+# provided by https://github.com/rust-lang/rust/issues/53615.
+unix_socket2 = "0.5.4"     # MIT/Apache-2.0
 
 [build-dependencies]
 protoc-rust = "1.4" # MIT/Apache-2.0
