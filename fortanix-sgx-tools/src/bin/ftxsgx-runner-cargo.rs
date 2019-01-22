@@ -93,14 +93,8 @@ fn run() -> Result<(), Error> {
     }
     run_command(ftxsgx_elf2sgxs_command)?;
 
-    let bin_with_ext = args[1].clone() + ".sgxs";
-    let mut sgxs_append_command = Command::new("sgxs-append");
-    sgxs_append_command.arg("-i")
-        .arg(&bin_with_ext);
-    run_command(sgxs_append_command)?;
-
     let mut ftxsgx_runner_command = Command::new("ftxsgx-runner");
-    ftxsgx_runner_command.arg(&bin_with_ext)
+    ftxsgx_runner_command.arg(args[1].clone() + ".sgxs")
         .arg("--signature")
         .arg("dummy");
 

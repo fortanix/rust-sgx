@@ -30,7 +30,7 @@ use xmas_elf::ElfFile;
 
 use sgx_isa::{PageType, SecinfoFlags, Tcs};
 use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
-use sgxs_crate::util::size_fit_page;
+use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 use clap::ArgMatches;
 
@@ -95,6 +95,7 @@ pub struct LayoutInfo<'a> {
     threads: usize,
     debug: bool,
     library: bool,
+    sized: bool,
     ehfrm: SectionRange,
     text: SectionRange,
 }
@@ -320,6 +321,7 @@ impl<'a> LayoutInfo<'a> {
         threads: usize,
         debug: bool,
         library: bool,
+        sized: bool,
     ) -> Result<LayoutInfo<'a>, Error> {
         if let HeaderClass::SixtyFour = elf.header.pt1.class() {
         } else {
@@ -343,6 +345,7 @@ impl<'a> LayoutInfo<'a> {
             library,
             ehfrm,
             text,
+            sized,
         })
     }
 
@@ -351,8 +354,9 @@ impl<'a> LayoutInfo<'a> {
         writer: &mut CanonicalSgxsWriter<W>,
         heap_addr: u64,
         memory_size: u64,
+        enclave_size: Option<u64>,
     ) -> Result<(), Error> {
-        let mut splices = [
+        let mut splices = vec![
             Splice(self.sym.HEAP_BASE.value(), u64_to_bytes(heap_addr)),
             Splice(self.sym.HEAP_SIZE.value(), u64_to_bytes(self.heap_size)),
             Splice(
@@ -386,6 +390,12 @@ impl<'a> LayoutInfo<'a> {
             Splice(self.sym.TEXT_BASE.value(), u64_to_bytes(self.text.offset)),
             Splice(self.sym.TEXT_SIZE.value(), u64_to_bytes(self.text.size)),
         ];
+        if let Some(enclave_size) = enclave_size {
+            splices.push(Splice(
+                self.sym.ENCLAVE_SIZE.value(),
+                u64_to_bytes(enclave_size),
+            ));
+        }
         splices.sort(); // `Splice` sorts by address
         let mut cur_splice = splices.iter().peekable();
 
@@ -480,18 +490,23 @@ impl<'a> LayoutInfo<'a> {
             + TLS_SIZE
             + (1 + (nssa as u64) * (self.ssaframesize as u64)) * 0x1000;
         let memory_size = thread_start + (self.threads as u64) * thread_size;
+        let enclave_size = if self.sized {
+            Some(size_fit_natural(memory_size))
+        } else {
+            None
+        };
 
-        let mut writer = try!(CanonicalSgxsWriter::new(
+        let mut writer = CanonicalSgxsWriter::new(
             writer,
             sgxs::MeasECreate {
-                size: self.sym.ENCLAVE_SIZE.value(),
+                size: enclave_size.unwrap_or_else(|| self.sym.ENCLAVE_SIZE.value()),
                 ssaframesize: self.ssaframesize,
             },
-            false
-        ));
+            self.sized,
+        )?;
 
         // Output ELF sections
-        try!(self.write_elf_segments(&mut writer, heap_addr, memory_size));
+        self.write_elf_segments(&mut writer, heap_addr, memory_size, enclave_size)?;
 
         // Output heap
         let secinfo = SecinfoTruncated {
@@ -623,6 +638,7 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
     if library {
         println!("WARNING: Library support is experimental");
     }
+    let sized = !args.is_present("unsized");
     let srclib = PathBuf::from(args.value_of("elf").unwrap());
     let srcbuf = read_file(&srclib).context("Reading ELF file")?;
     let srcelf = ElfFile::new(&srcbuf).map_err(|s| format_err!("Loading ELF file: {}", s))?;
@@ -634,6 +650,7 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
         threads,
         debug,
         library,
+        sized,
     )?;
 
     let mut outfile = args
@@ -698,6 +715,11 @@ fn main() {
             Arg::with_name("library")
                 .long("library")
                 .help("This is a library enclave (experimental)"),
+        )
+        .arg(
+            Arg::with_name("unsized")
+                .long("unsized")
+                .help("Output an unsized enclave, for use with sgxs-append"),
         )
         .arg(
             Arg::with_name("output")
