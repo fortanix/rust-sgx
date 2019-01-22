@@ -60,7 +60,7 @@ class SgxState (gdb.Command):
 
       cssa = read_long(inf, tcs+TCS_CSSA, 4)
       if cssa == 0:
-        # This branch is libenclave-specific
+        # This branch is specific to x86_64-fortanix-unknown-sgx
         TLS_RSP = 0x10
         TLS_PANIC_RSP = 0x18
 

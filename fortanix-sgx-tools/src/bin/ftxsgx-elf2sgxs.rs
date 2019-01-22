@@ -301,18 +301,6 @@ impl<'a> LayoutInfo<'a> {
         Ok(())
     }
 
-    fn _check_debug(elf: &ElfFile<'a>) -> Result<bool, Error> {
-        if let Some(notes) = elf.find_section_by_name(".note.libenclave") {
-            if let SectionData::Note64(note, data) = notes.get_data(&elf).map_err(err_msg)? {
-                Ok(note.name(data) == "libenclave DEBUG")
-            } else {
-                bail!(".note.libenclave section is not a note section!")
-            }
-        } else {
-            Ok(false)
-        }
-    }
-
     pub fn new(
         elf: ElfFile<'a>,
         ssaframesize: u32,
@@ -666,8 +654,8 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
 fn main() {
     use clap::{App, AppSettings, Arg};
 
-    let args = App::new("libenclave-elf2sgxs")
-        .about("Convert a libenclave dynamic library into an SGXS enclave")
+    let args = App::new("ftxsgx-elf2sgxs")
+        .about("Convert an x86_64-fortanix-unknown-sgx ELF binary to SGXS")
         .version(crate_version!())
         .setting(AppSettings::UnifiedHelpMessage)
         .arg(
