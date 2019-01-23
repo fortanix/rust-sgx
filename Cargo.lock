@@ -1185,6 +1185,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rs-libc"
+version = "0.1.0"
+dependencies = [
+ "cc 1.0.18 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
