@@ -5,11 +5,12 @@ members = [
 	"dcap-ql-sys",
 	"dcap-ql",
 	"enclave-runner",
+	"fortanix-sgx-abi",
 	"fortanix-sgx-tools",
 	"report-test",
-	"sgx-isa",
+	"rs-libc",
 	"sgxs",
-	"sgxs-tools",
-	"fortanix-sgx-abi",
-	"sgxs-loaders"
+	"sgx-isa",
+	"sgxs-loaders",
+	"sgxs-tools"
 ]

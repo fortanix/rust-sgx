@@ -1,0 +1,15 @@
+[package]
+name = "rs-libc"
+version = "0.1.0"
+authors = ["Jethro Beekman <jethro@fortanix.com>"]
+license = "MPL-2.0 AND MIT AND Other"
+description = """
+A subset of libc that can be used with Rust in freestanding environments.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://docs.rs/rs-libc/"
+keywords = ["libc", "malloc", "strcmp", "snprintf"]
+categories = ["external-ffi-bindings", "os"]
+
+[build-dependencies]
+cc = "1.0"
