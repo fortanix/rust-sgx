@@ -1,32 +1,36 @@
+Most source files are subject to the terms of the Mozilla Public License,
+v. 2.0, as mentioned in the file header. The following files have a different
+license:
+
 Adapted from musl-libc (license below):
-	abs.c
-	__ctype_b_loc.c
-	__ctype_tolower_loc.c
-	__ctype_toupper_loc.c
-	floatscan.c
-	floatscan.h
-	intscan.c
-	intscan.h
-	memchr.c
-	stpcpy.c
-	stpncpy.c
-	strchr.c
-	strchrnul.c
-	strcmp.c
-	strcpy.c
-	strcspn.c
-	strdup.c
-	strlen.c
-	strncmp.c
-	strncpy.c
-	strpbrk.c
-	strspn.c
-	strstr.c
-	strtod.c
-	strtol.c
+	src/c/abs.c
+	src/c/__ctype_b_loc.c
+	src/c/__ctype_tolower_loc.c
+	src/c/__ctype_toupper_loc.c
+	src/c/floatscan.c
+	src/c/floatscan.h
+	src/c/intscan.c
+	src/c/intscan.h
+	src/c/memchr.c
+	src/c/stpcpy.c
+	src/c/stpncpy.c
+	src/c/strchr.c
+	src/c/strchrnul.c
+	src/c/strcmp.c
+	src/c/strcpy.c
+	src/c/strcspn.c
+	src/c/strdup.c
+	src/c/strlen.c
+	src/c/strncmp.c
+	src/c/strncpy.c
+	src/c/strpbrk.c
+	src/c/strspn.c
+	src/c/strstr.c
+	src/c/strtod.c
+	src/c/strtol.c
 
 Adapted from Patrick Powell (license in file):
-	snprintf.c
+	src/c/snprintf.c
 
 ----------------------------------------------------------------------
 musl as a whole is licensed under the following standard MIT license:
