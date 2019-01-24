@@ -1,7 +1,7 @@
 [package]
 name = "dcap-ql"
 version = "0.1.0"
-authors = ["Jethro Beekman <jethro@fortanix.com>"]
+authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
 Idiomatic Rust bindings for libsgx_dcap_ql.
@@ -30,8 +30,8 @@ test-sgx-flc = []
 [dependencies]
 # Project dependencies
 "dcap-ql-sys" = { version = "0.1.0", path = "../dcap-ql-sys" }
-"sgxs-loaders" = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
-"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+"sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
+"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.1.0" # Unlicense/MIT
@@ -43,4 +43,4 @@ num-traits = "0.2"  # MIT/Apache-2.0
 
 [dev-dependencies]
 "report-test" = { version = "0.1.0", path = "../report-test" }
-"sgxs" = { version = "0.6.0-rc1", path = "../sgxs" }
+"sgxs" = { version = "0.6.0", path = "../sgxs" }

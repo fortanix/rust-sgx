@@ -1,7 +1,7 @@
 [package]
 name = "sgxs-tools"
-version = "0.6.0-rc1"
-authors = ["Jethro Beekman <jethro@fortanix.com>"]
+version = "0.6.0"
+authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
 Utilities for working with the SGX stream format.
@@ -18,10 +18,10 @@ required-features = ["pe2sgxs"]
 
 [dependencies]
 # Project dependencies
-"sgxs" = { version = "0.6.0-rc1", path = "../sgxs", features = ["crypto-openssl"] }
-"sgxs-loaders" = { version = "0.1.0-rc1", path = "../sgxs-loaders" }
-"aesm-client" = { version = "0.1.0-rc1", path = "../aesm-client", features = ["sgxs"] }
-"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+"sgxs" = { version = "0.6.0", path = "../sgxs", features = ["crypto-openssl"] }
+"sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
+"aesm-client" = { version = "0.1.0", path = "../aesm-client", features = ["sgxs"] }
+"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
 
 # External dependencies
 lazy_static = "1"                                # MIT/Apache-2.0
