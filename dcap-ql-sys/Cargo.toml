@@ -1,7 +1,7 @@
 [package]
 name = "dcap-ql-sys"
 version = "0.1.0"
-authors = ["Jethro Beekman <jethro@fortanix.com>"]
+authors = ["Fortanix, Inc."]
 links = "sgx_dcap_ql"
 build = "build.rs"
 license = "MPL-2.0"
@@ -23,7 +23,7 @@ link = []
 
 [dependencies]
 # Project dependencies
-"sgx-isa" = { version = "0.2.0-rc1", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
 
 # External dependencies
 num-derive = "0.2" # MIT/Apache-2.0

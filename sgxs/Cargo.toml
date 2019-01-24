@@ -1,7 +1,7 @@
 [package]
 name = "sgxs"
-version = "0.6.0-rc1"
-authors = ["Jethro Beekman <jethro@fortanix.com>"]
+version = "0.6.0"
+authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
 Library for working with the SGX stream format.
@@ -13,7 +13,7 @@ categories = ["parsing", "encoding"]
 
 [dependencies]
 # Project dependencies
-sgx-isa = { version = "0.2.0-rc1", path = "../sgx-isa" }
+sgx-isa = { version = "0.2.0", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.0"                                     # Unlicense/MIT
