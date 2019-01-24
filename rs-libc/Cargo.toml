@@ -1,8 +1,8 @@
 [package]
 name = "rs-libc"
 version = "0.1.0"
-authors = ["Jethro Beekman <jethro@fortanix.com>"]
-license = "MPL-2.0 AND MIT AND Other"
+authors = ["Fortanix, Inc."]
+license-file = "LICENSE"
 description = """
 A subset of libc that can be used with Rust in freestanding environments.
 """
