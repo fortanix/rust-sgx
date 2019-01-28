@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+extern crate libc;
+extern crate nix;
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -24,12 +27,17 @@ use fnv::FnvHashMap;
 use fortanix_sgx_abi::*;
 
 use sgxs::loader::Tcs as SgxsTcs;
+lazy_static! {
+    static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
+}
 
 pub mod abi;
 mod interface;
 
 use self::abi::dispatch;
 use self::interface::{Handler, OutputBuffer};
+use self::libc::*;
+use self::nix::sys::signal;
 use loader::{EnclavePanic, ErasedTcs};
 use tcs;
 
@@ -231,7 +239,7 @@ struct RunningTcs {
 
 enum EnclaveKind {
     Command(Command),
-    Library(Library)
+    Library(Library),
 }
 
 struct Command {
@@ -411,6 +419,69 @@ enum EnclaveEntry {
     },
 }
 
+#[repr(C)]
+#[allow(unused)]
+enum Greg {
+    R8 = 0,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+    RDI,
+    RSI,
+    RBP,
+    RBX,
+    RDX,
+    RAX,
+    RCX,
+    RSP,
+    RIP,
+    EFL,
+    CSGSFS, /* Actually short cs, gs, fs, __pad0. */
+    ERR,
+    TRAPNO,
+    OLDMASK,
+    CR2,
+}
+
+/* Here we are passing control to debugger `fixup` style by raising Sigtrap.
+ * If there is no debugger attached, this function, would skip the `int3` instructon
+ * and resume execution.
+ */
+extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_void) {
+    unsafe {
+        let context = &mut *(context as *mut ucontext_t);
+        let rip = &mut context.uc_mcontext.gregs[Greg::RIP as usize];
+        let inst: *const u8 = *rip as _;
+        if *inst == 0xcc {
+            *rip += 1;
+        }
+    }
+    return;
+}
+
+/* Raising Sigtrap to allow debugger to take control.
+ * Here, we also store tcs in rbx, so that the debugger could read it, to
+ * set sgx state and correctly map the enclave symbols.
+ */
+fn trap_attached_debugger(tcs: usize) {
+    let _g = DEBUGGER_TOGGLE_SYNC.lock().unwrap();
+    let hdl = self::signal::SigHandler::SigAction(handle_trap);
+    let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
+    // Synchronized
+    unsafe {
+        let old = signal::sigaction(signal::SIGTRAP, &sig_action).unwrap();
+        asm!("int3" : /* No output */
+                    : /*input */ "{rbx}"(tcs)
+                    :/* No clobber */
+                    :"volatile");
+        signal::sigaction(signal::SIGTRAP, &old).unwrap();
+    }
+}
+
 #[allow(unused_variables)]
 impl RunningTcs {
     fn entry(
@@ -443,9 +514,12 @@ impl RunningTcs {
         };
 
         match result {
-            Err(EnclaveAbort::Exit { panic: true }) => Err(EnclaveAbort::Exit {
-                panic: EnclavePanic::from(buf.into_inner()),
-            }),
+            Err(EnclaveAbort::Exit { panic: true }) => {
+                trap_attached_debugger(tcs.tcs.address().0 as _);
+                Err(EnclaveAbort::Exit {
+                    panic: EnclavePanic::from(buf.into_inner()),
+                })
+            }
             Err(EnclaveAbort::Exit { panic: false }) => Ok((tcs, (0, 0))), // TODO: exit all threads if executable
             Err(EnclaveAbort::IndefiniteWait) => Err(EnclaveAbort::IndefiniteWait), // TODO: join all threads
             Err(EnclaveAbort::InvalidUsercall(n)) => Err(EnclaveAbort::InvalidUsercall(n)),

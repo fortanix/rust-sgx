@@ -15,6 +15,7 @@
 
 import gdb
 import re
+from subprocess import Popen, PIPE 
 
 TCS_OSSA = 16
 TCS_CSSA = 24
@@ -42,6 +43,27 @@ def find_vma_base(addr):
         offset = int(addrs[3], 16)
         return start-offset
   return None
+
+def get_text_offset(file_name):
+  command=['readelf', '-SW', file_name]
+  proc = Popen(command, stdout=PIPE, stderr=PIPE)
+  sections, err = proc.communicate()
+  if proc.returncode != 0:
+      raise Exception("ELF Read Error")
+  for line in sections.decode('utf-8').rstrip().split('\n'):
+      if ".text" in line:
+          # 1     2    3    4       5
+          # [Nr]  Name Type Address Off
+          m=re.match('^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s', line)
+          if m is not None:
+              return int(m.group(5), 16)
+          break
+
+  # text_info layout
+  # 0  1    2    3    4       5
+  # '' Nr   Name Type Address Off
+  offset = int(text_info[5], 16)
+  return offset
 
 class SgxState (gdb.Command):
   """Set/restore register state from SGX memory"""
@@ -128,6 +150,17 @@ class SgxState (gdb.Command):
         SgxState.state = None
       else:
         print("No state to restore")
+    elif args[0] == 'auto':
+      """
+      This should be called after the runner signals SIGTRAP with tcs address in RBX.
+      The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
+      """
+      tcs=int(gdb.parse_and_eval("$rbx"));
+      gdb.execute("sgxstate tcs {}".format(tcs))
+      if len(args) >= 2:
+          offset=get_text_offset(args[1])
+          address=find_vma_base(tcs) + offset
+          gdb.execute("add-symbol-file {} {}".format(args[1], address))
     else:
       raise Exception("Invalid subcommand")
 
