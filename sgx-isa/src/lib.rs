@@ -21,6 +21,9 @@ extern crate std;
 #[macro_use]
 extern crate bitflags;
 
+#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+use std::os::fortanix_sgx::arch;
+
 #[cfg(not(feature = "large_array_derive"))]
 #[macro_use]
 mod large_array_impl;
@@ -142,8 +145,8 @@ macro_rules! struct_def {
         #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
         /// **Note.** This implementation is only available on the SGX target
         /// with the `sgxstd` feature.
-        impl AsRef<::std::os::fortanix_sgx::arch::$ty<[u8; $name::UNPADDED_SIZE]>> for $name {
-            fn as_ref(&self) -> &::std::os::fortanix_sgx::arch::$ty<[u8; $name::UNPADDED_SIZE]> {
+        impl AsRef<arch::$ty<[u8; $name::UNPADDED_SIZE]>> for $name {
+            fn as_ref(&self) -> &arch::$ty<[u8; $name::UNPADDED_SIZE]> {
                 unsafe {
                     &*(self as *const _ as *const _)
                 }
@@ -553,6 +556,23 @@ pub struct Report {
 
 impl Report {
     pub const UNPADDED_SIZE: usize = 432;
+
+    #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+    pub fn for_self() -> Self {
+        let reportdata = arch::Align128([0; 64]);
+        let targetinfo = arch::Align512([0; 512]);
+        let out = arch::ereport(&targetinfo, &reportdata);
+        // unwrap ok, `out` is the correct number of bytes
+        Report::try_copy_from(&out.0).unwrap()
+    }
+
+    #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+    pub fn for_target(targetinfo: &Targetinfo, reportdata: &[u8; 64]) -> Report {
+        let reportdata = arch::Align128(*reportdata);
+        let out = arch::ereport(targetinfo.as_ref(), &reportdata);
+        // unwrap ok, `out` is the correct number of bytes
+        Report::try_copy_from(&out.0).unwrap()
+    }
 }
 
 struct_def! {
@@ -606,6 +626,15 @@ pub struct Keyrequest {
 
 impl Keyrequest {
     pub const UNPADDED_SIZE: usize = 512;
+
+    #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+    pub fn egetkey(&self) -> Result<[u8;16], ErrorCode> {
+        match arch::egetkey(self.as_ref()) {
+            Ok(k) => Ok(k.0),
+            // unwrap ok, `arch::egetkey` will always return a valid `ErrorCode`
+            Err(e) => Err(ErrorCode::from_repr(e).unwrap())
+        }
+    }
 }
 
 bitflags! {
