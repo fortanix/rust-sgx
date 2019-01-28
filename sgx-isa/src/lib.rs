@@ -24,39 +24,39 @@ mod large_array_impl;
 macro_rules! impl_default_clone_eq { ($n:ident) => {} }
 
 macro_rules! enum_def {
-	(
-		#[derive($($derive:meta),*)]
-		#[repr($repr:ident)]
-		pub enum $name:ident {
-			$($key:ident = $val:expr,)*
-		}
-	) => (
-		#[derive($($derive),*)]
-		#[repr($repr)]
-		pub enum $name {
-			$($key = $val,)*
-		}
+    (
+        #[derive($($derive:meta),*)]
+        #[repr($repr:ident)]
+        pub enum $name:ident {
+            $($key:ident = $val:expr,)*
+        }
+    ) => (
+        #[derive($($derive),*)]
+        #[repr($repr)]
+        pub enum $name {
+            $($key = $val,)*
+        }
 
-		#[cfg(feature="try_from")]
-		impl ::core::convert::TryFrom<$repr> for $name {
-			type Error = ::core::num::TryFromIntError;
-			fn try_from(v: $repr) -> Result<Self, Self::Error> {
-				match v {
-					$($val => Ok($name::$key),)*
-					_ => Err(u8::try_from(256u16).unwrap_err()),
-				}
-			}
-		}
+        #[cfg(feature="try_from")]
+        impl ::core::convert::TryFrom<$repr> for $name {
+            type Error = ::core::num::TryFromIntError;
+            fn try_from(v: $repr) -> Result<Self, Self::Error> {
+                match v {
+                    $($val => Ok($name::$key),)*
+                    _ => Err(u8::try_from(256u16).unwrap_err()),
+                }
+            }
+        }
 
-		impl $name {
-			pub fn from_repr(v: $repr) -> Option<Self> {
-				match v {
-					$($val => Some($name::$key),)*
-					_ => None,
-				}
-			}
-		}
-	)
+        impl $name {
+            pub fn from_repr(v: $repr) -> Option<Self> {
+                match v {
+                    $($val => Some($name::$key),)*
+                    _ => None,
+                }
+            }
+        }
+    )
 }
 
 macro_rules! struct_def {
@@ -75,21 +75,21 @@ macro_rules! struct_def {
         pub struct $name $impl
 
         impl $name {
-			/// If `src` has the correct length for this type, returns `Some<T>`
-			/// copied from `src`, else returns `None`.
-			pub fn try_copy_from(src: &[u8]) -> Option<Self> {
-				if src.len() == Self::UNPADDED_SIZE {
-					unsafe {
+            /// If `src` has the correct length for this type, returns `Some<T>`
+            /// copied from `src`, else returns `None`.
+            pub fn try_copy_from(src: &[u8]) -> Option<Self> {
+                if src.len() == Self::UNPADDED_SIZE {
+                    unsafe {
                         let mut ret : Self = ::core::mem::zeroed();
                         ::core::ptr::copy_nonoverlapping(src.as_ptr(),
                                                          &mut ret as *mut _ as *mut _,
                                                          Self::UNPADDED_SIZE);
-						Some(ret)
-					}
-				} else {
-					None
-				}
-			}
+                        Some(ret)
+                    }
+                } else {
+                    None
+                }
+            }
 
             // Compile time check that the size argument is correct.
             // Not otherwise used.
@@ -103,7 +103,7 @@ macro_rules! struct_def {
                     }
                 }
             }
-		}
+        }
 
         $(
         // check that alignment is set correctly
@@ -114,13 +114,13 @@ macro_rules! struct_def {
         }
         )*
 
-		impl AsRef<[u8]> for $name {
-			fn as_ref(&self) -> &[u8] {
-				unsafe {
-					::core::slice::from_raw_parts(self as *const $name as *const u8, Self::UNPADDED_SIZE)
-				}
-			}
-		}
+        impl AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                unsafe {
+                    ::core::slice::from_raw_parts(self as *const $name as *const u8, Self::UNPADDED_SIZE)
+                }
+            }
+        }
     };
 }
 
