@@ -1,10 +1,30 @@
 # Fortanix Rust Enclave Development Platform
 
-[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack)](https://fortanix.com/runtime-encryption-slack) [![Build Status](https://travis-ci.com/fortanix/rust-sgx.svg?branch=master)](https://travis-ci.com/fortanix/rust-sgx)
+[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack&logoColor=whitesmoke)](https://fortanix.com/runtime-encryption-slack) [![Build Status](https://travis-ci.com/fortanix/rust-sgx.svg?branch=master)](https://travis-ci.com/fortanix/rust-sgx)
 
-The Fortanix Rust EDP is the preferred way to write Intel SGX enclaves from scratch.
+The [Fortanix Rust EDP](https://edp.fortanix.com/) is the preferred way to write Intel SGX enclaves from scratch.
 
-## [Get started now.](https://github.com/fortanix/rust-sgx/issues/49)
+## [Get started now.](https://edp.fortanix.com/docs/installation/guide/)
+
+```sh
+# Install EDP components
+rustup add target x86_64-fortanix-unknown-sgx --toolchain nightly
+cargo install fortanix-sgx-tools sgxs-tools
+echo >> ~/.cargo/config -e '[target.x86_64-fortanix-unknown-sgx]\nrunner = "ftxsgx-runner-cargo"'
+
+# Check your SGX setup
+sgx-detect
+
+# Run your enclave!
+cargo new --bin hello-world
+cd hello-world
+cargo run --target x86_64-fortanix-unknown-sgx
+```
+
+[Documentation](https://edp.fortanix.com/docs/)
+
+Looking for the in-enclave source code? Check out the [rust-lang/rust
+repository](https://github.com/rust-lang/rust/tree/master/src/libstd/sys/sgx).
 
 # Contributing
 
