@@ -13,6 +13,10 @@
 
 #![no_std]
 #![cfg_attr(feature = "try_from", feature(try_from))]
+#![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
+
+#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+extern crate std;
 
 #[macro_use]
 extern crate bitflags;
@@ -61,7 +65,7 @@ macro_rules! enum_def {
 
 macro_rules! struct_def {
     (
-        #[repr(C $(, align($align:expr))*)]
+        #[repr(C $(, align($align:tt))*)]
         $(#[cfg_attr(feature = "large_array_derive", derive($($cfgderive:meta),*))])*
         $(#[derive($($derive:meta),*)])*
         pub struct $name:ident $impl:tt
@@ -118,6 +122,30 @@ macro_rules! struct_def {
             fn as_ref(&self) -> &[u8] {
                 unsafe {
                     ::core::slice::from_raw_parts(self as *const $name as *const u8, Self::UNPADDED_SIZE)
+                }
+            }
+        }
+
+        struct_def!(@align bytes $($align)* name $name);
+    };
+    (@align bytes 16 name $name:ident) => {
+        struct_def!(@align type Align16 name $name);
+    };
+    (@align bytes 128 name $name:ident) => {
+        struct_def!(@align type Align128 name $name);
+    };
+    (@align bytes 512 name $name:ident) => {
+        struct_def!(@align type Align512 name $name);
+    };
+    (@align bytes $($other:tt)*) => {};
+    (@align type $ty:ident name $name:ident) => {
+        #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+        /// **Note.** This implementation is only available on the SGX target
+        /// with the `sgxstd` feature.
+        impl AsRef<::std::os::fortanix_sgx::arch::$ty<[u8; $name::UNPADDED_SIZE]>> for $name {
+            fn as_ref(&self) -> &::std::os::fortanix_sgx::arch::$ty<[u8; $name::UNPADDED_SIZE]> {
+                unsafe {
+                    &*(self as *const _ as *const _)
                 }
             }
         }

@@ -21,3 +21,4 @@ bitflags = "1" # MIT/Apache-2.0
 [features]
 try_from = []
 large_array_derive = []
+sgxstd = []
