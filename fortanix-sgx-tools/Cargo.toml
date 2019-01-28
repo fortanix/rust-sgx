@@ -11,6 +11,8 @@ enclaves, as well as `ftxsgx-elf2sgxs`, which is used in the build process for
 the `x86_64-fortanix-unknown-sgx` target.
 """
 repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "ftxsgx-runner"]
 categories = ["development-tools::build-utils", "command-line-utilities"]
 

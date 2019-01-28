@@ -9,7 +9,8 @@ A simple interface to get a local SGX attestation (“report”).
 This is useful for testing remote attestation.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/report-test/"
+documentation = "https://edp.fortanix.com/docs/api/report_test/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "attestation", "ereport"]
 categories = ["development-tools"]
 

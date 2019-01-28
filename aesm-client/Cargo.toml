@@ -10,7 +10,8 @@ With this client, applications can obtain launch tokens for enclaves and turn
 attestation reports into quotes.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/aesm-client/"
+documentation = "https://edp.fortanix.com/docs/api/aesm_client/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "psw", "aesm", "aesmd"]
 categories = ["api-bindings"]
 

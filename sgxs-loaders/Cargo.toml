@@ -11,7 +11,8 @@ The following loaders are supported:
 * libsgx_enclave_common (Linux)
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/sgxs-loaders/"
+documentation = "https://edp.fortanix.com/docs/api/sgxs_loaders/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "sgxs", "isgx"]
 categories = ["os", "hardware-support", "api-bindings"]
 
