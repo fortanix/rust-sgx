@@ -156,7 +156,7 @@ pub mod entry {
         /// The enclave must keep track of whether it expects another thread to
         /// be launched, e.g. by keeping track of how many times it called
         /// [`launch_thread`]. If a TCS with this entry point is entered even
-        /// though the enclavce didn't request it, the enclave must panic.
+        /// though the enclave didn't request it, the enclave must panic.
         ///
         /// [`launch_thread`]: ../../struct.Usercalls.html#method.launch_thread
         pub fn thread_entry() { unimplemented!() }
