@@ -68,7 +68,7 @@
 //! [`exit`](struct.Usercalls.html#method.exit) usercall, is the TCS state
 //! destroyed. This is depicted in the following diagram.
 //!
-//! ![Enclave execution lifecycle](../../../fortanix-sgx-abi/images/enclave-execution-lifecycle.png)
+//! ![Enclave execution lifecycle](https://edp.fortanix.com/img/docs/enclave-execution-lifecycle.png)
 //!
 //! Enclaves may also perform *asynchronous usercalls*. This is detailed in the
 //! [`async`](async/index.html) module. Most usercalls can be submitted either
@@ -77,6 +77,9 @@
 #![no_std]
 #![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
 #![cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+       html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 use core::ptr::NonNull;
 use core::sync::atomic::AtomicUsize;

@@ -16,7 +16,8 @@ documentation. For implementors, this crate contains all the type definitions
 and a macro with the function definitions.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/fortanix-sgx-abi/"
+documentation = "https://edp.fortanix.com/docs/api/fortanix_sgx_abi/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["os"]
 

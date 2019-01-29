@@ -10,7 +10,8 @@ These definitions correspond to those found in the Intel Software Developers
 Manual (SDM), volume 3.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/sgx-isa/"
+documentation = "https://edp.fortanix.com/docs/api/sgx_isa/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["hardware-support"]
 

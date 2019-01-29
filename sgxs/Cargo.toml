@@ -7,7 +7,8 @@ description = """
 Library for working with the SGX stream format.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/sgxs/"
+documentation = "https://edp.fortanix.com/docs/api/sgxs/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "sgxs"]
 categories = ["parsing", "encoding"]
 

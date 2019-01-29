@@ -8,6 +8,10 @@
 //! * `sgxs`. Enable the `sgxs` feature to get an implemention of
 //!   `EinittokenProvider` that uses AESM.
 
+#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+       html_root_url = "https://edp.fortanix.com/docs/api/")]
+
 extern crate byteorder;
 extern crate failure;
 #[macro_use]

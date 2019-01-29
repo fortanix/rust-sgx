@@ -11,7 +11,8 @@ DCAP: DataCenter Attestation Primitives
 QL: Quoting Library
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://docs.rs/dcap-ql/"
+documentation = "https://edp.fortanix.com/docs/api/dcap_ql/"
+homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "dcap", "quote"]
 categories = ["api-bindings"]
 autotests = true

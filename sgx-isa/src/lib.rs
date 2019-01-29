@@ -12,6 +12,9 @@
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
 
 #![no_std]
+#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+       html_root_url = "https://edp.fortanix.com/docs/api/")]
 #![cfg_attr(feature = "try_from", feature(try_from))]
 #![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
 
