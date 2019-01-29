@@ -11,12 +11,21 @@ documentation = "https://edp.fortanix.com/docs/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "sgxs", "sgxs-sign", "sgxs-append"]
 categories = ["command-line-utilities"]
+edition = "2018"
 
 autobins = true
+
+[lib]
+proc-macro = true
+path = "src/sgx_detect/proc_macro.rs"
 
 [[bin]]
 name = "isgx-pe2sgx"
 required-features = ["pe2sgxs"]
+
+[[bin]]
+name = "sgx-detect"
+path = "src/sgx_detect/main.rs"
 
 [dependencies]
 # Project dependencies
@@ -24,19 +33,39 @@ required-features = ["pe2sgxs"]
 "sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
 "aesm-client" = { version = "0.1.0", path = "../aesm-client", features = ["sgxs"] }
 "sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
+"dcap-ql" = { version = "0.1.0", path = "../dcap-ql" }
+"report-test" = { version = "0.1.0", path = "../report-test" }
+"enclave-runner" = { version = "0.1.0", path = "../enclave-runner" }
 
 # External dependencies
 lazy_static = "1"                                # MIT/Apache-2.0
 clap = "2.2.5"                                   # MIT
 regex = "1"                                      # MIT/Apache-2.0
 num = "0.2"                                      # MIT/Apache-2.0
-byteorder = "1.0"                                # Unlicense/MIT
+byteorder = "1.1.0"                              # Unlicense/MIT
 openssl = "0.10"                                 # Apache-2.0
 failure = "0.1.1"                                # MIT/Apache-2.0
 failure_derive = "0.1.1"                         # MIT/Apache-2.0
 crypto-hash = "0.3"                              # MIT
 broadcast = { version = "0.1", optional = true } # MIT
+log = "0.4"                                      # MIT/Apache-2.0
+env_logger = "0.6"                               # MIT/Apache-2.0
+yansi = "0.5"                                    # MIT/Apache-2.0
+atty = "0.2"                                     # MIT
+quote = "0.6"                                    # MIT/Apache-2.0
+proc-macro2 = "0.4"                              # MIT/Apache-2.0
+petgraph = "0.4"                                 # MIT/Apache-2.0
+mopa = "0.2"                                     # MIT/Apache-2.0
+syn = { version = "0.15", features = ["full"] }  # MIT/Apache-2.0
+fnv = "1"                                        # MIT/Apache-2.0
+serde = "1.0.84"                                 # MIT/Apache-2.0
+serde_derive = "1.0.84"                          # MIT/Apache-2.0
+serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 pe = { version = "0.1", optional = true }        # GPL
 
 [features]
 pe2sgxs = ["pe", "broadcast"]
+docs = []
+
+[package.metadata.docs.rs]
+features = ["docs"]

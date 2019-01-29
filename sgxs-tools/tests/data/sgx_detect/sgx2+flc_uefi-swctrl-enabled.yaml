@@ -1,0 +1,72 @@
+cpuid_7h:
+  Ok:
+    sgx: true
+    sgx_lc: true
+cpuid_12h_0:
+  Ok:
+    sgx1: true
+    sgx2: true
+    enclv: false
+    oversub: false
+    miscselect_valid: 1
+    max_enclave_size_32: 0x80000000
+    max_enclave_size_64: 0x1000000000
+cpuid_12h_1:
+  Ok:
+    attributes_flags_valid: 0x36
+    attributes_xfrm_valid: 0x1b
+cpuid_12h_epc:
+  Ok:
+    - Epc:
+        ty: ConfidentialityIntegrityProtected
+        phys_base: 0
+        phys_size: 0x5e00000
+msr_3ah:
+  Ok:
+    locked: true
+    sgx: true
+    sgx_lc: true
+efi_epcbios:
+  Ok:
+    prm_bins: 0xe0
+    max_epc_size: 0x5d40000
+    current_epc_size: 0x5e00000
+    epc_map:
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0x15d0000
+      - 0x2da0000
+      - 0x5d40000
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+      - 0
+efi_epcsw:
+  Ok:
+    epc_size: 0x5d40000
+efi_softwareguardstatus:
+  Ok:
+    status: SoftwareControlled

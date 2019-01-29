@@ -1,0 +1,4 @@
+yes SGX instruction set
+yes SGX2
+\?\?\? Flexible launch control
+~(?m)^help:

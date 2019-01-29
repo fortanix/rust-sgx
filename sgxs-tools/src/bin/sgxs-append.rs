@@ -25,10 +25,10 @@ use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{Error, ResultExt};
 
 use sgx_isa::{PageType, SecinfoFlags};
-use sgxs_crate::sgxs::{
+use crate::sgxs_crate::sgxs::{
     CanonicalSgxsReader, Meas, PageChunk, SecinfoTruncated, SgxsRead, SgxsWrite,
 };
-use sgxs_crate::util::size_fit_natural;
+use crate::sgxs_crate::util::size_fit_natural;
 
 #[derive(Debug, Fail)]
 #[fail(display = "Usage error")]
