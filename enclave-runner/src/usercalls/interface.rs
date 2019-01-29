@@ -17,6 +17,10 @@ use super::{EnclaveAbort, RunningTcs};
 pub(super) struct Handler<'a>(pub &'a mut RunningTcs);
 
 impl<'a> Usercalls for Handler<'a> {
+    fn is_exiting(&self) -> bool {
+        self.0.is_exiting()
+    }
+
     fn read(&mut self, fd: Fd, buf: *mut u8, len: usize) -> UsercallResult<(Result, usize)> {
         unsafe {
             Ok(from_raw_parts_mut_nonnull(buf, len)
@@ -108,7 +112,7 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
-        EnclaveAbort::Exit { panic }
+        self.0.exit(panic)
     }
 
     fn wait(&mut self, event_mask: u64, timeout: u64) -> UsercallResult<(Result, u64)> {

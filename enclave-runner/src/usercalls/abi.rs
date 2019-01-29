@@ -13,7 +13,7 @@
 use fortanix_sgx_abi::*;
 
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 type Register = u64;
 
@@ -41,24 +41,31 @@ macro_rules! define_usercalls {
             $($f,)*
         }
 
-        pub(crate) trait Usercalls {
+        pub(super) trait Usercalls {
             $(fn $f(&mut self, $($n: $t),*) -> dispatch_return_type!($(-> $r)*);)*
 
             fn other(&mut self, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> DispatchResult {
                 Err($crate::usercalls::EnclaveAbort::InvalidUsercall(n))
             }
+
+            fn is_exiting(&self) -> bool;
         }
 
         #[allow(unused_variables)]
-        pub(crate) fn dispatch<H: Usercalls>(handler: &mut H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> DispatchResult {
+        pub(super) fn dispatch<H: Usercalls>(handler: &mut H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> DispatchResult {
             // using if/else because you can't match an integer against enum variants
-            $(
+            let ret = $(
                 if n == UsercallList::$f as Register {
                     ReturnValue::into_registers(unsafe{enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))})
                 } else
             )*
             {
                 handler.other(n, a1, a2, a3, a4)
+            };
+            if ret.is_ok() && handler.is_exiting() {
+                Err(super::EnclaveAbort::Secondary)
+            } else {
+                ret
             }
         }
     };
