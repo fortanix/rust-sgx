@@ -1,0 +1,10 @@
+[package]
+name = "mpsc-crypto-mining"
+version = "0.1.0"
+authors = ["belfz <marcinbar1@gmail.com>"]
+
+[dependencies]
+easy-hash = "0.1.0"
+
+[package.metadata.fortanix-sgx]
+threads=5

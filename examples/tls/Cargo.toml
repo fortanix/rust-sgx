@@ -1,0 +1,9 @@
+[package]
+name = "tls"
+version = "0.1.0"
+authors = ["fortanix.com"]
+edition = "2018"
+
+[dependencies]
+chrono = "0.4"
+mbedtls = {version="0.3.0", default-features = false, features = ["sgx"]}
