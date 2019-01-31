@@ -156,11 +156,11 @@ class SgxState (gdb.Command):
       The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
       """
       tcs=int(gdb.parse_and_eval("$rbx"));
-      gdb.execute("sgxstate tcs {}".format(tcs))
       if len(args) >= 2:
           offset=get_text_offset(args[1])
           address=find_vma_base(tcs) + offset
           gdb.execute("add-symbol-file {} {}".format(args[1], address))
+      gdb.execute("sgxstate tcs {}".format(tcs))
     else:
       raise Exception("Invalid subcommand")
 
