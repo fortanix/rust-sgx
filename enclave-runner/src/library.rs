@@ -14,6 +14,7 @@ use loader::{EnclaveBuilder, ErasedTcs};
 use std::fmt;
 use std::os::raw::c_void;
 use usercalls::EnclaveState;
+use usercalls::UsercallExtension;
 
 pub struct Library {
     enclave: Arc<EnclaveState>,
@@ -41,9 +42,10 @@ impl MappingInfo for Library {
 }
 
 impl Library {
-    pub(crate) fn internal_new(tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize) -> Library {
+    pub(crate) fn internal_new(tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize,
+                               usercall_ext : Option<Box<UsercallExtension>>) -> Library {
         Library {
-            enclave: EnclaveState::library(tcss),
+            enclave: EnclaveState::library(tcss, usercall_ext),
             address,
             size,
         }

@@ -25,7 +25,7 @@ mod command;
 mod library;
 mod loader;
 mod tcs;
-mod usercalls;
+pub mod usercalls;
 
 pub use command::Command;
 pub use library::Library;

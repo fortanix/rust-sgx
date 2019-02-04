@@ -21,6 +21,8 @@ use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use tcs::DebugBuffer;
 use {Command, Library};
+use usercalls::UsercallExtension;
+
 
 enum EnclaveSource<'a> {
     Path(&'a Path),
@@ -58,6 +60,7 @@ pub struct EnclaveBuilder<'a> {
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
+    usercall_ext : Option<Box<UsercallExtension>>,
 }
 
 #[derive(Debug, Fail)]
@@ -118,6 +121,7 @@ impl<'a> EnclaveBuilder<'a> {
             attributes: None,
             miscselect: None,
             signature: None,
+            usercall_ext : None,
         };
 
         let _ = ret.coresident_signature();
@@ -131,6 +135,7 @@ impl<'a> EnclaveBuilder<'a> {
             attributes: None,
             miscselect: None,
             signature: None,
+            usercall_ext : None,
         };
 
         let _ = ret.coresident_signature();
@@ -200,6 +205,10 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    pub fn usercall_extension<T: Into<Box<UsercallExtension>>>(&mut self, extension: T) {
+        self.usercall_ext = Some(extension.into());
+    }
+
     fn load<T: Load>(mut self, loader: &mut T) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
@@ -220,12 +229,14 @@ impl<'a> EnclaveBuilder<'a> {
         ))
     }
 
-    pub fn build<T: Load>(self, loader: &mut T) -> Result<Command, Error> {
-        self.load(loader).map(|(t, a, s)|  Command::internal_new(t, a, s))
+    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+        let c = self.usercall_ext.take();
+        self.load(loader).map(|(t, a, s)|  Command::internal_new(t, a, s, c))
     }
 
-    pub fn build_library<T: Load>(self, loader: &mut T) -> Result<Library, Error> {
+    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
+        let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s)| Library::internal_new(t, a, s))
+            .map(|(t, a, s)| Library::internal_new(t, a, s, c))
     }
 }
