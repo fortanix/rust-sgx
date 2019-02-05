@@ -893,6 +893,9 @@ impl RunningTcs {
         unsafe {
             let layout =
                 Layout::from_size_align(size, alignment).map_err(|_| IoErrorKind::InvalidInput)?;
+            if size == 0 {
+                return Ok(())
+            }
             Ok(System.dealloc(ptr, layout))
         }
     }

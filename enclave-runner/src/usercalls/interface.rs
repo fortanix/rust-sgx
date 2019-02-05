@@ -180,6 +180,8 @@ impl<'a> Drop for OutputBuffer<'a> {
         if let Some(buf) = self.data.take() {
             self.buf.len = buf.len();
             self.buf.data = Box::into_raw(buf) as _;
+        } else {
+            self.buf.len = 0;
         }
     }
 }
