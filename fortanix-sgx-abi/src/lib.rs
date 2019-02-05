@@ -169,10 +169,13 @@ pub mod entry {
 /// An arbitrary-sized buffer of bytes in userspace, allocated by userspace.
 ///
 /// This type is used when userspace may return arbitrary-sized data from a
-/// usercall. When reading from the buffer, the enclave must ensure the entire
-/// buffer is in the user memory range. Once the enclave is done with the
-/// buffer, it should deallocate the buffer buffer by calling
+/// usercall. When reading from the buffer, if `len` is not `0`, the enclave
+/// must ensure the entire buffer is in the user memory range. Once the enclave
+/// is done with the buffer, it should deallocate the buffer buffer by calling
 /// [`free`]`(data, len, 1)`.
+///
+/// If `len` is `0`, the enclave should ignore `data`. It should not call
+/// `free`.
 ///
 /// [`free`]: ./struct.Usercalls.html#method.launch_thread
 #[repr(C)]
@@ -565,6 +568,8 @@ impl Usercalls {
     /// `align`. If succesful, a pointer to this memory will be returned. The
     /// enclave must check the pointer is correctly aligned and that the entire
     /// range of memory pointed to is outside the enclave.
+    ///
+    /// It is an error to call this function with `size` equal to `0`.
     pub fn alloc(size: usize, alignment: usize) -> (Result, *mut u8) { unimplemented!() }
 
     /// Free user memory.
@@ -573,6 +578,8 @@ impl Usercalls {
     /// `ptr` must have previously been returned by a usercall. The `size` and
     /// `alignment` specified must exactly match what was allocated. This
     /// function must be called exactly once for each user memory buffer.
+    ///
+    /// Calling this function with `size` equal to `0` is a no-op.
     pub fn free(ptr: *mut u8, size: usize, alignment: usize) { unimplemented!() }
 }
 
