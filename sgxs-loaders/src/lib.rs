@@ -20,11 +20,14 @@ extern crate failure_derive;
 #[macro_use]
 extern crate bitflags;
 #[cfg(windows)] extern crate winapi;
+#[macro_use]
+extern crate lazy_static;
 
 mod generic;
 #[cfg(unix)] pub mod isgx;
 pub mod sgx_enclave_common;
 #[cfg(windows)] pub mod enclaveapi;
+pub mod sim;
 
 use std::fmt::Debug;
 use std::os::raw::c_void;
