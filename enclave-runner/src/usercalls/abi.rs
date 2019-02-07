@@ -32,7 +32,7 @@ trait ReturnValue {
 }
 
 macro_rules! define_usercalls {
-    // Using `$r:tt` because `$r:ty` doesn't match ! in `clobber_diverging`
+    // Using `$r:tt` because `$r:ty` doesn't match ! in `dispatch_return_type`
     ($(fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)*; )*) => {
         #[repr(C)]
         #[allow(non_camel_case_types)]
