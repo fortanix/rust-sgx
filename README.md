@@ -8,7 +8,7 @@ The [Fortanix Rust EDP](https://edp.fortanix.com/) is the preferred way to write
 
 ```sh
 # Install EDP components
-rustup add target x86_64-fortanix-unknown-sgx --toolchain nightly
+rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
 cargo install fortanix-sgx-tools sgxs-tools
 echo >> ~/.cargo/config -e '[target.x86_64-fortanix-unknown-sgx]\nrunner = "ftxsgx-runner-cargo"'
 
