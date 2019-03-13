@@ -1,17 +1,17 @@
 [workspace]
 members = [
-	"aesm-client",
-	"dcap-provider",
-	"dcap-ql-sys",
-	"dcap-ql",
-	"enclave-runner",
-	"fortanix-sgx-abi",
-	"fortanix-sgx-tools",
-	"report-test",
-	"rs-libc",
-	"sgxs",
-	"sgx-isa",
-	"sgxs-loaders",
-	"sgxs-tools"
+    "aesm-client",
+    "dcap-provider",
+    "dcap-ql-sys",
+    "dcap-ql",
+    "enclave-runner",
+    "fortanix-sgx-abi",
+    "fortanix-sgx-tools",
+    "report-test",
+    "rs-libc",
+    "sgxs",
+    "sgx-isa",
+    "sgxs-loaders",
+    "sgxs-tools"
 ]
 exclude = ["examples"]

@@ -139,14 +139,14 @@ impl Tls32 {
 
 fn pe_err(err: pe::Error) -> failure::Error {
     match err {
-		pe::Error::NotPe => format_err!("Not a PE file"),
-		pe::Error::InvalidSize => format_err!("A size specified was not enough to contain the data specified"),
-		pe::Error::ResolveMapError => format_err!("The requested mapping does not exist in the file or is not contiguous in the file"),
-		pe::Error::DirectoryMissing => format_err!("The requested directory does not exist in the file"),
-		pe::Error::SymbolNotFound => format_err!("The requested symbol does not exist in the symbol table"),
-		pe::Error::ExportNotFound => format_err!("The requested ordinal does not exist in the export table, this probably indicates a malformed file"),
-		pe::Error::Io(e) => e.into(),
-	}
+        pe::Error::NotPe => format_err!("Not a PE file"),
+        pe::Error::InvalidSize => format_err!("A size specified was not enough to contain the data specified"),
+        pe::Error::ResolveMapError => format_err!("The requested mapping does not exist in the file or is not contiguous in the file"),
+        pe::Error::DirectoryMissing => format_err!("The requested directory does not exist in the file"),
+        pe::Error::SymbolNotFound => format_err!("The requested symbol does not exist in the symbol table"),
+        pe::Error::ExportNotFound => format_err!("The requested ordinal does not exist in the export table, this probably indicates a malformed file"),
+        pe::Error::Io(e) => e.into(),
+    }
 }
 
 type Result<T> = ::std::result::Result<T, failure::Error>;

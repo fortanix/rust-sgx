@@ -51,12 +51,12 @@ impl EinittokenError for Error {
         use self::Error::Init;
         use self::SgxIoctlError::Ret;
         match self {
-			&Init(Ret(ErrorCode::InvalidEinitToken)) |
-			&Init(Ret(ErrorCode::InvalidCpusvn)) |
-			&Init(Ret(ErrorCode::InvalidAttribute)) | // InvalidEinitAttribute according to PR, but does not exist.
-			&Init(Ret(ErrorCode::InvalidMeasurement)) => true,
-			_ => false,
-		}
+            &Init(Ret(ErrorCode::InvalidEinitToken)) |
+            &Init(Ret(ErrorCode::InvalidCpusvn)) |
+            &Init(Ret(ErrorCode::InvalidAttribute)) | // InvalidEinitAttribute according to PR, but does not exist.
+            &Init(Ret(ErrorCode::InvalidMeasurement)) => true,
+            _ => false,
+        }
     }
 }
 
