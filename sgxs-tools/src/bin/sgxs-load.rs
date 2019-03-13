@@ -25,15 +25,15 @@ fn enclu_eenter(tcs: &mut Tcs) {
     let result: u32;
     unsafe {
         asm!("
-		lea aep(%rip),%rcx
-		jmp enclu
+        lea aep(%rip),%rcx
+        jmp enclu
 aep:
-		xor %eax,%eax
-		jmp post
+        xor %eax,%eax
+        jmp post
 enclu:
-		enclu
+        enclu
 post:
-"		: "={eax}"(result)
+"       : "={eax}"(result)
             : "{eax}"(Enclu::EEnter), "{rbx}"(tcs.address())
             : "rcx"
             : "volatile"

@@ -93,10 +93,10 @@ pub(crate) fn coenter<T: Tcs>(
             }
         };
         asm!("
-		lea 1f(%rip),%rcx
+        lea 1f(%rip),%rcx
 1:
-		enclu
-"		: "={eax}"(sgx_result), "={rbx}"(_tmp.0), "={r10}"(_tmp.1),
+        enclu
+"       : "={eax}"(sgx_result), "={rbx}"(_tmp.0), "={r10}"(_tmp.1),
               "={rdi}"(p1), "={rsi}"(p2), "={rdx}"(p3), "={r8}"(p4), "={r9}"(p5)
             : "{eax}" (2), "{rbx}"(tcs.address()), "{r10}"(debug_buf),
               "{rdi}"(p1), "{rsi}"(p2), "{rdx}"(p3), "{r8}"(p4), "{r9}"(p5)

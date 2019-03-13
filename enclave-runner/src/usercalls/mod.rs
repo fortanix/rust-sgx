@@ -47,11 +47,11 @@ struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
 
 macro_rules! forward {
-	(fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
-		fn $n(&mut self $(, $p: $t)*) -> $ret {
-			self.0 .$n($($p),*)
-		}
-	}
+    (fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
+        fn $n(&mut self $(, $p: $t)*) -> $ret {
+            self.0 .$n($($p),*)
+        }
+    }
 }
 
 impl<R: Read> Read for ReadOnly<R> {

@@ -101,30 +101,30 @@ pub struct LayoutInfo<'a> {
 }
 
 macro_rules! read_syms {
-	($($name:ident),* in $syms:ident : $elf:ident) => {{
-		$(let mut $name=None;)*
-		for sym in $syms.iter().skip(1) {
-			if sym.shndx()==SHN_UNDEF {
-				bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(err_msg)?);
-			} $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($name) {
-				if replace(&mut $name,Some(sym)).is_some() {
-					bail!("Found symbol twice: {}", stringify!($name));
-				}
-			})*
-		}
-		if let ($(Some($name)),*)=($($name),*) {
-			Symbols{$($name:$name),*}
-		} else {
-			let mut missing = String::new();
-			$(if $name.is_none() {
-				if !missing.is_empty() {
-					missing += ", ";
-				}
-				missing += stringify!($name);
-			})*
-			bail!("These dynamic symbols are missing: {}", missing)
-		}
-	}}
+    ($($name:ident),* in $syms:ident : $elf:ident) => {{
+        $(let mut $name=None;)*
+        for sym in $syms.iter().skip(1) {
+            if sym.shndx()==SHN_UNDEF {
+                bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(err_msg)?);
+            } $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($name) {
+                if replace(&mut $name,Some(sym)).is_some() {
+                    bail!("Found symbol twice: {}", stringify!($name));
+                }
+            })*
+        }
+        if let ($(Some($name)),*)=($($name),*) {
+            Symbols{$($name:$name),*}
+        } else {
+            let mut missing = String::new();
+            $(if $name.is_none() {
+                if !missing.is_empty() {
+                    missing += ", ";
+                }
+                missing += stringify!($name);
+            })*
+            bail!("These dynamic symbols are missing: {}", missing)
+        }
+    }}
 }
 
 macro_rules! check_size {
@@ -222,26 +222,26 @@ impl<'a> LayoutInfo<'a> {
 
         for dyn in dyns {
             match dyn.get_tag().map_err(err_msg)? {
-				// Some entries for PLT/GOT checking are currently
-				// commented out. I *think* that if there were an actual
-				// PLT/GOT problem, that would be caught by the remaining
-				// entries or check_relocs().
-				PltRelSize | PltRel | JmpRel /*| Pltgot | DT_PLTPADSZ | DT_PLTPAD*/ =>
-					bail!("Unsupported dynamic entry: PLT/GOT"),
-				Init | InitArray | InitArraySize =>
-					bail!("Unsupported dynamic entry: .init functions"),
-				Fini | FiniArray | FiniArraySize =>
-					bail!("Unsupported dynamic entry: .fini functions"),
-				Rel | RelSize | RelEnt | DT_RELCOUNT =>
-					bail!("Unsupported dynamic entry: relocations with implicit addend"),
-				Rela => if replace(&mut rela, Some(dyn)).is_some() {
-					bail!("Found dynamic entry twice: DT_RELA")
-				},
-				DT_RELACOUNT => if replace(&mut relacount, Some(dyn)).is_some() {
-					bail!("Found dynamic entry twice: DT_RELACOUNT")
-				},
-				_ => {}
-			}
+                // Some entries for PLT/GOT checking are currently
+                // commented out. I *think* that if there were an actual
+                // PLT/GOT problem, that would be caught by the remaining
+                // entries or check_relocs().
+                PltRelSize | PltRel | JmpRel /*| Pltgot | DT_PLTPADSZ | DT_PLTPAD*/ =>
+                    bail!("Unsupported dynamic entry: PLT/GOT"),
+                Init | InitArray | InitArraySize =>
+                    bail!("Unsupported dynamic entry: .init functions"),
+                Fini | FiniArray | FiniArraySize =>
+                    bail!("Unsupported dynamic entry: .fini functions"),
+                Rel | RelSize | RelEnt | DT_RELCOUNT =>
+                    bail!("Unsupported dynamic entry: relocations with implicit addend"),
+                Rela => if replace(&mut rela, Some(dyn)).is_some() {
+                    bail!("Found dynamic entry twice: DT_RELA")
+                },
+                DT_RELACOUNT => if replace(&mut relacount, Some(dyn)).is_some() {
+                    bail!("Found dynamic entry twice: DT_RELACOUNT")
+                },
+                _ => {}
+            }
         }
 
         match (rela, relacount) {
@@ -600,11 +600,11 @@ fn parse_num<T: NumArg, S: Borrow<str>>(s: S) -> Result<T, ParseIntError> {
 
 macro_rules! impl_numarg(
 ($($t:ty),+) => ($(
-	impl NumArg for $t {
-		fn from_str_radix(src: &str, radix: u32) -> Result<Self, ParseIntError> {
-			Self::from_str_radix(src,radix)
-		}
-	}
+    impl NumArg for $t {
+        fn from_str_radix(src: &str, radix: u32) -> Result<Self, ParseIntError> {
+            Self::from_str_radix(src,radix)
+        }
+    }
 )+););
 impl_numarg!(u32, u64, usize);
 

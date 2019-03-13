@@ -57,27 +57,27 @@ at this time.
 ```rust
 #[repr(packed)]
 struct Sgxmeta {
-	// next 2 fields: presumably a header signature
-	unknown0x635d0e4c: u32,
-	unknown0x86a80294: u32,
-	unknown0x00000001_1: u32,
-	unknown0x00000001_2: u32,
-	// the size of this structure
-	struct_size: u32,
-	// the number of threads to allocate
-	threads: u32,
-	// Field 8 in TLS section, see below
-	tls_field_8: u32,
-	tcs_nssa: u32,
-	unknown0x00000001_3: u32,
-	stack_size: u32,
-	heap_size: u32,
-	unknown0x00000a48: u32,
-	unknown0x00000000: u32,
-	requested_attributes: u64,
-	// The XFRM attributes that should be enabled, if supported by the platform.
-	requested_attributes_xfrm: u64,
-	sigstruct: Sigstruct,
+    // next 2 fields: presumably a header signature
+    unknown0x635d0e4c: u32,
+    unknown0x86a80294: u32,
+    unknown0x00000001_1: u32,
+    unknown0x00000001_2: u32,
+    // the size of this structure
+    struct_size: u32,
+    // the number of threads to allocate
+    threads: u32,
+    // Field 8 in TLS section, see below
+    tls_field_8: u32,
+    tcs_nssa: u32,
+    unknown0x00000001_3: u32,
+    stack_size: u32,
+    heap_size: u32,
+    unknown0x00000a48: u32,
+    unknown0x00000000: u32,
+    requested_attributes: u64,
+    // The XFRM attributes that should be enabled, if supported by the platform.
+    requested_attributes_xfrm: u64,
+    sigstruct: Sigstruct,
 }
 ```
 
@@ -157,14 +157,14 @@ struct Tls32 {
 Each TCS is initialized as follows:
 
 - **OSSA**: relative address of the beginning of the following SSA area
-			mentioned above.
+            mentioned above.
 - **NSSA**: tcs_nssa as specified in the `sgxmeta` header (field 8).
 - **OENTRY**: relative address of the `enclave_entry` symbol in the PE export
-			  directory.
+              directory.
 - **OFSBASGX**: relative address of the beginning of the following TLS area
-				mentioned above.
+                mentioned above.
 - **OGSBASGX**: relative address of the beginning of the following TLS area
-				mentioned above.
+                mentioned above.
 - **FSLIMIT**: `0xfff`
 - **GSLIMIT**: `0xfff`
 
@@ -279,15 +279,15 @@ as follows:
 ```rust
 #[repr(packed)]
 struct TokenRequest {
-	/// Unused
-	unused: u64,
-	/// Pointer to MRENCLAVE for the requested token
-	mrenclave: *const [u8;32],
-	/// Pointer to MRSIGNER for the requested token
-	mrsigner: *const [u8;32],
-	/// Pointer to attributes for the requested token
-	attributes: *const Attributes,
-	/// Pointer to caller-allocated buffer receiving the token
-	einittoken: *mut Einittoken,
+    /// Unused
+    unused: u64,
+    /// Pointer to MRENCLAVE for the requested token
+    mrenclave: *const [u8;32],
+    /// Pointer to MRSIGNER for the requested token
+    mrsigner: *const [u8;32],
+    /// Pointer to attributes for the requested token
+    attributes: *const Attributes,
+    /// Pointer to caller-allocated buffer receiving the token
+    einittoken: *mut Einittoken,
 }
 ```
