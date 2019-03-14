@@ -30,8 +30,10 @@ dependencies = [
  "lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 1.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "protoc-rust 1.7.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "report-test 0.1.0",
  "sgx-isa 0.2.0",
  "sgxs 0.6.0",
+ "sgxs-loaders 0.1.0",
  "unix_socket2 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
