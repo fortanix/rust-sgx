@@ -12,6 +12,7 @@ use sgxs::loader::{Load, MappingInfo};
 use loader::{EnclaveBuilder, ErasedTcs};
 use std::os::raw::c_void;
 use usercalls::EnclaveState;
+use usercalls::UsercallExtension;
 
 #[derive(Debug)]
 pub struct Command {
@@ -19,6 +20,7 @@ pub struct Command {
     threads: Vec<ErasedTcs>,
     address: *mut c_void,
     size: usize,
+    usercall_ext : Option<Box<UsercallExtension>>,
 }
 
 impl MappingInfo for Command {
@@ -34,13 +36,15 @@ impl MappingInfo for Command {
 impl Command {
     /// # Panics
     /// Panics if the number of TCSs is 0.
-    pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize) -> Command {
+    pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize,
+                      usercall_ext : Option<Box<UsercallExtension>>) -> Command {
         let main = tcss.remove(0);
         Command {
             main,
             threads: tcss,
             address,
             size,
+            usercall_ext,
         }
     }
 
@@ -49,6 +53,6 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext)
     }
 }
