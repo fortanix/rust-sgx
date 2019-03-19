@@ -65,6 +65,12 @@ def get_text_offset(file_name):
   offset = int(text_info[5], 16)
   return offset
 
+def sgx_load_sym_file(file_name, encl_addr):
+   offset=get_text_offset(file_name)
+   address=find_vma_base(encl_addr) + offset
+   gdb.execute("add-symbol-file {} {}".format(file_name, address))
+
+
 class SgxState (gdb.Command):
   """Set/restore register state from SGX memory"""
 
@@ -157,9 +163,7 @@ class SgxState (gdb.Command):
       """
       tcs=int(gdb.parse_and_eval("$rbx"));
       if len(args) >= 2:
-          offset=get_text_offset(args[1])
-          address=find_vma_base(tcs) + offset
-          gdb.execute("add-symbol-file {} {}".format(args[1], address))
+        sgx_load_sym_file(args[1], tcs)
       gdb.execute("sgxstate tcs {}".format(tcs))
     else:
       raise Exception("Invalid subcommand")
@@ -174,6 +178,28 @@ class SgxState (gdb.Command):
     for r, v in registers.items():
       gdb.execute("set ${} = {}".format(r,v))
 
+class Sgx_Add_Symbol_File (gdb.Command):
+  """
+  Given any address in the enclave and ELF path, load enclave's symbols.
+  sgx-add-symbol-file <ADDR_IN_ENCLAVE | auto> <ELF_PATH>
+  Specifying address as auto is equivalent to specifying $rbx.
+  """
+
+  def __init__ (self):
+    super (Sgx_Add_Symbol_File, self).__init__ ("sgx-add-symbol-file", gdb.COMMAND_USER)
+
+  def invoke (self, arg, from_tty):
+    args = gdb.string_to_argv(arg)
+    if (len(args) != 2):
+      raise Exception("Incorrect number of arguments.")
+    if (args[0] == 'auto'):
+        encl_addr=gdb.parse_and_eval("$rbx")
+    else:
+        encl_addr=int(args[0])
+    file_path=args[1]
+    sgx_load_sym_file(file_path, encl_addr)
+
+
 class SgxBase (gdb.Function):
   """Given an address, return the enclave base address.
 If the address is not inside an enclave, the return value is unspecified."""
@@ -185,4 +211,5 @@ If the address is not inside an enclave, the return value is unspecified."""
     return find_vma_base(int(addr))
 
 SgxState()
+Sgx_Add_Symbol_File()
 SgxBase()
