@@ -16,10 +16,11 @@ addons:
     packages:
     - protobuf-compiler
     - libsgx-dcap-ql-dev
+    - libclang-3.8-dev
 rust:
   - nightly
 env:
-  - RUST_BACKTRACE=1
+  - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
 before_script:
   - rustup target add x86_64-fortanix-unknown-sgx
 script:

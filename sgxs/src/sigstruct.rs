@@ -98,10 +98,10 @@ impl Signer {
     }
 
     fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
-        let sig: &[u8] = sig.as_ref();
         let mut hasher = H::new();
-        hasher.update(&sig[0..128]);
-        hasher.update(&sig[900..1028]);
+        let data = sig.signature_data();
+        hasher.update(data.0);
+        hasher.update(data.1);
         hasher.finish()
     }
 

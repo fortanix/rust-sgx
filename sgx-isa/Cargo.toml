@@ -15,6 +15,11 @@ homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["hardware-support"]
 
+[dev-dependencies]
+# External dependencies
+# Need to use git for CMAC (for now)
+"mbedtls" = { git = "https://github.com/fortanix/rust-mbedtls", default-features = false, features = ["sgx"] }
+
 [dependencies]
 # External dependencies
 bitflags = "1" # MIT/Apache-2.0
