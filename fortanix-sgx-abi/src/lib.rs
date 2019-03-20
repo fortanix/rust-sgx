@@ -303,7 +303,9 @@ impl Usercalls {
     /// `buf` must point to a buffer in userspace with a size of at least
     /// `len`. On a succesful return, the number of bytes written is returned.
     /// The enclave must check that the returned length is no more than `len`.
-    /// If `len` is `0` or end of stream is reached, `0` may be returned.
+    /// If `len` is `0`, this call should block until the stream is ready for
+    /// reading. If `len` is `0` or end of stream is reached, `0` may be
+    /// returned.
     ///
     /// The enclave may mix calls to [`read`](#method.read) and
     /// [`read_alloc`](#method.read_alloc).
@@ -330,7 +332,8 @@ impl Usercalls {
     /// `buf` must point to a buffer in userspace with a size of at least
     /// `len`. On a succesful return, the number of bytes written is returned.
     /// The enclave must check that the returned length is no more than `len`.
-    /// If `len` is `0` or the stream is closed, `0` may be returned.
+    /// If `len` is `0`, this call should block until the stream is ready for
+    /// writing. If `len` is `0` or the stream is closed, `0` may be returned.
     pub fn write(fd: Fd, buf: *const u8, len: usize) -> (Result, usize) { unimplemented!() }
 
     /// Flush stream `fd`, ensuring that all intermediately buffered contents

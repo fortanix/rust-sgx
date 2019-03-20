@@ -260,7 +260,9 @@ impl ToSgxResult for IoResult<()> {
 }
 
 pub unsafe fn from_raw_parts_nonnull<'a, T>(p: *const T, len: usize) -> IoResult<&'a [T]> {
-    if p.is_null() {
+    if len == 0 {
+        Ok(&[])
+    } else if p.is_null() {
         Err(IoErrorKind::InvalidInput.into())
     } else {
         Ok(slice::from_raw_parts(p, len))
@@ -268,7 +270,9 @@ pub unsafe fn from_raw_parts_nonnull<'a, T>(p: *const T, len: usize) -> IoResult
 }
 
 pub unsafe fn from_raw_parts_mut_nonnull<'a, T>(p: *mut T, len: usize) -> IoResult<&'a mut [T]> {
-    if p.is_null() {
+    if len == 0 {
+        Ok(&mut [])
+    } else if p.is_null() {
         Err(IoErrorKind::InvalidInput.into())
     } else {
         Ok(slice::from_raw_parts_mut(p, len))
