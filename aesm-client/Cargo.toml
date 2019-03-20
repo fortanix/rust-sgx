@@ -14,6 +14,11 @@ documentation = "https://edp.fortanix.com/docs/api/aesm_client/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "psw", "aesm", "aesmd"]
 categories = ["api-bindings"]
+autotests = true
+
+[[test]]
+name = "live_quote"
+required-features = ["test-sgx", "sgxs"]
 
 [features]
 # Enable tests that can only be run on an SGX-enabled environment
@@ -41,3 +46,5 @@ protoc-rust = "1.4" # MIT/Apache-2.0
 
 [dev-dependencies]
 sgx-isa = { version = "0.2.0", path = "../sgx-isa" }
+"report-test" = { version = "0.1.0", path = "../report-test" }
+"sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
