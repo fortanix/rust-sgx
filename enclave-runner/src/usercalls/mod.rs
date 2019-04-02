@@ -165,18 +165,30 @@ pub trait SyncStream: 'static + Send + Sync {
 }
 
 
-trait SyncListener: 'static + Send + Sync {
-    fn accept(&self) -> IoResult<(FileDesc, Box<dyn ToString>, Box<dyn ToString>)>;
+/// SyncListener lets an implementation implement a slightly modified form of `std::net::TcpListener::accept`.
+pub trait SyncListener: 'static + Send + Sync {
+    /// The enclave may optionally request the local or peer addresses
+    /// be returned in `local_addr` or `peer_addr`, respectively.
+    /// If `local_addr` and/or `peer_addr` are not `None`, they will point to an empty `String`.
+    /// On success, user-space can fill in the strings as appropriate.
+    ///
+    /// The enclave must not make any security decisions based on the local address received.
+    fn accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Box<dyn SyncStream>>;
 }
 
 impl SyncListener for TcpListener {
-    fn accept(&self) -> IoResult<(FileDesc, Box<dyn ToString>, Box<dyn ToString>)> {
+    fn accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Box<dyn SyncStream>> {
         TcpListener::accept(self).map(|(s, peer)| {
-            let local = match s.local_addr() {
-                Ok(local) => Box::new(local) as _,
-                Err(_) => Box::new("error") as _,
-            };
-            (FileDesc::stream(s), local, Box::new(peer) as _)
+            if let Some(local_addr) = local_addr {
+                match self.local_addr() {
+                    Ok(local) => {*local_addr = local.to_string()},
+                    Err(_) => {*local_addr = "error".to_string()},
+                }
+            }
+            if let Some(peer_addr) = peer_addr {
+                *peer_addr = peer.to_string();
+            }
+            Box::new(s) as _
         })
     }
 }
@@ -568,9 +580,9 @@ pub trait UsercallExtension : 'static + Send + Sync + std::fmt::Debug {
     /// Override the connection target for connect calls by the enclave. The runner should determine the service that the enclave is trying to connect to by looking at addr.
     /// If `connect_stream` returns None, the default implementation of [`connect_stream`](../../fortanix_sgx_abi/struct.Usercalls.html#method.connect_stream) is used.
     /// The enclave may optionally request the local or peer addresses
-    /// be returned in `local_addr` or `peer_addr`, respectively. On success,
-    /// if `local_addr` and/or `peer_addr` is not None,
-    /// user-space can fill in the strings as appropriate.
+    /// be returned in `local_addr` or `peer_addr`, respectively.
+    /// If `local_addr` and/or `peer_addr` are not `None`, they will point to an empty `String`.
+    /// On success, user-space can fill in the strings as appropriate.
     ///
     /// The enclave must not make any security decisions based on the local or
     /// peer address received.
@@ -583,6 +595,22 @@ pub trait UsercallExtension : 'static + Send + Sync + std::fmt::Debug {
     ) -> IoResult<Option<Box<dyn SyncStream>>> {
         Ok(None)
     }
+
+    /// Override the target for bind calls by the enclave. The runner should determine the service that the enclave is trying to bind to by looking at addr.
+    /// If `bind_stream` returns None, the default implementation of [`bind_stream`](../../fortanix_sgx_abi/struct.Usercalls.html#method.bind_stream) is used.
+    /// The enclave may optionally request the local address be returned in `local_addr`.
+    /// If `local_addr` is not `None`, it will point to an empty `String`.
+    /// On success, user-space can fill in the string as appropriate.
+    ///
+    /// The enclave must not make any security decisions based on the local address received.
+    #[allow(unused)]
+    fn bind_stream(&self,
+                  addr: &str,
+                  local_addr: Option<&mut String>
+                  ) -> IoResult<Option<Box<dyn SyncListener>>> {
+        Ok(None)
+    }
+
 }
 
 impl<T: UsercallExtension> From<T> for Box<dyn UsercallExtension> {
@@ -593,16 +621,7 @@ impl<T: UsercallExtension> From<T> for Box<dyn UsercallExtension> {
 
 #[derive(Debug)]
 struct UsercallExtensionDefault;
-impl UsercallExtension for UsercallExtensionDefault{
-    fn connect_stream(
-        &self,
-        _addr: &str,
-        _local_addr: Option<&mut String>,
-        _peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn SyncStream>>> {
-        Ok(None)
-    }
-}
+impl UsercallExtension for UsercallExtensionDefault{}
 
 #[allow(unused_variables)]
 impl RunningTcs {
@@ -712,6 +731,14 @@ impl RunningTcs {
     #[inline(always)]
     fn bind_stream(&self, addr: &[u8], local_addr: Option<&mut OutputBuffer>) -> IoResult<Fd> {
         let addr = str::from_utf8(addr).map_err(|_| IoErrorKind::ConnectionRefused)?;
+        let mut local_addr_str = local_addr.as_ref().map(|_| String::new());
+        if let Some(stream_ext) = self.enclave.usercall_ext
+            .bind_stream(&addr, local_addr_str.as_mut())? {
+            if let Some(local_addr) = local_addr {
+                local_addr.set(local_addr_str.unwrap().into_bytes());
+            }
+            return Ok(self.alloc_fd(FileDesc::Listener(stream_ext)));
+        }
         let socket = TcpListener::bind(addr)?;
         if let Some(local_addr) = local_addr {
             local_addr.set(socket.local_addr()?.to_string().into_bytes())
@@ -726,14 +753,18 @@ impl RunningTcs {
         local_addr: Option<&mut OutputBuffer>,
         peer_addr: Option<&mut OutputBuffer>,
     ) -> IoResult<Fd> {
-        let (stream, local, peer) = self.lookup_fd(fd)?.as_listener()?.accept()?;
+
+        let mut local_addr_str = local_addr.as_ref().map(|_| String::new());
+        let mut peer_addr_str = peer_addr.as_ref().map(|_| String::new());
+
+        let stream = self.lookup_fd(fd)?.as_listener()?.accept(local_addr_str.as_mut(), peer_addr_str.as_mut())?;
         if let Some(local_addr) = local_addr {
-            local_addr.set(local.to_string().into_bytes())
+            local_addr.set(&local_addr_str.unwrap().into_bytes()[..])
         }
         if let Some(peer_addr) = peer_addr {
-            peer_addr.set(peer.to_string().into_bytes())
+            peer_addr.set(&peer_addr_str.unwrap().into_bytes()[..])
         }
-        Ok(self.alloc_fd(stream))
+        Ok(self.alloc_fd(FileDesc::Stream(stream)))
     }
 
     #[inline(always)]
