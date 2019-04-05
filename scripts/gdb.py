@@ -193,9 +193,9 @@ class Sgx_Add_Symbol_File (gdb.Command):
     if (len(args) != 2):
       raise Exception("Incorrect number of arguments.")
     if (args[0] == 'auto'):
-        encl_addr=gdb.parse_and_eval("$rbx")
+        encl_addr=int(gdb.parse_and_eval("$rbx"))
     else:
-        encl_addr=int(args[0])
+        encl_addr=int(gdb.parse_and_eval(args[0]))
     file_path=args[1]
     sgx_load_sym_file(file_path, encl_addr)
 
