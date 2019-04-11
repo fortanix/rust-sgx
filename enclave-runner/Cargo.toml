@@ -19,7 +19,7 @@ categories = ["os", "hardware-support"]
 # Project dependencies
 sgxs = { version = "0.6.0", path = "../sgxs", features = ["crypto-openssl"] }
 fortanix-sgx-abi = { version = "0.3.0", path = "../fortanix-sgx-abi" }
-sgx-isa = { version = "0.2.0", path = "../sgx-isa" }
+sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 failure = "0.1.1"        # MIT/Apache-2.0

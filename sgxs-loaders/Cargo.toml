@@ -19,7 +19,7 @@ categories = ["os", "hardware-support", "api-bindings"]
 [dependencies]
 # Project dependencies
 "sgxs" = { version = "0.6.0", path = "../sgxs" }
-"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 bitflags = "1"           # MIT/Apache-2.0

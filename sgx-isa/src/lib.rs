@@ -15,7 +15,6 @@
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
-#![cfg_attr(feature = "try_from", feature(try_from))]
 #![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
 
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
@@ -26,6 +25,8 @@ extern crate bitflags;
 
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 use std::os::fortanix_sgx::arch;
+
+use core::{convert::TryFrom, num::TryFromIntError};
 
 #[cfg(not(feature = "large_array_derive"))]
 #[macro_use]
@@ -47,22 +48,12 @@ macro_rules! enum_def {
             $($key = $val,)*
         }
 
-        #[cfg(feature="try_from")]
-        impl ::core::convert::TryFrom<$repr> for $name {
-            type Error = ::core::num::TryFromIntError;
+        impl TryFrom<$repr> for $name {
+            type Error = TryFromIntError;
             fn try_from(v: $repr) -> Result<Self, Self::Error> {
                 match v {
                     $($val => Ok($name::$key),)*
                     _ => Err(u8::try_from(256u16).unwrap_err()),
-                }
-            }
-        }
-
-        impl $name {
-            pub fn from_repr(v: $repr) -> Option<Self> {
-                match v {
-                    $($val => Some($name::$key),)*
-                    _ => None,
                 }
             }
         }
@@ -112,6 +103,10 @@ macro_rules! struct_def {
                         ::core::mem::transmute(self)
                     }
                 }
+
+                // Should also check packed size against unaligned size here,
+                // but Rust doesn't allow packed structs to contain aligned
+                // structs, so this can't be tested.
             }
         }
 
@@ -635,7 +630,7 @@ impl Keyrequest {
         match arch::egetkey(self.as_ref()) {
             Ok(k) => Ok(k.0),
             // unwrap ok, `arch::egetkey` will always return a valid `ErrorCode`
-            Err(e) => Err(ErrorCode::from_repr(e).unwrap())
+            Err(e) => Err(ErrorCode::try_from(e).unwrap())
         }
     }
 }

@@ -32,7 +32,7 @@ test-sgx-flc = []
 # Project dependencies
 "dcap-ql-sys" = { version = "0.1.0", path = "../dcap-ql-sys" }
 "sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
-"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.1.0" # Unlicense/MIT

@@ -14,7 +14,7 @@ categories = ["parsing", "encoding"]
 
 [dependencies]
 # Project dependencies
-sgx-isa = { version = "0.2.0", path = "../sgx-isa" }
+sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.0"                                     # Unlicense/MIT
