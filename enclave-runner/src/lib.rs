@@ -23,6 +23,7 @@ extern crate failure;
 extern crate failure_derive;
 extern crate fnv;
 extern crate fortanix_sgx_abi;
+extern crate async_queues;
 #[macro_use]
 extern crate lazy_static;
 extern crate futures;
