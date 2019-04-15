@@ -57,9 +57,19 @@ impl Write for CatService {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().write(buf)
     }
+}
 
     fn flush(&mut self) -> IoResult<()> {
         poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().flush()
+    }
+}
+
+impl AsyncRead for CatService {
+}
+
+impl AsyncWrite for CatService {
+    fn shutdown(&mut self) -> tokio::prelude::Poll<(), std::io::Error> {
+        Ok(().into())
     }
 }
 

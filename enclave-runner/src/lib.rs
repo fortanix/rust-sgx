@@ -5,6 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![feature(asm)]
+#![feature(async_await)]
+
+#![feature(proc_macro_hygiene)]
+#![feature(concat_idents)]
+#![feature(once_is_completed)]
 #![doc(
     html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
     html_favicon_url = "https://edp.fortanix.com/favicon.ico",
@@ -22,6 +27,7 @@ extern crate failure;
 extern crate failure_derive;
 extern crate fnv;
 extern crate fortanix_sgx_abi;
+extern crate async_queues;
 #[macro_use]
 extern crate lazy_static;
 extern crate futures;

@@ -12,6 +12,7 @@ members = [
     "sgxs",
     "sgx-isa",
     "sgxs-loaders",
-    "sgxs-tools"
+    "sgxs-tools",
+    "async-queues"
 ]
 exclude = ["examples"]
