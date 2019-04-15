@@ -90,6 +90,7 @@ impl From<DebugBuffer> for EnclavePanic {
     }
 }
 
+// Erased here refers to Type Erasure
 #[derive(Debug)]
 pub(crate) struct ErasedTcs {
     address: *mut c_void,
