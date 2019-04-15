@@ -29,3 +29,5 @@ lazy_static = "1.2.0"    # MIT/Apache-2.0
 libc = "0.2.48"          # MIT/Apache-2.0
 nix = "0.13.0"           # MIT
 openssl = "0.10"         # Apache-2.0
+crossbeam = "0.7.1"      # MIT/Apache-2.0
+num_cpus = "1.10.0"      # MIT/Apache-2.0

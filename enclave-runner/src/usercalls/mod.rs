@@ -16,6 +16,7 @@ use std::net::{TcpListener, TcpStream};
 use std::result::Result as StdResult;
 use std::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
 use std::sync::mpsc::{self, channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
@@ -40,8 +41,151 @@ use self::libc::*;
 use self::nix::sys::signal;
 use loader::{EnclavePanic, ErasedTcs};
 use tcs;
+use tcs::{CoResult, ThreadResult};
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
+
+// //////////////////////////////////////
+// // async I/O and enclave scheduling //
+// //////////////////////////////////////
+
+// NOTE: The enclave thinks it's doing synchronous I/O. All the async stuff is
+// happening in user mode.
+
+static EPOLL_FD: AtomicUsize = AtomicUsize::new(0);
+const EPOLL_IGNORE_FD: u64 = !0;
+const EPOLL_EVENT_FD: u64 = !0 - 1;
+
+// It's not currently possible to wait on a set of fds *and* a mpsc::Receiver.
+// Therefore, we need to wake up epoll() whenever we send something across the
+// mpsc channel to avoid deadlocks. We use an eventfd to do this.
+static EVENT_FD: AtomicUsize = AtomicUsize::new(0);
+static GOT_USR1: AtomicBool = AtomicBool::new(false);
+
+
+trait CIntError: Sized {
+    fn to_errno(self) -> StdResult<Self, i32>;
+}
+
+impl CIntError for c_int {
+    fn to_errno(self) -> StdResult<Self, i32> {
+        if self < 0 {
+            Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL))
+        } else {
+            Ok(self)
+        }
+    }
+}
+
+impl CIntError for libc::ssize_t {
+    fn to_errno(self) -> StdResult<Self, i32> {
+        if self < 0 {
+            Err(std::io::Error::last_os_error().raw_os_error().unwrap_or(libc::EINVAL))
+        } else {
+            Ok(self)
+        }
+    }
+}
+
+static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
+thread_local!(static THREAD_ID: usize = NEXT_THREAD_ID.fetch_add(1,Ordering::Relaxed));
+//
+//lazy_static!{
+//    static ref SOCKET_READ_TIMEOUT_SECS: Option<u64> = {
+//        match env::var("ENCLAVE_RUNNER_IDLE_TIMEOUT") {
+//            Err(env::VarError::NotUnicode(_)) => panic!("ENCLAVE_RUNNER_IDLE_TIMEOUT does not contain a valid UTF-8 string"),
+//            Err(env::VarError::NotPresent) => Some(15*60), // 15 minutes (default)
+//            Ok(ref s) if s == "off" => None,
+//            Ok(ref s) => {
+//                let secs = s.parse::<u64>().expect("Failed to parse ENCLAVE_RUNNER_IDLE_TIMEOUT");
+//                if secs > i32::max_value() as _ {
+//                    panic!("ENCLAVE_RUNNER_IDLE_TIMEOUT too large");
+//                }
+//                Some(secs)
+//            }
+//        }
+//    };
+//}
+
+//#[derive(Default)]
+//struct FdWait<'tcs> {
+//    mask: c_int,
+//    earliest_read_wait: Option<Instant>,
+//    pending_usercalls: Vec<Usercall<'tcs>>,
+//}
+//
+//impl<'tcs> FdWait<'tcs> {
+//    fn clear(&mut self, parent_count: &mut usize) -> std::vec::Drain<Usercall<'tcs>> {
+//        *parent_count -= 1;
+//        self.mask = 0;
+//        self.earliest_read_wait = None;
+//        self.pending_usercalls.drain(..)
+//    }
+//}
+//
+//struct FdStore<'tcs> {
+//    fds: Vec<FdWait<'tcs>>,
+//    count: usize,
+//}
+//
+//impl<'tcs> FdStore<'tcs> {
+//    pub fn new() -> Self {
+//        FdStore { fds: Vec::new(), count: 0 }
+//    }
+//
+//    /// Returns the epoll event mask for this fd
+//    pub fn insert(&mut self, fd: c_int, op: Mode, tcs: Usercall<'tcs>) -> c_int {
+//        let fd_usize = fd as usize;
+//        if self.fds.len() <= fd_usize {
+//            // FIXME: use resize_default or resize_with when stable
+//            // https://github.com/rust-lang/rust/issues/41758
+//            self.fds.reserve(fd_usize);
+//            while self.fds.len() <= fd_usize {
+//                self.fds.push(Default::default());
+//            }
+//        }
+//        let entry = &mut self.fds[fd_usize];
+//
+//        entry.mask |= match op {
+//            Mode::Accept => libc::EPOLLIN,
+//            Mode::Read => libc::EPOLLIN,
+//            Mode::Write => libc::EPOLLOUT,
+//            Mode::Close => unreachable!(),
+//        };
+//
+//        if op == Mode::Read && entry.earliest_read_wait.is_none() && ACCEPTED_FDS.get(fd as _) {
+//            entry.earliest_read_wait = Some(Instant::now());
+//        }
+//
+//        if entry.pending_usercalls.is_empty() {
+//            self.count += 1;
+//        }
+//        entry.pending_usercalls.push(tcs);
+//
+//        entry.mask
+//    }
+//
+//    pub fn remove(&mut self, fd: c_int) -> Option<std::vec::Drain<Usercall<'tcs>>> {
+//        let count = &mut self.count;
+//        self.fds.get_mut(fd as usize).map(|entry| entry.clear(count))
+//    }
+//
+//    pub fn expire_stale<'a>(&'a mut self) -> Box<Iterator<Item=(c_int, std::vec::Drain<Usercall<'tcs>>)> + 'a> {
+//        let timeout = if let Some(s) = *SOCKET_READ_TIMEOUT_SECS {
+//            Duration::from_secs(s)
+//        } else {
+//            return Box::new(iter::empty())
+//        };
+//        let count = &mut self.count;
+//        Box::new(self.fds.iter_mut().enumerate()
+//            .filter(move |&(_, ref entry)| entry.earliest_read_wait.map_or(false, |then| then.elapsed() > timeout))
+//            .map(move |(fd, entry)| (fd as _, entry.clear(count))))
+//    }
+//
+//    pub fn is_empty(&self) -> bool {
+//        self.count == 0
+//    }
+//}
 
 struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
@@ -270,6 +414,14 @@ struct Library {
     threads: Mutex<Receiver<StoppedTcs>>,
     thread_sender: Mutex<Sender<StoppedTcs>>,
 }
+#[derive(Clone, Copy)]
+struct Queues<'thread> {
+    start: &'thread crossbeam::queue::SegQueue<StoppedTcs>,
+    work_sender: &'thread crossbeam::channel::Sender<Work>,
+    work_receiver: &'thread crossbeam::channel::Receiver<Work>,
+    //fd_poll: &'thread mpsc::Sender<Pollcall<'tcs>>,
+    io_queue: &'thread mpsc::Sender<(RunningTcs,tcs::Usercall<ErasedTcs>)>,
+}
 
 impl EnclaveKind {
     fn as_command(&self) -> Option<&Command> {
@@ -295,7 +447,11 @@ pub(crate) struct EnclaveState {
     exiting: AtomicBool,
     usercall_ext: Box<UsercallExtension>,
 }
-
+enum Work
+{
+    Stopped(StoppedTcs),
+    Running(RunningTcs, tcs::Usercall<ErasedTcs>, (u64,u64)),
+}
 impl EnclaveState {
     fn event_queue_add_tcs(
         event_queues: &mut FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
@@ -311,6 +467,56 @@ impl EnclaveState {
         StoppedTcs {
             tcs,
             event_queue: recv,
+        }
+    }
+
+    fn epoll_setup() {
+        use self::libc::*;
+        unsafe {
+            let epoll_fd = epoll_create1(EPOLL_CLOEXEC).to_errno().expect("Unable to initialize epoll");
+            let event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK).to_errno().expect("Unable to initialize semaphore");
+
+            let mut ev = epoll_event {
+                events: EPOLLIN as _,
+                u64: EPOLL_EVENT_FD,
+            };
+            epoll_ctl(epoll_fd, EPOLL_CTL_ADD, event_fd, &mut ev).to_errno().expect("Error adding event fd to epoll");
+
+            EPOLL_FD.store(epoll_fd as _, Ordering::Relaxed);
+            EVENT_FD.store(event_fd as _, Ordering::Relaxed);
+        }
+    }
+
+    /// Setup signal handling such that `SIGUSR1` is not ignored, but is blocked.
+    /// It can't be ignored, as signals with the ignore disposition will never be
+    /// pending, even when blocked.
+    ///
+    /// Only during `epoll_pwait` will `SIGUSR1` be unblocked, in which case it
+    /// will be delivered via return error code `EINTR`.
+    fn sigusr1_setup() -> libc::sigset_t {
+        #[allow(unused)]
+        use self::libc::{sigprocmask, sigemptyset, sigaddset, sigdelset, sigaction, SIGUSR1, SIG_BLOCK};
+
+        extern "C" fn set_usr1_flag(_sig: i32) {
+            GOT_USR1.store(true, Ordering::SeqCst);
+        }
+
+        unsafe {
+            let mut sigset = ::std::mem::uninitialized();
+            let mut epoll_sigset = ::std::mem::uninitialized();
+            sigemptyset(&mut sigset).to_errno().expect("Error calling sigemptyset");
+
+            // ignore USR1 (will be caught by epoll_pwait)
+            let action = sigaction { sa_sigaction: set_usr1_flag as _, sa_mask: sigset, sa_flags: 0, sa_restorer: None };
+            sigaction(SIGUSR1, &action, std::ptr::null_mut()).to_errno().expect("Error calling sigaction");
+
+            // block USR1
+            sigaddset(&mut sigset, SIGUSR1).to_errno().expect("Error calling sigaddset");
+            sigprocmask(SIG_BLOCK, &sigset, &mut epoll_sigset).to_errno().expect("Error calling sigprocmask");
+
+            // unblock USR1 during epoll_pwait
+            sigdelset(&mut epoll_sigset, SIGUSR1).to_errno().expect("Error calling sigdelset");
+            epoll_sigset
         }
     }
 
@@ -335,6 +541,128 @@ impl EnclaveState {
             usercall_ext : usercall_ext,
         })
     }
+
+    pub(crate) fn main_entry1(
+        main: ErasedTcs,
+        threads: Vec<ErasedTcs>,
+        usercall_ext: Option<Box<UsercallExtension>>) -> StdResult<(), failure::Error>  {
+        let mut event_queues =
+            FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
+        let main = Self::event_queue_add_tcs(&mut event_queues, main);
+
+        let threads: Vec<StoppedTcs> = threads
+            .into_iter()
+            .map(|thread| Self::event_queue_add_tcs(&mut event_queues, thread))
+            .collect();
+
+
+        let (io_queue_send, io_queue_receive) = mpsc::channel();
+        let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
+        let start_queue = crossbeam::queue::SegQueue::new();
+        start_queue.push(main);
+        let threads_copy : Vec<StoppedTcs> = vec![];
+        for tcs in threads {
+            start_queue.push(tcs);
+        }
+        //work_queue.push(Work::Start(start_queue.try_pop().expect("at least one thread")));
+        let kind = EnclaveKind::Command(Command {
+            data: Mutex::new(CommandSync {
+                threads:threads_copy,
+                primary_panic_reason: None,
+                other_reasons: vec![],
+                running_secondary_threads: 0,
+            }),
+            wait_secondary_threads: Condvar::new(),
+        });
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext);
+
+        work_sender.send(Work::Stopped(start_queue.pop()?));
+        EnclaveState::epoll_setup();
+        let epoll_sigset = EnclaveState::sigusr1_setup();
+        let mut num_of_threads = num_cpus::get();
+        if num_of_threads < 2 {
+            num_of_threads = 2;
+        }
+
+        crossbeam::scope(|scope| {
+            // loop for one less than the total number of threads
+
+            // create 1 less than the number of threads
+
+            for _ in 1..num_of_threads {
+                let start_queue = &start_queue;
+                let work_sender = &work_sender;
+                let work_receiver = &work_receiver;
+                let io_queue_send = io_queue_send.clone();
+                let enclave_cloned = enclave.clone();
+
+                scope.spawn(move |_| {
+                    THREAD_ID.with(|_| ());
+                    let queues = Queues {
+                        start: start_queue,
+                        work_sender,
+                        work_receiver,
+                        io_queue: &io_queue_send,
+                    };
+                    // ///////////////////////////
+                    // // enclave worker thread //
+                    // ///////////////////////////
+                    loop {
+                        let work = queues.work_receiver.recv().unwrap();
+                        //check for error
+                        let enclave_cloned = enclave_cloned.clone();
+                        match work {
+                            Work::Stopped(tcs) => {
+                                RunningTcs::entry_async(enclave_cloned,tcs, queues, EnclaveEntry::ExecutableNonMain);
+                            }
+                            Work::Running(state, usercall, coresult) => {
+                                RunningTcs::coentry_async(state, usercall, coresult, queues);
+                            }
+                        }
+
+                    }
+
+                });
+            }
+            // ///////////////////////////////
+            // // main syscall polling loop //
+            // ///////////////////////////////
+            //let mut fds = FdStore::new();
+            //let mut fds = Vec
+            loop {
+                let maybe_block_recv = |block| if block {
+                    io_queue_receive.recv().ok()
+                } else {
+                    io_queue_receive.try_recv().ok()
+                };
+
+                while let Some((mut state, usercall)) = maybe_block_recv(true) {
+                    //got a request. make usercall and register with epoll??
+                    let mut result;
+                    {
+                        let mut on_usercall =
+                            |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state), p1, p2, p3, p4, p5);
+                        let (p1, p2, p3, p4, p5) = usercall.parameters();
+                        result = on_usercall(p1, p2, p3, p4, p5);
+                    }
+
+                    match result{
+                        Ok(ret) => {
+//                            let resume_execution  = || {
+//                                usercall.coreturn(ret,None)
+//                            };
+
+                            work_sender.send(Work::Running(state, usercall, ret));
+                        },
+                        Err(err) => {/* !!! Do something about the error case*/}, //(usercall.tcs, Err(err)),
+                    }
+                }
+                //
+            }
+        });
+        Ok(())
+    }
+
 
     pub(crate) fn main_entry(
         main: ErasedTcs,
@@ -602,6 +930,104 @@ impl UsercallExtension for UsercallExtensionDefault{
 
 #[allow(unused_variables)]
 impl RunningTcs {
+
+    fn send_to_correct_queue (coresult: ThreadResult<ErasedTcs>, state: RunningTcs, queues: Queues) {
+        match coresult {
+            tcs::CoResult::Return((erased_tcs, r1, r2) ) => {
+                //(erased_tcs, Ok((r1, r2)));
+                assert_eq!(
+                    (r1,r2),
+                    (0, 0),
+                    "Expected enclave thread entrypoint to return zero"
+                );
+                queues.start.push(StoppedTcs {
+                    tcs:erased_tcs,
+                    event_queue: state.event_queue,
+                });
+
+            },
+            tcs::CoResult::Yield(usercall) => {
+                queues.io_queue.send((state, usercall));
+                return;
+            },
+        };
+    }
+
+    fn entry_async(
+        enclave: Arc<EnclaveState>,
+        tcs: StoppedTcs,
+        queues: Queues,
+        mode: EnclaveEntry
+    )
+    // -> StdResult<(StoppedTcs, (u64, u64)), EnclaveAbort<EnclavePanic>>
+    {
+        let mut state = RunningTcs {
+            enclave,
+            event_queue: tcs.event_queue,
+            pending_event_set: 0,
+            pending_events: Default::default(),
+        };
+        let coresult = {
+            let (p1, p2, p3, p4, p5) = match mode {
+                EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
+                _ => (0, 0, 0, 0, 0),
+            };
+            tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, None)
+        };
+        //Self::send_to_correct_queue(coresult, state, queues);
+        match coresult {
+            tcs::CoResult::Return((erased_tcs, r1, r2)) => {
+                //(erased_tcs, Ok((r1, r2)));
+                assert_eq!(
+                    (r1,r2),
+                    (0, 0),
+                    "Expected enclave thread entrypoint to return zero"
+                );
+                queues.start.push(StoppedTcs {
+                    tcs:erased_tcs,
+                    event_queue: state.event_queue,
+                });
+
+            },
+            tcs::CoResult::Yield(usercall) => {
+                queues.io_queue.send((state, usercall));
+                return;
+            },
+        };
+    }
+    fn coentry_async(
+        state: RunningTcs,
+        completed_usercall: tcs::Usercall<ErasedTcs>,
+        completed_usercall_return : (u64,u64),
+        queues: Queues
+    )
+    {
+        let coresult =  {
+            completed_usercall.coreturn(completed_usercall_return, None)
+            //tcs::coenter(tcs.tcs, 0, completed_usercall_result.0, completed_usercall_result.1, 0, 0, None )
+        };
+        //Self::send_to_correct_queue(coresult, state, queues);
+
+        match coresult {
+            tcs::CoResult::Return((erased_tcs, r1, r2) ) => {
+                //(erased_tcs, Ok((r1, r2)));
+                assert_eq!(
+                    (r1,r2),
+                    (0, 0),
+                    "Expected enclave thread entrypoint to return zero"
+                );
+                queues.start.push(StoppedTcs {
+                    tcs:erased_tcs,
+                    event_queue: state.event_queue,
+                });
+
+            },
+            tcs::CoResult::Yield(usercall) => {
+                queues.io_queue.send((state, usercall));
+                return;
+            },
+        };
+    }
     fn entry(
         enclave: Arc<EnclaveState>,
         tcs: StoppedTcs,
