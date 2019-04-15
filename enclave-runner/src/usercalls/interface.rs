@@ -12,9 +12,9 @@ use std::slice;
 use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
-use super::{EnclaveAbort, RunningTcs};
+use super::{EnclaveAbort, IOHandlerInput};
 
-pub(super) struct Handler<'a>(pub &'a mut RunningTcs);
+pub(super) struct Handler<'a>(pub &'a mut IOHandlerInput<'a>);
 
 impl<'a> Usercalls for Handler<'a> {
     fn is_exiting(&self) -> bool {
