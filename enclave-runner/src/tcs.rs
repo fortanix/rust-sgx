@@ -71,7 +71,7 @@ pub enum CoResult<Y, R> {
 
 #[derive(Debug)]
 pub struct Usercall<T: Tcs> {
-    tcs: T,
+    pub tcs: T,
     parameters: (u64, u64, u64, u64, u64),
 }
 

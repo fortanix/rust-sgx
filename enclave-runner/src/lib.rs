@@ -20,6 +20,7 @@ extern crate fnv;
 extern crate fortanix_sgx_abi;
 #[macro_use]
 extern crate lazy_static;
+//extern crate term;
 
 mod command;
 mod library;

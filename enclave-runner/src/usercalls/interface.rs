@@ -12,16 +12,20 @@ use std::slice;
 use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
-use super::{EnclaveAbort, RunningTcs};
+use super::{EnclaveAbort, RunningTcs, StoppedTcs};
+use super::Work;
 
-pub(super) struct Handler<'a>(pub &'a mut RunningTcs);
+pub(super) struct Handler<'a>(pub &'a mut RunningTcs, pub &'a crossbeam::channel::Sender<Work>);
 
 impl<'a> Usercalls for Handler<'a> {
     fn is_exiting(&self) -> bool {
+        println!("is_exiting");
         self.0.is_exiting()
     }
 
     fn read(&mut self, fd: Fd, buf: *mut u8, len: usize) -> UsercallResult<(Result, usize)> {
+        println!("read");
+
         unsafe {
             Ok(from_raw_parts_mut_nonnull(buf, len)
                 .and_then(|buf| self.0.read(fd, buf))
@@ -30,6 +34,7 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn read_alloc(&mut self, fd: Fd, buf: *mut ByteBuffer) -> UsercallResult<Result> {
+        println!("read_alloc");
         unsafe {
             Ok((|| {
                 let mut out = OutputBuffer::new(buf.as_mut().ok_or(IoErrorKind::InvalidInput)?);
@@ -43,6 +48,7 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn write(&mut self, fd: Fd, buf: *const u8, len: usize) -> UsercallResult<(Result, usize)> {
+        println!("write");
         unsafe {
             Ok(from_raw_parts_nonnull(buf, len)
                 .and_then(|buf| self.0.write(fd, buf))
@@ -51,10 +57,12 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn flush(&mut self, fd: Fd) -> UsercallResult<Result> {
+        println!("flush");
         Ok(self.0.flush(fd).to_sgx_result())
     }
 
     fn close(&mut self, fd: Fd) -> UsercallResult<()> {
+        println!("close");
         Ok(self.0.close(fd))
     }
 
@@ -64,6 +72,7 @@ impl<'a> Usercalls for Handler<'a> {
         len: usize,
         local_addr: *mut ByteBuffer,
     ) -> UsercallResult<(Result, Fd)> {
+        println!("bind_stream");
         unsafe {
             let mut local_addr = local_addr.as_mut().map(OutputBuffer::new);
             Ok(from_raw_parts_nonnull(addr, len)
@@ -78,6 +87,7 @@ impl<'a> Usercalls for Handler<'a> {
         local_addr: *mut ByteBuffer,
         peer_addr: *mut ByteBuffer,
     ) -> UsercallResult<(Result, Fd)> {
+        println!("accept_stream");
         unsafe {
             let mut local_addr = local_addr.as_mut().map(OutputBuffer::new);
             let mut peer_addr = peer_addr.as_mut().map(OutputBuffer::new);
@@ -95,6 +105,7 @@ impl<'a> Usercalls for Handler<'a> {
         local_addr: *mut ByteBuffer,
         peer_addr: *mut ByteBuffer,
     ) -> UsercallResult<(Result, Fd)> {
+        println!("connect_stream");
         unsafe {
             let mut local_addr = local_addr.as_mut().map(OutputBuffer::new);
             let mut peer_addr = peer_addr.as_mut().map(OutputBuffer::new);
@@ -108,14 +119,17 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn launch_thread(&mut self) -> UsercallResult<Result> {
-        Ok(self.0.launch_thread().to_sgx_result())
+        println!("Launching Thread");
+        Ok(self.0.launch_thread1(self.1).to_sgx_result())
     }
 
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
+        println!("exit");
         self.0.exit(panic)
     }
 
     fn wait(&mut self, event_mask: u64, timeout: u64) -> UsercallResult<(Result, u64)> {
+        println!("wait");
         if event_mask == 0 && timeout == WAIT_INDEFINITE {
             return Err(EnclaveAbort::IndefiniteWait);
         }
@@ -124,18 +138,22 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn send(&mut self, event_set: u64, tcs: Option<Tcs>) -> UsercallResult<Result> {
+        println!("send");
         Ok(self.0.send(event_set, tcs).to_sgx_result())
     }
 
     fn insecure_time(&mut self) -> UsercallResult<u64> {
+        println!("insecure_time");
         Ok(self.0.insecure_time())
     }
 
     fn alloc(&mut self, size: usize, alignment: usize) -> UsercallResult<(Result, *mut u8)> {
+        println!("alloc");
         Ok(self.0.alloc(size, alignment).to_sgx_result())
     }
 
     fn free(&mut self, ptr: *mut u8, size: usize, alignment: usize) -> UsercallResult<()> {
+        println!("free");
         Ok(self.0.free(ptr, size, alignment).unwrap())
     }
 
@@ -144,6 +162,7 @@ impl<'a> Usercalls for Handler<'a> {
         usercall_queue: *mut FifoDescriptor<Usercall>,
         return_queue: *mut FifoDescriptor<Return>,
     ) -> UsercallResult<Result> {
+        println!("async_queues");
         unsafe {
             Ok((|| {
                 let usercall_queue = usercall_queue
