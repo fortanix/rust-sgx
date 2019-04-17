@@ -49,12 +49,30 @@ LIBS_SORTED=$(
     | egrep '^'$(echo $LIBS|sed 's/ /|/g')'$'
 )
 
+dependencies=''
+
 for LIB in $LIBS_SORTED; do
     cd $LIB
+    version=$(cat Cargo.toml | grep version | head -n1 | cut -d'"' -f2)
+    dependency=$LIB' = { version = "'$version'"'
     ARGS=""
     if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
         ARGS="--features $FEATURES"
+        dependency=$dependency', features = ["'$FEATURES'"]'
     fi
-    cargo doc --no-deps --lib $ARGS
+    dependency=$dependency' }'
+    dependencies=$dependencies$dependency$'\n'
+    #cargo doc --no-deps --lib $ARGS
     cd -
+done
+
+pushd $WORKSPACE
+cargo new foo
+cd foo
+echo "$dependencies" >> Cargo.toml
+cargo doc
+popd
+
+for LIB in $LIBS_SORTED; do
+    cp -r $WORKSPACE/foo/target/doc/$LIB target/doc
 done
