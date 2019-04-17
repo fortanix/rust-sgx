@@ -53,7 +53,7 @@ dependencies=''
 
 for LIB in $LIBS_SORTED; do
     cd $LIB
-    version=$(cat Cargo.toml | grep version | head -n1 | cut -d'"' -f2)
+    version=$(git tag --sort=taggerdate | grep $LIB'_' | tail -n1 | cut -d'_' -f2 | cut -d'v' -f2)
     dependency=$LIB' = { version = "'$version'"'
     ARGS=""
     if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
