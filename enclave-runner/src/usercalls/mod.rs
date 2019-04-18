@@ -685,7 +685,7 @@ impl EnclaveState {
                                 let (p1, p2, p3, p4, p5) = usercall.parameters();
                                 result = on_usercall(p1, p2, p3, p4, p5);
                             }
-
+                            println!("Usercall done");
                             match result {
                                 Ok(ret) => {
 //                            let resume_execution  = || {
@@ -695,27 +695,93 @@ impl EnclaveState {
                                     work_sender.send(Work::Running(state, usercall, ret, mode));
                                     println!("Sent work");
                                 },
-                                Err(err) => { /* !!! Do something about the error case*/ }, //(usercall.tcs, Err(err)),
+                                Err(err) => {
+                                    println!("usercall Error");
+                                    /* !!! Do something about the error case*/
+                                    match err {
+                                        EnclaveAbort::Exit { panic } => {
+                                            println!("EnclaveAbort::Exit");
+                                            //let error = Err(panic.into());
+//                                            assert_eq!(
+//                                                (r1,r2),
+//                                                (0, 0),
+//                                                "Expected enclave thread entrypoint to return zero"
+//                                            );
+                                            if mode != EnclaveEntry::ExecutableMain {
+                                                let cmd = state.enclave.kind.as_command().unwrap();
+                                                println!("Getting cmddata from Mutex, send_to_correct_queue");
+                                                let mut cmddata = cmd.data.lock().unwrap();
+                                                println!("got cmddata from Mutex, send_to_correct_queue");
+                                                cmddata.running_secondary_threads -= 1;
+                                                if cmddata.running_secondary_threads == 0 {
+                                                    cmd.wait_secondary_threads.notify_all();
+                                                }
+                                                cmddata.threads_queue.push(StoppedTcs {
+                                                    tcs: usercall.tcs,
+                                                    event_queue: state.event_queue,
+                                                });
+                                                println!("dropping cmddata, send_to_correct_queue");
+                                                //return Ok(WorkerThreadExit::NonMainReturned)
+                                            }
+                                            else {
+//                                                return Ok(WorkerThreadExit::MainReturned)
+                                                drop(work_sender);
+                                                // !!! do something about the waiting for the threads to give them an exit usercall return
+                                                let cmd = enclave.kind.as_command().unwrap();
+                                                println!("Getting cmddata from Mutex, usercall loop");
+                                                let mut cmddata = cmd.data.lock().unwrap();
+                                                println!("got cmddata from Mutex, usercall loop");
+
+                                                cmddata.threads.clear();
+                                                //cmddata.threads_queue : crossbeam::queue::SegQueue<StoppedTcs> = crossbeam::queue::SegQueue::new();
+                                                enclave.abort_all_threads();
+                                                while cmddata.running_secondary_threads > 0 {
+                                                    cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
+                                                }
+
+                                                println!("Dropping cmddata, usercall loop");
+                                                break 'outer;
+
+                                            }
+
+                                        },
+                                        EnclaveAbort::IndefiniteWait => {
+                                            println!("EnclaveAbort::IndefiniteWait");
+
+//                                            bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
+                                        }
+                                        EnclaveAbort::InvalidUsercall(n) => {
+                                            println!("EnclaveAbort::InvalidUsercall");
+//                                            bail!("The enclave performed an invalid usercall 0x{:x}", n)
+                                        }
+                                        EnclaveAbort::MainReturned => {
+                                            println!("EnclaveAbort::InvalidUsercall");
+//                                            bail!("The enclave returned from the main entrypoint in violation of the specification.")
+                                        },
+                                        // Should always be able to return the real exit reason
+                                        EnclaveAbort::Secondary => unreachable!(),
+                                    }
+                                }, //(usercall.tcs, Err(err)),
                             }
                             println!("Finished request");
                         },
                         UsercallSignal::HangupSignal => {
                             println!("Got a hangup");
-                            drop(work_sender);
-                            // !!! do something about the waiting for the threads to give them an exit usercall return
-                            let cmd = enclave.kind.as_command().unwrap();
-                            println!("Getting cmddata from Mutex, usercall loop");
-                            let mut cmddata = cmd.data.lock().unwrap();
-                            println!("got cmddata from Mutex, usercall loop");
-
-                            cmddata.threads.clear();
-                            //cmddata.threads_queue : crossbeam::queue::SegQueue<StoppedTcs> = crossbeam::queue::SegQueue::new();
-                            enclave.abort_all_threads();
-                            while cmddata.running_secondary_threads > 0 {
-                                cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
-                            }
-
-                            println!("Dropping cmddata, usercall loop");
+//                            drop(work_sender);
+//                            // !!! do something about the waiting for the threads to give them an exit usercall return
+//                            let cmd = enclave.kind.as_command().unwrap();
+//                            println!("Getting cmddata from Mutex, usercall loop");
+//                            let mut cmddata = cmd.data.lock().unwrap();
+//                            println!("got cmddata from Mutex, usercall loop");
+//
+//                            cmddata.threads.clear();
+//                            //cmddata.threads_queue : crossbeam::queue::SegQueue<StoppedTcs> = crossbeam::queue::SegQueue::new();
+//                            enclave.abort_all_threads();
+//                            while cmddata.running_secondary_threads > 0 {
+//                                cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
+//                            }
+//
+//                            println!("Dropping cmddata, usercall loop");
                             break 'outer;
                         }
                     }
