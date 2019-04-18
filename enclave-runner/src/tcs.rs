@@ -12,28 +12,7 @@ use sgxs::loader::Tcs;
 use usercalls::abi::DispatchResult;
 
 pub(crate) type DebugBuffer = [u8; 1024];
-//
-//pub(crate) fn enter_async<T: Tcs, F>(
-//    tcs: T,
-//    mut on_usercall: F,
-//    p1: u64,
-//    p2: u64,
-//    p3: u64,
-//    p4: u64,
-//    p5: u64,
-//    debug_buf: Option<&RefCell<DebugBuffer>>,
-//) -> (T, DispatchResult)
-//{
-//    let mut result = coenter(tcs, p1, p2, p3, p4, p5, debug_buf);
-//    while let CoResult::Yield(usercall) = result {
-//        let (p1, p2, p3, p4, p5) = usercall.parameters();
-//        result = match on_usercall(p1, p2, p3, p4, p5) {
-//            Ok(ret) => usercall.coreturn(ret, debug_buf),
-//            Err(err) => return (usercall.tcs, Err(err)),
-//        }
-//    }
-//
-//}
+
 pub(crate) fn enter<T: Tcs, F>(
     tcs: T,
     mut on_usercall: F,

@@ -1,17 +1,22 @@
 set -e
 
 # Build custom runner
-cd runner
-cargo +nightly build
-cd -
+#cd runner
+#cargo +nightly build
+#cd -
 
+APPNAME=rust-sgx-ut
+APPPATH=../unit_tests
+#APPNAME=mpsc-crypto-mining
+#APPPATH=../mpsc-crypto-mining
+RUNNERPATH=../../target/debug/ftxsgx-runner
 # Build APP
-cd app
+cd $APPPATH
 cargo +nightly build --target=x86_64-fortanix-unknown-sgx
 cd -
 
 # Convert the APP
-ftxsgx-elf2sgxs app/target/x86_64-fortanix-unknown-sgx/debug/app --heap-size 0x20000 --stack-size 0x20000 --threads 1 --debug
+ftxsgx-elf2sgxs $APPPATH/target/x86_64-fortanix-unknown-sgx/debug/$APPNAME --heap-size 0x20000 --stack-size 0x20000 --threads 6 --debug
 
 # Execute
-runner/target/debug/runner app/target/x86_64-fortanix-unknown-sgx/debug/app.sgxs
+$RUNNERPATH $APPPATH/target/x86_64-fortanix-unknown-sgx/debug/$APPNAME.sgxs
