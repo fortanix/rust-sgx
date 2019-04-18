@@ -55,14 +55,12 @@ for LIB in $LIBS_SORTED; do
     cd $LIB
     version=$(git tag --sort=taggerdate | grep $LIB'_' | tail -n1 | cut -d'_' -f2 | cut -d'v' -f2)
     dependency=$LIB' = { version = "'$version'"'
-    ARGS=""
-    if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
-        ARGS="--features $FEATURES"
-        dependency=$dependency', features = ["'$FEATURES'"]'
+    features="$(cargo read-manifest|jq -c '.metadata.docs.rs.features')"
+    if [ $features != 'null' ]; then
+        dependency=$dependency', features = '$features
     fi
     dependency=$dependency' }'
     dependencies=$dependencies$dependency$'\n'
-    #cargo doc --no-deps --lib $ARGS
     cd -
 done
 
