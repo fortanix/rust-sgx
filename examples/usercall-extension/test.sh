@@ -5,10 +5,10 @@ set -e
 #cargo +nightly build
 #cd -
 
-APPNAME=rust-sgx-ut
-APPPATH=../unit_tests
-#APPNAME=mpsc-crypto-mining
-#APPPATH=../mpsc-crypto-mining
+#APPNAME=rust-sgx-ut
+#APPPATH=../unit_tests
+APPNAME=mpsc-crypto-mining
+APPPATH=../mpsc-crypto-mining
 RUNNERPATH=../../target/debug/ftxsgx-runner
 # Build APP
 cd $APPPATH
