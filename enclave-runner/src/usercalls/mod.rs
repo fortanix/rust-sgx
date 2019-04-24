@@ -503,9 +503,7 @@ impl EnclaveState {
                                 drop(work_sender);
                                 // !!! do something about the waiting for the threads to give them an exit usercall return
                                 let cmd = enclave.kind.as_command().unwrap();
-                                eprintln!("Getting cmddata from Mutex, usercall loop");
                                 let mut cmddata = cmd.data.lock().unwrap();
-                                eprintln!("got cmddata from Mutex, usercall loop");
                                 cmddata.threads.clear();
                                 //clear the threads_queue
                                 cmddata.threads_queue  = crossbeam::queue::SegQueue::new();
@@ -513,7 +511,6 @@ impl EnclaveState {
                                 while cmddata.running_secondary_threads > 0 {
                                     cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
                                 }
-                                eprintln!("Dropping cmddata, usercall loop");
                                 break 'outer;
                             }
                         },
@@ -828,7 +825,7 @@ impl UsercallExtension for UsercallExtensionDefault{
 impl RunningTcs {
 
     fn send_to_appropriate_queue (coresult: ThreadResult<ErasedTcs>, state: RunningTcs, io_send_queue: &mpsc::Sender<(RunningTcs,tcs::Usercall<ErasedTcs>, EnclaveEntry)>,
-                              mode: EnclaveEntry)
+                              mode: EnclaveEntry, debug_buf: Option<RefCell<[u8; 1024]>>)
         -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
     {
         match coresult {
@@ -841,7 +838,9 @@ impl RunningTcs {
                 );
                 if mode != EnclaveEntry::ExecutableMain {
                     let cmd = state.enclave.kind.as_command().unwrap();
+                    eprintln!("Getting cmddata from Mutex, send_to_appropriate_queue");
                     let mut cmddata = cmd.data.lock().unwrap();
+                    eprintln!("got cmddata from matrix, send_to_appropriate_queue");
                     cmddata.running_secondary_threads -= 1;
                     if cmddata.running_secondary_threads == 0 {
                         cmd.wait_secondary_threads.notify_all();
@@ -854,6 +853,7 @@ impl RunningTcs {
                             event_queue: state.event_queue,
                         });
                     }
+                    eprintln!("Dropping cmddata, send_to_appropriate_queue");
                     return Ok(WorkerThreadExit::NonMainReturned)
                 }
                 else {
@@ -877,6 +877,8 @@ impl RunningTcs {
     )
         -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
     {
+        let buf = RefCell::new([0u8; 1024]);
+
         let mut state = RunningTcs {
             enclave,
             event_queue: tcs.event_queue,
@@ -888,9 +890,9 @@ impl RunningTcs {
                 EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
                 _ => (0, 0, 0, 0, 0),
             };
-            tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, None)
+            tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, Some(&buf))
         };
-        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode)
+        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode, Some(buf))
     }
     fn coentry_async(
         state: RunningTcs,
@@ -901,10 +903,13 @@ impl RunningTcs {
     )
         -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
     {
+        let buf = RefCell::new([0u8; 1024]);
+
         let coresult =  {
-            completed_usercall.coreturn(completed_usercall_return, None)
+            completed_usercall.coreturn(completed_usercall_return, Some(&buf))
         };
-        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode)
+
+        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode, Some(buf))
 
     }
     fn entry(
@@ -1080,7 +1085,9 @@ impl RunningTcs {
             .ok_or(IoErrorKind::InvalidInput)?;
         eprintln!("Getting cmddata from Mutex, launch_thread1");
         let mut cmddata = command.data.lock().unwrap();
-        eprintln!("got cmddata from matrix");
+        cmddata.running_secondary_threads += 1;
+
+        eprintln!("got cmddata from `matrix, launch_thread1");
         if cmddata.threads_queue.is_empty() {
             eprintln!("Threads queue is empty");
         }
@@ -1104,6 +1111,7 @@ impl RunningTcs {
                 Err(std::io::Error::new(IoErrorKind::NotConnected, "Work Sender queue send error"))
             }
         }
+
     }
     #[inline(always)]
     fn launch_thread(&self) -> IoResult<()> {
@@ -1208,16 +1216,15 @@ impl RunningTcs {
 
         if ret.is_none() {
             loop {
-                let ev = if wait {
-                    return Ok(0);
-                    self.event_queue.recv()
-                } else {
-                    match self.event_queue.try_recv() {
+//                let ev = if wait {
+//                    self.event_queue.recv()
+//                } else {
+                    let ev = match self.event_queue.try_recv() {
                         Ok(ev) => Ok(ev),
                         Err(mpsc::TryRecvError::Disconnected) => Err(mpsc::RecvError),
-                        Err(mpsc::TryRecvError::Empty) => break,
+                        Err(mpsc::TryRecvError::Empty) => return Ok(event_mask.into()),
                     }
-                }
+//                }
                 .expect("TCS event queue disconnected");
 
                 if (ev & (EV_ABORT as u8)) != 0 {
