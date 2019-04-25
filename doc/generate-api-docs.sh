@@ -52,19 +52,20 @@ LIBS_SORTED=$(
 for LIB in $LIBS_SORTED; do
     cd $LIB
     version=$(git tag --sort=taggerdate | grep $LIB'_' | tail -n1 | cut -d'_' -f2 | cut -d'v' -f2)
-    dependency=$LIB' = { version = "'$version'"'
+    dependency=$LIB' = { version = "='$version'"'
     features="$(cargo read-manifest|jq -c '.metadata.docs.rs.features')"
     if [ $features != 'null' ]; then
         dependency=$dependency', features = '$features
     fi
     dependency=$dependency' }'
+
     cd -
 
     pushd $WORKSPACE
     cargo new foo
     cd foo
     echo "$dependency" >> Cargo.toml
-    cargo doc -p $LIB
+    cargo doc -p $LIB --no-deps
     popd
 
     ls -lrta $WORKSPACE/foo/target/doc/
