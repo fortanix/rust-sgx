@@ -59,7 +59,7 @@ fn main() -> Result<(), Error> {
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
 
     enclave.run().map_err(|e| {
-        println!("Error while executing SGX enclave.\n{}", e);
+        eprintln!("Error while executing SGX enclave.\n{}", e);
         std::process::exit(-1)
     })
 }
