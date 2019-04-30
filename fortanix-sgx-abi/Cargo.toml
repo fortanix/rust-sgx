@@ -28,6 +28,3 @@ compiler_builtins = { version = "0.1.0", optional = true }
 [features]
 docs = []
 rustc-dep-of-std = ["core", "compiler_builtins/rustc-dep-of-std"]
-
-[package.metadata.docs.rs]
-features = ["docs"]

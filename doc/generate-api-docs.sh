@@ -54,6 +54,8 @@ LIBS_SORTED=$(
     | egrep '^'$(echo $LIBS|sed 's/ /|/g')'$'
 )
 
+dependencies=''
+
 for LIB in $LIBS_SORTED; do
     cd $LIB
     version=$(git tag --sort=taggerdate | grep $LIB'_' | tail -n1 | cut -d'_' -f2 | cut -d'v' -f2)
@@ -63,23 +65,26 @@ for LIB in $LIBS_SORTED; do
         dependency=$dependency', features = '$features
     fi
     dependency=$dependency' }'
-
+    dependencies=$dependencies$dependency$'\n'
     cd -
-
-    pushd $WORKSPACE
-    cargo new foo
-    cd foo
-    echo "$dependency" >> Cargo.toml
-    cargo doc -p $LIB --no-deps
-    popd
-
-    ls -lrta $WORKSPACE/foo/target/doc/
-
-    _LIB=${LIB//-/_}
-
-    cp -r $WORKSPACE/foo/target/doc/$_LIB target/doc
-
-    pushd $WORKSPACE
-    rm -rf foo
-    popd
 done
+
+pushd $WORKSPACE
+cargo new foo
+cd foo
+echo "$dependencies" >> Cargo.toml
+
+for LIB in $LIBS_SORTED; do
+    cargo doc -p $LIB --no-deps
+done
+
+popd
+
+for LIB in $LIBS_SORTED; do
+    _LIB=${LIB//-/_}
+    cp -r $WORKSPACE/foo/target/doc/$_LIB target/doc
+done
+
+pushd $WORKSPACE
+rm -rf foo
+popd
