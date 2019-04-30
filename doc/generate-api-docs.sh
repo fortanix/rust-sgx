@@ -1,5 +1,10 @@
 #!/bin/bash -e
 
+if [[ -z "${WORKSPACE}" ]]; then
+    echo "Must provide WORKSPACE in environment" 1>&2
+    exit 1
+fi
+
 cd "$(readlink -f "$(dirname "$0")/..")"
 
 rm -rf target/doc
