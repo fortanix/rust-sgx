@@ -80,7 +80,8 @@ pub(crate) fn coenter<T: Tcs>(
     debug_buf: Option<&RefCell<DebugBuffer>>,
 ) -> ThreadResult<T> {
     let sgx_result: u32;
-    let mut _tmp: (u64, u64);
+    let mut _tmp1: u64;
+    let mut _tmp2: u64;
 
     unsafe {
         let mut uninit_debug_buf: DebugBuffer;
@@ -96,7 +97,7 @@ pub(crate) fn coenter<T: Tcs>(
         lea 1f(%rip),%rcx
 1:
         enclu
-"       : "={eax}"(sgx_result), "={rbx}"(_tmp.0), "={r10}"(_tmp.1),
+"       : "={eax}"(sgx_result), "={rbx}"(_tmp1), "={r10}"(_tmp2),
               "={rdi}"(p1), "={rsi}"(p2), "={rdx}"(p3), "={r8}"(p4), "={r9}"(p5)
             : "{eax}" (2), "{rbx}"(tcs.address()), "{r10}"(debug_buf),
               "{rdi}"(p1), "{rsi}"(p2), "{rdx}"(p3), "{r8}"(p4), "{r9}"(p5)
