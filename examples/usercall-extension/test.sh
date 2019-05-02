@@ -1,15 +1,17 @@
 set -e
 
-# Build custom runner
-#cd runner
-#cargo +nightly build
-#cd -
+APPNAME=app
+APPPATH=app
+RUNNERPATH=runner/target/debug/runner
+#APPNAME=mpsc-crypto-mining
+#APPPATH=../mpsc-crypto-mining
+#RUNNERPATH=../../target/debug/ftxsgx-runner
 
-#APPNAME=rust-sgx-ut
-#APPPATH=../unit_tests
-APPNAME=mpsc-crypto-mining
-APPPATH=../mpsc-crypto-mining
-RUNNERPATH=../../target/debug/ftxsgx-runner
+# Build custom runner
+cd runner
+cargo +nightly build
+cd -
+
 # Build APP
 cd $APPPATH
 cargo +nightly build --target=x86_64-fortanix-unknown-sgx

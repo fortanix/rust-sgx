@@ -54,6 +54,6 @@ impl Command {
 
     pub fn run(self) -> Result<(), Error> {
         //EnclaveState::main_entry(self.main, self.threads, self.usercall_ext)
-        EnclaveState::main_entry1(self.main, self.threads, self.usercall_ext)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext)
     }
 }

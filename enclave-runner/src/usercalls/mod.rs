@@ -19,7 +19,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use std::sync::mpsc::{self, channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
 use std::time;
 
 use failure;
@@ -42,7 +41,6 @@ use self::nix::sys::signal;
 use loader::{EnclavePanic, ErasedTcs};
 use tcs;
 use tcs::{CoResult, ThreadResult};
-use std::error::Error;
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 
@@ -226,11 +224,6 @@ pub(crate) enum EnclaveAbort<T> {
     MainReturned,
 }
 
-#[derive(Debug)]
-pub(crate) enum WorkerThreadExit {
-    NonMainReturned,
-    UsercallQueued,
-}
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 struct TcsAddress(usize);
 
@@ -352,11 +345,10 @@ impl EnclaveState {
         })
     }
 
-    pub(crate) fn main_entry1(
+    pub(crate) fn main_entry(
         main: ErasedTcs,
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<UsercallExtension>>) -> StdResult<(), failure::Error>  {
-        eprintln!("Size of threads vector, {}", threads.len());
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
@@ -367,23 +359,17 @@ impl EnclaveState {
 
 
         let (io_queue_send, io_queue_receive) = mpsc::channel();
-        let (mut work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
+        let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
         let start_queue = crossbeam::queue::SegQueue::new();
         start_queue.push(main);
         let threads_copy : Vec<StoppedTcs> = vec![];
         for tcs in threads {
             start_queue.push(tcs);
         }
-        if start_queue.is_empty() {
-            eprintln!("Start queue is empty");
-        }
         work_sender.send(Work::Stopped(start_queue.pop()?, EnclaveEntry::ExecutableMain));
         let mut num_of_threads = 10;//num_cpus::get();
         if num_of_threads < 2 {
             num_of_threads = 2;
-        }
-        if start_queue.is_empty() {
-            eprintln!("Start queue is empty2");
         }
         let kind = EnclaveKind::Command(Command {
             data: Mutex::new(CommandSync {
@@ -397,9 +383,11 @@ impl EnclaveState {
         });
         let enclave = EnclaveState::new(kind, event_queues, usercall_ext);
 
-        crossbeam::scope(|scope| {
+        let result = crossbeam::scope(|scope| {
             // loop for one less than the total number of threads
             // create 1 less than the number of threads
+            let mut main_return;
+
             for _ in 1..num_of_threads {
                 let work_receiver = &work_receiver;
                 let io_queue_send = io_queue_send.clone();
@@ -414,31 +402,28 @@ impl EnclaveState {
                         let work = work_receiver.recv();
                         let work = match work {
                             Err(crossbeam::channel::RecvError) => {
-                                eprintln!("Received RecvError");
                                 break;
                             },
                             Ok(work) => work,
                         };
                         //check for error
                         let enclave_cloned = enclave_cloned.clone();
-                        let result = match work {
+                        let res = match work {
                             Work::Stopped(tcs, mode) => {
-                                eprintln!("Starting work, {:?}", mode);
                                 RunningTcs::entry_async(enclave_cloned.clone(), tcs, &io_queue_send, mode)
                             }
                             Work::Running(state, usercall, coresult, mode) => {
-                                eprintln!("Starting work, {:?}", mode);
                                 RunningTcs::coentry_async(state, usercall, coresult, &io_queue_send, mode)
                             }
                         };
-                        eprintln!("Finished work {:?}", result);
-
-                        if let Err(EnclaveAbort::MainReturned) = result {
-                            // !!! do something
-                            // send to the usercall thread to exit??
-                            // bail!("The enclave returned from the main entrypoint in violation of the specification.");
+                        if res.is_err() {
+                            let cmd = enclave_cloned.kind.as_command().unwrap();
+                            let mut cmddata = cmd.data.lock().unwrap();
+                            cmddata.running_secondary_threads -= 1;
+                            if cmddata.running_secondary_threads == 0 {
+                                cmd.wait_secondary_threads.notify_all();
+                            }
                         }
-
                     }
                 });
             }
@@ -447,169 +432,155 @@ impl EnclaveState {
             // ///////////////////////////////
             'outer: loop {
                 let maybe_block_recv = |block| if block {
-                    eprintln!("Blocking wait on usercall thread");
                     io_queue_receive.recv().ok()
                 } else {
-                    eprintln!("NonBlocking wait on usercall thread");
                     io_queue_receive.try_recv().ok()
                 };
 
-                'inner: while let Some((mut state, usercall, mode)) = maybe_block_recv(true) {
-                    eprintln!("Got a request, {:?}", usercall);
-                    let mut result;
-                    {
-                        let mut on_usercall =
-                            |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state, &work_sender), p1, p2, p3, p4, p5);
-                        let (p1, p2, p3, p4, p5) = usercall.parameters();
-                        result = on_usercall(p1, p2, p3, p4, p5);
-                    }
-                    eprintln!("Usercall done");
+                'inner: while let Some((coresult, mut state, mode, buf)) = maybe_block_recv(true) {
 
-                    match result {
-                        Ok(ret) => {
-                            eprintln!("Sending work");
-                            work_sender.send(Work::Running(state, usercall, ret, mode));
-                            eprintln!("Sent work");
-                        },
-                        Err(EnclaveAbort::Exit { panic: true }) => {
-                            eprintln!("EnclaveAbort::Exit panic: true, mode: {:?}", mode);
+                    match coresult {
+                        CoResult::Return((tcs,v1, v2)) => {
+                            assert_eq!(
+                                (v1, v2),
+                                (0, 0),
+                                "Expected enclave thread entrypoint to return zero"
+                            );
+                            if mode == EnclaveEntry::ExecutableMain {
+                                // return and do error checking
+                                main_return = Err(EnclaveAbort::MainReturned);
+                                break 'outer;
+                            }
 
-                            // the buf needs to be populated
-                            let buf = RefCell::new([0u8; 1024]);
-                            trap_attached_debugger(usercall.tcs.address().0 as _);
-                            // return this
-                            //        Err(EnclaveAbort::Exit {
-                            //            panic: EnclavePanic::from(buf.into_inner()),
-                            //        });
-                        }
-                        Err(EnclaveAbort::Exit { panic: false }) => {
-                            if mode != EnclaveEntry::ExecutableMain {
-                                eprintln!("EnclaveAbort::Exit panic: false");
-                                let cmd = state.enclave.kind.as_command().unwrap();
-                                let mut cmddata = cmd.data.lock().unwrap();
-                                cmddata.running_secondary_threads -= 1;
-                                if cmddata.running_secondary_threads == 0 {
-                                    cmd.wait_secondary_threads.notify_all();
-                                }
+                            let cmd = state.enclave.kind.as_command().unwrap();
+                            let mut cmddata = cmd.data.lock().unwrap();
+                            cmddata.running_secondary_threads -= 1;
+                            if cmddata.running_secondary_threads == 0 {
+                                cmd.wait_secondary_threads.notify_all();
+                            }
+                            // If the enclave is in the exit-state, threads are no
+                            // longer able to be launched
+                            if !state.enclave.exiting.load(Ordering::SeqCst) {
                                 cmddata.threads_queue.push(StoppedTcs {
-                                    tcs: usercall.tcs,
+                                    tcs,
                                     event_queue: state.event_queue,
                                 });
                             }
-                            else {
-                                //return Ok(WorkerThreadExit::MainReturned)
-                                eprintln!("EnclaveAbort::Exit panic: false MainReturned");
+                        },
+                        CoResult::Yield(usercall) => {
+                            let result;
+                            {
+                                let mut on_usercall =
+                                    |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state, &work_sender), p1, p2, p3, p4, p5);
+                                let (p1, p2, p3, p4, p5) = usercall.parameters();
+                                result = on_usercall(p1, p2, p3, p4, p5);
+                            }
+                            let mut secondary_return;
+                            match result {
+                                Ok(ret) => {
+                                    work_sender.send(Work::Running(state, usercall, ret, mode));
+                                    continue;
+                                },
+                                Err(EnclaveAbort::Exit { panic: true }) => {
+                                    trap_attached_debugger(usercall.tcs.address().0 as _);
+                                    secondary_return = Err(EnclaveAbort::Exit {
+                                        panic: EnclavePanic::from(buf.into_inner()),
+                                    });
+                                },
+                                Err(EnclaveAbort::Exit { panic: false }) => {
+                                    if mode == EnclaveEntry::ExecutableNonMain {
 
-                                drop(work_sender);
-                                // !!! do something about the waiting for the threads to give them an exit usercall return
-                                let cmd = enclave.kind.as_command().unwrap();
-                                let mut cmddata = cmd.data.lock().unwrap();
-                                cmddata.threads.clear();
-                                //clear the threads_queue
-                                cmddata.threads_queue  = crossbeam::queue::SegQueue::new();
-                                enclave.abort_all_threads();
-                                while cmddata.running_secondary_threads > 0 {
-                                    cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
+                                        let cmd = state.enclave.kind.as_command().unwrap();
+                                        let mut cmddata = cmd.data.lock().unwrap();
+                                        cmddata.running_secondary_threads -= 1;
+                                        if cmddata.running_secondary_threads == 0 {
+                                            cmd.wait_secondary_threads.notify_all();
+                                        }
+                                        // If the enclave is in the exit-state, threads are no
+                                        // longer able to be launched
+                                        if !enclave.exiting.load(Ordering::SeqCst){
+                                            cmddata.threads_queue.push(StoppedTcs {
+                                                tcs: usercall.tcs,
+                                                event_queue: state.event_queue,
+                                            });
+                                        }
+                                        secondary_return = Ok(());
+                                    }
+                                    else {
+                                        secondary_return = Ok(());
+                                    }
+                                },
+                                Err(EnclaveAbort::IndefiniteWait) => secondary_return = Err(EnclaveAbort::IndefiniteWait),
+                                Err(EnclaveAbort::InvalidUsercall(n)) => secondary_return = Err(EnclaveAbort::InvalidUsercall(n)),
+                                Err(EnclaveAbort::MainReturned) => secondary_return = Err(EnclaveAbort::MainReturned),
+                                Err(EnclaveAbort::Secondary) => secondary_return = Err(EnclaveAbort::Secondary),
+
+                            }
+                            if mode == EnclaveEntry::ExecutableNonMain {
+                                match secondary_return {
+                                    Ok(_) => {},
+                                    Err(e @ EnclaveAbort::Exit { .. }) |
+                                    Err(e @ EnclaveAbort::InvalidUsercall(_)) => {
+                                        let cmd = state.enclave.kind.as_command().unwrap();
+                                        let mut cmddata = cmd.data.lock().unwrap();
+
+                                        if cmddata.primary_panic_reason.is_none() {
+                                            cmddata.primary_panic_reason = Some(e)
+                                        } else {
+                                            cmddata.other_reasons.push(e)
+                                        }
+                                    },
+                                    Err(EnclaveAbort::Secondary) => {}
+                                    Err(e) => {
+                                        let cmd = state.enclave.kind.as_command().unwrap();
+                                        let mut cmddata = cmd.data.lock().unwrap();
+                                        cmddata.other_reasons.push(e)
+                                    },
                                 }
+                            }
+                            else {
+                                main_return = secondary_return;
                                 break 'outer;
                             }
-                        },
-                        Err(EnclaveAbort::IndefiniteWait) => {
-                            eprintln!("EnclaveAbort::IndefiniteWait");
-                            //bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
-                        },
-                        Err(EnclaveAbort::InvalidUsercall(n)) => {
-                            eprintln!("EnclaveAbort::InvalidUsercall");
-                            let cmd = state.enclave.kind.as_command().unwrap();
-                            let mut cmddata = cmd.data.lock().unwrap();
-                            if cmddata.primary_panic_reason.is_none() {
-                                cmddata.primary_panic_reason = Some(EnclaveAbort::InvalidUsercall(n));
-                            } else {
-                                cmddata.other_reasons.push(EnclaveAbort::InvalidUsercall(n));
-                            }
-                            //bail!("The enclave performed an invalid usercall 0x{:x}", n)
-                        },
-                        Err(EnclaveAbort::MainReturned) => {
-                            eprintln!("EnclaveAbort::InvalidUsercall");
-                            //bail!("The enclave returned from the main entrypoint in violation of the specification.")
-                        },
-                        // Should always be able to return the real exit reason
-                        Err(EnclaveAbort::Secondary) => {
-                            eprintln!("EnclaveAbort::Secondary");
-                            let cmd = state.enclave.kind.as_command().unwrap();
-                            let mut cmddata = cmd.data.lock().unwrap();
-                        },
-                        /*Err(e) => {
-                            let cmd = state.enclave.kind.as_command().unwrap();
-                            let mut cmddata = cmd.data.lock().unwrap();
-                            cmddata.other_reasons.push(e);
-                        },*/
-                        Err(_) => {
-                            eprintln!("EnclaveAbort::unknown");
-                        },
+                        }
                     }
-                    eprintln!("Finished request");
                 }
             }
+            let main_panicking = match main_return {
+                Err(EnclaveAbort::MainReturned) |
+                Err(EnclaveAbort::InvalidUsercall(_)) |
+                Err(EnclaveAbort::Exit { .. }) => true,
+                Err(EnclaveAbort::IndefiniteWait) |
+                Err(EnclaveAbort::Secondary) |
+                Ok(_) => false,
+            };
+            drop(work_sender);
+            drop(io_queue_receive);
+            // !!! do something about the waiting for the threads to give them an exit usercall return
+            let cmd = enclave.kind.as_command().unwrap();
+            let mut cmddata = cmd.data.lock().unwrap();
+            cmddata.threads.clear();
+            //clear the threads_queue
+            cmddata.threads_queue  = crossbeam::queue::SegQueue::new();
+            enclave.abort_all_threads();
+            while cmddata.running_secondary_threads > 0 {
+                cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
+            }
+
+            main_return = match (main_panicking, cmddata.primary_panic_reason.take()) {
+                (false, Some(reason)) => Err(reason),
+                // TODO: interpret other_reasons
+                _ => main_return
+            };
+            return main_return;
         });
-        Ok(())
-    }
 
-
-    pub(crate) fn main_entry(
-        main: ErasedTcs,
-        threads: Vec<ErasedTcs>,
-        usercall_ext: Option<Box<UsercallExtension>>) -> StdResult<(), failure::Error>  {
-        let mut event_queues =
-            FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
-        let main = Self::event_queue_add_tcs(&mut event_queues, main);
-
-        let threads = threads
-            .into_iter()
-            .map(|thread| Self::event_queue_add_tcs(&mut event_queues, thread))
-            .collect();
-        let start_queue = crossbeam::queue::SegQueue::new();
-        let kind = EnclaveKind::Command(Command {
-            data: Mutex::new(CommandSync {
-                threads,
-                primary_panic_reason: None,
-                other_reasons: vec![],
-                running_secondary_threads: 0,
-                threads_queue: start_queue,
-            }),
-            wait_secondary_threads: Condvar::new(),
-        });
-
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext);
-
-        let main_result = RunningTcs::entry(enclave.clone(), main, EnclaveEntry::ExecutableMain);
-
-        let main_panicking = match main_result {
-            Err(EnclaveAbort::MainReturned) |
-            Err(EnclaveAbort::InvalidUsercall(_)) |
-            Err(EnclaveAbort::Exit { .. }) => true,
-            Err(EnclaveAbort::IndefiniteWait) |
-            Err(EnclaveAbort::Secondary) |
-            Ok(_) => false,
-        };
-
-        let cmd = enclave.kind.as_command().unwrap();
-        let mut cmddata = cmd.data.lock().unwrap();
-
-        cmddata.threads.clear();
-        enclave.abort_all_threads();
-
-        while cmddata.running_secondary_threads > 0 {
-            cmddata = cmd.wait_secondary_threads.wait(cmddata).unwrap();
+        let main_return;
+        match result {
+            Ok(r) => main_return = r,
+            Err(_e) => panic!("Some thread panicked"),
         }
-
-        let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
-            (false, Some(reason)) => Err(reason),
-            // TODO: interpret other_reasons
-            _ => main_result
-        };
-
-        match main_result {
+        match main_return {
             Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
             Err(EnclaveAbort::IndefiniteWait) => {
                 bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
@@ -624,18 +595,6 @@ impl EnclaveState {
             Err(EnclaveAbort::Secondary) => unreachable!(),
             Ok(_) => Ok(()),
         }
-    }
-
-    fn thread_entry(enclave: &Arc<Self>, tcs: StoppedTcs) -> StdResult<StoppedTcs, EnclaveAbort<EnclavePanic>> {
-        RunningTcs::entry(enclave.clone(), tcs, EnclaveEntry::ExecutableNonMain)
-            .map(|(tcs, result)| {
-                assert_eq!(
-                    result,
-                    (0, 0),
-                    "Expected enclave thread entrypoint to return zero"
-                );
-                tcs
-            })
     }
 
     pub(crate) fn library(threads: Vec<ErasedTcs>,
@@ -824,58 +783,12 @@ impl UsercallExtension for UsercallExtensionDefault{
 #[allow(unused_variables)]
 impl RunningTcs {
 
-    fn send_to_appropriate_queue (coresult: ThreadResult<ErasedTcs>, state: RunningTcs, io_send_queue: &mpsc::Sender<(RunningTcs,tcs::Usercall<ErasedTcs>, EnclaveEntry)>,
-                              mode: EnclaveEntry, debug_buf: Option<RefCell<[u8; 1024]>>)
-        -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
-    {
-        match coresult {
-            tcs::CoResult::Return((erased_tcs, r1, r2)) => {
-                //(erased_tcs, Ok((r1, r2)));
-                assert_eq!(
-                    (r1,r2),
-                    (0, 0),
-                    "Expected enclave thread entrypoint to return zero"
-                );
-                if mode != EnclaveEntry::ExecutableMain {
-                    let cmd = state.enclave.kind.as_command().unwrap();
-                    eprintln!("Getting cmddata from Mutex, send_to_appropriate_queue");
-                    let mut cmddata = cmd.data.lock().unwrap();
-                    eprintln!("got cmddata from matrix, send_to_appropriate_queue");
-                    cmddata.running_secondary_threads -= 1;
-                    if cmddata.running_secondary_threads == 0 {
-                        cmd.wait_secondary_threads.notify_all();
-                    }
-                    // If the enclave is in the exit-state, threads are no
-                    // longer able to be launched
-                    if !state.enclave.exiting.load(Ordering::SeqCst) {
-                        cmddata.threads_queue.push(StoppedTcs {
-                            tcs: erased_tcs,
-                            event_queue: state.event_queue,
-                        });
-                    }
-                    eprintln!("Dropping cmddata, send_to_appropriate_queue");
-                    return Ok(WorkerThreadExit::NonMainReturned)
-                }
-                else {
-                    return Err(EnclaveAbort::MainReturned)
-                }
-            },
-            tcs::CoResult::Yield(usercall) => {
-                eprintln!("got usercall");
-                io_send_queue.send((state, usercall, mode));
-                return Ok(WorkerThreadExit::UsercallQueued);
-            },
-        };
-
-    }
-
     fn entry_async(
         enclave: Arc<EnclaveState>,
         tcs: StoppedTcs,
-        io_send_queue: &mpsc::Sender<(RunningTcs,tcs::Usercall<ErasedTcs>, EnclaveEntry)>,
+        io_send_queue: &mpsc::Sender<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>,
         mode: EnclaveEntry
-    )
-        -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
+    )-> StdResult<(), mpsc::SendError<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>>
     {
         let buf = RefCell::new([0u8; 1024]);
 
@@ -885,6 +798,7 @@ impl RunningTcs {
             pending_event_set: 0,
             pending_events: Default::default(),
         };
+
         let coresult = {
             let (p1, p2, p3, p4, p5) = match mode {
                 EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
@@ -892,26 +806,26 @@ impl RunningTcs {
             };
             tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, Some(&buf))
         };
-        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode, Some(buf))
+
+        io_send_queue.send((coresult, state, mode, buf))
     }
+
     fn coentry_async(
         state: RunningTcs,
         completed_usercall: tcs::Usercall<ErasedTcs>,
         completed_usercall_return : (u64,u64),
-        io_send_queue: &mpsc::Sender<(RunningTcs,tcs::Usercall<ErasedTcs>, EnclaveEntry)>,
+        io_send_queue: &mpsc::Sender<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>,
         mode: EnclaveEntry
-    )
-        -> StdResult<WorkerThreadExit, EnclaveAbort<EnclavePanic>>
+    ) -> StdResult<(), mpsc::SendError<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>>
     {
         let buf = RefCell::new([0u8; 1024]);
 
         let coresult =  {
             completed_usercall.coreturn(completed_usercall_return, Some(&buf))
         };
-
-        Self::send_to_appropriate_queue(coresult, state, io_send_queue, mode, Some(buf))
-
+        io_send_queue.send((coresult, state, mode, buf))
     }
+
     fn entry(
         enclave: Arc<EnclaveState>,
         tcs: StoppedTcs,
@@ -1077,101 +991,32 @@ impl RunningTcs {
         Ok(self.alloc_fd(FileDesc::Stream(Box::new(stream))))
     }
     #[inline(always)]
-    fn launch_thread1(&self, work_sender: &crossbeam::channel::Sender<Work>) -> IoResult<()> {
+    fn launch_thread(&self, work_sender: &crossbeam::channel::Sender<Work>) -> IoResult<()> {
         let command = self
             .enclave
             .kind
             .as_command()
             .ok_or(IoErrorKind::InvalidInput)?;
-        eprintln!("Getting cmddata from Mutex, launch_thread1");
         let mut cmddata = command.data.lock().unwrap();
         cmddata.running_secondary_threads += 1;
 
-        eprintln!("got cmddata from `matrix, launch_thread1");
-        if cmddata.threads_queue.is_empty() {
-            eprintln!("Threads queue is empty");
-        }
         let new_tcs = match cmddata.threads_queue.pop() {
             Ok(tcs) => tcs,
             Err(a) => {return Err(IoErrorKind::WouldBlock.into());},
         };
-        eprintln!("Popped tcs from thread_queue");
+
         let ret = work_sender.send(Work::Stopped(new_tcs, EnclaveEntry::ExecutableNonMain));
         match ret {
             Ok(()) => {
-                eprintln!("Dropping cmddata, launch_thread1");
-                eprintln!("Added work to queue");
                 Ok(())
             },
             Err(err) => {
-                eprintln!("Dropping cmddata, launch_thread1");
-                eprintln!("Couldn't add to worker queue");
                 let y = err.into_inner();
                 // do error catching
                 Err(std::io::Error::new(IoErrorKind::NotConnected, "Work Sender queue send error"))
             }
         }
 
-    }
-    #[inline(always)]
-    fn launch_thread(&self) -> IoResult<()> {
-        let command = self
-            .enclave
-            .kind
-            .as_command()
-            .ok_or(IoErrorKind::InvalidInput)?;
-
-        let mut cmddata = command.data.lock().unwrap();
-        // WouldBlock: see https://github.com/rust-lang/rust/issues/46345
-        let new_tcs = cmddata.threads.pop().ok_or(IoErrorKind::WouldBlock)?;
-        cmddata.running_secondary_threads += 1;
-
-        let (send, recv) = channel();
-        let enclave = self.enclave.clone();
-        let result = thread::Builder::new().spawn(move || {
-            let tcs = recv.recv().unwrap();
-            let ret = EnclaveState::thread_entry(&enclave, tcs);
-
-            let cmd = enclave.kind.as_command().unwrap();
-            let mut cmddata = cmd.data.lock().unwrap();
-            cmddata.running_secondary_threads -= 1;
-            if cmddata.running_secondary_threads == 0 {
-                cmd.wait_secondary_threads.notify_all();
-            }
-
-            match ret {
-                Ok(tcs) => {
-                    // If the enclave is in the exit-state, threads are no
-                    // longer able to be launched
-                    if !enclave.exiting.load(Ordering::SeqCst) {
-                        cmddata.threads.push(tcs)
-                    }
-                },
-                Err(e @ EnclaveAbort::Exit { .. }) |
-                Err(e @ EnclaveAbort::InvalidUsercall(_)) => if cmddata.primary_panic_reason.is_none() {
-                    cmddata.primary_panic_reason = Some(e)
-                } else {
-                    cmddata.other_reasons.push(e)
-                },
-                Err(EnclaveAbort::Secondary) => {}
-                Err(e) => cmddata.other_reasons.push(e),
-            }
-        });
-        match result {
-            Ok(_join_handle) => {
-                send.send(new_tcs).unwrap();
-                Ok(())
-            }
-            Err(e) => {
-                cmddata.running_secondary_threads -= 1;
-                // We never released the lock, so if running_secondary_threads
-                // is now zero, no other thread has observed it to be non-zero.
-                // Therefore, there is no need to notify other waiters.
-
-                cmddata.threads.push(new_tcs);
-                Err(e)
-            }
-        }
     }
 
     #[inline(always)]
@@ -1216,15 +1061,20 @@ impl RunningTcs {
 
         if ret.is_none() {
             loop {
-//                let ev = if wait {
+                let ev = if wait {
 //                    self.event_queue.recv()
-//                } else {
-                    let ev = match self.event_queue.try_recv() {
+                    match self.event_queue.try_recv() {
                         Ok(ev) => Ok(ev),
                         Err(mpsc::TryRecvError::Disconnected) => Err(mpsc::RecvError),
                         Err(mpsc::TryRecvError::Empty) => return Ok(event_mask.into()),
                     }
-//                }
+                } else {
+                    match self.event_queue.try_recv() {
+                        Ok(ev) => Ok(ev),
+                        Err(mpsc::TryRecvError::Disconnected) => Err(mpsc::RecvError),
+                        Err(mpsc::TryRecvError::Empty) => break,
+                    }
+                }
                 .expect("TCS event queue disconnected");
 
                 if (ev & (EV_ABORT as u8)) != 0 {

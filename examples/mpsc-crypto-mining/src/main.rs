@@ -21,14 +21,12 @@ fn verify_number(number: usize) -> Option<Solution> {
 }
 
 fn search_for_solution(start_at: usize, sender: mpsc::Sender<Solution>, is_solution_found: Arc<AtomicBool>) {
-    println!("Starting search_for_solution");
     let mut iteration_no = 0;
     for number in (start_at..).step_by(THREADS) {
         if let Some(solution) = verify_number(number) {
             is_solution_found.store(true, Ordering::Relaxed);
-            println!("Sending data from search_for_solution");
             match sender.send(solution) {
-                Ok(_)  => {println!("Sent data from search_for_solution");},
+                Ok(_)  => {},
                 Err(_) => println!("Receiver has stopped listening, dropping worker number {}.", start_at),
             }
             return;
@@ -63,7 +61,6 @@ fn main() {
         thread::spawn(move || {
             search_for_solution(i, sender_n, is_solution_found);
         });
-	println!("BackTOMain");
     }
     
     match receiver.recv() {
