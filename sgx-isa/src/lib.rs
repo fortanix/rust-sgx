@@ -32,7 +32,9 @@ use core::{convert::TryFrom, num::TryFromIntError};
 #[macro_use]
 mod large_array_impl;
 #[cfg(feature = "large_array_derive")]
-macro_rules! impl_default_clone_eq { ($n:ident) => {} }
+macro_rules! impl_default_clone_eq {
+    ($n:ident) => {};
+}
 
 macro_rules! enum_def {
     (
@@ -571,6 +573,24 @@ impl Report {
         // unwrap ok, `out` is the correct number of bytes
         Report::try_copy_from(&out.0).unwrap()
     }
+
+    #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+    pub fn verify<F, R>(&self, check_mac: F) -> R
+    where
+        F: FnOnce(&[u8; 16], &[u8; 384], &[u8; 16]) -> R,
+    {
+        let req = Keyrequest {
+            keyname: Keyname::Report as u16,
+            keyid: self.keyid,
+            ..Default::default()
+        };
+        let key = req.egetkey().expect("Couldn't get report key");
+        check_mac(
+            &key,
+            unsafe { &*(self as *const _ as *const [u8; 384]) },
+            &self.mac,
+        )
+    }
 }
 
 struct_def! {
@@ -626,7 +646,7 @@ impl Keyrequest {
     pub const UNPADDED_SIZE: usize = 512;
 
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
-    pub fn egetkey(&self) -> Result<[u8;16], ErrorCode> {
+    pub fn egetkey(&self) -> Result<[u8; 16], ErrorCode> {
         match arch::egetkey(self.as_ref()) {
             Ok(k) => Ok(k.0),
             // unwrap ok, `arch::egetkey` will always return a valid `ErrorCode`
