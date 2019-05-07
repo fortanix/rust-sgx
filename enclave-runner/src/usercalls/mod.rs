@@ -556,7 +556,6 @@ impl EnclaveState {
             };
             drop(work_sender);
             drop(io_queue_receive);
-            // !!! do something about the waiting for the threads to give them an exit usercall return
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.data.lock().unwrap();
             cmddata.threads.clear();
@@ -841,8 +840,10 @@ impl RunningTcs {
         };
 
         let (tcs, result) = {
+            // the Handler structure now needed a crossbeam::channel::Sender.
+            // This function is only called via the library, fix this function
             let on_usercall =
-                |p1, p2, p3, p4, p5| {Ok((0,0))};//dispatch(&mut Handler(&mut state), p1, p2, p3, p4, p5);
+                |p1, p2, p3, p4, p5| {Ok((0,0))}; //dispatch(&mut Handler(&mut state), p1, p2, p3, p4, p5);
             let (p1, p2, p3, p4, p5) = match mode {
                 EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
                 _ => (0, 0, 0, 0, 0),
@@ -990,6 +991,7 @@ impl RunningTcs {
         }
         Ok(self.alloc_fd(FileDesc::Stream(Box::new(stream))))
     }
+
     #[inline(always)]
     fn launch_thread(&self, work_sender: &crossbeam::channel::Sender<Work>) -> IoResult<()> {
         let command = self
