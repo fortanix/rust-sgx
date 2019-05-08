@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use std::sync::mpsc::{self, channel, Receiver, Sender};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 use std::time;
 
 use failure;
@@ -471,7 +472,7 @@ impl EnclaveState {
                             let result;
                             {
                                 let mut on_usercall =
-                                    |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state, &work_sender), p1, p2, p3, p4, p5);
+                                    |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state, Some(&work_sender)), p1, p2, p3, p4, p5);
                                 let (p1, p2, p3, p4, p5) = usercall.parameters();
                                 result = on_usercall(p1, p2, p3, p4, p5);
                             }
@@ -594,6 +595,18 @@ impl EnclaveState {
             Err(EnclaveAbort::Secondary) => unreachable!(),
             Ok(_) => Ok(()),
         }
+    }
+
+    fn thread_entry(enclave: &Arc<Self>, tcs: StoppedTcs) -> StdResult<StoppedTcs, EnclaveAbort<EnclavePanic>> {
+        RunningTcs::entry(enclave.clone(), tcs, EnclaveEntry::ExecutableNonMain)
+            .map(|(tcs, result)| {
+                assert_eq!(
+                    result,
+                    (0, 0),
+                    "Expected enclave thread entrypoint to return zero"
+                );
+                tcs
+            })
     }
 
     pub(crate) fn library(threads: Vec<ErasedTcs>,
@@ -791,7 +804,7 @@ impl RunningTcs {
     {
         let buf = RefCell::new([0u8; 1024]);
 
-        let mut state = RunningTcs {
+        let state = RunningTcs {
             enclave,
             event_queue: tcs.event_queue,
             pending_event_set: 0,
@@ -840,10 +853,8 @@ impl RunningTcs {
         };
 
         let (tcs, result) = {
-            // the Handler structure now needed a crossbeam::channel::Sender.
-            // This function is only called via the library, fix this function
             let on_usercall =
-                |p1, p2, p3, p4, p5| {Ok((0,0))}; //dispatch(&mut Handler(&mut state), p1, p2, p3, p4, p5);
+                |p1, p2, p3, p4, p5| dispatch(&mut Handler(&mut state, None), p1, p2, p3, p4, p5);
             let (p1, p2, p3, p4, p5) = match mode {
                 EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
                 _ => (0, 0, 0, 0, 0),
@@ -1019,6 +1030,67 @@ impl RunningTcs {
             }
         }
 
+    }
+
+    #[inline(always)]
+    fn launch_library_thread(&self) -> IoResult<()> {
+        let command = self
+            .enclave
+            .kind
+            .as_command()
+            .ok_or(IoErrorKind::InvalidInput)?;
+
+        let mut cmddata = command.data.lock().unwrap();
+        // WouldBlock: see https://github.com/rust-lang/rust/issues/46345
+        let new_tcs = cmddata.threads.pop().ok_or(IoErrorKind::WouldBlock)?;
+        cmddata.running_secondary_threads += 1;
+
+        let (send, recv) = channel();
+        let enclave = self.enclave.clone();
+        let result = thread::Builder::new().spawn(move || {
+            let tcs = recv.recv().unwrap();
+            let ret = EnclaveState::thread_entry(&enclave, tcs);
+
+            let cmd = enclave.kind.as_command().unwrap();
+            let mut cmddata = cmd.data.lock().unwrap();
+            cmddata.running_secondary_threads -= 1;
+            if cmddata.running_secondary_threads == 0 {
+                cmd.wait_secondary_threads.notify_all();
+            }
+
+            match ret {
+                Ok(tcs) => {
+                    // If the enclave is in the exit-state, threads are no
+                    // longer able to be launched
+                    if !enclave.exiting.load(Ordering::SeqCst) {
+                        cmddata.threads.push(tcs)
+                    }
+                },
+                Err(e @ EnclaveAbort::Exit { .. }) |
+                Err(e @ EnclaveAbort::InvalidUsercall(_)) => if cmddata.primary_panic_reason.is_none() {
+                    cmddata.primary_panic_reason = Some(e)
+                } else {
+                    cmddata.other_reasons.push(e)
+                },
+                Err(EnclaveAbort::Secondary) => {}
+                Err(e) => cmddata.other_reasons.push(e),
+            }
+        });
+        match result {
+            Ok(_join_handle) => {
+                send.send(new_tcs).unwrap();
+                Ok(())
+            }
+            Err(e) => {
+                cmddata.running_secondary_threads -= 1;
+                // We never released the lock, so if running_secondary_threads
+                // is now zero, no other thread has observed it to be non-zero.
+                // Therefore, there is no need to notify other waiters.
+
+                cmddata.threads.push(new_tcs);
+                Err(e)
+            }
+        }
     }
 
     #[inline(always)]

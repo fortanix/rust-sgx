@@ -15,7 +15,7 @@ use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, RunningTcs};
 use super::Work;
 
-pub(super) struct Handler<'a>(pub &'a mut RunningTcs, pub &'a crossbeam::channel::Sender<Work>);
+pub(super) struct Handler<'a>(pub &'a mut RunningTcs, pub Option<&'a crossbeam::channel::Sender<Work>>);
 
 impl<'a> Usercalls for Handler<'a> {
     fn is_exiting(&self) -> bool {
@@ -109,7 +109,10 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn launch_thread(&mut self) -> UsercallResult<Result> {
-        Ok(self.0.launch_thread(self.1).to_sgx_result())
+        match self.1 {
+            Some(sender) => Ok(self.0.launch_thread(sender).to_sgx_result()),
+            None => Ok(self.0.launch_library_thread().to_sgx_result()),
+        }
     }
 
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
