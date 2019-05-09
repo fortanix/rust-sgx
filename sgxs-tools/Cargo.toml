@@ -32,7 +32,7 @@ path = "src/sgx_detect/main.rs"
 "sgxs" = { version = "0.6.0", path = "../sgxs", features = ["crypto-openssl"] }
 "sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
 "aesm-client" = { version = "0.1.0", path = "../aesm-client", features = ["sgxs"] }
-"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 "dcap-ql" = { version = "0.1.0", path = "../dcap-ql" }
 "report-test" = { version = "0.1.0", path = "../report-test" }
 "enclave-runner" = { version = "0.1.0", path = "../enclave-runner" }

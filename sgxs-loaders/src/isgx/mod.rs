@@ -7,6 +7,7 @@
 mod ioctl;
 
 use libc;
+use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error as IoError, Result as IoResult};
 use std::os::unix::io::AsRawFd;
@@ -71,7 +72,7 @@ macro_rules! ioctl_unsafe {
             Ok(SGX_POWER_LOST_ENCLAVE) => Err(Error::$f(SgxIoctlError::PowerLostEnclave)),
             Ok(SGX_LE_ROLLBACK) => Err(Error::$f(SgxIoctlError::LeRollback)),
             Ok(v) => Err(Error::$f(SgxIoctlError::Ret(
-                ErrorCode::from_repr(v as u32).expect("Invalid ioctl return value"),
+                ErrorCode::try_from(v as u32).expect("Invalid ioctl return value"),
             ))),
         }
     }};

@@ -24,7 +24,7 @@ link = []
 
 [dependencies]
 # Project dependencies
-"sgx-isa" = { version = "0.2.0", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 num-derive = "0.2" # MIT/Apache-2.0

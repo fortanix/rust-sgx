@@ -6,6 +6,7 @@
 
 pub extern crate libloading as dl;
 
+use std::convert::TryFrom;
 use std::io::Result as IoResult;
 use std::os::raw::c_void;
 use std::sync::Arc;
@@ -184,9 +185,9 @@ impl EnclaveLoad for InnerLibrary {
         if eadd.secinfo.flags.intersects(SecinfoFlags::X) {
             flags.insert(PageProperties::X)
         }
-        match PageType::from_repr(eadd.secinfo.flags.page_type()) {
-            Some(PageType::Reg) => {}
-            Some(PageType::Tcs) => flags.insert(PageProperties::TCS),
+        match PageType::try_from(eadd.secinfo.flags.page_type()) {
+            Ok(PageType::Reg) => {}
+            Ok(PageType::Tcs) => flags.insert(PageProperties::TCS),
             _ => return Err(Error::Add(LibraryError::InvalidParameter)),
         }
         match chunks.0 {

@@ -1,6 +1,6 @@
 [package]
 name = "sgx-isa"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -20,6 +20,5 @@ categories = ["hardware-support"]
 bitflags = "1" # MIT/Apache-2.0
 
 [features]
-try_from = []
 large_array_derive = []
 sgxstd = []

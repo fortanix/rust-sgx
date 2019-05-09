@@ -7,6 +7,7 @@
 extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
 
+use std::convert::TryFrom;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs::File;
@@ -152,7 +153,7 @@ impl fmt::Display for PageCharacteristic {
                 write!(
                     f,
                     "{:<4} {} {:>7} meas={}",
-                    format!("{:?}", PageType::from_repr(flags.page_type()).unwrap()),
+                    format!("{:?}", PageType::try_from(flags.page_type()).unwrap()),
                     unsafe { std::str::from_utf8_unchecked(&perm) },
                     data,
                     measured_chunks

@@ -45,6 +45,6 @@ unix_socket2 = "0.5.4"     # MIT/Apache-2.0
 protoc-rust = "1.4" # MIT/Apache-2.0
 
 [dev-dependencies]
-sgx-isa = { version = "0.2.0", path = "../sgx-isa" }
+sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 "report-test" = { version = "0.1.0", path = "../report-test" }
 "sgxs-loaders" = { version = "0.1.0", path = "../sgxs-loaders" }
