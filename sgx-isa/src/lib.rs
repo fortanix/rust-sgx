@@ -574,6 +574,11 @@ impl Report {
         Report::try_copy_from(&out.0).unwrap()
     }
 
+    /// This function verifies the report's MAC using the provided
+    /// implementation of the verifying function.
+    ///
+    /// Care should be taken that `check_mac` prevents timing attacks,
+    /// in particular that the comparison happens in constant time. 
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
     pub fn verify<F, R>(&self, check_mac: F) -> R
     where
