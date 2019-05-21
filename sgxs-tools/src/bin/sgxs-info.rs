@@ -13,7 +13,7 @@ use std::fmt;
 use std::fs::File;
 use std::path::Path;
 
-use sgx_isa::{PageType, SecinfoFlags};
+use sgx_isa::{PageType, SecInfoFlags};
 use crate::sgxs_crate::sgxs::{self, SgxsRead};
 use crate::sgxs_crate::util::size_fit_natural;
 
@@ -69,7 +69,7 @@ fn list_all<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
                     "EADD offset=0x{:8x} pagetype={:?} flags={:?}",
                     eadd.offset,
                     eadd.secinfo.flags.page_type(),
-                    eadd.secinfo.flags & !SecinfoFlags::PT_MASK
+                    eadd.secinfo.flags & !SecInfoFlags::PT_MASK
                 ),
                 sgxs::Meas::EExtend { header, data } => println!(
                     "EEXTEND offset=0x{:8x} data={}",
@@ -108,7 +108,7 @@ fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
                 "EADD offset=0x{:8x} pagetype={:<4} flags={:<9} data={:>7} measured={}",
                 eadd.offset,
                 format!("{:?}", eadd.secinfo.flags.page_type()),
-                format!("{:?}", eadd.secinfo.flags & !SecinfoFlags::PT_MASK),
+                format!("{:?}", eadd.secinfo.flags & !SecInfoFlags::PT_MASK),
                 classify_data(&data),
                 chunks
             );
@@ -123,7 +123,7 @@ fn list_pages<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 enum PageCharacteristic {
     Gap,
     Page {
-        flags: SecinfoFlags,
+        flags: SecInfoFlags,
         measured_chunks: sgxs::PageChunks,
         data: DataClass,
     },
@@ -140,13 +140,13 @@ impl fmt::Display for PageCharacteristic {
                 ref data,
             } => {
                 let mut perm = [b'-'; 3];
-                if flags.contains(SecinfoFlags::R) {
+                if flags.contains(SecInfoFlags::R) {
                     perm[0] = b'r';
                 }
-                if flags.contains(SecinfoFlags::W) {
+                if flags.contains(SecInfoFlags::W) {
                     perm[1] = b'w';
                 }
-                if flags.contains(SecinfoFlags::X) {
+                if flags.contains(SecInfoFlags::X) {
                     perm[2] = b'x';
                 }
 

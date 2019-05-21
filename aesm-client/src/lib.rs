@@ -36,9 +36,9 @@ use protobuf::{Message, ProtobufResult};
 use unix_socket::UnixStream;
 
 #[cfg(feature = "sgxs")]
-use sgxs::einittoken::{Einittoken, EinittokenProvider};
+use sgxs::einittoken::{EInitToken, EinittokenProvider};
 #[cfg(feature = "sgxs")]
-use sgxs::sigstruct::{Attributes, Sigstruct};
+use sgxs::sigstruct::{Attributes, SigStruct};
 
 include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
 mod error;
@@ -310,16 +310,16 @@ impl AesmClient {
 impl EinittokenProvider for AesmClient {
     fn token(
         &mut self,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
         _retry: bool,
-    ) -> StdResult<Einittoken, ::failure::Error> {
+    ) -> StdResult<EInitToken, ::failure::Error> {
         let token = self.get_launch_token(
             sigstruct.enclavehash.to_vec(),
             sigstruct.modulus.to_vec(),
             attributes.as_ref().to_vec(),
         )?;
-        Einittoken::try_copy_from(&token).ok_or(Error::InvalidTokenSize.into())
+        EInitToken::try_copy_from(&token).ok_or(Error::InvalidTokenSize.into())
     }
 
     fn can_retry(&self) -> bool {
@@ -448,7 +448,7 @@ mod tests {
     // These tests require that aesmd is running and correctly configured.
     extern crate sgx_isa;
 
-    use self::sgx_isa::{Report, Targetinfo};
+    use self::sgx_isa::{Report, TargetInfo};
     use super::*;
 
     const SPID_SIZE: usize = 16;
@@ -458,7 +458,7 @@ mod tests {
         let quote = AesmClient::new().init_quote().unwrap();
         assert_eq!(
             quote.target_info().len(),
-            ::std::mem::size_of::<Targetinfo>()
+            ::std::mem::size_of::<TargetInfo>()
         );
         assert!(quote.gid().len() != 0);
     }

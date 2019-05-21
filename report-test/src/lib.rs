@@ -16,22 +16,22 @@ extern crate sgxs;
 use failure::{Error, ResultExt};
 
 use enclave_runner::EnclaveBuilder;
-use sgx_isa::{PageType, Report, SecinfoFlags, Targetinfo, Attributes, AttributesFlags, Miscselect};
+use sgx_isa::{PageType, Report, SecInfoFlags, TargetInfo, Attributes, AttributesFlags, MiscSelect};
 use sgxs::loader::Load;
 use sgxs::sgxs::{PageChunk, SecinfoTruncated, SgxsWrite};
 
 pub struct ReportBuilder {
     enclave_bytes: Vec<u8>,
     attributes: Option<Attributes>,
-    miscselect: Option<Miscselect>,
+    miscselect: Option<MiscSelect>,
 }
 
 impl ReportBuilder {
-    pub fn new(targetinfo: &Targetinfo) -> ReportBuilder {
+    pub fn new(targetinfo: &TargetInfo) -> ReportBuilder {
         let mut report_enclave = include_bytes!("../enclave/report.sgxs").to_vec();
         let mut targetinfo: &[u8] = targetinfo.as_ref();
         let secinfo = SecinfoTruncated {
-            flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+            flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
         };
         report_enclave
             .write_page(
@@ -54,7 +54,7 @@ impl ReportBuilder {
         self
     }
 
-    pub fn miscselect(mut self, miscselect: Miscselect) -> Self {
+    pub fn miscselect(mut self, miscselect: MiscSelect) -> Self {
         self.miscselect = Some(miscselect);
         self
     }
@@ -83,6 +83,6 @@ impl ReportBuilder {
     }
 }
 
-pub fn report<L: Load>(targetinfo: &Targetinfo, enclave_loader: &mut L) -> Result<Report, Error> {
+pub fn report<L: Load>(targetinfo: &TargetInfo, enclave_loader: &mut L) -> Result<Report, Error> {
     ReportBuilder::new(targetinfo).build(enclave_loader)
 }

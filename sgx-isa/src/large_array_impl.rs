@@ -94,14 +94,14 @@ impl ::core::fmt::Debug for Tcs {
     }
 }
 
-impl ::core::fmt::Debug for Secinfo {
+impl ::core::fmt::Debug for SecInfo {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
-            Secinfo {
+            SecInfo {
                 flags: ref __self_0_0,
                 ..
             } => {
-                let mut builder = __arg_0.debug_struct("Secinfo");
+                let mut builder = __arg_0.debug_struct("SecInfo");
                 let _ = builder.field("flags", &&(*__self_0_0));
                 builder.finish()
             }
@@ -128,10 +128,10 @@ impl ::core::fmt::Debug for Pcmd {
     }
 }
 
-impl ::core::fmt::Debug for Sigstruct {
+impl ::core::fmt::Debug for SigStruct {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
-            Sigstruct {
+            SigStruct {
                 header: ref __self_0_0,
                 vendor: ref __self_0_1,
                 date: ref __self_0_2,
@@ -151,7 +151,7 @@ impl ::core::fmt::Debug for Sigstruct {
                 q2: ref __self_0_20,
                 ..
             } => {
-                let mut builder = __arg_0.debug_struct("Sigstruct");
+                let mut builder = __arg_0.debug_struct("SigStruct");
                 let _ = builder.field("header", &&(*__self_0_0));
                 let _ = builder.field("vendor", &&(*__self_0_1));
                 let _ = builder.field("date", &&(*__self_0_2));
@@ -175,10 +175,10 @@ impl ::core::fmt::Debug for Sigstruct {
     }
 }
 
-impl ::core::fmt::Debug for Einittoken {
+impl ::core::fmt::Debug for EInitToken {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
-            Einittoken {
+            EInitToken {
                 valid: ref __self_0_0,
                 attributes: ref __self_0_2,
                 mrenclave: ref __self_0_3,
@@ -192,7 +192,7 @@ impl ::core::fmt::Debug for Einittoken {
                 mac: ref __self_0_14,
                 ..
             } => {
-                let mut builder = __arg_0.debug_struct("Einittoken");
+                let mut builder = __arg_0.debug_struct("EInitToken");
                 let _ = builder.field("valid", &&(*__self_0_0));
                 let _ = builder.field("attributes", &&(*__self_0_2));
                 let _ = builder.field("mrenclave", &&(*__self_0_3));
@@ -243,16 +243,16 @@ impl ::core::fmt::Debug for Report {
     }
 }
 
-impl ::core::fmt::Debug for Targetinfo {
+impl ::core::fmt::Debug for TargetInfo {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
-            Targetinfo {
+            TargetInfo {
                 measurement: ref __self_0_0,
                 attributes: ref __self_0_1,
                 miscselect: ref __self_0_3,
                 ..
             } => {
-                let mut builder = __arg_0.debug_struct("Targetinfo");
+                let mut builder = __arg_0.debug_struct("TargetInfo");
                 let _ = builder.field("measurement", &&(*__self_0_0));
                 let _ = builder.field("attributes", &&(*__self_0_1));
                 let _ = builder.field("miscselect", &&(*__self_0_3));
@@ -262,10 +262,10 @@ impl ::core::fmt::Debug for Targetinfo {
     }
 }
 
-impl ::core::fmt::Debug for Keyrequest {
+impl ::core::fmt::Debug for KeyRequest {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
-            Keyrequest {
+            KeyRequest {
                 keyname: ref __self_0_0,
                 keypolicy: ref __self_0_1,
                 isvsvn: ref __self_0_2,
@@ -275,7 +275,7 @@ impl ::core::fmt::Debug for Keyrequest {
                 miscmask: ref __self_0_7,
                 ..
             } => {
-                let mut builder = __arg_0.debug_struct("Keyrequest");
+                let mut builder = __arg_0.debug_struct("KeyRequest");
                 let _ = builder.field("keyname", &&(*__self_0_0));
                 let _ = builder.field("keypolicy", &&(*__self_0_1));
                 let _ = builder.field("isvsvn", &&(*__self_0_2));

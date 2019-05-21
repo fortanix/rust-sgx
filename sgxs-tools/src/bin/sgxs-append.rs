@@ -24,7 +24,7 @@ use std::rc::Rc;
 use byteorder::{LittleEndian, WriteBytesExt};
 use failure::{Error, ResultExt};
 
-use sgx_isa::{PageType, SecinfoFlags};
+use sgx_isa::{PageType, SecInfoFlags};
 use crate::sgxs_crate::sgxs::{
     CanonicalSgxsReader, Meas, PageChunk, SecinfoTruncated, SgxsRead, SgxsWrite,
 };
@@ -78,7 +78,7 @@ impl DerefMut for NamedFile {
 
 enum Operation {
     File {
-        perm: SecinfoFlags,
+        perm: SecInfoFlags,
         measured: bool,
         file: NamedFile,
     },
@@ -115,13 +115,13 @@ fn parse_op(arg: OsString, next_arg: Option<OsString>) -> Result<Operation, Erro
                 format!("Unable to parse `{}': expected -<mode> or -align", arg).into()
             ));
         }
-        let mut perm = SecinfoFlags::from(PageType::Reg);
+        let mut perm = SecInfoFlags::from(PageType::Reg);
         let mut measured = false;
         for flag in argchars {
             match flag {
-                'r' => perm.insert(SecinfoFlags::R),
-                'w' => perm.insert(SecinfoFlags::W),
-                'x' => perm.insert(SecinfoFlags::X),
+                'r' => perm.insert(SecInfoFlags::R),
+                'w' => perm.insert(SecInfoFlags::W),
+                'x' => perm.insert(SecInfoFlags::X),
                 'm' => measured = true,
                 c => bail!(UsageError(
                     format!(

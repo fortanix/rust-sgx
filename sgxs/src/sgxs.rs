@@ -564,12 +564,12 @@ impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a, W> {
     }
 }
 
-/// Note: only the first 48 bytes of the `Secinfo` structure are included in a
+/// Note: only the first 48 bytes of the `SecInfo` structure are included in a
 /// `Meas` blob.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SecinfoTruncated {
-    pub flags: SecinfoFlags,
+    pub flags: SecInfoFlags,
 }
 
 #[repr(C, packed)]

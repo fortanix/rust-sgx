@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use failure::{Fail, ResultExt};
 
-use abi::{Attributes, Einittoken, Miscselect, PageType, Sigstruct};
+use abi::{Attributes, EInitToken, MiscSelect, PageType, SigStruct};
 use sgxs_crate::einittoken::EinittokenProvider;
 use sgxs_crate::loader;
 use sgxs_crate::sgxs::{
@@ -24,7 +24,7 @@ pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
         device: Arc<Self>,
         ecreate: MeasECreate,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> Result<Mapping<Self>, Self::Error>;
     fn add(
         mapping: &mut Mapping<Self>,
@@ -32,8 +32,8 @@ pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
     ) -> Result<(), Self::Error>;
     fn init(
         mapping: &Mapping<Self>,
-        sigstruct: &Sigstruct,
-        einittoken: Option<&Einittoken>,
+        sigstruct: &SigStruct,
+        einittoken: Option<&EInitToken>,
     ) -> Result<(), Self::Error>;
     fn destroy(mapping: &mut Mapping<Self>);
 }
@@ -80,9 +80,9 @@ impl<D: EnclaveLoad> Device<D> {
     pub fn load(
         &mut self,
         mut reader: &mut SgxsRead,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> ::std::result::Result<LoadResult, ::failure::Error> {
         let mut tokprov = self.einittoken_provider.as_mut();
         let mut tokprov_err = None;

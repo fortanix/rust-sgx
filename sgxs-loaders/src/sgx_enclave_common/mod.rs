@@ -14,7 +14,7 @@ use std::{fmt, mem, ptr};
 
 use libc;
 
-use abi::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
+use abi::{Attributes, EInitToken, MiscSelect, PageType, SecInfoFlags, Secs, SigStruct};
 use sgxs_crate::einittoken::EinittokenProvider;
 use sgxs_crate::loader;
 use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
@@ -126,7 +126,7 @@ impl EnclaveLoad for InnerLibrary {
         device: Arc<InnerLibrary>,
         ecreate: MeasECreate,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> Result<Mapping<Self>, Self::Error> {
         let secs = Secs {
             size: ecreate.size,
@@ -172,17 +172,17 @@ impl EnclaveLoad for InnerLibrary {
         if eadd
             .secinfo
             .flags
-            .intersects(SecinfoFlags::PENDING | SecinfoFlags::MODIFIED | SecinfoFlags::PR)
+            .intersects(SecInfoFlags::PENDING | SecInfoFlags::MODIFIED | SecInfoFlags::PR)
         {
             return Err(Error::Add(LibraryError::InvalidParameter));
         }
-        if eadd.secinfo.flags.intersects(SecinfoFlags::R) {
+        if eadd.secinfo.flags.intersects(SecInfoFlags::R) {
             flags.insert(PageProperties::R)
         }
-        if eadd.secinfo.flags.intersects(SecinfoFlags::W) {
+        if eadd.secinfo.flags.intersects(SecInfoFlags::W) {
             flags.insert(PageProperties::W)
         }
-        if eadd.secinfo.flags.intersects(SecinfoFlags::X) {
+        if eadd.secinfo.flags.intersects(SecInfoFlags::X) {
             flags.insert(PageProperties::X)
         }
         match PageType::try_from(eadd.secinfo.flags.page_type()) {
@@ -215,8 +215,8 @@ impl EnclaveLoad for InnerLibrary {
 
     fn init(
         mapping: &Mapping<Self>,
-        sigstruct: &Sigstruct,
-        einittoken: Option<&Einittoken>,
+        sigstruct: &SigStruct,
+        einittoken: Option<&EInitToken>,
     ) -> Result<(), Self::Error> {
         unsafe {
             let mut error = 0;
@@ -226,7 +226,7 @@ impl EnclaveLoad for InnerLibrary {
                     mapping.base as _,
                     InfoType::EnclaveLaunchToken,
                     einittoken as *const _ as _,
-                    mem::size_of::<Einittoken>(),
+                    mem::size_of::<EInitToken>(),
                     Some(&mut error),
                 ) {
                     match Error::Init(error.into()) {
@@ -240,7 +240,7 @@ impl EnclaveLoad for InnerLibrary {
             if !(mapping.device.enclave_initialize)(
                 mapping.base as _,
                 sigstruct,
-                mem::size_of::<Sigstruct>(),
+                mem::size_of::<SigStruct>(),
                 Some(&mut error),
             ) {
                 return Err(Error::Init(error.into()));
@@ -339,9 +339,9 @@ impl loader::Load for Library {
     fn load<R: SgxsRead>(
         &mut self,
         reader: &mut R,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
         self.inner
             .load(reader, sigstruct, attributes, miscselect)

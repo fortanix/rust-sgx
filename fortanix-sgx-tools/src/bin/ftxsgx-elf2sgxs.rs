@@ -28,7 +28,7 @@ use xmas_elf::sections::{SectionData, SHN_UNDEF};
 use xmas_elf::symbol_table::{DynEntry64 as DynSymEntry, Entry};
 use xmas_elf::ElfFile;
 
-use sgx_isa::{PageType, SecinfoFlags, Tcs};
+use sgx_isa::{PageType, SecInfoFlags, Tcs};
 use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
@@ -396,13 +396,13 @@ impl<'a> LayoutInfo<'a> {
                 flags: PageType::Reg.into(),
             };
             if ph.flags().is_read() {
-                secinfo.flags.insert(SecinfoFlags::R);
+                secinfo.flags.insert(SecInfoFlags::R);
             }
             if ph.flags().is_write() {
-                secinfo.flags.insert(SecinfoFlags::W);
+                secinfo.flags.insert(SecInfoFlags::W);
             }
             if ph.flags().is_execute() {
-                secinfo.flags.insert(SecinfoFlags::X);
+                secinfo.flags.insert(SecInfoFlags::X);
             }
             let start = ph.virtual_addr();
             let base = start & !0xfff;
@@ -498,7 +498,7 @@ impl<'a> LayoutInfo<'a> {
 
         // Output heap
         let secinfo = SecinfoTruncated {
-            flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+            flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
         };
         try!(writer.write_pages::<&[u8]>(
             None,
@@ -515,7 +515,7 @@ impl<'a> LayoutInfo<'a> {
 
             // Output stack
             let secinfo = SecinfoTruncated {
-                flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+                flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
             };
             try!(writer.write_pages::<&[u8]>(
                 None,
@@ -533,7 +533,7 @@ impl<'a> LayoutInfo<'a> {
                 std::mem::transmute::<_, [u8; 32]>([stack_tos, secondary as u64, 0u64, 0u64])
             };
             let secinfo = SecinfoTruncated {
-                flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+                flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
             };
             try!(writer.write_pages(Some(&mut &tls[..]), 1, Some(tls_addr), secinfo));
 
@@ -554,7 +554,7 @@ impl<'a> LayoutInfo<'a> {
             };
             try!(writer.write_page(Some(&mut &tcs[..]), Some(tcs_addr), secinfo));
             let secinfo = SecinfoTruncated {
-                flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+                flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
             };
             try!(writer.write_pages::<&[u8]>(
                 None,

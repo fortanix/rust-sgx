@@ -252,8 +252,8 @@ pub enum PageType {
 enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u16)]
-pub enum Keyname {
-    Einittoken    = 0,
+pub enum KeyName {
+    EInitToken    = 0,
     Provision     = 1,
     ProvisionSeal = 2,
     Report        = 3,
@@ -271,7 +271,7 @@ pub struct Secs {
     pub size: u64,
     pub baseaddr: u64,
     pub ssaframesize: u32,
-    pub miscselect: Miscselect,
+    pub miscselect: MiscSelect,
     pub _reserved1: [u8; 24],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
@@ -320,12 +320,12 @@ impl Default for AttributesFlags {
 
 bitflags! {
     #[repr(C)]
-    pub struct Miscselect: u32 {
+    pub struct MiscSelect: u32 {
         const EXINFO = 0b0000_0001;
     }
 }
 
-impl Default for Miscselect {
+impl Default for MiscSelect {
     fn default() -> Self {
         Self::empty()
     }
@@ -373,7 +373,7 @@ impl Default for TcsFlags {
 struct_def! {
 #[repr(C, align(32))]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Pageinfo {
+pub struct PageInfo {
     pub linaddr: u64,
     pub srcpge: u64,
     pub secinfo: u64,
@@ -381,7 +381,7 @@ pub struct Pageinfo {
 }
 }
 
-impl Pageinfo {
+impl PageInfo {
     pub const UNPADDED_SIZE: usize = 32;
 }
 
@@ -391,19 +391,19 @@ struct_def! {
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct Secinfo {
-    pub flags: SecinfoFlags,
+pub struct SecInfo {
+    pub flags: SecInfoFlags,
     pub _reserved1: [u8; 56],
 }
 }
 
-impl Secinfo {
+impl SecInfo {
     pub const UNPADDED_SIZE: usize = 64;
 }
 
 bitflags! {
     #[repr(C)]
-    pub struct SecinfoFlags: u64 {
+    pub struct SecInfoFlags: u64 {
         const R        = 0b0000_0000_0000_0001;
         const W        = 0b0000_0000_0000_0010;
         const X        = 0b0000_0000_0000_0100;
@@ -422,15 +422,15 @@ bitflags! {
     }
 }
 
-impl Default for SecinfoFlags {
+impl Default for SecInfoFlags {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl SecinfoFlags {
+impl SecInfoFlags {
     pub fn page_type(&self) -> u8 {
-        (((*self & SecinfoFlags::PT_MASK).bits) >> 8) as u8
+        (((*self & SecInfoFlags::PT_MASK).bits) >> 8) as u8
     }
 
     pub fn page_type_mut(&mut self) -> &mut u8 {
@@ -442,9 +442,9 @@ impl SecinfoFlags {
     }
 }
 
-impl From<PageType> for SecinfoFlags {
-    fn from(data: PageType) -> SecinfoFlags {
-        SecinfoFlags::from_bits_truncate((data as u64) << 8)
+impl From<PageType> for SecInfoFlags {
+    fn from(data: PageType) -> SecInfoFlags {
+        SecInfoFlags::from_bits_truncate((data as u64) << 8)
     }
 }
 
@@ -455,7 +455,7 @@ struct_def! {
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
 pub struct Pcmd {
-    pub secinfo: Secinfo,
+    pub secinfo: SecInfo,
     pub enclaveid: u64,
     pub _reserved1: [u8; 40],
     pub mac: [u8; 16],
@@ -472,7 +472,7 @@ struct_def! {
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct Sigstruct {
+pub struct SigStruct {
     pub header: [u8; 16],
     pub vendor: u32,
     pub date: u32,
@@ -482,7 +482,7 @@ pub struct Sigstruct {
     pub modulus: [u8; 384],
     pub exponent: u32,
     pub signature: [u8; 384],
-    pub miscselect: Miscselect,
+    pub miscselect: MiscSelect,
     pub miscmask: u32,
     pub _reserved2: [u8; 20],
     pub attributes: Attributes,
@@ -497,7 +497,7 @@ pub struct Sigstruct {
 }
 }
 
-impl Sigstruct {
+impl SigStruct {
     pub const UNPADDED_SIZE: usize = 1808;
 }
 
@@ -507,7 +507,7 @@ struct_def! {
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct Einittoken {
+pub struct EInitToken {
     pub valid: u32,
     pub _reserved1: [u8; 44],
     pub attributes: Attributes,
@@ -519,14 +519,14 @@ pub struct Einittoken {
     pub isvprodidle: u16,
     pub isvsvnle: u16,
     pub _reserved4: [u8; 24],
-    pub maskedmiscselectle: Miscselect,
+    pub maskedmiscselectle: MiscSelect,
     pub maskedattributesle: Attributes,
     pub keyid: [u8; 32],
     pub mac: [u8; 16],
 }
 }
 
-impl Einittoken {
+impl EInitToken {
     pub const UNPADDED_SIZE: usize = 304;
 }
 
@@ -538,7 +538,7 @@ struct_def! {
 )]
 pub struct Report {
     pub cpusvn: [u8; 16],
-    pub miscselect: Miscselect,
+    pub miscselect: MiscSelect,
     pub _reserved1: [u8; 28],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
@@ -567,7 +567,7 @@ impl Report {
     }
 
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
-    pub fn for_target(targetinfo: &Targetinfo, reportdata: &[u8; 64]) -> Report {
+    pub fn for_target(targetinfo: &TargetInfo, reportdata: &[u8; 64]) -> Report {
         let reportdata = arch::Align128(*reportdata);
         let out = arch::ereport(targetinfo.as_ref(), &reportdata);
         // unwrap ok, `out` is the correct number of bytes
@@ -584,8 +584,8 @@ impl Report {
     where
         F: FnOnce(&[u8; 16], &[u8; 384], &[u8; 16]) -> R,
     {
-        let req = Keyrequest {
-            keyname: Keyname::Report as u16,
+        let req = KeyRequest {
+            keyname: KeyName::Report as u16,
             keyid: self.keyid,
             ..Default::default()
         };
@@ -604,26 +604,26 @@ struct_def! {
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct Targetinfo {
+pub struct TargetInfo {
     pub measurement: [u8; 32],
     pub attributes: Attributes,
     pub _reserved1: [u8; 4],
-    pub miscselect: Miscselect,
+    pub miscselect: MiscSelect,
     pub _reserved2: [u8; 456],
 }
 }
 
-impl Targetinfo {
+impl TargetInfo {
     pub const UNPADDED_SIZE: usize = 512;
 }
 
-impl From<Report> for Targetinfo {
-    fn from(r: Report) -> Targetinfo {
-        Targetinfo {
+impl From<Report> for TargetInfo {
+    fn from(r: Report) -> TargetInfo {
+        TargetInfo {
             measurement: r.mrenclave,
             attributes: r.attributes,
             miscselect: r.miscselect,
-            ..Targetinfo::default()
+            ..TargetInfo::default()
         }
     }
 }
@@ -634,9 +634,9 @@ struct_def! {
     feature = "large_array_derive",
     derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct Keyrequest {
+pub struct KeyRequest {
     pub keyname: u16,
-    pub keypolicy: Keypolicy,
+    pub keypolicy: KeyPolicy,
     pub isvsvn: u16,
     pub _reserved1: u16,
     pub cpusvn: [u8; 16],
@@ -647,7 +647,7 @@ pub struct Keyrequest {
 }
 }
 
-impl Keyrequest {
+impl KeyRequest {
     pub const UNPADDED_SIZE: usize = 512;
 
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
@@ -662,13 +662,13 @@ impl Keyrequest {
 
 bitflags! {
     #[repr(C)]
-    pub struct Keypolicy: u16 {
+    pub struct KeyPolicy: u16 {
         const MRENCLAVE = 0b0000_0001;
         const MRSIGNER  = 0b0000_0010;
     }
 }
 
-impl Default for Keypolicy {
+impl Default for KeyPolicy {
     fn default() -> Self {
         Self::empty()
     }
@@ -676,8 +676,8 @@ impl Default for Keypolicy {
 
 #[test]
 fn test_eq() {
-    let mut a = Keyrequest::default();
-    let mut b = Keyrequest::default();
+    let mut a = KeyRequest::default();
+    let mut b = KeyRequest::default();
     assert!(a == b);
 
     a.keyname = 22;

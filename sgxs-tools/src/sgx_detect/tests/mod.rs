@@ -7,7 +7,7 @@ use petgraph::visit::EdgeRef;
 
 use enclave_runner::EnclaveBuilder;
 use report_test::ReportBuilder;
-use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use sgx_isa::{Attributes, AttributesFlags, MiscSelect, SigStruct};
 use sgxs::loader::Load;
 
 mod debug;
@@ -96,7 +96,7 @@ impl Dependency<SgxCpuSupport> for SgxCpuConfiguration {
                         // Minimum useful enclave size: 2 REG + 1 TCS
                         enclave_size_ok = c.max_enclave_size_32 >= 0x3000 && c.max_enclave_size_64 >= 0x3000;
                         sgx2 = c.sgx2;
-                        exinfo = c.miscselect_valid.contains(Miscselect::EXINFO);
+                        exinfo = c.miscselect_valid.contains(MiscSelect::EXINFO);
                         enclv = c.enclv;
                         oversub = c.oversub;
                         cpuid_err = if sgx1 {
@@ -733,7 +733,7 @@ impl RunEnclaveProdWl {
     fn try_loader<L: Load>(enclave_loader: &mut L) -> Result<(), Error> {
         let enclave = include_bytes!("test_enclave.sgxs");
         let sig = include_bytes!("test_enclave.sig");
-        let sig = Sigstruct::try_copy_from(sig).unwrap();
+        let sig = SigStruct::try_copy_from(sig).unwrap();
 
         let mut builder = EnclaveBuilder::new_from_memory(enclave);
         builder.attributes(sig.attributes).sigstruct(sig);

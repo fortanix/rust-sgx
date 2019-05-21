@@ -9,7 +9,7 @@ use std::os::raw::c_void;
 
 use failure::Error;
 
-use abi::{Attributes, Miscselect, Sigstruct};
+use abi::{Attributes, MiscSelect, SigStruct};
 use sgxs::SgxsRead;
 
 /// An owned `Tcs` is the only reference to a particular Thread Control
@@ -44,8 +44,8 @@ pub trait Load {
     fn load<R: SgxsRead>(
         &mut self,
         reader: &mut R,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> Result<Mapping<Self>, Error>;
 }

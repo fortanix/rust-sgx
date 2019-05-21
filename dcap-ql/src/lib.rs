@@ -27,7 +27,7 @@ use failure::Error;
 use num_traits::FromPrimitive;
 
 pub use dcap_ql_sys::Quote3Error;
-use sgx_isa::{Report, Targetinfo};
+use sgx_isa::{Report, TargetInfo};
 use sgxs_loaders::sgx_enclave_common::dl::os::unix::Library as Dl;
 use sgxs_loaders::sgx_enclave_common::Library as EnclaveCommonLibrary;
 
@@ -49,13 +49,13 @@ fn err_code_to_result(err: u32) -> Result<(), Quote3Error> {
     }
 }
 
-/// Obtain the `Targetinfo` for the Quoting Enclave.
+/// Obtain the `TargetInfo` for the Quoting Enclave.
 ///
-/// Use this `Targetinfo` when calling `EREPORT` in your enclave to generate
+/// Use this `TargetInfo` when calling `EREPORT` in your enclave to generate
 /// the report that will be passed into `quote()`.
-pub fn target_info() -> Result<Targetinfo, Quote3Error> {
+pub fn target_info() -> Result<TargetInfo, Quote3Error> {
     unsafe {
-        let mut targetinfo = Targetinfo::default();
+        let mut targetinfo = TargetInfo::default();
         err_code_to_result(get_target_info(&mut targetinfo))?;
         Ok(targetinfo)
     }
@@ -64,7 +64,7 @@ pub fn target_info() -> Result<Targetinfo, Quote3Error> {
 /// Turn a `Report` into a quote.
 ///
 /// Call the quoting enclave to get a quote. The quoting enclave will sign the
-/// `Report` if the `Report` is valid and generated with the right `Targetinfo`.
+/// `Report` if the `Report` is valid and generated with the right `TargetInfo`.
 pub fn quote(report: &Report) -> Result<Vec<u8>, Quote3Error> {
     unsafe {
         let mut quote_size = 0;

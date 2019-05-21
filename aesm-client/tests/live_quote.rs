@@ -11,7 +11,7 @@ extern crate sgxs;
 extern crate sgxs_loaders;
 
 use aesm_client::AesmClient;
-use sgx_isa::Targetinfo;
+use sgx_isa::TargetInfo;
 use sgxs_loaders::isgx::Device as IsgxDevice;
 
 #[test]
@@ -26,7 +26,7 @@ fn live_quote() {
     let client = AesmClient::new();
 
     let quoteinfo = client.init_quote().expect("init quote");
-    let ti = Targetinfo::try_copy_from(quoteinfo.target_info()).unwrap();
+    let ti = TargetInfo::try_copy_from(quoteinfo.target_info()).unwrap();
     let report = report_test::report(&ti, &mut device).unwrap();
     let _quote = client
         .get_quote(

@@ -15,7 +15,7 @@ use failure::{Error, ResultExt};
 use openssl::hash::Hasher;
 use openssl::pkey::PKey;
 
-use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use sgx_isa::{Attributes, AttributesFlags, MiscSelect, SigStruct};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
@@ -57,9 +57,9 @@ impl<'a> Read for EnclaveSource<'a> {
 
 pub struct EnclaveBuilder<'a> {
     enclave: EnclaveSource<'a>,
-    signature: Option<Sigstruct>,
+    signature: Option<SigStruct>,
     attributes: Option<Attributes>,
-    miscselect: Option<Miscselect>,
+    miscselect: Option<MiscSelect>,
     usercall_ext : Option<Box<UsercallExtension>>,
 }
 
@@ -143,7 +143,7 @@ impl<'a> EnclaveBuilder<'a> {
         ret
     }
 
-    fn generate_dummy_signature(&self) -> Result<Sigstruct, Error> {
+    fn generate_dummy_signature(&self) -> Result<SigStruct, Error> {
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
@@ -190,7 +190,7 @@ impl<'a> EnclaveBuilder<'a> {
         Ok(self)
     }
 
-    pub fn sigstruct(&mut self, sigstruct: Sigstruct) -> &mut Self {
+    pub fn sigstruct(&mut self, sigstruct: SigStruct) -> &mut Self {
         self.signature = Some(sigstruct);
         self
     }
@@ -200,7 +200,7 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    pub fn miscselect(&mut self, miscselect: Miscselect) -> &mut Self {
+    pub fn miscselect(&mut self, miscselect: MiscSelect) -> &mut Self {
         self.miscselect = Some(miscselect);
         self
     }

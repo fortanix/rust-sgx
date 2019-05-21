@@ -6,7 +6,7 @@
 
 #![allow(unused)]
 
-use abi::{Secs, Sigstruct};
+use abi::{Secs, SigStruct};
 use std::os::raw::c_void;
 
 pub const ENCLAVE_ERROR_SUCCESS: u32 = 0;
@@ -76,7 +76,7 @@ pub type EnclaveLoadDataFn = unsafe extern "C" fn(
 pub const SYM_ENCLAVE_INITIALIZE: &[u8] = b"enclave_initialize\0";
 pub type EnclaveInitializeFn = unsafe extern "C" fn(
     base_address: *mut c_void,
-    info: &Sigstruct,
+    info: &SigStruct,
     info_size: usize,
     enclave_error: Option<&mut u32>,
 ) -> bool;

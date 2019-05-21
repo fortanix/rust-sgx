@@ -9,8 +9,8 @@ use std::io::{Read, Result as IoResult};
 
 use failure::Error;
 
-pub use abi::Einittoken;
-use abi::{Attributes, Sigstruct};
+pub use abi::EInitToken;
+use abi::{Attributes, SigStruct};
 
 pub trait EinittokenProvider: fmt::Debug {
     /// Obtain an `EINITTOKEN` for the enclave specified by this `SIGSTRUCT`
@@ -21,10 +21,10 @@ pub trait EinittokenProvider: fmt::Debug {
     /// `retry` is `true`.
     fn token(
         &mut self,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
         retry: bool,
-    ) -> Result<Einittoken, Error>;
+    ) -> Result<EInitToken, Error>;
 
     /// Will this provider exhibit different behavior if `retry` is `true`?
     fn can_retry(&self) -> bool;
@@ -36,8 +36,8 @@ impl<P: EinittokenProvider + 'static> From<P> for Box<dyn EinittokenProvider> {
     }
 }
 
-pub fn read<R: Read>(reader: &mut R) -> IoResult<Einittoken> {
+pub fn read<R: Read>(reader: &mut R) -> IoResult<EInitToken> {
     let mut buf = [0u8; 304];
     reader.read_exact(&mut buf)?;
-    Einittoken::try_copy_from(&buf).ok_or_else(|| unreachable!())
+    EInitToken::try_copy_from(&buf).ok_or_else(|| unreachable!())
 }

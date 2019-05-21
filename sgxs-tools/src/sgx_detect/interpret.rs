@@ -5,7 +5,7 @@ use std::io;
 
 use byteorder::{ReadBytesExt, LE};
 
-use sgx_isa::{AttributesFlags, Miscselect};
+use sgx_isa::{AttributesFlags, MiscSelect};
 
 fn check_bit_32(mut value: u32, bit: u8) -> bool {
     check_bit_erase_32(&mut value, bit)
@@ -47,7 +47,7 @@ pub struct Cpuid12h0 {
     pub enclv: bool,
     pub oversub: bool,
     #[serde(with = "serde::miscselect")]
-    pub miscselect_valid: Miscselect,
+    pub miscselect_valid: MiscSelect,
     pub max_enclave_size_32: u64,
     pub max_enclave_size_64: u64,
 }
@@ -60,7 +60,7 @@ impl From<CpuidResult> for Cpuid12h0 {
             sgx2: check_bit_erase_32(&mut v.eax, 1),
             enclv: check_bit_erase_32(&mut v.eax, 5),
             oversub: check_bit_erase_32(&mut v.eax, 6),
-            miscselect_valid: Miscselect::from_bits_truncate(v.ebx),
+            miscselect_valid: MiscSelect::from_bits_truncate(v.ebx),
             max_enclave_size_32: 1 << (v.edx as u8),
             max_enclave_size_64: 1 << ((v.edx >> 8) as u8),
         };
@@ -325,17 +325,17 @@ pub struct KmodStatus {
 
 mod serde {
     pub mod miscselect {
-        use sgx_isa::Miscselect;
+        use sgx_isa::MiscSelect;
 
         use serde::ser::{Serialize, Serializer};
         use serde::de::{Deserialize, Deserializer};
 
-        pub fn serialize<S: Serializer>(flags: &Miscselect, serializer: S) -> Result<S::Ok, S::Error> {
+        pub fn serialize<S: Serializer>(flags: &MiscSelect, serializer: S) -> Result<S::Ok, S::Error> {
             flags.bits().serialize(serializer)
         }
 
-        pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Miscselect, D::Error> {
-            Deserialize::deserialize(deserializer).map(Miscselect::from_bits_truncate)
+        pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<MiscSelect, D::Error> {
+            Deserialize::deserialize(deserializer).map(MiscSelect::from_bits_truncate)
         }
     }
 

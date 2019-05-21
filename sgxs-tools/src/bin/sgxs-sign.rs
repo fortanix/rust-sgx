@@ -20,10 +20,10 @@ use openssl::hash::Hasher;
 use openssl::pkey::{self, PKey};
 use regex::Regex;
 
-use sgx_isa::{AttributesFlags, Miscselect, Sigstruct};
+use sgx_isa::{AttributesFlags, MiscSelect, SigStruct};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
-fn write_sigstruct(path: &str, sig: Sigstruct) {
+fn write_sigstruct(path: &str, sig: SigStruct) {
     File::create(path)
         .expect("Unable to open output file")
         .write_all(sig.as_ref())
@@ -131,7 +131,7 @@ MISCSELECT / ATTRIBUTES MASKS:
     the same value will be used twice.")
 }
 
-fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sigstruct {
+fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> SigStruct {
     let enclavehash = if matches.is_present("input-hash") {
         let s = matches.value_of("input").unwrap();
         hash_validate(s).unwrap();
@@ -151,9 +151,9 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         .value_of("miscselect/miscmask")
         .map(parse_num_num::<u32>)
     {
-        let sel = Miscselect::from_bits(sel).unwrap_or_else(|| {
+        let sel = MiscSelect::from_bits(sel).unwrap_or_else(|| {
             println!("WARNING: Dropping unknown bits in input MISCSELECT!");
-            Miscselect::from_bits_truncate(sel)
+            MiscSelect::from_bits_truncate(sel)
         });
         signer.miscselect(sel, !mask);
     }

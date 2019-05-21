@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::Arc;
 
-use abi::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct};
+use abi::{Attributes, EInitToken, ErrorCode, MiscSelect, SecInfo, Secs, SigStruct};
 use sgxs_crate::einittoken::EinittokenProvider;
 use sgxs_crate::loader;
 use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
@@ -85,7 +85,7 @@ impl EnclaveLoad for InnerDevice {
         device: Arc<InnerDevice>,
         ecreate: MeasECreate,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> Result<Mapping<Self>, Self::Error> {
         let ptr = unsafe {
             libc::mmap(
@@ -128,7 +128,7 @@ impl EnclaveLoad for InnerDevice {
         page: (MeasEAdd, PageChunks, [u8; 4096]),
     ) -> Result<(), Self::Error> {
         let (eadd, chunks, data) = page;
-        let secinfo = Secinfo {
+        let secinfo = SecInfo {
             flags: eadd.secinfo.flags,
             ..Default::default()
         };
@@ -143,8 +143,8 @@ impl EnclaveLoad for InnerDevice {
 
     fn init(
         mapping: &Mapping<Self>,
-        sigstruct: &Sigstruct,
-        einittoken: Option<&Einittoken>,
+        sigstruct: &SigStruct,
+        einittoken: Option<&EInitToken>,
     ) -> Result<(), Self::Error> {
         // ioctl() may return ENOTTY if the specified request does not apply to
         // the kind of object that the descriptor fd references.
@@ -157,7 +157,7 @@ impl EnclaveLoad for InnerDevice {
             }
         }
 
-        fn ioctl_init(mapping: &Mapping<InnerDevice>, sigstruct: &Sigstruct) -> Result<(), Error> {
+        fn ioctl_init(mapping: &Mapping<InnerDevice>, sigstruct: &SigStruct) -> Result<(), Error> {
             let initdata = ioctl::InitData {
                 base: mapping.base,
                 sigstruct,
@@ -167,8 +167,8 @@ impl EnclaveLoad for InnerDevice {
 
         fn ioctl_init_with_token(
             mapping: &Mapping<InnerDevice>,
-            sigstruct: &Sigstruct,
-            einittoken: &Einittoken,
+            sigstruct: &SigStruct,
+            einittoken: &EInitToken,
         ) -> Result<(), Error> {
             let initdata = ioctl::InitDataWithToken {
                 base: mapping.base,
@@ -262,9 +262,9 @@ impl loader::Load for Device {
     fn load<R: SgxsRead>(
         &mut self,
         reader: &mut R,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
-        miscselect: Miscselect,
+        miscselect: MiscSelect,
     ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
         self.inner
             .load(reader, sigstruct, attributes, miscselect)

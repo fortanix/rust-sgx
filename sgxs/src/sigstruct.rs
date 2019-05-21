@@ -10,7 +10,7 @@ use failure::Error;
 use time;
 
 use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
-pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+pub use abi::{Attributes, AttributesFlags, MiscSelect, SigStruct};
 use crypto::{Hash, SgxHashOps, SgxRsaOps};
 use sgxs::{copy_measured, SgxsRead};
 
@@ -49,7 +49,7 @@ impl EnclaveHash {
 /// # Panics
 ///
 /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
-pub fn verify<K: SgxRsaOps, H: SgxHashOps>(sig: &Sigstruct, key: &K) -> Result<(), K::Error> {
+pub fn verify<K: SgxRsaOps, H: SgxHashOps>(sig: &SigStruct, key: &K) -> Result<(), K::Error> {
     Signer::check_key(key);
     key.verify_sha256_pkcs1v1_5(&sig.signature[..], Signer::sighash::<H>(sig))
 }
@@ -58,7 +58,7 @@ pub fn verify<K: SgxRsaOps, H: SgxHashOps>(sig: &Sigstruct, key: &K) -> Result<(
 pub struct Signer {
     date: u32,
     swdefined: u32,
-    miscselect: Miscselect,
+    miscselect: MiscSelect,
     miscmask: u32,
     attributes: Attributes,
     attributemask: [u64; 2],
@@ -75,7 +75,7 @@ impl Signer {
             date: u32::from_str_radix(&time::strftime("%Y%m%d", &time::now()).unwrap(), 16)
                 .unwrap(),
             swdefined: 0,
-            miscselect: Miscselect::default(),
+            miscselect: MiscSelect::default(),
             miscmask: !0,
             attributes: Attributes {
                 flags: abi::AttributesFlags::MODE64BIT,
@@ -97,7 +97,7 @@ impl Signer {
         }
     }
 
-    fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
+    fn sighash<H: SgxHashOps>(sig: &SigStruct) -> Hash {
         let sig: &[u8] = sig.as_ref();
         let mut hasher = H::new();
         hasher.update(&sig[0..128]);
@@ -108,10 +108,10 @@ impl Signer {
     /// # Panics
     ///
     /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
-    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
+    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<SigStruct, K::Error> {
         Self::check_key(key);
 
-        let mut sig = Sigstruct {
+        let mut sig = SigStruct {
             header: SIGSTRUCT_HEADER1,
             vendor: 0,
             date: self.date,
@@ -168,7 +168,7 @@ impl Signer {
         self
     }
 
-    pub fn miscselect(&mut self, miscselect: Miscselect, mask: u32) -> &mut Self {
+    pub fn miscselect(&mut self, miscselect: MiscSelect, mask: u32) -> &mut Self {
         self.miscselect = miscselect;
         self.miscmask = mask;
         self
@@ -192,8 +192,8 @@ impl Signer {
     }
 }
 
-pub fn read<R: Read>(reader: &mut R) -> IoResult<Sigstruct> {
+pub fn read<R: Read>(reader: &mut R) -> IoResult<SigStruct> {
     let mut buf = [0u8; 1808];
     reader.read_exact(&mut buf)?;
-    Sigstruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
+    SigStruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
 }

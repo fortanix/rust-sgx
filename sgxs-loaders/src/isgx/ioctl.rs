@@ -17,7 +17,7 @@ pub struct CreateData {
 pub struct AddData {
     pub dstpage: u64,
     pub srcpage: *const [u8; 4096],
-    pub secinfo: *const abi::Secinfo,
+    pub secinfo: *const abi::SecInfo,
     pub chunks: u16,
 }
 
@@ -25,15 +25,15 @@ pub struct AddData {
 #[derive(Clone, Copy, Debug)]
 pub struct InitDataWithToken {
     pub base: u64,
-    pub sigstruct: *const abi::Sigstruct,
-    pub einittoken: *const abi::Einittoken,
+    pub sigstruct: *const abi::SigStruct,
+    pub einittoken: *const abi::EInitToken,
 }
 
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug)]
 pub struct InitData {
     pub base: u64,
-    pub sigstruct: *const abi::Sigstruct,
+    pub sigstruct: *const abi::SigStruct,
 }
 
 const SGX_IOCTL: u8 = 0xa4;

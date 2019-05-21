@@ -10,13 +10,13 @@ extern crate sgxs as sgxs_crate;
 use std::fs::{self, File};
 use std::io::stdout;
 
-use sgx_isa::{PageType, SecinfoFlags, Tcs};
+use sgx_isa::{PageType, SecInfoFlags, Tcs};
 use crate::sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated};
 use crate::sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 enum Block {
     Blob {
-        flags: SecinfoFlags,
+        flags: SecInfoFlags,
         file: String,
         pages: usize,
     },
@@ -63,9 +63,9 @@ fn main() {
         } else if k == "r" || k == "rw" || k == "rx" || k == "rwx" {
             let flags = k.as_bytes().iter().fold(PageType::Reg.into(), |f, &c| {
                 f | match c {
-                    b'r' => SecinfoFlags::R,
-                    b'w' => SecinfoFlags::W,
-                    b'x' => SecinfoFlags::X,
+                    b'r' => SecInfoFlags::R,
+                    b'w' => SecInfoFlags::W,
+                    b'x' => SecInfoFlags::X,
                     _ => unreachable!(),
                 }
             });
@@ -125,7 +125,7 @@ fn main() {
                     .write_page(Some(&mut &tcs[..]), None, secinfo)
                     .unwrap();
                 let secinfo = SecinfoTruncated {
-                    flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+                    flags: SecInfoFlags::R | SecInfoFlags::W | PageType::Reg.into(),
                 };
                 writer
                     .write_pages(

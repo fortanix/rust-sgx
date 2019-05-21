@@ -3,7 +3,7 @@ use std::io::Result as IoResult;
 use libc::{RTLD_GLOBAL, RTLD_NOW};
 
 use dcap_ql_sys::*;
-use sgx_isa::{Report, Targetinfo};
+use sgx_isa::{Report, TargetInfo};
 use sgxs_loaders::sgx_enclave_common::dl;
 use sgxs_loaders::sgx_enclave_common::dl::os::unix::Library as Dl;
 
@@ -25,7 +25,7 @@ lazy_static! {
     };
 }
 
-pub unsafe fn get_target_info(target_info: &mut Targetinfo) -> u32 {
+pub unsafe fn get_target_info(target_info: &mut TargetInfo) -> u32 {
     match *DCAP_QL {
         Ok(ref ql) => (ql.get_target_info)(target_info),
         Err(_) => Quote3Error::InterfaceUnavailable as _,

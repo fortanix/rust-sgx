@@ -55,7 +55,7 @@ use failure::Error;
 use yansi::Paint;
 
 use aesm_client::AesmClient;
-use sgx_isa::{Sigstruct, Attributes, Einittoken};
+use sgx_isa::{SigStruct, Attributes, EInitToken};
 use sgxs::einittoken::EinittokenProvider;
 use sgxs_loaders::isgx::Device as IsgxDevice;
 use sgxs_loaders::sgx_enclave_common::Library as EnclCommonLib;
@@ -174,10 +174,10 @@ impl TimeoutHardError<AesmClient> {
 impl EinittokenProvider for TimeoutHardError<AesmClient> {
     fn token(
         &mut self,
-        sigstruct: &Sigstruct,
+        sigstruct: &SigStruct,
         attributes: Attributes,
         retry: bool,
-    ) -> Result<Einittoken, Error> {
+    ) -> Result<EInitToken, Error> {
         if self.timedout.get() {
             Err(io::Error::new(io::ErrorKind::TimedOut, "AESM timed out").into())
         } else {
