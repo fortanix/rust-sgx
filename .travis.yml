@@ -15,9 +15,7 @@ addons:
       key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
     packages:
     - protobuf-compiler
-    - libsgx-enclave-common=2.4.100.48163-xenial1
-    - libsgx-dcap-ql=1.0.101.48192-xenial1
-    - libsgx-dcap-ql-dev=1.0.101.48192-xenial1
+    - libsgx-dcap-ql-dev
 rust:
   - nightly
 env:
