@@ -44,12 +44,10 @@ use tcs::{CoResult, ThreadResult};
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 
-static NEXT_THREAD_ID: AtomicUsize = AtomicUsize::new(0);
-thread_local!(static THREAD_ID: usize = NEXT_THREAD_ID.fetch_add(1, Ordering::Relaxed));
-
 struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
 
+type UsercallSendData = (ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>);
 macro_rules! forward {
     (fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
         fn $n(&mut self $(, $p: $t)*) -> $ret {
@@ -366,7 +364,12 @@ impl EnclaveState {
         for tcs in threads {
             start_queue.push(tcs);
         }
-        work_sender.send(Work::Stopped(start_queue.pop()?, EnclaveEntry::ExecutableMain));
+
+        if work_sender.send(Work::Stopped(start_queue.pop()?, EnclaveEntry::ExecutableMain)).is_err()
+        {
+            panic!("Work sender couldn't send data to receiver")
+        }
+
         let mut num_of_threads = num_cpus::get();
         if num_of_threads < 2 {
             num_of_threads = 2;
@@ -394,7 +397,6 @@ impl EnclaveState {
                 let enclave_cloned = enclave.clone();
 
                 scope.spawn(move |_| {
-                    THREAD_ID.with(|_| ());
                     // ///////////////////////////
                     // // enclave worker thread //
                     // ///////////////////////////
@@ -406,15 +408,14 @@ impl EnclaveState {
                             },
                             Ok(work) => work,
                         };
-                        //check for error
                         let enclave_cloned = enclave_cloned.clone();
                         let res = match work {
                             Work::Stopped(tcs, mode) => {
                                 RunningTcs::entry_async(enclave_cloned.clone(), tcs, &io_queue_send, mode)
-                            }
+                            },
                             Work::Running(state, usercall, coresult, mode) => {
                                 RunningTcs::coentry_async(state, usercall, coresult, &io_queue_send, mode)
-                            }
+                            },
                         };
                         if res.is_err() {
                             let cmd = enclave_cloned.kind.as_command().unwrap();
@@ -478,7 +479,9 @@ impl EnclaveState {
                             let mut secondary_return;
                             match result {
                                 Ok(ret) => {
-                                    work_sender.send(Work::Running(state, usercall, ret, mode));
+                                    if work_sender.send(Work::Running(state, usercall, ret, mode)).is_err() {
+                                        panic!("Work sender couldn't send data to receiver")
+                                    }
                                     continue;
                                 },
                                 Err(EnclaveAbort::Exit { panic: true }) => {
@@ -498,7 +501,7 @@ impl EnclaveState {
                                         }
                                         // If the enclave is in the exit-state, threads are no
                                         // longer able to be launched
-                                        if !enclave.exiting.load(Ordering::SeqCst){
+                                        if !enclave.exiting.load(Ordering::SeqCst) {
                                             cmddata.threads_queue.push(StoppedTcs {
                                                 tcs: usercall.tcs,
                                                 event_queue: state.event_queue,
@@ -629,7 +632,10 @@ impl EnclaveState {
 
         let (io_queue_send, io_queue_receive) = mpsc::channel();
         let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
-        work_sender.send(Work::Stopped(thread, EnclaveEntry::Library {p1, p2, p3, p4, p5}));
+        if work_sender.send(Work::Stopped(thread, EnclaveEntry::Library {p1, p2, p3, p4, p5})).is_err()
+        {
+            panic!("Error sending data via the work sender");
+        }
 
         // As currently we are not supporting spawning threads let the number of threads be 2
         // one for usercall handling the other for actually runnign
@@ -642,7 +648,6 @@ impl EnclaveState {
                 let io_queue_send = io_queue_send.clone();
                 let enclave_cloned = enclave.clone();
                 scope.spawn(move |_| {
-                    THREAD_ID.with(|_| ());
                     // ///////////////////////////
                     // // enclave worker thread //
                     // ///////////////////////////
@@ -654,7 +659,6 @@ impl EnclaveState {
                             },
                             Ok(work) => work,
                         };
-                        //check for error
                         let enclave_cloned = enclave_cloned.clone();
                         let res = match work {
                             Work::Stopped(tcs, mode) => {
@@ -672,7 +676,9 @@ impl EnclaveState {
                                 (CoResult::Yield(usercall), running_tcs, _, _) => StoppedTcs {tcs : usercall.tcs, event_queue: running_tcs.event_queue},
                                 (CoResult::Return((t, _, _)), running_tcs, _, _) => StoppedTcs { tcs: t, event_queue: running_tcs.event_queue},
                             };
-                            thread_sender.send(tcs);
+                            if thread_sender.send(tcs).is_err() {
+                                panic!("Couldn't send tcs after tcs work is done");
+                            }
                         }
                     }
                 });
@@ -692,7 +698,9 @@ impl EnclaveState {
                         CoResult::Return((tcs,v1, v2)) => {
                             if let EnclaveEntry::Library {p1: _, p2: _, p3: _, p4: _, p5: _} = mode  {
                                 let lib = state.enclave.kind.as_library().unwrap().thread_sender.lock().unwrap();
-                                lib.send(StoppedTcs { tcs, event_queue: state.event_queue });
+                                if lib.send(StoppedTcs { tcs, event_queue: state.event_queue }).is_err() {
+                                    panic!("Work sender couldn't send data to receiver")
+                                }
                                 library_return = Ok((v1, v2));
                                 break 'outer;
                             }
@@ -707,7 +715,9 @@ impl EnclaveState {
                             }
                             match result {
                                 Ok(ret) => {
-                                    work_sender.send(Work::Running(state, usercall, ret, mode));
+                                    if work_sender.send(Work::Running(state, usercall, ret, mode)).is_err() {
+                                        panic!("Work sender couldn't send data to receiver")
+                                    }
                                     continue;
                                 },
                                 Err(EnclaveAbort::Exit { panic: true }) => {
@@ -718,9 +728,10 @@ impl EnclaveState {
                                     break 'outer;
                                 },
                                 Err(EnclaveAbort::Exit { panic: false }) => {
-                                    // !!! dont do this here do it after getting an Ok() in the last match statement of the funciton
                                     let lib = state.enclave.kind.as_library().unwrap().thread_sender.lock().unwrap();
-                                    lib.send(StoppedTcs { tcs: usercall.tcs, event_queue: state.event_queue });
+                                    if lib.send(StoppedTcs { tcs: usercall.tcs, event_queue: state.event_queue }).is_err() {
+                                        panic!("Work sender couldn't send data to receiver")
+                                    }
                                     library_return =  Ok((0,0));
                                     break 'outer;
                                 }
@@ -908,9 +919,9 @@ impl RunningTcs {
     fn entry_async(
         enclave: Arc<EnclaveState>,
         tcs: StoppedTcs,
-        io_send_queue: &mpsc::Sender<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>,
+        io_send_queue: &mpsc::Sender<UsercallSendData>,
         mode: EnclaveEntry
-    )-> StdResult<(), mpsc::SendError<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>>
+    )-> StdResult<(), mpsc::SendError<UsercallSendData>>
     {
         let buf = RefCell::new([0u8; 1024]);
 
@@ -936,9 +947,9 @@ impl RunningTcs {
         state: RunningTcs,
         completed_usercall: tcs::Usercall<ErasedTcs>,
         completed_usercall_return : (u64,u64),
-        io_send_queue: &mpsc::Sender<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>,
+        io_send_queue: &mpsc::Sender<UsercallSendData>,
         mode: EnclaveEntry
-    ) -> StdResult<(), mpsc::SendError<(ThreadResult<ErasedTcs>, RunningTcs, EnclaveEntry, RefCell<[u8;1024]>)>>
+    ) -> StdResult<(), mpsc::SendError<UsercallSendData>>
     {
         let buf = RefCell::new([0u8; 1024]);
 
@@ -1068,7 +1079,15 @@ impl RunningTcs {
     }
 
     #[inline(always)]
-    fn launch_thread(&self, work_sender: &crossbeam::channel::Sender<Work>) -> IoResult<()> {
+    fn launch_thread(&self, sender: Option<&crossbeam::channel::Sender<Work>>) -> IoResult<()> {
+        match sender {
+            Some(sender) => self.launch_command_thread(sender),
+            None => self.launch_library_thread()
+        }
+    }
+
+    #[inline(always)]
+    fn launch_command_thread(&self, work_sender: &crossbeam::channel::Sender<Work>) -> IoResult<()> {
         let command = self
             .enclave
             .kind
@@ -1144,6 +1163,9 @@ impl RunningTcs {
         if ret.is_none() {
             loop {
                 let ev = if wait {
+                    // Preventing wait from blocking because the usercalls are synchronous
+                    // Once the usercalls are async then this can be reverted
+
 //                    self.event_queue.recv()
                     match self.event_queue.try_recv() {
                         Ok(ev) => Ok(ev),
