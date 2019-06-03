@@ -415,7 +415,7 @@ impl<'a> LayoutInfo<'a> {
                 unreachable!();
             }
 
-            let mut data: Box<Read>;
+            let mut data: Box<dyn Read>;
             let mut cur_ptr = base;
 
             if cur_splice.peek().map_or(false, |s| cur_ptr == s.0) {

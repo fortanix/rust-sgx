@@ -20,7 +20,7 @@ pub struct Command {
     threads: Vec<ErasedTcs>,
     address: *mut c_void,
     size: usize,
-    usercall_ext : Option<Box<UsercallExtension>>,
+    usercall_ext : Option<Box<dyn UsercallExtension>>,
 }
 
 impl MappingInfo for Command {
@@ -37,7 +37,7 @@ impl Command {
     /// # Panics
     /// Panics if the number of TCSs is 0.
     pub(crate) fn internal_new(mut tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize,
-                      usercall_ext : Option<Box<UsercallExtension>>) -> Command {
+                      usercall_ext : Option<Box<dyn UsercallExtension>>) -> Command {
         let main = tcss.remove(0);
         Command {
             main,

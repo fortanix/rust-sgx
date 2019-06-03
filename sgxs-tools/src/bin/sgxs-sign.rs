@@ -87,9 +87,9 @@ fn parse_num_num<T: Copy + Unsigned + Num<FromStrRadixErr = std::num::ParseIntEr
 
 fn hex_digit_to_num(ascii: u8) -> u8 {
     match ascii {
-        b'0'...b'9' => ascii - b'0',
-        b'A'...b'F' => ascii - b'A' + 10,
-        b'a'...b'f' => ascii - b'a' + 10,
+        b'0'..=b'9' => ascii - b'0',
+        b'A'..=b'F' => ascii - b'A' + 10,
+        b'a'..=b'f' => ascii - b'a' + 10,
         _ => panic!("Tried to convert non-hex character"),
     }
 }

@@ -43,7 +43,7 @@ impl MappingInfo for Library {
 
 impl Library {
     pub(crate) fn internal_new(tcss: Vec<ErasedTcs>, address: *mut c_void, size: usize,
-                               usercall_ext : Option<Box<UsercallExtension>>) -> Library {
+                               usercall_ext : Option<Box<dyn UsercallExtension>>) -> Library {
         Library {
             enclave: EnclaveState::library(tcss, usercall_ext),
             address,

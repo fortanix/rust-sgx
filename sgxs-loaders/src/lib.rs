@@ -31,7 +31,7 @@ use sgxs_crate::loader;
 
 #[derive(Debug)]
 pub struct Tcs {
-    _mapping: Arc<Debug + Sync + Send>,
+    _mapping: Arc<dyn Debug + Sync + Send>,
     address: u64,
 }
 
@@ -43,7 +43,7 @@ impl loader::Tcs for Tcs {
 
 #[derive(Debug)]
 pub struct MappingInfo {
-    _mapping: Arc<Debug + Sync + Send>,
+    _mapping: Arc<dyn Debug + Sync + Send>,
     base: u64,
     size: u64,
 }

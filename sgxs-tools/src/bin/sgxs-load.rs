@@ -21,7 +21,7 @@ use sgxs::loader::{Load, Tcs};
 use sgxs::sigstruct::read as read_sigstruct;
 use sgxs_loaders::isgx;
 
-fn enclu_eenter(tcs: &mut Tcs) {
+fn enclu_eenter(tcs: &mut dyn Tcs) {
     let result: u32;
     unsafe {
         asm!("

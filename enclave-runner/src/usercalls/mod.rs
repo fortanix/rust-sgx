@@ -164,11 +164,11 @@ pub trait SyncStream: 'static + Send + Sync {
 
 
 trait SyncListener: 'static + Send + Sync {
-    fn accept(&self) -> IoResult<(FileDesc, Box<ToString>, Box<ToString>)>;
+    fn accept(&self) -> IoResult<(FileDesc, Box<dyn ToString>, Box<dyn ToString>)>;
 }
 
 impl SyncListener for TcpListener {
-    fn accept(&self) -> IoResult<(FileDesc, Box<ToString>, Box<ToString>)> {
+    fn accept(&self) -> IoResult<(FileDesc, Box<dyn ToString>, Box<dyn ToString>)> {
         TcpListener::accept(self).map(|(s, peer)| {
             let local = match s.local_addr() {
                 Ok(local) => Box::new(local) as _,
@@ -180,8 +180,8 @@ impl SyncListener for TcpListener {
 }
 
 enum FileDesc {
-    Stream(Box<SyncStream>),
-    Listener(Box<SyncListener>),
+    Stream(Box<dyn SyncStream>),
+    Listener(Box<dyn SyncListener>),
 }
 
 impl FileDesc {
@@ -193,7 +193,7 @@ impl FileDesc {
         FileDesc::Listener(Box::new(l))
     }
 
-    fn as_stream(&self) -> IoResult<&SyncStream> {
+    fn as_stream(&self) -> IoResult<&dyn SyncStream> {
         if let FileDesc::Stream(ref s) = self {
             Ok(&**s)
         } else {
@@ -201,7 +201,7 @@ impl FileDesc {
         }
     }
 
-    fn as_listener(&self) -> IoResult<&SyncListener> {
+    fn as_listener(&self) -> IoResult<&dyn SyncListener> {
         if let FileDesc::Listener(ref l) = self {
             Ok(&**l)
         } else {
@@ -293,7 +293,7 @@ pub(crate) struct EnclaveState {
     fds: Mutex<FnvHashMap<Fd, Arc<FileDesc>>>,
     last_fd: AtomicUsize,
     exiting: AtomicBool,
-    usercall_ext: Box<UsercallExtension>,
+    usercall_ext: Box<dyn UsercallExtension>,
 }
 
 impl EnclaveState {
@@ -317,7 +317,7 @@ impl EnclaveState {
     fn new(
         kind: EnclaveKind,
         event_queues: FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
-        usercall_ext: Option<Box<UsercallExtension>>) -> Arc<Self> {
+        usercall_ext: Option<Box<dyn UsercallExtension>>) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
         fds.insert(FD_STDIN, Arc::new(FileDesc::stream(Shared(io::stdin()))));
         fds.insert(FD_STDOUT, Arc::new(FileDesc::stream(Shared(io::stdout()))));
@@ -339,7 +339,7 @@ impl EnclaveState {
     pub(crate) fn main_entry(
         main: ErasedTcs,
         threads: Vec<ErasedTcs>,
-        usercall_ext: Option<Box<UsercallExtension>>) -> StdResult<(), failure::Error>  {
+        usercall_ext: Option<Box<dyn UsercallExtension>>) -> StdResult<(), failure::Error>  {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
@@ -418,7 +418,7 @@ impl EnclaveState {
     }
 
     pub(crate) fn library(threads: Vec<ErasedTcs>,
-                          usercall_ext: Option<Box<UsercallExtension>>) -> Arc<Self> {
+                          usercall_ext: Option<Box<dyn UsercallExtension>>) -> Arc<Self> {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
         let (send, recv) = channel();
@@ -576,13 +576,13 @@ pub trait UsercallExtension : 'static + Send + Sync + std::fmt::Debug {
         addr: &str,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<SyncStream>>> {
+    ) -> IoResult<Option<Box<dyn SyncStream>>> {
         Ok(None)
     }
 }
 
-impl<T: UsercallExtension> From<T> for Box<UsercallExtension> {
-    fn from(value : T) -> Box<UsercallExtension> {
+impl<T: UsercallExtension> From<T> for Box<dyn UsercallExtension> {
+    fn from(value : T) -> Box<dyn UsercallExtension> {
         Box::new(value)
     }
 }
@@ -595,7 +595,7 @@ impl UsercallExtension for UsercallExtensionDefault{
         _addr: &str,
         _local_addr: Option<&mut String>,
         _peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<SyncStream>>> {
+    ) -> IoResult<Option<Box<dyn SyncStream>>> {
         Ok(None)
     }
 }

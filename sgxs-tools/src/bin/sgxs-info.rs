@@ -328,7 +328,7 @@ fn main() {
         if let Some(s) = name {
             s1 = s;
             s2 = Path::new(&s1).display();
-            &s2 as &fmt::Display
+            &s2 as &dyn fmt::Display
         } else {
             s3 = "sgxs-info";
             &s3 as &_
