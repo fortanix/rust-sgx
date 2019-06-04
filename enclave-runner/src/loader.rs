@@ -60,7 +60,7 @@ pub struct EnclaveBuilder<'a> {
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
-    usercall_ext : Option<Box<UsercallExtension>>,
+    usercall_ext : Option<Box<dyn UsercallExtension>>,
 }
 
 #[derive(Debug, Fail)]
@@ -93,7 +93,7 @@ impl From<DebugBuffer> for EnclavePanic {
 #[derive(Debug)]
 pub(crate) struct ErasedTcs {
     address: *mut c_void,
-    tcs: Box<Tcs>,
+    tcs: Box<dyn Tcs>,
 }
 
 // Would be `send` if we didn't cache the raw pointer address
@@ -205,7 +205,7 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    pub fn usercall_extension<T: Into<Box<UsercallExtension>>>(&mut self, extension: T) {
+    pub fn usercall_extension<T: Into<Box<dyn UsercallExtension>>>(&mut self, extension: T) {
         self.usercall_ext = Some(extension.into());
     }
 

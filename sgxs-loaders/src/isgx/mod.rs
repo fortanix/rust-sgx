@@ -273,7 +273,7 @@ impl loader::Load for Device {
 }
 
 impl DeviceBuilder {
-    pub fn einittoken_provider<P: Into<Box<EinittokenProvider>>>(
+    pub fn einittoken_provider<P: Into<Box<dyn EinittokenProvider>>>(
         mut self,
         einittoken_provider: P,
     ) -> Self {

@@ -350,7 +350,7 @@ impl loader::Load for Library {
 }
 
 impl LibraryBuilder {
-    pub fn einittoken_provider<P: Into<Box<EinittokenProvider>>>(
+    pub fn einittoken_provider<P: Into<Box<dyn EinittokenProvider>>>(
         mut self,
         einittoken_provider: P,
     ) -> Self {

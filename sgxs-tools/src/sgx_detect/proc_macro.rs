@@ -138,7 +138,7 @@ pub fn dependency(
 ) -> proc_macro::TokenStream {
     assert!(attr.is_empty());
 
-    fn check_impl(impl_: ItemImpl) -> StdResult<(Type, Type), Box<ToTokens>> {
+    fn check_impl(impl_: ItemImpl) -> StdResult<(Type, Type), Box<dyn ToTokens>> {
         use self::GenericArgument::Type as GaType;
 
         let mut trait_ = match impl_.trait_ {

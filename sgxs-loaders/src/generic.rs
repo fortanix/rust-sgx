@@ -59,7 +59,7 @@ impl<D: EnclaveLoad> Drop for Mapping<D> {
 #[derive(Debug)]
 pub(crate) struct Device<D> {
     pub inner: Arc<D>,
-    pub einittoken_provider: Option<Box<EinittokenProvider>>,
+    pub einittoken_provider: Option<Box<dyn EinittokenProvider>>,
 }
 
 pub(crate) struct LoadResult {
@@ -79,7 +79,7 @@ impl<T: loader::Load<MappingInfo = MappingInfo, Tcs = Tcs> + ?Sized> Into<loader
 impl<D: EnclaveLoad> Device<D> {
     pub fn load(
         &mut self,
-        mut reader: &mut SgxsRead,
+        mut reader: &mut dyn SgxsRead,
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
@@ -173,7 +173,7 @@ pub(crate) struct DeviceBuilder<D> {
 impl<D> DeviceBuilder<D> {
     pub fn einittoken_provider(
         &mut self,
-        einittoken_provider: Box<EinittokenProvider>,
+        einittoken_provider: Box<dyn EinittokenProvider>,
     ) -> &mut Self {
         self.device.einittoken_provider = Some(einittoken_provider);
         self

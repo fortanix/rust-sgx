@@ -191,11 +191,11 @@ fn result_main() -> Result<(), Error> {
 
     // Buffer input if necessary (non-seeking input)
     let mut f0 = if in_place {
-        SharedRws(Rc::new(RefCell::new(f0.file)) as Rc<RefCell<ReadWriteSeek>>)
+        SharedRws(Rc::new(RefCell::new(f0.file)) as Rc<RefCell<dyn ReadWriteSeek>>)
     } else {
         let mut buf = vec![];
         f0.read_to_end(&mut buf).context(f0.error("read"))?;
-        SharedRws(Rc::new(RefCell::new(Cursor::new(buf))) as Rc<RefCell<ReadWriteSeek>>)
+        SharedRws(Rc::new(RefCell::new(Cursor::new(buf))) as Rc<RefCell<dyn ReadWriteSeek>>)
     };
 
     // First read of SGXS, determine where to write enclave size

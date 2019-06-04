@@ -27,6 +27,7 @@ fn main() {
 
     let mod_aesm_proto = out_dir.join("mod_aesm_proto.rs");
     File::create(&mod_aesm_proto)
-        .and_then(|mut f| f.write_all(b"mod aesm_proto;\n"))
+        // FIXME: get rid of `allow(bare_trait_objects)` by updateing protoc-rust
+        .and_then(|mut f| f.write_all(b"#[allow(bare_trait_objects)] mod aesm_proto;\n"))
         .expect("mod_aesm_proto.rs I/O error");
 }
