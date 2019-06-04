@@ -14,7 +14,10 @@ extern crate clap;
 use aesm_client::AesmClient;
 use enclave_runner::EnclaveBuilder;
 use failure::{Error, ResultExt};
+#[cfg(unix)]
 use sgxs_loaders::isgx::Device as IsgxDevice;
+#[cfg(windows)]
+use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
 
 use clap::{App, Arg};
 

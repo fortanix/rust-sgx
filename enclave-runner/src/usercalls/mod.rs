@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate libc;
+#[cfg(unix)]
 extern crate nix;
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -37,6 +38,7 @@ mod interface;
 use self::abi::dispatch;
 use self::interface::{Handler, OutputBuffer};
 use self::libc::*;
+#[cfg(unix)]
 use self::nix::sys::signal;
 use loader::{EnclavePanic, ErasedTcs};
 use tcs;
@@ -521,6 +523,7 @@ enum Greg {
     CR2,
 }
 
+#[cfg(unix)]
 /* Here we are passing control to debugger `fixup` style by raising Sigtrap.
  * If there is no debugger attached, this function, would skip the `int3` instructon
  * and resume execution.
@@ -537,6 +540,7 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
     return;
 }
 
+#[cfg(unix)]
 /* Raising Sigtrap to allow debugger to take control.
  * Here, we also store tcs in rbx, so that the debugger could read it, to
  * set sgx state and correctly map the enclave symbols.
@@ -633,6 +637,7 @@ impl RunningTcs {
 
         match result {
             Err(EnclaveAbort::Exit { panic: true }) => {
+                #[cfg(unix)]
                 trap_attached_debugger(tcs.tcs.address().0 as _);
                 Err(EnclaveAbort::Exit {
                     panic: EnclavePanic::from(buf.into_inner()),
