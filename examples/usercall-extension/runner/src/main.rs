@@ -58,7 +58,7 @@ impl UsercallExtension for ExternalService {
         addr: &str,
         _local_addr: Option<&mut String>,
         _peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<SyncStream>>> {
+    ) -> IoResult<Option<Box<dyn SyncStream>>> {
         // If the passed address is not "cat", we return none, whereby the passed address gets treated as
         // an IP address which is the default behavior.
         match &*addr {
