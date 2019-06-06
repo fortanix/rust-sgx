@@ -268,6 +268,8 @@ impl<'a, R: SgxsRead + 'a> SgxsRead for CanonicalSgxsReader<'a, R> {
                 if !self.got_ecreate
                     || (header.offset & 0xfff) != 0
                     || self.last_offset.map_or(false, |lo| header.offset <= lo)
+                    || (header.secinfo.flags.page_type() == PageType::Tcs as u8
+                    && header.secinfo.flags.intersects(SecinfoFlags::R|SecinfoFlags::W|SecinfoFlags::X))
                 {
                     return Err(Error::StreamNotCanonical.into());
                 }

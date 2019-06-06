@@ -25,6 +25,7 @@ if:
 - the offset of every EADD blob does not have the lower 12 bits set,
 - the offset of every EADD blob is higher than that of any previous EADD blob,
 - the offset of every EEXTEND blob does not have the lower 8 bits set,
+- the page permissions bits of every EADD blob representing a TCS page are not set.
 - the upper 52 bits of offsets of all EEXTEND blobs are equal to those of the
   preceding EADD blob, and
 - the lower 12 bits of offsets of all consecutive EEXTEND blobs are unique.
