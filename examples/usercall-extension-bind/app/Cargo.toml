@@ -1,0 +1,6 @@
+[package]
+name = "app"
+version = "0.1.0"
+authors = ["Vardhan Thigle <vardhan.thigle@fortanix.com>"]
+
+[dependencies]
