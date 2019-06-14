@@ -12,10 +12,10 @@ use std::slice;
 use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
-use super::{EnclaveAbort, RunningTcs};
+use super::{EnclaveAbort, IOHandlerInput, RunningTcs};
 use super::Work;
 
-pub(super) struct Handler<'a>(pub &'a mut RunningTcs, pub Option<&'a crossbeam::channel::Sender<Work>>);
+pub(super) struct Handler<'a>(pub &'a mut IOHandlerInput<'a>);
 
 impl<'a> Usercalls for Handler<'a> {
     fn is_exiting(&self) -> bool {
@@ -109,7 +109,7 @@ impl<'a> Usercalls for Handler<'a> {
     }
 
     fn launch_thread(&mut self) -> UsercallResult<Result> {
-        Ok(self.0.launch_thread(self.1).to_sgx_result())
+        Ok(self.0.launch_thread().to_sgx_result())
     }
 
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
