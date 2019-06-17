@@ -12,8 +12,7 @@ use std::slice;
 use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
-use super::{EnclaveAbort, IOHandlerInput, RunningTcs};
-use super::Work;
+use super::{EnclaveAbort, IOHandlerInput};
 
 pub(super) struct Handler<'a>(pub &'a mut IOHandlerInput<'a>);
 

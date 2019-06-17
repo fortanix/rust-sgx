@@ -304,11 +304,43 @@ pub(crate) struct EnclaveState {
     work_sender: Mutex<Option<crossbeam::crossbeam_channel::Sender<Work>>>,
 }
 
-enum Work
-{
+enum Work {
     Stopped(StoppedTcs, EnclaveEntry),
     Running(RunningTcs, tcs::Usercall<ErasedTcs>, (u64,u64), EnclaveEntry),
 }
+
+impl Work {
+    fn do_work(self, io_send_queue: &mpsc::Sender<UsercallSendData>
+    ) -> StdResult<(), mpsc::SendError<UsercallSendData>> {
+        let buf = RefCell::new([0u8; 1024]);
+        match self {
+            Work::Stopped(tcs, mode) => {
+                let state = RunningTcs {
+                    event_queue: tcs.event_queue,
+                    pending_event_set: 0,
+                    pending_events: Default::default(),
+                };
+
+                let coresult = {
+                    let (p1, p2, p3, p4, p5) = match mode {
+                        EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
+                        _ => (0, 0, 0, 0, 0),
+                    };
+                    tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, Some(&buf))
+                };
+
+                io_send_queue.send((coresult, state, mode, buf))
+            },
+            Work::Running(state, usercall, coresult, mode) => {
+                let coresult =  {
+                    usercall.coreturn(coresult, Some(&buf))
+                };
+                io_send_queue.send((coresult, state, mode, buf))
+            }
+        }
+    }
+}
+
 impl EnclaveState {
     fn event_queue_add_tcs(
         event_queues: &mut FnvHashMap<TcsAddress, Mutex<Sender<u8>>>,
@@ -352,11 +384,11 @@ impl EnclaveState {
         })
     }
 
-    fn create_worker_threads(num_of_threads: usize,
+    fn create_worker_threads(num_of_worker_threads: usize,
                              work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
                              io_queue_send: mpsc::Sender<UsercallSendData>,
                              enclave: Arc<EnclaveState>) {
-        for _ in 1..num_of_threads {
+        for _ in 0..num_of_worker_threads {
             let work_receiver = work_receiver.clone();
             let io_queue_send = io_queue_send.clone();
             let enclave = enclave.clone();
@@ -370,26 +402,16 @@ impl EnclaveState {
                         },
                         Ok(work) => work,
                     };
-                    let res = match work {
-                        Work::Stopped(tcs, mode) => {
-                            IOHandlerInput::entry_async(enclave.clone(), tcs, &io_queue_send, mode)
-                        },
-                        Work::Running(state, usercall, coresult, mode) => {
-                            IOHandlerInput::coentry_async(state, usercall, coresult, &io_queue_send, mode)
-                        },
-                    };
+                    let res = work.do_work(&io_queue_send);
                     if let Err(err) = res {
                         match err.0 {
                             (_, _, EnclaveEntry::ExecutableNonMain, _) => {
-                                if let Some(cmd) = enclave.kind.as_command() {
-                                    let mut cmddata = cmd.data.lock().unwrap();
-                                    cmddata.running_secondary_threads -= 1;
-                                    if cmddata.running_secondary_threads == 0 {
-                                        cmd.wait_secondary_threads.notify_all();
-                                    }
-                                }
-                                else {
-                                    panic!("Could not extract Command from EnclaveState");
+
+                                let cmd = enclave.kind.as_command().unwrap();
+                                let mut cmddata = cmd.data.lock().unwrap();
+                                cmddata.running_secondary_threads -= 1;
+                                if cmddata.running_secondary_threads == 0 {
+                                    cmd.wait_secondary_threads.notify_all();
                                 }
                             },
                             _ => { panic!("IO receiver dropped unexpectedly"); }
@@ -401,7 +423,7 @@ impl EnclaveState {
     }
 
     fn syscall_loop(io_queue_receive: mpsc::Receiver<UsercallSendData>, enclave: Arc<EnclaveState>) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
-        let mut main_result;
+        let main_result;
         'outer: loop {
             let maybe_block_recv = |block| if block {
                 io_queue_receive.recv().ok()
@@ -456,7 +478,7 @@ impl EnclaveState {
                             let (p1, p2, p3, p4, p5) = usercall.parameters();
                             result = dispatch(&mut Handler(&mut input), p1, p2, p3, p4, p5);
                         }
-                        let mut secondary_return;
+                        let secondary_return;
                         match result {
                             Ok(ret) => {
                                 if enclave.work_sender.lock().unwrap().as_ref().unwrap().send(Work::Running(state, usercall, ret, mode)).is_err() {
@@ -581,9 +603,7 @@ impl EnclaveState {
         }
 
         let mut num_of_threads = num_cpus::get();
-        if num_of_threads < 2 {
-            num_of_threads = 2;
-        }
+
         let kind = EnclaveKind::Command(Command {
             data: Mutex::new(CommandSync {
                 primary_panic_reason: None,
@@ -599,7 +619,7 @@ impl EnclaveState {
         // create 1 less than the number of threads
         EnclaveState::create_worker_threads( num_of_threads, work_receiver,io_queue_send, enclave.clone());
         // main syscall polling loop
-        let mut main_result = EnclaveState::syscall_loop(io_queue_receive, enclave.clone());
+        let main_result = EnclaveState::syscall_loop(io_queue_receive, enclave.clone());
         let main_panicking = match main_result {
             Err(EnclaveAbort::MainReturned) |
             Err(EnclaveAbort::InvalidUsercall(_)) |
@@ -680,9 +700,9 @@ impl EnclaveState {
         enclave.work_sender.lock().unwrap().replace(work_sender);
         // As currently we are not supporting spawning threads let the number of threads be 2
         // one for usercall handling the other for actually runnign
-        let num_of_threads = 2;
+        let num_of_worker_threads = 1;
 
-        EnclaveState::create_worker_threads(num_of_threads, work_receiver,io_queue_send, enclave.clone());
+        EnclaveState::create_worker_threads(num_of_worker_threads, work_receiver,io_queue_send, enclave.clone());
         // main syscall polling loop
         let library_result = EnclaveState::syscall_loop(io_queue_receive, enclave.clone());
 
@@ -835,48 +855,6 @@ impl UsercallExtension for UsercallExtensionDefault{
 
 #[allow(unused_variables)]
 impl<'a> IOHandlerInput<'a> {
-
-    fn entry_async(
-        enclave: Arc<EnclaveState>,
-        tcs: StoppedTcs,
-        io_send_queue: &mpsc::Sender<UsercallSendData>,
-        mode: EnclaveEntry
-    )-> StdResult<(), mpsc::SendError<UsercallSendData>>
-    {
-        let buf = RefCell::new([0u8; 1024]);
-
-        let state = RunningTcs {
-            event_queue: tcs.event_queue,
-            pending_event_set: 0,
-            pending_events: Default::default(),
-        };
-
-        let coresult = {
-            let (p1, p2, p3, p4, p5) = match mode {
-                EnclaveEntry::Library { p1, p2, p3, p4, p5 } => (p1, p2, p3, p4, p5),
-                _ => (0, 0, 0, 0, 0),
-            };
-            tcs::coenter(tcs.tcs, p1, p2, p3, p4, p5, Some(&buf))
-        };
-
-        io_send_queue.send((coresult, state, mode, buf))
-    }
-
-    fn coentry_async(
-        state: RunningTcs,
-        completed_usercall: tcs::Usercall<ErasedTcs>,
-        completed_usercall_return : (u64,u64),
-        io_send_queue: &mpsc::Sender<UsercallSendData>,
-        mode: EnclaveEntry
-    ) -> StdResult<(), mpsc::SendError<UsercallSendData>>
-    {
-        let buf = RefCell::new([0u8; 1024]);
-
-        let coresult =  {
-            completed_usercall.coreturn(completed_usercall_return, Some(&buf))
-        };
-        io_send_queue.send((coresult, state, mode, buf))
-    }
 
     fn lookup_fd(&self, fd: Fd) -> IoResult<Arc<FileDesc>> {
         match self.enclave.as_ref().fds.lock().unwrap().get(&fd) {
