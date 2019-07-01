@@ -4,10 +4,10 @@ version = "0.1.0"
 authors = ["Jethro Beekman <jethro@fortanix.com>"]
 
 [dependencies]
-yasna = { git = "ssh://git@bitbucket.org/fortanix/yasna.rs.git" }
-num-bigint = { version = "0.1.32", default-features = false }
-num-integer = { version = "0.1.32", default-features = false }
-bit-vec = "0.4"
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+num-bigint = { version = "0.2", default-features = false }
+num-integer = { version = "0.1", default-features = false }
+bit-vec = "0.6"
 lazy_static = "0.2.1"
 rustc-serialize = "0.3"
 

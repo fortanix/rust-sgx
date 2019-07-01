@@ -37,8 +37,8 @@ macro_rules! impl_null_desc_algorithm_identifier {
                     writer.write_null();
                 }
             }
-            impl FromBER for $variant {
-                fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+            impl BERDecodable for $variant {
+                fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                     reader.read_null().and_then(|_| Ok($variant{}))
                 }
             }
@@ -89,9 +89,9 @@ impl DerWrite for mgf1 {
     }
 }
 
-impl FromBER for mgf1 {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
-        <sha1 as FromBER>::from_ber(reader).and_then(|_| Ok(mgf1 {}))
+impl BERDecodable for mgf1 {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
+        <sha1 as BERDecodable>::decode_ber(reader).and_then(|_| Ok(mgf1 {}))
     }
 }
 
@@ -125,8 +125,8 @@ impl DerWrite for aes128_cbc {
     }
 }
 
-impl FromBER for aes128_cbc {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+impl BERDecodable for aes128_cbc {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
         reader.read_bytes().and_then(|iv| aes128_cbc::new(&iv))
     }
 }
@@ -191,8 +191,8 @@ impl From<SaltLength> for u64 {
     }
 }
 
-impl FromBER for SaltLength {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+impl BERDecodable for SaltLength {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
         reader.read_u64().and_then(|n| Ok(n.into()))
     }
 }

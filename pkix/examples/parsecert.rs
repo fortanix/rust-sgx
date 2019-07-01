@@ -11,7 +11,7 @@ fn main() {
     let mut cert = String::new();
     stdin().read_to_string(&mut cert).unwrap();
     if args().skip(1).next() == Some("--ber".into()) {
-        GenericCertificate::from_ber(&pem_to_der(&cert, Some(PEM_CERTIFICATE)).unwrap()).unwrap();
+        GenericCertificate::decode_ber(&pem_to_der(&cert, Some(PEM_CERTIFICATE)).unwrap()).unwrap();
     } else {
         GenericCertificate::from_der(&pem_to_der(&cert, Some(PEM_CERTIFICATE)).unwrap()).unwrap();
     }

@@ -1,4 +1,4 @@
-use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, FromBER, PCBit};
+use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, BERDecodable, PCBit};
 use yasna::tags::*;
 pub use yasna::models::{ObjectIdentifier, ParseOidError, TaggedDerValue};
 use std::borrow::Cow;
@@ -34,10 +34,10 @@ impl DerWrite for RsaPkcs15<Sha256> {
     }
 }
 
-impl FromBER for RsaPkcs15<Sha256> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for RsaPkcs15<Sha256> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|seq_reader| {
-            let oid = ObjectIdentifier::from_ber(seq_reader.next())?;
+            let oid = ObjectIdentifier::decode_ber(seq_reader.next())?;
             seq_reader.next().read_null()?;
             if oid == *oid::sha256WithRSAEncryption {
                 Ok(RsaPkcs15(Sha256))
@@ -122,8 +122,8 @@ impl DerWrite for Name {
     }
 }
 
-impl FromBER for Name {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for Name {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|seq_reader| {
             let mut vals = Vec::<(ObjectIdentifier, TaggedDerValue)>::new();
 
@@ -131,8 +131,8 @@ impl FromBER for Name {
                 let res = seq_reader.read_optional(|r| {
                     r.read_set_of(|r| {
                         let val = r.read_sequence(|r| {
-                            let oid = ObjectIdentifier::from_ber(r.next())?;
-                            let value = TaggedDerValue::from_ber(r.next())?;
+                            let oid = ObjectIdentifier::decode_ber(r.next())?;
+                            let value = TaggedDerValue::decode_ber(r.next())?;
                             Ok((oid, value))
                         })?;
                         vals.push(val);
@@ -197,11 +197,11 @@ impl DerWrite for Extension {
     }
 }
 
-impl FromBER for Extension {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for Extension {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|seq_reader| {
-            let oid = ObjectIdentifier::from_ber(seq_reader.next())?;
-            let critical = seq_reader.read_default(false, |r| bool::from_ber(r))?;
+            let oid = ObjectIdentifier::decode_ber(seq_reader.next())?;
+            let critical = seq_reader.read_default(false, |r| bool::decode_ber(r))?;
             let value = seq_reader.next().read_bytes()?;
             Ok(Extension { oid, critical, value })
         })
@@ -227,14 +227,14 @@ impl<'a> DerWrite for Attribute<'a> {
     }
 }
 
-impl FromBER for Attribute<'static> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for Attribute<'static> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|seq_reader| {
-            let oid = ObjectIdentifier::from_ber(seq_reader.next())?;
+            let oid = ObjectIdentifier::decode_ber(seq_reader.next())?;
 
             let mut value = Vec::<DerSequence<'static>>::new();
             seq_reader.next().read_set_of(|r| {
-                value.push(DerSequence::from_ber(r)?);
+                value.push(DerSequence::decode_ber(r)?);
                 Ok(())
             })?;
 
@@ -282,10 +282,10 @@ impl DerWrite for DateTime {
     }
 }
 
-impl FromBER for DateTime {
+impl BERDecodable for DateTime {
     /// This code only accepts dates including seconds and in UTC "Z" time zone.
     /// These restrictions are imposed by RFC5280.
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         let tv = reader.read_tagged_der()?;
         let tag = tv.tag();
         let value = tv.value();
@@ -359,8 +359,8 @@ impl<'a> AsRef<[u8]> for DerSequence<'a> {
     }
 }
 
-impl FromBER for DerSequence<'static> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for DerSequence<'static> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         Ok(reader.read_der()?.into())
     }
 }
@@ -389,7 +389,7 @@ mod tests {
                        0x65, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6f, 0x6e];
 
         assert_eq!(yasna::construct_der(|w| name.write(w)), der);
-        assert_eq!(yasna::parse_der(&der, |r| Name::from_ber(r)).unwrap(), name);
+        assert_eq!(yasna::parse_der(&der, |r| Name::decode_ber(r)).unwrap(), name);
     }
 
     #[test]
@@ -412,7 +412,7 @@ mod tests {
     fn name_multi_value_rdn() {
         let ber = b"0\x82\x01\xca1\x82\x01]0\x1c\x06\x03U\x04\x0b\x13\x15opc-certtype:instance0r\x06\x03U\x04\x0b\x13kopc-instance:ocid1.instance.oc1.eu-frankfurt-1.abtheljrfsguhltfu6r2y6gwhthevlmgl2ijdl4ozpm34ejr6vgalufakjzq0f\x06\x03U\x04\x0b\x13_opc-compartment:ocid1.tenancy.oc1..aaaaaaaafruudnficveu7ajrk346ilmbdwjzumqe6zn7uoap77awgnpnjoea0a\x06\x03U\x04\x0b\x13Zopc-tenant:ocid1.tenancy.oc1..aaaaaaaafruudnficveu7ajrk346ilmbdwjzumqe6zn7uoap77awgnpnjoea1g0e\x06\x03U\x04\x03\x13^ocid1.instance.oc1.eu-frankfurt-1.abtheljrfsguhltfu6r2y6gwhthevlmgl2ijdl4ozpm34ejr6vgalufakjzq";
 
-        let parsed = yasna::parse_ber(&ber[..], |r| Name::from_ber(r)).unwrap();
+        let parsed = yasna::parse_ber(&ber[..], |r| Name::decode_ber(r)).unwrap();
         assert_eq!(parsed.value.len(), 5);
     }
 
@@ -431,7 +431,7 @@ mod tests {
                        0x65, 0x6c, 0x6c, 0x6f, 0x21];
 
         assert_eq!(yasna::construct_der(|w| attr.write(w)), der);
-        assert_eq!(yasna::parse_der(&der, |r| Attribute::from_ber(r)).unwrap(), attr);
+        assert_eq!(yasna::parse_der(&der, |r| Attribute::decode_ber(r)).unwrap(), attr);
     }
 
     #[test]
@@ -449,6 +449,6 @@ mod tests {
                        0x35, 0x36, 0x5a];
 
         assert_eq!(yasna::construct_der(|w| datetime.write(w)), der);
-        assert_eq!(yasna::parse_der(&der, |r| DateTime::from_ber(r)).unwrap(), datetime);
+        assert_eq!(yasna::parse_der(&der, |r| DateTime::decode_ber(r)).unwrap(), datetime);
     }
 }

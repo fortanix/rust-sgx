@@ -206,7 +206,7 @@ pub fn signed_data_v3(get_random_printable_string: fn(usize) -> Vec<u8>) -> Sign
 
 #[test]
 fn fake_csr() {
-    use yasna::FromBER;
+    use yasna::BERDecodable;
 
     let der = vec![
                  0x30, 0x81, 0xb7, 0x30, 0x81, 0xa1, 0x02, 0x01,
@@ -236,12 +236,12 @@ fn fake_csr() {
 
     let csr = csr(deterministic_printable_string);
     assert_eq!(yasna::construct_der(|w| csr.write(w)), der);
-    assert_eq!(yasna::parse_der(&der, |r| CertificationRequest::from_ber(r)).unwrap(), csr);
+    assert_eq!(yasna::parse_der(&der, |r| CertificationRequest::decode_ber(r)).unwrap(), csr);
 }
 
 #[test]
 fn fake_cert() {
-    use yasna::FromBER;
+    use yasna::BERDecodable;
 
     let der = vec![
                  0x30, 0x82, 0x01, 0x13, 0x30, 0x81, 0xfd, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x00, 0x30, 0x0d,
@@ -264,19 +264,19 @@ fn fake_cert() {
 
     let cert = cert(deterministic_printable_string);
     assert_eq!(yasna::construct_der(|w| cert.write(w)), der);
-    assert_eq!(yasna::parse_der(&der, |r| Certificate::from_ber(r)).unwrap(), cert);
+    assert_eq!(yasna::parse_der(&der, |r| Certificate::decode_ber(r)).unwrap(), cert);
 }
 
 #[test]
 fn no_extensions() {
-    use yasna::FromBER;
+    use yasna::BERDecodable;
 
     let mut cert = cert(deterministic_printable_string);
     cert.tbscert.extensions = vec![];
 
     let der = yasna::construct_der(|w| cert.write(w));
     assert_eq!(
-        yasna::parse_der(&der, |r| Certificate::from_ber(r)).unwrap(),
+        yasna::parse_der(&der, |r| Certificate::decode_ber(r)).unwrap(),
         cert
     );
 }
@@ -407,6 +407,6 @@ fn fake_cms_signed_data() {
     let pem = der_to_pem(&der, &PEM_CMS);
     println!("PEM is\n{}\n", pem);
     assert_eq!(der, expected_der);
-    let decoded: ContentInfo = yasna::parse_der(&der, |r| ContentInfo::from_ber(r)).unwrap();
+    let decoded: ContentInfo = yasna::parse_der(&der, |r| ContentInfo::decode_ber(r)).unwrap();
     assert_eq!(content_info, decoded);
 }

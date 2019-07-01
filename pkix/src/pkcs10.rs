@@ -1,4 +1,4 @@
-use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, FromBER, Tag};
+use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, BERDecodable, Tag};
 use {DerWrite, FromDer};
 use types::*;
 use bit_vec::BitVec;
@@ -29,12 +29,12 @@ impl<I: DerWrite, A: SignatureAlgorithm + DerWrite, S: DerWrite> DerWrite for Ce
     }
 }
 
-impl<I: FromBER, A: SignatureAlgorithm + FromBER, S: FromBER> FromBER for CertificationRequest<I, A, S> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl<I: BERDecodable, A: SignatureAlgorithm + BERDecodable, S: BERDecodable> BERDecodable for CertificationRequest<I, A, S> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
-            let reqinfo = I::from_ber(r.next())?;
-            let sigalg = A::from_ber(r.next())?;
-            let sig = S::from_ber(r.next())?;
+            let reqinfo = I::decode_ber(r.next())?;
+            let sigalg = A::decode_ber(r.next())?;
+            let sig = S::decode_ber(r.next())?;
 
             Ok(CertificationRequest { reqinfo, sigalg, sig })
         })
@@ -101,19 +101,19 @@ impl<'e, K: DerWrite> DerWrite for CertificationRequestInfo<'e, K> {
     }
 }
 
-impl<K: FromBER> FromBER for CertificationRequestInfo<'static, K> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl<K: BERDecodable> BERDecodable for CertificationRequestInfo<'static, K> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
             let version = r.next().read_u8()?;
             if version != CERTIFICATION_REQUEST_INFO_V1 {
                 return Err(ASN1Error::new(ASN1ErrorKind::Invalid));
             }
-            let subject = Name::from_ber(r.next())?;
-            let spki = K::from_ber(r.next())?;
+            let subject = Name::decode_ber(r.next())?;
+            let spki = K::decode_ber(r.next())?;
             let attributes = r.next().read_tagged_implicit(Tag::context(0), |r| {
                 let mut attributes = Vec::<Attribute<'static>>::new();
                 r.read_set_of(|r| {
-                    attributes.push(Attribute::from_ber(r)?);
+                    attributes.push(Attribute::decode_ber(r)?);
                     Ok(())
                 })?;
                 Ok(attributes)

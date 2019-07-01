@@ -64,7 +64,7 @@ macro_rules! define_content {
         // rfc5652#section-5.2.1 Allows EncapsulatedContentInfo to use.
         // oids in addition to those in ContentInfo.
         // We do not need them for now.
-        // We do not need to implement DerWrite  and FromBER EncapsulatedContentInfo.
+        // We do not need to implement DerWrite  and BERDecodable EncapsulatedContentInfo.
         define_content_with_associated_type! {
             EncapsulatedContentInfo  => ContentType {
                 $($variant),*,
@@ -98,7 +98,7 @@ macro_rules! define_content {
             fn from(encapsulated_octets : EncapsulatedContentInfoOctets) -> ASN1Result<EncapsulatedContentInfo> {
                 match encapsulated_octets {
                     $(EncapsulatedContentInfoOctets::$variant(octets) => {
-                         <$variant as FromBer>::from_ber(&octets)
+                         <$variant as FromBer>::decode_ber(&octets)
                          .and_then(|inner_data| {
                                       Ok(EncapsulatedContentInfo::$variant(inner_data))
                                   })
@@ -118,10 +118,10 @@ macro_rules! define_content {
              }
         }
 
-        impl FromBER for EncapsulatedContentInfoOctets {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for EncapsulatedContentInfoOctets {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_sequence(|seq_reader| {
-                    let content_type = <ContentType as FromBER>::from_ber(seq_reader.next())?;
+                    let content_type = <ContentType as BERDecodable>::decode_ber(seq_reader.next())?;
                     seq_reader.next().read_tagged(Tag::context(0), |reader| {
                         EncapsulatedContentInfoOctets::content_reader(content_type, reader)
                     })
@@ -140,15 +140,15 @@ macro_rules! define_content {
              }
         }
 
-        impl FromBER for ContentInfo {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for ContentInfo {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_sequence(|reader| {
                     let oid = reader.next().read_oid()?;
                     if oid != *oid::ctContentInfo {
                         return Err(ASN1Error::new(ASN1ErrorKind::Invalid));
                     }
                     reader.next().read_sequence(|seq_reader| {
-                        let content_type = <ContentType as FromBER>::from_ber(seq_reader.next())?;
+                        let content_type = <ContentType as BERDecodable>::decode_ber(seq_reader.next())?;
                         ContentInfo::content_reader(content_type, seq_reader.next())
                     })
                 })
@@ -319,8 +319,8 @@ impl DerWrite for Octets {
     }
 }
 
-impl FromBER for Octets {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+impl BERDecodable for Octets {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
         reader.read_bytes().and_then(|data| Ok(Octets { data }))
     }
 }
@@ -339,11 +339,11 @@ impl DerWrite for SignedAttributeContent {
     }
 }
 
-impl FromBER for SignedAttributeContent {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+impl BERDecodable for SignedAttributeContent {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
         let mut content_type: Vec<ContentType> = vec![];
         reader.read_set_of(|reader| {
-            let content_type_elem = <ContentType as FromBER>::from_ber(reader)?;
+            let content_type_elem = <ContentType as BERDecodable>::decode_ber(reader)?;
             content_type.push(content_type_elem);
             Ok(())
         })?;
@@ -365,11 +365,11 @@ impl DerWrite for SignedAttributeMessageDigest {
     }
 }
 
-impl FromBER for SignedAttributeMessageDigest {
-    fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+impl BERDecodable for SignedAttributeMessageDigest {
+    fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
         let mut digest: Vec<Vec<u8>> = vec![];
         reader.read_set_of(|reader| {
-            let digest_elem = <Vec<u8> as FromBER>::from_ber(reader)?;
+            let digest_elem = <Vec<u8> as BERDecodable>::decode_ber(reader)?;
             digest.push(digest_elem);
             Ok(())
         })?;
@@ -580,7 +580,7 @@ impl KeyTransRecipientInfoV2 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use yasna::{construct_der, parse_der, FromBER};
+    use yasna::{construct_der, parse_der, BERDecodable};
 
     #[test]
     fn enum_from_oid() {
@@ -595,7 +595,7 @@ mod tests {
         let content_type = ContentType::EnvelopedData;
         let der = construct_der(|w| content_type.write(w));
         assert_eq!(
-            parse_der(&der, |r| <ContentType as FromBER>::from_ber(r)).unwrap(),
+            parse_der(&der, |r| <ContentType as BERDecodable>::decode_ber(r)).unwrap(),
             content_type
         );
     }

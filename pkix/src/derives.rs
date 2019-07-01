@@ -3,12 +3,12 @@ pub use {DerWrite, FromBer, ToDer};
 pub use yasna::models::ObjectIdentifier;
 pub use yasna::{
     construct_der, ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, BERReaderSeq, DERWriter,
-    DERWriterSeq, FromBER, Tag,
+    DERWriterSeq, BERDecodable, Tag,
 };
 
 // Provides callbacks to the main sequence's read and write functions.
 pub trait SubSequenceFromBER: Sized + Eq + Hash {
-    fn from_ber<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<Self>;
+    fn decode_ber<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<Self>;
 }
 
 pub trait SubSequenceDerWrite {
@@ -54,8 +54,8 @@ macro_rules! enum_oid {
             }
         }
 
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_oid().and_then(|oid| {$name::try_from_oid(oid)})
             }
         }
@@ -140,10 +140,10 @@ macro_rules! impl_content_with_associated_type {
              }
         }
 
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_sequence(|seq_reader| {
-                    let content_type = <$Ty as FromBER>::from_ber(seq_reader.next())?;
+                    let content_type = <$Ty as BERDecodable>::decode_ber(seq_reader.next())?;
                     $name::content_reader(content_type, seq_reader)
                 })
             }
@@ -164,10 +164,10 @@ macro_rules! impl_content_with_associated_type {
              }
         }
 
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_sequence(|seq_reader| {
-                    let content_type = <$Ty as FromBER>::from_ber(seq_reader.next())?;
+                    let content_type = <$Ty as BERDecodable>::decode_ber(seq_reader.next())?;
                     $name::content_reader(content_type, seq_reader.next())
                 })
             }
@@ -177,7 +177,7 @@ macro_rules! impl_content_with_associated_type {
         $($tail:tt)*
     }) => {
         impl_content_with_associated_type! {
-            $name => $Ty DerWrite,FromBER,BERReader {
+            $name => $Ty DerWrite,BERDecodable,BERReader {
                 $($tail)*
             }
         }
@@ -232,7 +232,7 @@ macro_rules! impl_content_with_associated_type {
             fn content_reader(content_type: $Ty, reader : $readerType)-> ASN1Result<Self> {
                 #[allow(unreachable_patterns)]
                 match content_type {
-                    $($Ty::$typeVariant => <$innerVariant as $readTrait>::from_ber(reader).and_then(|v| Ok($name::$variant(v)))),*,
+                    $($Ty::$typeVariant => <$innerVariant as $readTrait>::decode_ber(reader).and_then(|v| Ok($name::$variant(v)))),*,
                     _ => Err(ASN1Error::new(ASN1ErrorKind::Invalid))
                 }
             }
@@ -283,9 +283,9 @@ macro_rules! enum_subtype {
             }
         }
 
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
-                <$super as FromBER>::from_ber(reader).and_then(|s| $name::try_from_super(s))
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
+                <$super as BERDecodable>::decode_ber(reader).and_then(|s| $name::try_from_super(s))
 
             }
         }
@@ -310,14 +310,14 @@ macro_rules! derive_set {
             }
         }
 
-        impl FromBER for $set_name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $set_name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 let mut elements = Vec::<$elem_name>::new();
                 // While reading from BER, set_of and set are unordered.
                 // If we were to read from DER instead, we would have different
                 // ordering rules for set and set_of.
                 reader.read_set_of(|r| {
-                    let info = <$elem_name as FromBER>::from_ber(r)?;
+                    let info = <$elem_name as BERDecodable>::decode_ber(r)?;
                     elements.push(info);
                     Ok(())
                 })?;
@@ -361,11 +361,11 @@ macro_rules! derive_set_of {
             }
         }
 
-        impl FromBER for $set_name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $set_name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 let mut elements = Vec::<$elem_name>::new();
                 reader.read_set_of(|r| {
-                    let info = <$elem_name as FromBER>::from_ber(r)?;
+                    let info = <$elem_name as BERDecodable>::decode_ber(r)?;
                     elements.push(info);
                     Ok(())
                 })?;
@@ -413,8 +413,8 @@ macro_rules! derive_sequence {
                 })
              }
         }
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_sequence(|reader| {
                     derive_sequence! {
                         $name deriveBerRd(reader.next()) {
@@ -458,7 +458,7 @@ macro_rules! derive_sequence {
            }
         }
         impl SubSequenceFromBER for $name {
-           fn from_ber<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<Self> {
+           fn decode_ber<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<Self> {
                     derive_sequence! {
                         $name deriveBerRd(reader.next()) {
                              $($item : [$tag] $tag_type : $item_type),*,
@@ -529,7 +529,7 @@ macro_rules! derive_sequence {
 
                 #[allow(non_camel_case_types, non_snake_case)]
                 let $item = $reader.read_tagged(Tag::context($tag), |reader| {
-                   <$item_type as FromBER>::from_ber(reader)
+                   <$item_type as BERDecodable>::decode_ber(reader)
                 })?;
                 derive_sequence! {
                     $name deriveBerRd($reader) {
@@ -543,7 +543,7 @@ macro_rules! derive_sequence {
     }) => {
               #[allow(non_camel_case_types, non_snake_case)]
               let $item= $reader.read_tagged_implicit(Tag::context($tag), |reader| {
-                  <$item_type as FromBER>::from_ber(reader)
+                  <$item_type as BERDecodable>::decode_ber(reader)
               })?;
               derive_sequence! {
                   $name deriveBerRd($reader) {
@@ -556,7 +556,7 @@ macro_rules! derive_sequence {
           $($tail:tt)*
     }) => {
                #[allow(non_camel_case_types, non_snake_case)]
-               let $item = <$item_type as FromBER>::from_ber($reader)?;
+               let $item = <$item_type as BERDecodable>::decode_ber($reader)?;
                derive_sequence! {
                    $name deriveBerRd($reader) {
                        $($tail)*
@@ -583,8 +583,8 @@ macro_rules! define_version {
             }
         }
 
-        impl FromBER for $name {
-            fn from_ber(reader: BERReader) -> ASN1Result<Self> {
+        impl BERDecodable for $name {
+            fn decode_ber(reader: BERReader) -> ASN1Result<Self> {
                 reader.read_u32().and_then(|n| {
                     match n {
                         $($n => Ok($name::$ver)),*,

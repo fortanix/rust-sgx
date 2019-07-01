@@ -1,4 +1,4 @@
-use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, FromBER, Tag};
+use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERReader, DERWriter, BERDecodable, Tag};
 use num_integer::Integer;
 use num_bigint::BigUint;
 use std::borrow::Cow;
@@ -31,12 +31,12 @@ impl<T: DerWrite, A: SignatureAlgorithm + DerWrite, S: DerWrite> DerWrite for Ce
     }
 }
 
-impl<T: FromBER, A: SignatureAlgorithm + FromBER, S: FromBER> FromBER for Certificate<T, A, S> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl<T: BERDecodable, A: SignatureAlgorithm + BERDecodable, S: BERDecodable> BERDecodable for Certificate<T, A, S> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
-            let tbscert = T::from_ber(r.next())?;
-            let sigalg = A::from_ber(r.next())?;
-            let sig = S::from_ber(r.next())?;
+            let tbscert = T::decode_ber(r.next())?;
+            let sigalg = A::decode_ber(r.next())?;
+            let sig = S::decode_ber(r.next())?;
 
             Ok(Certificate { tbscert, sigalg, sig })
         })
@@ -98,23 +98,23 @@ impl<S: DerWrite + Integer, A: DerWrite + SignatureAlgorithm, K: DerWrite> DerWr
     }
 }
 
-impl<S: FromBER + Integer, A: FromBER + SignatureAlgorithm, K: FromBER> FromBER for TbsCertificate<S, A, K> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl<S: BERDecodable + Integer, A: BERDecodable + SignatureAlgorithm, K: BERDecodable> BERDecodable for TbsCertificate<S, A, K> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
             let version = r.next().read_tagged(Tag::context(0), |r| r.read_u8())?;
             if version != TBS_CERTIFICATE_V3 {
                 return Err(ASN1Error::new(ASN1ErrorKind::Invalid));
             }
-            let serial = S::from_ber(r.next())?;
-            let sigalg = A::from_ber(r.next())?;
-            let issuer = Name::from_ber(r.next())?;
+            let serial = S::decode_ber(r.next())?;
+            let sigalg = A::decode_ber(r.next())?;
+            let issuer = Name::decode_ber(r.next())?;
             let (validity_notbefore,
                  validity_notafter) = r.next().read_sequence(|r| {
-                Ok((DateTime::from_ber(r.next())?,
-                    DateTime::from_ber(r.next())?))
+                Ok((DateTime::decode_ber(r.next())?,
+                    DateTime::decode_ber(r.next())?))
             })?;
-            let subject = Name::from_ber(r.next())?;
-            let spki = K::from_ber(r.next())?;
+            let subject = Name::decode_ber(r.next())?;
+            let spki = K::decode_ber(r.next())?;
             let extensions = r.read_optional(|r| {
                 r.read_tagged(Tag::context(3), |r| {
                     r.read_sequence(|r| {
@@ -122,7 +122,7 @@ impl<S: FromBER + Integer, A: FromBER + SignatureAlgorithm, K: FromBER> FromBER 
 
                         loop {
                             let res = r.read_optional(|r| {
-                                Extension::from_ber(r)
+                                Extension::decode_ber(r)
                             });
                             match res {
                                 Ok(Some(ext)) => extensions.push(ext),
@@ -159,8 +159,8 @@ impl<'a> DerWrite for DnsAltNames<'a> {
     }
 }
 
-impl FromBER for DnsAltNames<'static> {
-    fn from_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
+impl BERDecodable for DnsAltNames<'static> {
+    fn decode_ber<'a, 'b>(reader: BERReader<'a, 'b>) -> ASN1Result<Self> {
         reader.read_sequence(|seq_reader| {
             let mut names = Vec::<Cow<'static, str>>::new();
 
@@ -204,6 +204,6 @@ mod tests {
 
         assert_eq!(&*yasna::construct_der(|w|names.write(w)), der);
 
-        assert_eq!(yasna::parse_der(der, |r| DnsAltNames::from_ber(r)).unwrap(), names);
+        assert_eq!(yasna::parse_der(der, |r| DnsAltNames::decode_ber(r)).unwrap(), names);
     }
 }
