@@ -256,8 +256,8 @@ pub struct DateTime {
 impl DerWrite for DateTime {
     fn write(&self, writer: DERWriter) {
         let offset = match self.year {
-            1950...1999 => 1900,
-            2000...2049 => 2000,
+            1950..=1999 => 1900,
+            2000..=2049 => 2000,
             _ => 0,
         };
         if offset != 0 {

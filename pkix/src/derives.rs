@@ -224,7 +224,7 @@ macro_rules! impl_content_with_associated_type {
             }
         }
         impl $name {
-            fn content_writer<'a>(&'a self) -> Box<&'a $writeTrait> {
+            fn content_writer<'a>(&'a self) -> Box<&'a dyn $writeTrait> {
                 match self  {
                     $(&$name::$variant(ref var) => Box::new(var)),*
                 }

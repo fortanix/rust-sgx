@@ -387,7 +387,7 @@ impl BERDecodable for SignedAttributeMessageDigest {
 #[allow(dead_code)]
 pub struct SignedDataV3Builder<E> {
     signed_data: SignedDataV3,
-    digest_algorithm_table: HashMap<DigestAlgorithmIdentifier, Box<Fn(&[u8]) -> Result<Vec<u8>, E>>>,
+    digest_algorithm_table: HashMap<DigestAlgorithmIdentifier, Box<dyn Fn(&[u8]) -> Result<Vec<u8>, E>>>,
 }
 impl <E> SignedDataV3Builder<E> {
     pub fn new<T: Into<EncapsulatedContentInfoOctets>>(
@@ -409,7 +409,7 @@ impl <E> SignedDataV3Builder<E> {
     pub fn add_digest_algorithm<D: Into<DigestAlgorithmIdentifier>>(
         mut self,
         identifier: D,
-        call_back: Box<Fn(&[u8]) -> Result<Vec<u8>, E>>,
+        call_back: Box<dyn Fn(&[u8]) -> Result<Vec<u8>, E>>,
     ) -> ASN1Result<SignedDataV3Builder<E>> {
         let identifier = identifier.into();
         if self.digest_algorithm_table.contains_key(&identifier) {
@@ -432,7 +432,7 @@ impl <E> SignedDataV3Builder<E> {
         digest_algorithm: D,
         signed_attrs: S,
         signature_algorithm: A,
-        mut sign_call_back: Box<FnMut(&[u8]) -> Result<Vec<u8>, Er> + 'a>,
+        mut sign_call_back: Box<dyn FnMut(&[u8]) -> Result<Vec<u8>, Er> + 'a>,
     ) -> ASN1Result<SignedDataV3Builder<E>>
     where
         V: Into<Vec<u8>>,
