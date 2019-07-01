@@ -1,0 +1,17 @@
+[package]
+name = "native-tls-ext"
+version = "0.1.0"
+authors = ["Fortanix, Inc. <info@fortanix.com>"]
+
+[dependencies]
+hyper-native-tls = "0.2.2"
+native-tls = "0.1.2"
+pkix = { git = "https://github.com/Goirad/rust-sgx.git", branch = "add-pkix-crate" }
+quick-error = "1.1.0"
+rustc-serialize = "0.3"
+
+# This specification should match the one in native-tls/Cargo.toml
+[target.'cfg(not(any(target_os = "windows", target_os = "macos")))'.dependencies]
+openssl = "0.9.24"
+openssl-sys = "0.9.24"
+openssl-probe = "0.1.1"

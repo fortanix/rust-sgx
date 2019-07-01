@@ -7,6 +7,7 @@ members = [
     "enclave-runner",
     "fortanix-sgx-abi",
     "fortanix-sgx-tools",
+	"native-tls-ext",
     "report-test",
     "rs-libc",
     "sgxs",
