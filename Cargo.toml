@@ -7,6 +7,7 @@ members = [
     "enclave-runner",
     "fortanix-sgx-abi",
     "fortanix-sgx-tools",
+    "hyper-proxy2",
     "report-test",
     "rs-libc",
     "sgxs",
