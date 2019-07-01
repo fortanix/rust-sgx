@@ -1,0 +1,11 @@
+[package]
+name = "sgx_pkix"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+
+[dependencies]
+byteorder = "1.0"
+pkix = { path = "../pkix" }
+sgx-isa = { version = "0.3" }
+quick-error = "1.1.0"
+lazy_static = "0.2.1"
