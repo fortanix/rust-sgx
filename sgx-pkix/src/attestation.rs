@@ -1,8 +1,14 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 use std::io::Cursor;
 use std::borrow::Cow;
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
-use pkix::yasna::{ASN1Result, BERReader, DERWriter, FromBER};
+use pkix::yasna::{ASN1Result, BERReader, DERWriter, BERDecodable};
 use pkix::types::*;
 use pkix::DerWrite;
 use sgx_isa::{Attributes, AttributesFlags, Miscselect};
@@ -112,8 +118,8 @@ impl<'a, 'b> DerWrite for AttestationInlineSgxLocal<'a, 'b> {
     }
 }
 
-impl FromBER for AttestationInlineSgxLocal<'static, 'static> {
-    fn from_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
+impl BERDecodable for AttestationInlineSgxLocal<'static, 'static> {
+    fn decode_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
             let keyid = r.next().read_bytes()?;
             let mac = r.next().read_bytes()?;
@@ -157,10 +163,10 @@ impl<'a> DerWrite for AttestationEmbeddedIntelQuote<'a> {
     }
 }
 
-impl FromBER for AttestationEmbeddedIntelQuote<'static> {
-    fn from_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
+impl BERDecodable for AttestationEmbeddedIntelQuote<'static> {
+    fn decode_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
-            let qe = Name::from_ber(r.next())?;
+            let qe = Name::decode_ber(r.next())?;
             let quote = r.next().read_bytes()?;
             Ok(AttestationEmbeddedIntelQuote{
                 qe: qe,
@@ -201,8 +207,8 @@ impl<'a, 'b, 'c> DerWrite for AttestationEmbeddedIasReport<'a, 'b, 'c> {
     }
 }
 
-impl FromBER for AttestationEmbeddedIasReport<'static, 'static, 'static> {
-    fn from_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
+impl BERDecodable for AttestationEmbeddedIasReport<'static, 'static, 'static> {
+    fn decode_ber<'p, 'q>(reader: BERReader<'p, 'q>) -> ASN1Result<Self> {
         reader.read_sequence(|r| {
             let http_body = r.next().read_bytes()?;
             let report_sig = r.next().read_bytes()?;
@@ -210,7 +216,7 @@ impl FromBER for AttestationEmbeddedIasReport<'static, 'static, 'static> {
                 let mut certificates = Vec::<DerSequence<'static>>::new();
 
                 loop {
-                    match r.read_optional(|r| DerSequence::from_ber(r)) {
+                    match r.read_optional(|r| DerSequence::decode_ber(r)) {
                         Ok(Some(cert)) => certificates.push(cert),
                         Ok(None) => break,
                         Err(e) => return Err(e),

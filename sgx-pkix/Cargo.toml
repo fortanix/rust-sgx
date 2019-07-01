@@ -1,0 +1,13 @@
+[package]
+name = "sgx-pkix"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+repository = "https://github.com/fortanix/rust-sgx"
+
+[dependencies]
+byteorder = "1.0"
+pkix = { git = "https://github.com/fortanix/pkix.git" }
+sgx-isa = { path = "../sgx-isa" }
+quick-error = "1.1.0"
+lazy_static = "0.2.1"
