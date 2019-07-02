@@ -1,22 +1,54 @@
 // Copyright 2017 Fortanix, Inc.
 #![deny(warnings)]
 
+extern crate httparse;
 extern crate hyper;
+#[macro_use]
+extern crate quick_error;
 extern crate percent_encoding;
 extern crate url;
 extern crate rustc_serialize;
 
-use std::io::{self, Read, Write};
+use hyper::{Error as HyperError};
+use hyper::method::Method;
+use hyper::status::StatusCode;
+
+use std::io::{self, Error as IoError, Read, Write};
+use hyper::net::{HttpConnector, NetworkConnector, HttpStream, SslClient, NetworkStream};
 use std::net::{SocketAddr, Shutdown};
 use std::time::Duration;
-
-use hyper::method::Method;
-use hyper::net::{HttpConnector, NetworkConnector, HttpStream, SslClient, NetworkStream};
 use hyper::version::HttpVersion::Http11;
 use percent_encoding::percent_decode;
 use url::Url;
 use rustc_serialize::base64::{ToBase64, STANDARD};
 
+
+quick_error!{
+    #[derive(Debug)]
+    pub enum Error {
+        IoError(e: IoError) {
+            from()
+            cause(e)
+            description(e.description())
+            display("io error: {}", e)
+        }
+        Hyper(e: HyperError) {
+            from()
+            cause(e)
+            description(e.description())
+            display("hyper error: {}", e)
+        }
+        UnexpectedStatus(s: StatusCode, body: String) {
+            description("Unexpected HTTP status code")
+            display("Unexpected HTTP status code {}:\n{}", s, body)
+        }
+        InvalidCertificateInCaFile {
+            description("Invalid certificiate in CA file")
+        }
+    }
+}
+
+pub type Result<T> = ::std::result::Result<T, Error>;
 
 #[derive(Clone,Debug)]
 pub enum ProxyConfig {
@@ -171,5 +203,3 @@ impl<S: SslClient> NetworkConnector for ProxiedHttpsConnector<S> {
         }
     }
 }
-
-

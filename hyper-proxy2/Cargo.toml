@@ -1,11 +1,12 @@
 [package]
-name = "hyper-proxy2"
+name = "ftx_net_utils"
 version = "0.1.0"
 authors = ["Fortanix, Inc. <info@fortanix.com>"]
 
 [dependencies]
 httparse = "1.2.2"
 hyper = "0.10.12"
+quick-error = "1.1.0"
 percent-encoding = "1.0"
 url = "1.2.2"
 rustc-serialize = "0.3"
