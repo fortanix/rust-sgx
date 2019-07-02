@@ -11,10 +11,10 @@ use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
-use std::fmt;
-use std::os::raw::c_void;
 use crate::usercalls::EnclaveState;
 use crate::usercalls::UsercallExtension;
+use std::fmt;
+use std::os::raw::c_void;
 
 pub struct Library {
     enclave: Arc<EnclaveState>,

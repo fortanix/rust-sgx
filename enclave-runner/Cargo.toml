@@ -32,6 +32,9 @@ nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
 crossbeam = "0.7.1"                             # MIT/Apache-2.0
 num_cpus = "1.10.0"                             # MIT/Apache-2.0
+tokio = "0.1.22"                                # MIT
+futures-preview = { version = "0.3.0-alpha.17", features = ["compat", "io-compat"] }
+tokio-io = "0.1.12"
 
 [features]
 default = ["crypto-openssl"]
