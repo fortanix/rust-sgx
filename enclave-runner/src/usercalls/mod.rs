@@ -25,6 +25,9 @@ use std::time;
 
 use failure;
 use fnv::FnvHashMap;
+use tokio::prelude::Stream;
+use futures::future::{FutureExt, TryFutureExt};
+use crate::futures::compat::Future01CompatExt;
 
 use fortanix_sgx_abi::*;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -333,7 +336,7 @@ enum CoEntry {
 }
 
 impl Work {
-    fn do_work(self, io_send_queue: &mpsc::Sender<UsercallSendData>) {
+    fn do_work(self, io_send_queue: &mut tokio::sync::mpsc::Sender<UsercallSendData>) {
         let buf = RefCell::new([0u8; 1024]);
         let usercall_send_data = match self.entry {
             CoEntry::Initial(erased_tcs, p1, p2, p3, p4, p5) => {
@@ -346,7 +349,7 @@ impl Work {
             }
         };
         // if there is an error do nothing, as it means that the main thread has exited
-        let _ = io_send_queue.send(usercall_send_data);
+        let _ = io_send_queue.try_send(usercall_send_data);
     }
 }
 
@@ -401,106 +404,112 @@ impl EnclaveState {
 
     fn syscall_loop(
         &self,
-        io_queue_receive: mpsc::Receiver<UsercallSendData>,
+        io_queue_receive: tokio::sync::mpsc::Receiver<UsercallSendData>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
     ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
-        while let Ok((coresult, mut state, buf)) = io_queue_receive.recv() {
-            let my_result = match coresult {
-                CoResult::Yield(usercall) => {
-                    let result = {
-                        let mut input = IOHandlerInput {
-                            enclave: &self,
-                            tcs: &mut state,
-                            work_sender: &work_sender,
+        tokio::runtime::current_thread::block_on_all((async {
+            let mut recv_queue = io_queue_receive.into_future();
+            while let Ok((Some(work), stream)) = recv_queue.compat().await {
+                recv_queue = stream.into_future();
+                let (coresult, mut state, buf) = work;
+                let my_result = match coresult {
+                    CoResult::Yield(usercall) => {
+                        let result = {
+                            let mut input = IOHandlerInput {
+                                enclave: &self,
+                                tcs: &mut state,
+                                work_sender: &work_sender,
+                            };
+                            let (p1, p2, p3, p4, p5) = usercall.parameters();
+                            dispatch(&mut Handler(&mut input), p1, p2, p3, p4, p5)
                         };
-                        let (p1, p2, p3, p4, p5) = usercall.parameters();
-                        dispatch(&mut Handler(&mut input), p1, p2, p3, p4, p5)
-                    };
-                    match result {
-                        Ok(ret) => {
-                            work_sender
-                                .send(Work {
-                                    tcs: state,
-                                    entry: CoEntry::Resume(usercall, ret),
+                        match result {
+                            Ok(ret) => {
+                                work_sender
+                                    .send(Work {
+                                        tcs: state,
+                                        entry: CoEntry::Resume(usercall, ret),
+                                    })
+                                    .expect("Work sender couldn't send data to receiver");
+                                continue;
+                            }
+                            Err(EnclaveAbort::Exit { panic: true }) => {
+                                #[cfg(unix)]
+                                trap_attached_debugger(usercall.tcs_address() as _);
+                                Err(EnclaveAbort::Exit {
+                                    panic: EnclavePanic::from(buf.into_inner()),
                                 })
-                                .expect("Work sender couldn't send data to receiver");
-                            continue;
+                            }
+                            Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
+                            Err(EnclaveAbort::IndefiniteWait) => Err(EnclaveAbort::IndefiniteWait),
+                            Err(EnclaveAbort::InvalidUsercall(n)) => {
+                                Err(EnclaveAbort::InvalidUsercall(n))
+                            }
+                            Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
+                            Err(EnclaveAbort::Secondary) => Err(EnclaveAbort::Secondary),
                         }
-                        Err(EnclaveAbort::Exit { panic: true }) => {
-                            #[cfg(unix)]
-                            trap_attached_debugger(usercall.tcs_address() as _);
-                            Err(EnclaveAbort::Exit {
-                                panic: EnclavePanic::from(buf.into_inner()),
-                            })
-                        }
-                        Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
-                        Err(EnclaveAbort::IndefiniteWait) => Err(EnclaveAbort::IndefiniteWait),
-                        Err(EnclaveAbort::InvalidUsercall(n)) => {
-                            Err(EnclaveAbort::InvalidUsercall(n))
-                        }
-                        Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
-                        Err(EnclaveAbort::Secondary) => Err(EnclaveAbort::Secondary),
                     }
-                }
-                CoResult::Return((tcs, v1, v2)) => {
-                    match state.mode {
-                        EnclaveEntry::Library => {
-                            self.threads_queue.push(StoppedTcs {
-                                tcs,
-                                event_queue: state.event_queue,
-                            });
-                            Ok((v1, v2))
-                        }
-                        EnclaveEntry::ExecutableMain => {
-                            return Err(EnclaveAbort::MainReturned);
-                        }
-                        EnclaveEntry::ExecutableNonMain => {
-                            assert_eq!(
-                                (v1, v2),
-                                (0, 0),
-                                "Expected enclave thread entrypoint to return zero"
-                            );
-                            // If the enclave is in the exit-state, threads are no
-                            // longer able to be launched
-                            if !self.exiting.load(Ordering::SeqCst) {
+                    CoResult::Return((tcs, v1, v2)) => {
+                        match state.mode {
+                            EnclaveEntry::Library => {
                                 self.threads_queue.push(StoppedTcs {
                                     tcs,
                                     event_queue: state.event_queue,
                                 });
+                                Ok((v1, v2))
                             }
-                            Ok((0, 0))
+                            EnclaveEntry::ExecutableMain => {
+                                return Err(EnclaveAbort::MainReturned);
+                            }
+                            EnclaveEntry::ExecutableNonMain => {
+                                assert_eq!(
+                                    (v1, v2),
+                                    (0, 0),
+                                    "Expected enclave thread entrypoint to return zero"
+                                );
+                                // If the enclave is in the exit-state, threads are no
+                                // longer able to be launched
+                                if !self.exiting.load(Ordering::SeqCst) {
+                                    self.threads_queue.push(StoppedTcs {
+                                        tcs,
+                                        event_queue: state.event_queue,
+                                    });
+                                }
+                                Ok((0, 0))
+                            }
                         }
                     }
-                }
-            };
+                };
 
-            match (my_result, state.mode) {
-                (e, EnclaveEntry::Library)
-                | (e, EnclaveEntry::ExecutableMain)
-                | (e @ Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) => return e,
-                (Ok(_), EnclaveEntry::ExecutableNonMain) => {
-                    continue;
-                }
-                (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain)
-                | (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
-                    let cmd = self.kind.as_command().unwrap();
-                    let mut cmddata = cmd.panic_reason.lock().unwrap();
-
-                    if cmddata.primary_panic_reason.is_none() {
-                        cmddata.primary_panic_reason = Some(e)
-                    } else {
-                        cmddata.other_reasons.push(e)
+                match (my_result, state.mode) {
+                    (e, EnclaveEntry::Library)
+                    | (e, EnclaveEntry::ExecutableMain)
+                    | (e @ Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) => return e,
+                    (Ok(_), EnclaveEntry::ExecutableNonMain) => {
+                        continue;
                     }
-                    return Err(EnclaveAbort::Secondary);
-                }
-                (Err(e), EnclaveEntry::ExecutableNonMain) => {
-                    let cmd = self.kind.as_command().unwrap();
-                    let mut cmddata = cmd.panic_reason.lock().unwrap();
-                    cmddata.other_reasons.push(e)
+                    (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain)
+                    | (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
+                        let cmd = self.kind.as_command().unwrap();
+                        let mut cmddata = cmd.panic_reason.lock().unwrap();
+
+                        if cmddata.primary_panic_reason.is_none() {
+                            cmddata.primary_panic_reason = Some(e)
+                        } else {
+                            cmddata.other_reasons.push(e)
+                        }
+                        return Err(EnclaveAbort::Secondary);
+                    }
+                    (Err(e), EnclaveEntry::ExecutableNonMain) => {
+                        let cmd = self.kind.as_command().unwrap();
+                        let mut cmddata = cmd.panic_reason.lock().unwrap();
+                        cmddata.other_reasons.push(e);
+                        continue;
+                    }
                 }
             }
-        }
-        unreachable!();
+            unreachable!();
+        }).boxed().compat())
     }
 
     fn run(
@@ -511,23 +520,24 @@ impl EnclaveState {
         fn create_worker_threads(
             num_of_worker_threads: usize,
             work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
-            io_queue_send: mpsc::Sender<UsercallSendData>,
+            io_queue_send: tokio::sync::mpsc::Sender<UsercallSendData>,
         ) -> Vec<JoinHandle<()>> {
             let mut thread_handles = vec![];
             for _ in 0..num_of_worker_threads {
                 let work_receiver = work_receiver.clone();
-                let io_queue_send = io_queue_send.clone();
+                let mut io_queue_send = io_queue_send.clone();
 
                 thread_handles.push(thread::spawn(move || {
                     while let Ok(work) = work_receiver.recv() {
-                        work.do_work(&io_queue_send);
+                        work.do_work(&mut io_queue_send);
                     }
                 }));
             }
             return thread_handles;
         }
 
-        let (io_queue_send, io_queue_receive) = mpsc::channel();
+        let buffsize : usize = 256;
+        let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::channel(buffsize);
 
         let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
         work_sender
