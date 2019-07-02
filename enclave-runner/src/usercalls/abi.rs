@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 type Register = u64;
 
 trait RegisterArgument {
-    fn from_register(Register) -> Self;
+    fn from_register(_: Register) -> Self;
     fn into_register(self) -> Register;
 }
 

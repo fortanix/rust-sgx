@@ -42,10 +42,10 @@ use self::interface::{Handler, OutputBuffer};
 use self::libc::*;
 #[cfg(unix)]
 use self::nix::sys::signal;
-use loader::{EnclavePanic, ErasedTcs};
+use crate::loader::{EnclavePanic, ErasedTcs};
 use std::thread::JoinHandle;
-use tcs;
-use tcs::{CoResult, ThreadResult};
+use crate::tcs;
+use crate::tcs::{CoResult, ThreadResult};
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 

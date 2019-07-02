@@ -23,9 +23,9 @@ use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
-use tcs::DebugBuffer;
-use {Command, Library};
-use usercalls::UsercallExtension;
+use crate::tcs::DebugBuffer;
+use crate::{Command, Library};
+use crate::usercalls::UsercallExtension;
 
 
 enum EnclaveSource<'a> {
