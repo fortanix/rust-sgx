@@ -3,6 +3,7 @@ name = "enclave-runner"
 version = "0.1.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
+edition = "2018"
 description = """
 High-level abstractions for running SGX enclaves.
 
