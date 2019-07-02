@@ -5,13 +5,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![feature(asm)]
-#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
-       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
-       html_root_url = "https://edp.fortanix.com/docs/api/")]
-
+#![feature(async_await)]
+#![feature(proc_macro_hygiene)]
+#![feature(concat_idents)]
+#![doc(
+    html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+    html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+    html_root_url = "https://edp.fortanix.com/docs/api/"
+)]
 extern crate openssl;
 extern crate sgx_isa;
 extern crate sgxs;
+extern crate tokio;
+extern crate tokio_io;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -20,6 +26,7 @@ extern crate fnv;
 extern crate fortanix_sgx_abi;
 #[macro_use]
 extern crate lazy_static;
+extern crate futures;
 
 mod command;
 mod library;

@@ -10,9 +10,9 @@ use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
-use std::os::raw::c_void;
 use crate::usercalls::EnclaveState;
 use crate::usercalls::UsercallExtension;
+use std::os::raw::c_void;
 
 #[derive(Debug)]
 pub struct Command {
