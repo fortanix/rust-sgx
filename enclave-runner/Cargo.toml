@@ -34,5 +34,5 @@ openssl = "0.10"         # Apache-2.0
 crossbeam = "0.7.1"      # MIT/Apache-2.0
 num_cpus = "1.10.0"      # MIT/Apache-2.0
 tokio = "0.1.21"         # MIT
-futures-preview = { version = "0.3.0-alpha.14", features = ["compat"] }
+futures-preview = { version = "0.3.0-alpha.17", features = ["compat"] }
 futures01 = { package = "futures", version = "0.1", optional = true }
