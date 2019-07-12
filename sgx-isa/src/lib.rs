@@ -556,6 +556,8 @@ pub struct Report {
 
 impl Report {
     pub const UNPADDED_SIZE: usize = 432;
+    /// Report size without keyid and mac
+    pub const TRUNCATED_SIZE: usize = 384;
 
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
     pub fn for_self() -> Self {
@@ -582,7 +584,7 @@ impl Report {
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
     pub fn verify<F, R>(&self, check_mac: F) -> R
     where
-        F: FnOnce(&[u8; 16], &[u8; 384], &[u8; 16]) -> R,
+        F: FnOnce(&[u8; 16], &[u8; Report::TRUNCATED_SIZE], &[u8; 16]) -> R,
     {
         let req = Keyrequest {
             keyname: Keyname::Report as u16,
@@ -592,7 +594,7 @@ impl Report {
         let key = req.egetkey().expect("Couldn't get report key");
         check_mac(
             &key,
-            unsafe { &*(self as *const _ as *const [u8; 384]) },
+            unsafe { &*(self as *const _ as *const [u8; Report::TRUNCATED_SIZE]) },
             &self.mac,
         )
     }
