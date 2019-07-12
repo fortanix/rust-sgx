@@ -84,13 +84,13 @@ pub(crate) fn coenter<T: Tcs>(
     let mut _tmp2: u64;
 
     unsafe {
-        let mut uninit_debug_buf: DebugBuffer;
+        let mut uninit_debug_buf: std::mem::MaybeUninit<DebugBuffer>;
         let debug_buf = debug_buf.map(|r| r.borrow_mut());
         let debug_buf = match debug_buf {
             Some(mut buf) => buf.as_mut_ptr(),
             None => {
-                uninit_debug_buf = std::mem::uninitialized();
-                uninit_debug_buf.as_mut_ptr()
+                uninit_debug_buf = std::mem::MaybeUninit::uninit();
+                uninit_debug_buf.as_mut_ptr() as *mut _
             }
         };
         asm!("
