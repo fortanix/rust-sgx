@@ -1,6 +1,6 @@
 [package]
 name = "enclave-runner"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -17,7 +17,7 @@ categories = ["os", "hardware-support"]
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.6.0", path = "../sgxs", features = ["crypto-openssl"] }
+sgxs = { version = "0.7.0", path = "../sgxs", features = ["crypto-openssl"] }
 fortanix-sgx-abi = { version = "0.3.0", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 
