@@ -784,6 +784,106 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
     const CONTROL_VISIBILITY: bool = true;
 }
 
+#[derive(Default, DebugSupport, Update)]
+struct Eor {
+    graphene : Status,
+    nodeagent : Status,
+    permdaemon : Status,
+}
+
+impl Print for Eor {
+    fn supported(&self) -> Status {
+        if {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPostInstall} {
+            self.graphene & self.nodeagent & self.permdaemon
+        } else {
+            self.graphene & self.permdaemon
+        }
+    }
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct GrapheneDevice {
+    service: Result<(), Rc<Error>>,
+}
+
+impl Update for GrapheneDevice {
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(GrapheneDeviceInner {
+            service: match support.enclaveos_dev {
+                Ok(_) => Ok(()),
+                Err(ref e) => Err(e.clone()),
+            },
+        });
+    }
+}
+
+impl Print for GrapheneDevice {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.service.is_ok()).as_req()
+    }
+
+    fn print(&self, level: usize) {
+        print!("{:width$}{}{} (/dev/gsgx)", "", self.supported().paint(), self.name(), width = level * 2);
+        println!("");
+    }
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct NodeAgent {
+    version: Result<String, Rc<Error>>,
+}
+
+impl Update for NodeAgent{
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(NodeAgentInner {
+            version: match support.nodeagent {
+                Ok(_) => Ok(support.nodeagent.clone().unwrap().current_ver),
+                Err(ref e) => Err(e.clone()),
+            },
+        });
+    }
+}
+
+impl Print for NodeAgent {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.version.is_ok()).as_req()
+    }
+
+    fn print(&self, level: usize) {
+        if self.supported() == Status::Supported  {
+            println!("{:width$}{}{} ({})", "", self.supported().paint(), self.name(), self.inner.as_ref().map(|inner| inner.version.clone().unwrap()).unwrap(), width = level * 2);
+        }
+        else {
+            println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+        }
+    }
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct PermDaemon {
+    service: Result<(), Rc<Error>>,
+}
+
+impl Update for PermDaemon{
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(PermDaemonInner {
+            service: match support.permdaemon {
+                Ok(v) => Ok(v),
+                Err(ref e) => Err(e.clone()),
+            },
+        });
+    }
+}
+
+impl Print for PermDaemon {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.service.is_ok()).as_req()
+    }
+}
+
 impl Tests {
     fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>) {
         if self
@@ -825,6 +925,21 @@ impl Tests {
         if self.functions.lookup::<Isa>().supported() &
             self.functions.lookup::<Psw>().supported() == Status::Supported {
             println!("\nYou're all set to start running SGX programs!");
+        }
+
+        // Creating two variables as mutex lock could not be taken up twice in a single expression
+        let eos_pre_install_check = {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPreInstall};
+        let eos_post_install_check= {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPostInstall};
+        if  eos_pre_install_check || eos_post_install_check {
+            if self.functions.lookup::<Isa>().supported() &
+                self.functions.lookup::<Psw>().supported() &
+                self.functions.lookup::<Eor>().supported() == Status::Supported {
+                println!("The system is configured for EnclaveOS applications!");
+            } else {
+                println!("The system is not configured for EnclaveOS applications!");
+                // Using a non standard exit code for the failure case
+                *EXIT_CODE.lock().unwrap() = 10;
+            }
         }
     }
 
@@ -911,6 +1026,14 @@ impl Tests {
                     @[update_supported = prod_wl]
                     "Production mode (Intel whitelisted)" => Test(RunEnclaveProdWl),
                 }),
+            }),
+            "EnclavesOS system requirements" => Category(Eor, tests: {
+                @[update_supported = graphene]
+                "Graphene kernel device" => Test(GrapheneDevice),
+                @[update_supported = nodeagent]
+                "Node Agent " => Test(NodeAgent),
+                @[update_supported = permdaemon]
+                "Perm Daemon" => Test(PermDaemon),
             }),
             //Category {
             //    name: "SGX remote attestation",
