@@ -1,6 +1,6 @@
 [package]
 name = "dcap-ql-sys"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Fortanix, Inc."]
 links = "sgx_dcap_ql"
 build = "build.rs"
