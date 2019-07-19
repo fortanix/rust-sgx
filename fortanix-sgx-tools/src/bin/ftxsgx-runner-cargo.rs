@@ -107,7 +107,7 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("ERROR: {}", e);
         process::exit(match e.downcast_ref::<CommandFail>() {
-            Some(CommandFail::Status(_, status)) => status.code().unwrap(),
+            Some(CommandFail::Status(_, status)) => status.code().unwrap_or(1),
             _ => 1,
         })
     }
