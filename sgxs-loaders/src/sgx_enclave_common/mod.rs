@@ -242,7 +242,7 @@ impl EnclaveLoad for InnerLibrary {
             if !(mapping.device.enclave_initialize)(
                 mapping.base as _,
                 sigstruct,
-                mem::size_of::<Sigstruct>(),
+                Sigstruct::UNPADDED_SIZE,
                 Some(&mut error),
             ) {
                 return Err(Error::Init(error.into()));
