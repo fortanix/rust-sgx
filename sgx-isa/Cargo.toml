@@ -1,6 +1,6 @@
 [package]
 name = "sgx-isa"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -14,6 +14,11 @@ documentation = "https://edp.fortanix.com/docs/api/sgx_isa/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["hardware-support"]
+
+[dev-dependencies]
+# External dependencies
+# Need to use git for CMAC (for now)
+"mbedtls" = { git = "https://github.com/fortanix/rust-mbedtls", default-features = false, features = ["sgx"] }
 
 [dependencies]
 # External dependencies
