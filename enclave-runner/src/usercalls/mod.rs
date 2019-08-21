@@ -442,7 +442,7 @@ impl EnclaveState {
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
     ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
-        let encalve_clone = enclave.clone();
+        let enclave_clone = enclave.clone();
         let return_future = async move {
             while let Ok((Some(work), stream)) = rx_return_channel.into_future().compat().await {
                 rx_return_channel = stream;
@@ -459,7 +459,7 @@ impl EnclaveState {
                         Err(e @ EnclaveAbort::InvalidUsercall(_)),
                         EnclaveEntry::ExecutableNonMain,
                     ) => {
-                        let cmd = encalve_clone.kind.as_command().unwrap();
+                        let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().unwrap();
 
                         if cmddata.primary_panic_reason.is_none() {
@@ -470,7 +470,7 @@ impl EnclaveState {
                         Err(EnclaveAbort::Secondary)
                     }
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
-                        let cmd = encalve_clone.kind.as_command().unwrap();
+                        let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().unwrap();
                         cmddata.other_reasons.push(e);
                         continue;
@@ -482,20 +482,20 @@ impl EnclaveState {
             unreachable!();
         };
         let tx_clone = tx_return_channel.clone();
-        let encalve_clone = enclave.clone();
+        let enclave_clone = enclave.clone();
         let io_future = async move {
             let mut recv_queue = io_queue_receive.into_future();
             while let Ok((Some(work), stream)) = recv_queue.compat().await {
                 let work_sender_clone = work_sender.clone();
                 let mut tx_clone = tx_clone.clone();
-                let encalve_clone = encalve_clone.clone();
+                let enclave_clone = enclave_clone.clone();
                 recv_queue = stream.into_future();
                 let (coresult, mut state, buf) = work;
                 match coresult {
                     CoResult::Yield(usercall) => {
                         let fut = async move {
                             let mut input = IOHandlerInput {
-                                enclave: encalve_clone.clone(),
+                                enclave: enclave_clone.clone(),
                                 tcs: &mut state,
                                 work_sender: &work_sender_clone,
                             };
@@ -542,7 +542,7 @@ impl EnclaveState {
                         let fut = async move {
                             let ret = match state.mode {
                                 EnclaveEntry::Library => {
-                                    encalve_clone.threads_queue.push(StoppedTcs {
+                                    enclave_clone.threads_queue.push(StoppedTcs {
                                         tcs,
                                         event_queue: state.event_queue,
                                     });
@@ -557,8 +557,8 @@ impl EnclaveState {
                                     );
                                     // If the enclave is in the exit-state, threads are no
                                     // longer able to be launched
-                                    if !encalve_clone.exiting.load(Ordering::SeqCst) {
-                                        encalve_clone.threads_queue.push(StoppedTcs {
+                                    if !enclave_clone.exiting.load(Ordering::SeqCst) {
+                                        enclave_clone.threads_queue.push(StoppedTcs {
                                             tcs,
                                             event_queue: state.event_queue,
                                         });
