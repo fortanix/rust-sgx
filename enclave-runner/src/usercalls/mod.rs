@@ -11,7 +11,7 @@ extern crate nix;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::fmt;
+use std::{fmt, cmp};
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 use std::net::ToSocketAddrs;
 use std::result::Result as StdResult;
@@ -29,7 +29,10 @@ use tokio::prelude::Stream as tokioStream;
 use crate::futures::compat::Future01CompatExt;
 use crate::futures::StreamExt;
 use futures::future::{Either, FutureExt, TryFutureExt};
-use tokio::prelude::{AsyncRead, AsyncWrite, Poll};
+use tokio::prelude::{AsyncRead, AsyncWrite, Poll, Async};
+use tokio::sync::lock::Lock;
+use tokio::sync::mpsc as async_mpsc;
+
 
 use fortanix_sgx_abi::*;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -108,6 +111,66 @@ where
 {
     fn shutdown(&mut self) -> Poll<(), std::io::Error> {
         Ok(().into())
+    }
+}
+
+
+struct Stdin;
+
+impl Read for Stdin {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        const BUF_SIZE: usize = 8192;
+
+        trait AsIoResult<T> {
+            fn as_io_result(self) -> io::Result<T>;
+        }
+
+        impl<T> AsIoResult<T> for Async<T> {
+            fn as_io_result(self) -> io::Result<T> {
+                match self {
+                    Async::Ready(v) => Ok(v),
+                    Async::NotReady => Err(io::ErrorKind::WouldBlock.into())
+                }
+            }
+        }
+
+        struct AsyncStdin {
+            rx: async_mpsc::Receiver<VecDeque<u8>>,
+            buf: VecDeque<u8>,
+        }
+
+        lazy_static::lazy_static! {
+            static ref STDIN: Lock<AsyncStdin> = {
+                let (mut tx, rx) = async_mpsc::channel(8);
+                thread::spawn(move || {
+                    let mut buf = [0u8; BUF_SIZE];
+                    while let Ok(len) = io::stdin().read(&mut buf) {
+                        if len == 0 {
+                            continue
+                        }
+
+                        if tx.try_send(buf[..len].to_vec().into()).is_err() {
+                            return
+                        };
+                    }
+                });
+                Lock::new(AsyncStdin { rx, buf: VecDeque::new() })
+            };
+        }
+
+        let mut stdin = STDIN.clone().poll_lock().as_io_result()?;
+        if stdin.buf.is_empty() {
+            let pipeerr = || -> io::Error { io::ErrorKind::BrokenPipe.into() };
+            stdin.buf = stdin.rx.poll().map_err(|_| pipeerr())?.as_io_result()?.ok_or_else(pipeerr)?;
+        }
+        let inbuf = match stdin.buf.as_slices() {
+            (&[], inbuf) => inbuf,
+            (inbuf, _) => inbuf,
+        };
+        let len = cmp::min(buf.len(), inbuf.len());
+        buf[..len].copy_from_slice(&inbuf[..len]);
+        stdin.buf.drain(..len);
+        Ok(len)
     }
 }
 
@@ -400,7 +463,8 @@ impl EnclaveState {
         fds.insert(
             FD_STDIN,
             Arc::new(AsyncFileDesc::stream(ReadOnly(
-                tokio_io::io::AllowStdIo::new(io::stdin()),
+                //tokio_io::io::AllowStdIo::new(io::stdin()),
+                Stdin
             ))),
         );
         fds.insert(
@@ -515,6 +579,7 @@ impl EnclaveState {
                                     return;
                                 }
                                 Err(EnclaveAbort::Exit { panic: true }) => {
+                                    println!("Attaching debugger");
                                     #[cfg(unix)]
                                     trap_attached_debugger(usercall.tcs_address() as _);
                                     Err(EnclaveAbort::Exit {
