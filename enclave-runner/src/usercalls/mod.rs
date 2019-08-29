@@ -1031,9 +1031,11 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
 
         // !!! see if there's a better way
-        let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.as_mut_slice()[0])?
-            .incoming()
-            .compat();
+        let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.as_mut_slice()[0])?;
+        if let Some(local_addr) = local_addr {
+            local_addr.set(socket.local_addr()?.to_string().into_bytes())
+        }
+        let socket = socket.incoming().compat();
         Ok(self.alloc_fd(AsyncFileDesc::listener(socket)))
     }
 
