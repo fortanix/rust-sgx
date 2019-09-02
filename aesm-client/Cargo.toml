@@ -31,7 +31,7 @@ sgxs = { version = "0.7.0", path = "../sgxs", optional = true }
 # External dependencies
 byteorder = "1.0"          # Unlicense/MIT
 lazy_static = "1"          # MIT/Apache-2.0
-protobuf = "1.2.2"         # MIT/Apache-2.0
+protobuf = "2.8.0"         # MIT/Apache-2.0
 failure = "0.1.1"          # MIT/Apache-2.0
 failure_derive = "0.1.1"   # MIT/Apache-2.0
 
@@ -48,7 +48,7 @@ winapi = { version = "0.3.7", features = ["combaseapi", "enclaveapi", "memoryapi
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 
 [build-dependencies]
-protoc-rust = "1.4" # MIT/Apache-2.0
+protoc-rust = "2.8.0" # MIT/Apache-2.0
 
 [dev-dependencies]
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
