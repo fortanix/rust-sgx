@@ -18,6 +18,7 @@ fn main() {
         out_dir: out_dir.to_str().expect("OUT_DIR must be valid UTF-8"),
         input: &["src/aesm_proto.proto"],
         includes: &[],
+        customize: Default::default(),
     })
     .expect("protoc");
 
