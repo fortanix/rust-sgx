@@ -11,14 +11,15 @@ extern crate nix;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::{fmt, cmp};
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 use std::net::ToSocketAddrs;
 use std::result::Result as StdResult;
 use std::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::{cmp, fmt};
 
-use std::sync::{Arc, Mutex};
+use futures::lock::Mutex;
+use std::sync::Arc;
 use std::thread;
 use std::time;
 
@@ -29,10 +30,9 @@ use tokio::prelude::Stream as tokioStream;
 use crate::futures::compat::Future01CompatExt;
 use crate::futures::StreamExt;
 use futures::future::{Either, FutureExt, TryFutureExt};
-use tokio::prelude::{AsyncRead, AsyncWrite, Poll, Async};
+use tokio::prelude::{Async, AsyncRead, AsyncWrite, Poll};
 use tokio::sync::lock::Lock;
 use tokio::sync::mpsc as async_mpsc;
-
 
 use fortanix_sgx_abi::*;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -114,7 +114,6 @@ where
     }
 }
 
-
 struct Stdin;
 
 impl Read for Stdin {
@@ -129,7 +128,7 @@ impl Read for Stdin {
             fn as_io_result(self) -> io::Result<T> {
                 match self {
                     Async::Ready(v) => Ok(v),
-                    Async::NotReady => Err(io::ErrorKind::WouldBlock.into())
+                    Async::NotReady => Err(io::ErrorKind::WouldBlock.into()),
                 }
             }
         }
@@ -161,7 +160,12 @@ impl Read for Stdin {
         let mut stdin = STDIN.clone().poll_lock().as_io_result()?;
         if stdin.buf.is_empty() {
             let pipeerr = || -> io::Error { io::ErrorKind::BrokenPipe.into() };
-            stdin.buf = stdin.rx.poll().map_err(|_| pipeerr())?.as_io_result()?.ok_or_else(pipeerr)?;
+            stdin.buf = stdin
+                .rx
+                .poll()
+                .map_err(|_| pipeerr())?
+                .as_io_result()?
+                .ok_or_else(pipeerr)?;
         }
         let inbuf = match stdin.buf.as_slices() {
             (&[], inbuf) => inbuf,
@@ -193,52 +197,127 @@ pub trait AsyncListener: 'static + Send {
     ) -> std::pin::Pin<Box<dyn futures::Future<Output = IoResult<Box<dyn AsyncStream>>> + 'a>>;
 }
 
+struct AsyncStreamAdapter {
+    stream: Box<dyn AsyncStream>,
+    read_queue: VecDeque<tokio::prelude::task::Task>,
+    write_queue: VecDeque<tokio::prelude::task::Task>,
+    flush_queue: VecDeque<tokio::prelude::task::Task>,
+}
+
+fn notify_other_tasks(queue: &mut VecDeque<tokio::prelude::task::Task>) {
+    // NOTE: if you replace `is_current()` with `will_notify_current()`,
+    // you should also change the `if` to `while` in the next line because
+    // will_notify_current() is not required to return true.
+    queue.retain(|task| !task.will_notify_current());
+    while let Some(task) = queue.pop_front() {
+        task.notify();
+    }
+}
+
+impl AsyncStreamAdapter {
+    fn poll_read(&mut self, buf: &mut [u8]) -> tokio::io::Result<Async<usize>> {
+        match self.stream.poll_read(buf) {
+            Ok(Async::NotReady) => {
+                self.read_queue.push_back(tokio::prelude::task::current());
+                Ok(Async::NotReady)
+            }
+            Ok(Async::Ready(ret)) => {
+                notify_other_tasks(&mut self.read_queue);
+                Ok(Async::Ready(ret))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn poll_write(&mut self, buf: &[u8]) -> tokio::io::Result<Async<usize>> {
+        match self.stream.poll_write(buf) {
+            Ok(Async::NotReady) => {
+                self.write_queue.push_back(tokio::prelude::task::current());
+                Ok(Async::NotReady)
+            }
+            Ok(Async::Ready(ret)) => {
+                notify_other_tasks(&mut self.write_queue);
+                Ok(Async::Ready(ret))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn poll_flush(&mut self) -> tokio::io::Result<Async<()>> {
+        match self.stream.poll_flush() {
+            Ok(Async::NotReady) => {
+                self.flush_queue.push_back(tokio::prelude::task::current());
+                Ok(Async::NotReady)
+            }
+            Ok(Async::Ready(ret)) => {
+                notify_other_tasks(&mut self.flush_queue);
+                Ok(Async::Ready(ret))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
 struct AsyncStreamContainer {
-    inner: Mutex<Option<Box<dyn AsyncStream>>>,
+    inner: Lock<AsyncStreamAdapter>,
 }
 
 impl AsyncStreamContainer {
     fn new<S: AsyncStream>(s: Box<S>) -> Self {
         AsyncStreamContainer {
-            inner: Mutex::new(Some(s)),
+            inner: Lock::new(AsyncStreamAdapter {
+                stream: s,
+                read_queue: VecDeque::new(),
+                write_queue: VecDeque::new(),
+                flush_queue: VecDeque::new(),
+            }),
         }
     }
 
     async fn async_read(&self, buf: &mut [u8]) -> IoResult<usize> {
-        let mut lock = self.inner.lock().unwrap();
-        let input = lock.as_mut().unwrap();
-        tokio::prelude::future::poll_fn(|| input.poll_read(buf))
-            .compat()
-            .await
+        tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(mut adapter) => adapter.poll_read(buf),
+        })
+        .compat()
+        .await
     }
 
     async fn async_read_alloc(&self) -> IoResult<Vec<u8>> {
         let mut vec: Vec<u8> = vec![0; 8192];
-        let mut lock = self.inner.lock().unwrap();
-        let input = lock.as_mut().unwrap();
-        let res = tokio::prelude::future::poll_fn(|| input.poll_read(vec.as_mut_slice()))
-            .compat()
-            .await;
+
+        let res = tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(mut adapter) => adapter.poll_read(vec.as_mut_slice()),
+        })
+        .compat()
+        .await;
+
         match res {
-            Ok(_size) => Ok(vec),
+            Ok(size) => {
+                vec.resize(size, 0);
+                Ok(vec)
+            }
             Err(e) => Err(e),
         }
     }
 
     async fn async_write(&self, buf: Vec<u8>) -> IoResult<usize> {
-        let mut lock = self.inner.lock().unwrap();
-        let input = lock.as_mut().unwrap();
-        tokio::prelude::future::poll_fn(|| input.poll_write(buf.as_slice()))
-            .compat()
-            .await
+        tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(mut adapter) => adapter.poll_write(buf.as_slice()),
+        })
+        .compat()
+        .await
     }
 
     async fn async_flush(&self) -> IoResult<()> {
-        let mut lock = self.inner.lock().unwrap();
-        let input = lock.as_mut().unwrap();
-        tokio::prelude::future::poll_fn(|| input.poll_flush())
-            .compat()
-            .await
+        tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(mut adapter) => adapter.poll_flush(),
+        })
+        .compat()
+        .await
     }
 }
 
@@ -391,7 +470,7 @@ impl EnclaveKind {
 
 pub(crate) struct EnclaveState {
     kind: EnclaveKind,
-    event_queues: FnvHashMap<TcsAddress, Mutex<futures::channel::mpsc::UnboundedSender<u8>>>,
+    event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
     fds: Mutex<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
     last_fd: AtomicUsize,
     exiting: AtomicBool,
@@ -429,17 +508,11 @@ impl Work {
 
 impl EnclaveState {
     fn event_queue_add_tcs(
-        event_queues: &mut FnvHashMap<
-            TcsAddress,
-            Mutex<futures::channel::mpsc::UnboundedSender<u8>>,
-        >,
+        event_queues: &mut FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
         tcs: ErasedTcs,
     ) -> StoppedTcs {
         let (send, recv) = futures::channel::mpsc::unbounded();
-        if event_queues
-            .insert(tcs.address(), Mutex::new(send))
-            .is_some()
-        {
+        if event_queues.insert(tcs.address(), send).is_some() {
             panic!("duplicate TCS address: {:p}", tcs.address())
         }
         StoppedTcs {
@@ -450,21 +523,17 @@ impl EnclaveState {
 
     fn new(
         kind: EnclaveKind,
-        mut event_queues: FnvHashMap<
-            TcsAddress,
-            Mutex<futures::channel::mpsc::UnboundedSender<u8>>,
-        >,
+        mut event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         threads_vector: Vec<ErasedTcs>,
     ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
-        // TODO: This may not work because stdin would block. Figure out a better way
         fds.insert(
             FD_STDIN,
             Arc::new(AsyncFileDesc::stream(ReadOnly(
                 //tokio_io::io::AllowStdIo::new(io::stdin()),
-                Stdin
+                Stdin,
             ))),
         );
         fds.insert(
@@ -524,7 +593,7 @@ impl EnclaveState {
                         EnclaveEntry::ExecutableNonMain,
                     ) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
-                        let mut cmddata = cmd.panic_reason.lock().unwrap();
+                        let mut cmddata = cmd.panic_reason.lock().await;
 
                         if cmddata.primary_panic_reason.is_none() {
                             cmddata.primary_panic_reason = Some(e)
@@ -535,7 +604,7 @@ impl EnclaveState {
                     }
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
-                        let mut cmddata = cmd.panic_reason.lock().unwrap();
+                        let mut cmddata = cmd.panic_reason.lock().await;
                         cmddata.other_reasons.push(e);
                         continue;
                     }
@@ -581,7 +650,7 @@ impl EnclaveState {
                                 Err(EnclaveAbort::Exit { panic: true }) => {
                                     println!("Attaching debugger");
                                     #[cfg(unix)]
-                                    trap_attached_debugger(usercall.tcs_address() as _);
+                                    trap_attached_debugger(usercall.tcs_address() as _).await;
                                     Err(EnclaveAbort::Exit {
                                         panic: EnclavePanic::from(buf.into_inner()),
                                     })
@@ -735,32 +804,34 @@ impl EnclaveState {
             Err(EnclaveAbort::IndefiniteWait) | Err(EnclaveAbort::Secondary) | Ok(_) => false,
         };
 
-        enclave.abort_all_threads();
-        //clear the threads_queue
-        while enclave.threads_queue.pop().is_ok() {}
+        tokio::runtime::current_thread::block_on_all(async move {
+            enclave.abort_all_threads();
+            //clear the threads_queue
+            while enclave.threads_queue.pop().is_ok() {}
 
-        let cmd = enclave.kind.as_command().unwrap();
-        let mut cmddata = cmd.panic_reason.lock().unwrap();
-        let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
-            (false, Some(reason)) => Err(reason),
-            // TODO: interpret other_reasons
-            _ => main_result,
-        };
-        match main_result {
-            Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
-            Err(EnclaveAbort::IndefiniteWait) => {
-                bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
+            let cmd = enclave.kind.as_command().unwrap();
+            let mut cmddata = cmd.panic_reason.lock().await;
+            let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
+                (false, Some(reason)) => Err(reason),
+                // TODO: interpret other_reasons
+                _ => main_result,
+            };
+            match main_result {
+                Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+                Err(EnclaveAbort::IndefiniteWait) => {
+                    bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
+                }
+                Err(EnclaveAbort::InvalidUsercall(n)) => {
+                    bail!("The enclave performed an invalid usercall 0x{:x}", n)
+                }
+                Err(EnclaveAbort::MainReturned) => bail!(
+                    "The enclave returned from the main entrypoint in violation of the specification."
+                ),
+                // Should always be able to return the real exit reason
+                Err(EnclaveAbort::Secondary) => unreachable!(),
+                Ok(_) => Ok(()),
             }
-            Err(EnclaveAbort::InvalidUsercall(n)) => {
-                bail!("The enclave performed an invalid usercall 0x{:x}", n)
-            }
-            Err(EnclaveAbort::MainReturned) => bail!(
-                "The enclave returned from the main entrypoint in violation of the specification."
-            ),
-            // Should always be able to return the real exit reason
-            Err(EnclaveAbort::Secondary) => unreachable!(),
-            Ok(_) => Ok(()),
-        }
+        }.boxed_local().compat())
     }
 
     pub(crate) fn library(
@@ -819,7 +890,7 @@ impl EnclaveState {
         self.exiting.store(true, Ordering::SeqCst);
         // wake other threads
         for queue in self.event_queues.values() {
-            let _ = queue.lock().unwrap().unbounded_send(EV_ABORT as _);
+            let _ = queue.unbounded_send(EV_ABORT as _);
         }
     }
 }
@@ -881,8 +952,8 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
  * Here, we also store tcs in rbx, so that the debugger could read it, to
  * set sgx state and correctly map the enclave symbols.
  */
-fn trap_attached_debugger(tcs: usize) {
-    let _g = DEBUGGER_TOGGLE_SYNC.lock().unwrap();
+async fn trap_attached_debugger(tcs: usize) {
+    let _g = DEBUGGER_TOGGLE_SYNC.lock().await;
     let hdl = self::signal::SigHandler::SigAction(handle_trap);
     let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
     // Synchronized
@@ -949,26 +1020,21 @@ impl UsercallExtension for UsercallExtensionDefault {}
 
 #[allow(unused_variables)]
 impl<'tcs> IOHandlerInput<'tcs> {
-    fn lookup_fd(&self, fd: Fd) -> IoResult<Arc<AsyncFileDesc>> {
-        match self.enclave.fds.lock().unwrap().get(&fd) {
+    async fn lookup_fd(&self, fd: Fd) -> IoResult<Arc<AsyncFileDesc>> {
+        match self.enclave.fds.lock().await.get(&fd) {
             Some(stream) => Ok(stream.clone()),
             None => Err(IoErrorKind::BrokenPipe.into()), // FIXME: Rust normally maps Unix EBADF to `Other`
         }
     }
 
-    fn alloc_fd(&self, stream: AsyncFileDesc) -> Fd {
+    async fn alloc_fd(&self, stream: AsyncFileDesc) -> Fd {
         let fd = (self
             .enclave
             .last_fd
             .fetch_add(1, Ordering::Relaxed)
             .checked_add(1)
             .expect("FD overflow")) as Fd;
-        let prev = self
-            .enclave
-            .fds
-            .lock()
-            .unwrap()
-            .insert(fd, Arc::new(stream));
+        let prev = self.enclave.fds.lock().await.insert(fd, Arc::new(stream));
         debug_assert!(prev.is_none());
         fd
     }
@@ -980,14 +1046,14 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     async fn read(&self, fd: Fd, buf: &mut [u8]) -> IoResult<usize> {
-        let file_desc = self.lookup_fd(fd)?;
+        let file_desc = self.lookup_fd(fd).await?;
         file_desc.as_stream()?.async_read(buf).await
     }
 
     #[inline(always)]
     async fn read_alloc(&self, fd: Fd, buf: &mut OutputBuffer<'tcs>) -> IoResult<()> {
         let vec: Vec<u8> = vec![0; 8192];
-        let file_desc = self.lookup_fd(fd)?;
+        let file_desc = self.lookup_fd(fd).await?;
         let v = file_desc.as_stream()?.async_read_alloc().await?;
         buf.set(v);
         Ok(())
@@ -996,19 +1062,19 @@ impl<'tcs> IOHandlerInput<'tcs> {
     #[inline(always)]
     async fn write(&self, fd: Fd, buf: &[u8]) -> IoResult<usize> {
         let vec = buf.to_vec();
-        let file_desc = self.lookup_fd(fd)?;
+        let file_desc = self.lookup_fd(fd).await?;
         file_desc.as_stream()?.async_write(vec).await
     }
 
     #[inline(always)]
     async fn flush(&self, fd: Fd) -> IoResult<()> {
-        let file_desc = self.lookup_fd(fd)?;
+        let file_desc = self.lookup_fd(fd).await?;
         file_desc.as_stream()?.async_flush().await
     }
 
     #[inline(always)]
-    fn close(&self, fd: Fd) {
-        self.enclave.fds.lock().unwrap().remove(&fd);
+    async fn close(&self, fd: Fd) {
+        self.enclave.fds.lock().await.remove(&fd);
     }
 
     #[inline(always)]
@@ -1028,16 +1094,16 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
             }
             let socket = stream_ext.incoming().compat();
-            return Ok(self.alloc_fd(AsyncFileDesc::listener(socket)));
+            return Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await);
         }
 
         // !!! see if there's a better way
         let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.as_mut_slice()[0])?;
         if let Some(local_addr) = local_addr {
-            local_addr.set(socket.local_addr()?.to_string().into_bytes())
+            local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
         let socket = socket.incoming().compat();
-        Ok(self.alloc_fd(AsyncFileDesc::listener(socket)))
+        Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await)
     }
 
     #[inline(always)]
@@ -1050,8 +1116,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
         let mut local_addr_str = local_addr.as_ref().map(|_| String::new());
         let mut peer_addr_str = peer_addr.as_ref().map(|_| String::new());
 
-        let file_desc = self.lookup_fd(fd)?;
-        let mut fut = file_desc.as_listener()?.inner.lock().unwrap();
+        let file_desc = self.lookup_fd(fd).await?;
+        let mut fut = file_desc.as_listener()?.inner.lock().await;
 
         let stream = fut
             .accept(local_addr_str.as_mut(), peer_addr_str.as_mut())
@@ -1063,7 +1129,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(peer_addr) = peer_addr {
             peer_addr.set(&peer_addr_str.unwrap().into_bytes()[..])
         }
-        Ok(self.alloc_fd(AsyncFileDesc::stream(stream)))
+        Ok(self.alloc_fd(AsyncFileDesc::stream(stream)).await)
     }
 
     #[inline(always)]
@@ -1087,7 +1153,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             if let Some(peer_addr) = peer_addr {
                 peer_addr.set(peer_addr_str.unwrap().into_bytes());
             }
-            return Ok(self.alloc_fd(AsyncFileDesc::stream(stream_ext)));
+            return Ok(self.alloc_fd(AsyncFileDesc::stream(stream_ext)).await);
         }
         let stream = tokio::net::TcpStream::connect(&addr.to_socket_addrs()?.as_mut_slice()[0])
             .compat()
@@ -1104,7 +1170,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 Err(_) => peer_addr.set(&b"error"[..]),
             }
         }
-        Ok(self.alloc_fd(AsyncFileDesc::stream(stream)))
+        Ok(self.alloc_fd(AsyncFileDesc::stream(stream)).await)
     }
 
     #[inline(always)]
@@ -1160,7 +1226,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    async fn wait<'b: 'tcs>(&mut self, event_mask: u64, timeout: u64) -> IoResult<u64> {
+    async fn wait(&mut self, event_mask: u64, timeout: u64) -> IoResult<u64> {
         let wait = match timeout {
             WAIT_NO => false,
             WAIT_INDEFINITE => true,
@@ -1184,7 +1250,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
 
         if ret.is_none() {
-            'outer: loop {
+            loop {
                 let ev = if wait {
                     Ok(self.tcs.event_queue.next().await.unwrap())
                 } else {
@@ -1233,13 +1299,11 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 .get(&tcs)
                 .ok_or(IoErrorKind::InvalidInput)?;
             queue
-                .lock()
-                .unwrap()
                 .unbounded_send(event_set)
                 .expect("TCS event queue disconnected");
         } else {
             for queue in self.enclave.event_queues.values() {
-                let _ = queue.lock().unwrap().unbounded_send(event_set);
+                let _ = queue.unbounded_send(event_set);
             }
         }
 
