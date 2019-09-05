@@ -32,9 +32,11 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
     {
         async move {
             unsafe {
-                let buff = from_raw_parts_mut_nonnull(buf, len).unwrap();
-                let ret = Ok(self.0.read(fd, buff).await.to_sgx_result());
-                return (self, ret);
+                let ret = match from_raw_parts_mut_nonnull(buf, len) {
+                    Ok(buf) => self.0.read(fd, buf).await,
+                    Err(e) => Err(e),
+                };
+                return (self, Ok(ret.to_sgx_result()));
             }
         }
             .boxed_local()
@@ -100,7 +102,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         fd: Fd,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<()>)> + 'future>> {
         async move {
-            let ret = Ok(self.0.close(fd));
+            let ret = Ok(self.0.close(fd).await);
             return (self, ret);
         }
             .boxed_local()
@@ -116,13 +118,11 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             unsafe {
                 let mut local_addr = local_addr.as_mut().map(OutputBuffer::new);
-                let addr = from_raw_parts_nonnull(addr, len).unwrap();
-                let ret = Ok(self
-                    .0
-                    .bind_stream(addr, local_addr.as_mut())
-                    .await
-                    .to_sgx_result());
-                return (self, ret);
+                let ret = match from_raw_parts_nonnull(addr, len) {
+                    Ok(addr) => self.0.bind_stream(addr, local_addr.as_mut()).await,
+                    Err(e) => Err(e),
+                };
+                return (self, Ok(ret.to_sgx_result()));
             }
         }
             .boxed_local()
@@ -163,13 +163,15 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 let mut local_addr = local_addr.as_mut().map(OutputBuffer::new);
                 let mut peer_addr = peer_addr.as_mut().map(OutputBuffer::new);
 
-                let addr = from_raw_parts_nonnull(addr, len).unwrap();
-                let ret = Ok(self
-                    .0
-                    .connect_stream(addr, local_addr.as_mut(), peer_addr.as_mut())
-                    .await
-                    .to_sgx_result());
-                return (self, ret);
+                let ret = match from_raw_parts_nonnull(addr, len) {
+                    Ok(addr) => {
+                        self.0
+                            .connect_stream(addr, local_addr.as_mut(), peer_addr.as_mut())
+                            .await
+                    }
+                    Err(e) => Err(e.into()),
+                };
+                return (self, Ok(ret.to_sgx_result()));
             }
         }
             .boxed_local()
@@ -271,19 +273,11 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 let ret = Ok((|| {
                     let usercall_queue = usercall_queue
                         .as_mut()
-                        .ok_or(IoError::from(IoErrorKind::InvalidInput));
-                    if let Err(e) = usercall_queue {
-                        return Err(e);
-                    }
+                        .ok_or(IoError::from(IoErrorKind::InvalidInput))?;
                     let return_queue = return_queue
                         .as_mut()
-                        .ok_or(IoError::from(IoErrorKind::InvalidInput));
-                    if let Err(e) = return_queue {
-                        return Err(e);
-                    }
-
-                    self.0
-                        .async_queues(usercall_queue.unwrap(), return_queue.unwrap())
+                        .ok_or(IoError::from(IoErrorKind::InvalidInput))?;
+                    self.0.async_queues(usercall_queue, return_queue)
                 })()
                 .to_sgx_result());
                 return (self, ret);
