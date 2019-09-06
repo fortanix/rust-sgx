@@ -15,10 +15,12 @@ use fortanix_sgx_abi::*;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use futures::future::Future;
+
 type Register = u64;
 
 trait RegisterArgument {
-    fn from_register(Register) -> Self;
+    fn from_register(_: Register) -> Self;
     fn into_register(self) -> Register;
 }
 
@@ -41,31 +43,34 @@ macro_rules! define_usercalls {
             $($f,)*
         }
 
-        pub(super) trait Usercalls {
-            $(fn $f(&mut self, $($n: $t),*) -> dispatch_return_type!($(-> $r)*);)*
-
-            fn other(&mut self, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> DispatchResult {
-                Err($crate::usercalls::EnclaveAbort::InvalidUsercall(n))
+        pub(super) trait Usercalls <'future>: Sized {
+            $(fn $f (self, $($n: $t),*) -> dispatch_return_type!($(-> $r )* $f);)*
+            fn other(self, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> (Self, DispatchResult) {
+                (self, Err($crate::usercalls::EnclaveAbort::InvalidUsercall(n)))
             }
 
             fn is_exiting(&self) -> bool;
         }
 
         #[allow(unused_variables)]
-        pub(super) fn dispatch<H: Usercalls>(handler: &mut H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> DispatchResult {
+        pub(super) async fn dispatch<'future,  H: Usercalls<'future>> (mut handler: H, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> (H, DispatchResult) {
             // using if/else because you can't match an integer against enum variants
-            let ret = $(
+            let (handler, ret) = $(
                 if n == UsercallList::$f as Register {
-                    ReturnValue::into_registers(unsafe{enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))})
+                    //let mut handler_ref = &mut handler;
+                    let (handler, ret) = unsafe {
+                        enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))
+                    };
+                    (handler, ReturnValue::into_registers(ret))
                 } else
             )*
             {
                 handler.other(n, a1, a2, a3, a4)
             };
             if ret.is_ok() && handler.is_exiting() {
-                Err(super::EnclaveAbort::Secondary)
+                (handler, Err(super::EnclaveAbort::Secondary))
             } else {
-                ret
+                (handler, ret)
             }
         }
     };
@@ -167,9 +172,13 @@ impl<T: RegisterArgument, U: RegisterArgument> ReturnValue for UsercallResult<(T
 }
 
 macro_rules! dispatch_return_type {
-    (-> !) => { EnclaveAbort };
-    (-> $r:ty) => { UsercallResult<$r> };
-    () => { UsercallResult<()> };
+    (-> ! $f:ident) => { std::pin::Pin<Box<dyn Future<Output = (Self, EnclaveAbort)> +'future>> };
+    (-> $r:tt $f:ident) => {
+                std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<$r>)> +'future>>
+            };
+    ($f:ident) => {
+                std::pin::Pin<Box<dyn Future<Output = (Self,UsercallResult<()>)> +'future>>
+            };
 }
 
 macro_rules! enclave_usercalls_internal_define_usercalls {
@@ -188,6 +197,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
             RegisterArgument::from_register($a3),
             RegisterArgument::from_register($a4),
         )
+        .await
     };
     (
         $h:ident,replace_args
@@ -210,6 +220,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
             RegisterArgument::from_register($a2),
             RegisterArgument::from_register($a3),
         )
+        .await
     }};
     (
         $h:ident,replace_args
@@ -238,6 +249,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
             RegisterArgument::from_register($a1),
             RegisterArgument::from_register($a2),
         )
+        .await
     }};
     ($h:ident,replace_args $a1:ident, $a2:ident, $a3:ident, $a4:ident $f:ident($n1:ident)) => {{
         assert_eq!(
@@ -261,7 +273,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
             stringify!($f),
             "4th"
         );
-        H::$f($h, RegisterArgument::from_register($a1))
+        H::$f($h, RegisterArgument::from_register($a1)).await
     }};
     ($h:ident,replace_args $a1:ident, $a2:ident, $a3:ident, $a4:ident $f:ident()) => {{
         assert_eq!(
@@ -292,7 +304,7 @@ macro_rules! enclave_usercalls_internal_define_usercalls {
             stringify!($f),
             "4th"
         );
-        H::$f($h)
+        H::$f($h).await
     }};
 }
 

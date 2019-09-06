@@ -19,10 +19,9 @@ use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
-use tcs::DebugBuffer;
-use {Command, Library};
-use usercalls::UsercallExtension;
-
+use crate::tcs::DebugBuffer;
+use crate::usercalls::UsercallExtension;
+use crate::{Command, Library};
 
 enum EnclaveSource<'a> {
     Path(&'a Path),
@@ -60,7 +59,7 @@ pub struct EnclaveBuilder<'a> {
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
-    usercall_ext : Option<Box<dyn UsercallExtension>>,
+    usercall_ext: Option<Box<dyn UsercallExtension>>,
 }
 
 #[derive(Debug, Fail)]
@@ -122,7 +121,7 @@ impl<'a> EnclaveBuilder<'a> {
             attributes: None,
             miscselect: None,
             signature: None,
-            usercall_ext : None,
+            usercall_ext: None,
         };
 
         let _ = ret.coresident_signature();
@@ -136,7 +135,7 @@ impl<'a> EnclaveBuilder<'a> {
             attributes: None,
             miscselect: None,
             signature: None,
-            usercall_ext : None,
+            usercall_ext: None,
         };
 
         let _ = ret.coresident_signature();
@@ -210,7 +209,10 @@ impl<'a> EnclaveBuilder<'a> {
         self.usercall_ext = Some(extension.into());
     }
 
-    fn load<T: Load>(mut self, loader: &mut T) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
+    fn load<T: Load>(
+        mut self,
+        loader: &mut T,
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -232,7 +234,8 @@ impl<'a> EnclaveBuilder<'a> {
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
         let c = self.usercall_ext.take();
-        self.load(loader).map(|(t, a, s)|  Command::internal_new(t, a, s, c))
+        self.load(loader)
+            .map(|(t, a, s)| Command::internal_new(t, a, s, c))
     }
 
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {

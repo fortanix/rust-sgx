@@ -9,10 +9,10 @@ use std::path::Path;
 use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
-use loader::{EnclaveBuilder, ErasedTcs};
+use crate::loader::{EnclaveBuilder, ErasedTcs};
+use crate::usercalls::EnclaveState;
+use crate::usercalls::UsercallExtension;
 use std::os::raw::c_void;
-use usercalls::EnclaveState;
-use usercalls::UsercallExtension;
 
 #[derive(Debug)]
 pub struct Command {
