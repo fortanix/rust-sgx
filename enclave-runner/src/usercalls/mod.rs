@@ -74,6 +74,12 @@ impl<R: Read> Read for ReadOnly<R> {
     forward!(fn read(&mut self, buf: &mut [u8]) -> IoResult<usize>);
 }
 
+impl<T> Read for WriteOnly<T> {
+    fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
+        Err(IoErrorKind::BrokenPipe.into())
+    }
+}
+
 impl<T> Write for ReadOnly<T> {
     fn write(&mut self, _buf: &[u8]) -> IoResult<usize> {
         Err(IoErrorKind::BrokenPipe.into())
@@ -84,6 +90,11 @@ impl<T> Write for ReadOnly<T> {
     }
 }
 
+impl<W: Write> Write for WriteOnly<W> {
+    forward!(fn write(&mut self, buf: &[u8]) -> IoResult<usize>);
+    forward!(fn flush(&mut self) -> IoResult<()>);
+}
+
 impl<T> AsyncWrite for ReadOnly<T> {
     fn shutdown(&mut self) -> Poll<(), std::io::Error> {
         return Err(IoErrorKind::BrokenPipe.into());
@@ -92,18 +103,7 @@ impl<T> AsyncWrite for ReadOnly<T> {
 
 impl<T> AsyncRead for ReadOnly<T> where T: std::io::Read {}
 
-impl<T> Read for WriteOnly<T> {
-    fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
-        Err(IoErrorKind::BrokenPipe.into())
-    }
-}
-
 impl<T> AsyncRead for WriteOnly<T> {}
-
-impl<W: Write> Write for WriteOnly<W> {
-    forward!(fn write(&mut self, buf: &[u8]) -> IoResult<usize>);
-    forward!(fn flush(&mut self) -> IoResult<()>);
-}
 
 impl<T> AsyncWrite for WriteOnly<T>
 where
@@ -205,12 +205,10 @@ struct AsyncStreamAdapter {
 }
 
 fn notify_other_tasks(queue: &mut VecDeque<tokio::prelude::task::Task>) {
-    // NOTE: if you replace `is_current()` with `will_notify_current()`,
-    // you should also change the `if` to `while` in the next line because
-    // will_notify_current() is not required to return true.
-    queue.retain(|task| !task.will_notify_current());
-    while let Some(task) = queue.pop_front() {
-        task.notify();
+    for task in queue.drain(..) {
+        if !task.will_notify_current() {
+            task.notify();
+        }
     }
 }
 
@@ -532,7 +530,6 @@ impl EnclaveState {
         fds.insert(
             FD_STDIN,
             Arc::new(AsyncFileDesc::stream(ReadOnly(
-                //tokio_io::io::AllowStdIo::new(io::stdin()),
                 Stdin,
             ))),
         );
@@ -611,16 +608,14 @@ impl EnclaveState {
                 };
                 return res;
             }
-            // !!! confirm if this is correct;
             unreachable!();
         };
-        let tx_clone = tx_return_channel.clone();
         let enclave_clone = enclave.clone();
         let io_future = async move {
             let mut recv_queue = io_queue_receive.into_future();
             while let Ok((Some(work), stream)) = recv_queue.compat().await {
                 let work_sender_clone = work_sender.clone();
-                let mut tx_clone = tx_clone.clone();
+                let mut tx_clone = tx_return_channel.clone();
                 let enclave_clone = enclave_clone.clone();
                 recv_queue = stream.into_future();
                 let (coresult, mut state, buf) = work;

@@ -6,8 +6,6 @@
 
 #![feature(asm)]
 #![feature(async_await)]
-#![feature(proc_macro_hygiene)]
-#![feature(concat_idents)]
 #![doc(
     html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
     html_favicon_url = "https://edp.fortanix.com/favicon.ico",
