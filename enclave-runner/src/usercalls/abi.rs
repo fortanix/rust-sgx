@@ -44,7 +44,7 @@ macro_rules! define_usercalls {
         }
 
         pub(super) trait Usercalls <'future>: Sized {
-            $(fn $f (self, $($n: $t),*) -> dispatch_return_type!($(-> $r )* $f);)*
+            $(fn $f (self, $($n: $t),*) -> dispatch_return_type!($(-> $r )* $f + 'future);)*
             fn other(self, n: u64, a1: u64, a2: u64, a3: u64, a4: u64) -> (Self, DispatchResult) {
                 (self, Err($crate::usercalls::EnclaveAbort::InvalidUsercall(n)))
             }
@@ -172,12 +172,12 @@ impl<T: RegisterArgument, U: RegisterArgument> ReturnValue for UsercallResult<(T
 }
 
 macro_rules! dispatch_return_type {
-    (-> ! $f:ident) => { std::pin::Pin<Box<dyn Future<Output = (Self, EnclaveAbort)> +'future>> };
-    (-> $r:tt $f:ident) => {
-                std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<$r>)> +'future>>
+    (-> ! $f:ident + $l:lifetime) => { std::pin::Pin<Box<dyn Future<Output = (Self, EnclaveAbort)> + $l>> };
+    (-> $r:tt $f:ident + $l:lifetime) => {
+                std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<$r>)> + $l>>
             };
-    ($f:ident) => {
-                std::pin::Pin<Box<dyn Future<Output = (Self,UsercallResult<()>)> +'future>>
+    ($f:ident + $l:lifetime) => {
+                std::pin::Pin<Box<dyn Future<Output = (Self,UsercallResult<()>)> + $l>>
             };
 }
 
