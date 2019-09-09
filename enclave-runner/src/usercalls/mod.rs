@@ -18,7 +18,6 @@ use std::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::{cmp, fmt};
 
-use futures::lock::Mutex;
 use std::sync::Arc;
 use std::thread;
 use std::time;
@@ -37,7 +36,7 @@ use tokio::sync::mpsc as async_mpsc;
 use fortanix_sgx_abi::*;
 use sgxs::loader::Tcs as SgxsTcs;
 lazy_static! {
-    static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
+    static ref DEBUGGER_TOGGLE_SYNC: Lock<()> = Lock::new(());
 }
 
 pub(crate) mod abi;
@@ -61,7 +60,21 @@ type UsercallSendData = (ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]
 
 struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
+macro_rules! poll_lock_as_future01 {
+    ($lock:expr) => {
+    tokio::prelude::future::poll_fn( ||
+        match $lock.clone().poll_lock() {
+            Async::NotReady => IoResult::Ok(Async::NotReady),
+            Async::Ready(ret) => IoResult::Ok(Async::Ready(ret)),
+        })
+    }
+}
 
+macro_rules! poll_lock_await_unwrap {
+    ($lock:expr) => {
+        poll_lock_as_future01!($lock).compat().await.unwrap()
+    }
+}
 macro_rules! forward {
     (fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
         fn $n(&mut self $(, $p: $t)*) -> $ret {
@@ -320,13 +333,13 @@ impl AsyncStreamContainer {
 }
 
 struct AsyncListenerContainer {
-    inner: Mutex<Box<dyn AsyncListener>>,
+    inner: Lock<Box<dyn AsyncListener>>,
 }
 
 impl AsyncListenerContainer {
     fn new<L: AsyncListener>(l: Box<L>) -> Self {
         AsyncListenerContainer {
-            inner: Mutex::new(l),
+            inner: Lock::new(l),
         }
     }
 }
@@ -445,7 +458,7 @@ struct PanicReason {
 }
 
 struct Command {
-    panic_reason: Mutex<PanicReason>,
+    panic_reason: Lock<PanicReason>,
 }
 
 struct Library {}
@@ -469,7 +482,7 @@ impl EnclaveKind {
 pub(crate) struct EnclaveState {
     kind: EnclaveKind,
     event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
-    fds: Mutex<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
+    fds: Lock<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
     last_fd: AtomicUsize,
     exiting: AtomicBool,
     usercall_ext: Box<dyn UsercallExtension>,
@@ -558,7 +571,7 @@ impl EnclaveState {
         Arc::new(EnclaveState {
             kind,
             event_queues,
-            fds: Mutex::new(fds),
+            fds: Lock::new(fds),
             last_fd,
             exiting: AtomicBool::new(false),
             usercall_ext,
@@ -590,7 +603,7 @@ impl EnclaveState {
                         EnclaveEntry::ExecutableNonMain,
                     ) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
-                        let mut cmddata = cmd.panic_reason.lock().await;
+                        let mut cmddata = poll_lock_await_unwrap!(cmd.panic_reason);
 
                         if cmddata.primary_panic_reason.is_none() {
                             cmddata.primary_panic_reason = Some(e)
@@ -601,7 +614,7 @@ impl EnclaveState {
                     }
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
-                        let mut cmddata = cmd.panic_reason.lock().await;
+                        let mut cmddata = poll_lock_await_unwrap!(cmd.panic_reason);
                         cmddata.other_reasons.push(e);
                         continue;
                     }
@@ -783,7 +796,7 @@ impl EnclaveState {
         let num_of_threads = num_cpus::get();
 
         let kind = EnclaveKind::Command(Command {
-            panic_reason: Mutex::new(PanicReason {
+            panic_reason: Lock::new(PanicReason {
                 primary_panic_reason: None,
                 other_reasons: vec![],
             }),
@@ -805,7 +818,7 @@ impl EnclaveState {
             while enclave.threads_queue.pop().is_ok() {}
 
             let cmd = enclave.kind.as_command().unwrap();
-            let mut cmddata = cmd.panic_reason.lock().await;
+            let mut cmddata = poll_lock_await_unwrap!(cmd.panic_reason);//.lock().await;
             let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
                 (false, Some(reason)) => Err(reason),
                 // TODO: interpret other_reasons
@@ -948,7 +961,7 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
  * set sgx state and correctly map the enclave symbols.
  */
 async fn trap_attached_debugger(tcs: usize) {
-    let _g = DEBUGGER_TOGGLE_SYNC.lock().await;
+    let _g = poll_lock_await_unwrap!(DEBUGGER_TOGGLE_SYNC);
     let hdl = self::signal::SigHandler::SigAction(handle_trap);
     let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
     // Synchronized
@@ -1016,7 +1029,7 @@ impl UsercallExtension for UsercallExtensionDefault {}
 #[allow(unused_variables)]
 impl<'tcs> IOHandlerInput<'tcs> {
     async fn lookup_fd(&self, fd: Fd) -> IoResult<Arc<AsyncFileDesc>> {
-        match self.enclave.fds.lock().await.get(&fd) {
+        match poll_lock_await_unwrap!(self.enclave.fds).get(&fd) {
             Some(stream) => Ok(stream.clone()),
             None => Err(IoErrorKind::BrokenPipe.into()), // FIXME: Rust normally maps Unix EBADF to `Other`
         }
@@ -1029,7 +1042,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             .fetch_add(1, Ordering::Relaxed)
             .checked_add(1)
             .expect("FD overflow")) as Fd;
-        let prev = self.enclave.fds.lock().await.insert(fd, Arc::new(stream));
+        let prev = poll_lock_await_unwrap!(self.enclave.fds).insert(fd, Arc::new(stream));
         debug_assert!(prev.is_none());
         fd
     }
@@ -1069,7 +1082,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     async fn close(&self, fd: Fd) {
-        self.enclave.fds.lock().await.remove(&fd);
+        poll_lock_await_unwrap!(self.enclave.fds).remove(&fd);
     }
 
     #[inline(always)]
@@ -1112,7 +1125,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         let mut peer_addr_str = peer_addr.as_ref().map(|_| String::new());
 
         let file_desc = self.lookup_fd(fd).await?;
-        let mut fut = file_desc.as_listener()?.inner.lock().await;
+        let mut fut = poll_lock_await_unwrap!(file_desc.as_listener()?.inner);
 
         let stream = fut
             .accept(local_addr_str.as_mut(), peer_addr_str.as_mut())
