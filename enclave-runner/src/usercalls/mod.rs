@@ -191,7 +191,21 @@ impl Read for Stdin {
     }
 }
 
-pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {}
+pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
+    fn poll_read_alloc(&mut self) -> tokio::prelude::Poll<Vec<u8>, std::io::Error>
+    {
+        let mut v: Vec<u8> = vec![0; 8192];
+        self.poll_read(v.as_mut_slice()).map(move |size| {
+            match size {
+                Async::NotReady => Async::NotReady,
+                Async::Ready(size) => {
+                    v.resize(size, 0);
+                    Async::Ready(v)
+                }
+            }
+        })
+    }
+}
 
 impl<S: AsyncRead + AsyncWrite + Sync + Send + 'static> AsyncStream for S {}
 
@@ -226,6 +240,21 @@ fn notify_other_tasks(queue: &mut VecDeque<tokio::prelude::task::Task>) {
 }
 
 impl AsyncStreamAdapter {
+
+    fn poll_read_alloc(&mut self) -> tokio::io::Result<Async<Vec<u8>>> {
+        match self.stream.poll_read_alloc() {
+            Ok(Async::NotReady) => {
+                self.read_queue.push_back(tokio::prelude::task::current());
+                Ok(Async::NotReady)
+            }
+            Ok(Async::Ready(ret)) => {
+                notify_other_tasks(&mut self.read_queue);
+                Ok(Async::Ready(ret))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
     fn poll_read(&mut self, buf: &mut [u8]) -> tokio::io::Result<Async<usize>> {
         match self.stream.poll_read(buf) {
             Ok(Async::NotReady) => {
@@ -295,22 +324,12 @@ impl AsyncStreamContainer {
     }
 
     async fn async_read_alloc(&self) -> IoResult<Vec<u8>> {
-        let mut vec: Vec<u8> = vec![0; 8192];
-
-        let res = tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+        tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
             Async::NotReady => Ok(Async::NotReady),
-            Async::Ready(mut adapter) => adapter.poll_read(vec.as_mut_slice()),
+            Async::Ready(mut adapter) => adapter.poll_read_alloc(),
         })
         .compat()
-        .await;
-
-        match res {
-            Ok(size) => {
-                vec.resize(size, 0);
-                Ok(vec)
-            }
-            Err(e) => Err(e),
-        }
+        .await
     }
 
     async fn async_write(&self, buf: Vec<u8>) -> IoResult<usize> {
@@ -721,7 +740,7 @@ impl EnclaveState {
         };
 
         let select_fut =
-            futures::future::select(return_future.boxed(), io_future.boxed()).map(|either| {
+            futures::future::select(return_future.boxed(), io_future.boxed()).map( |either| {
                 match either {
                     Either::Left((x, _)) => x,
                     _ => unreachable!(),
