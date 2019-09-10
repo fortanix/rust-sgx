@@ -7,12 +7,13 @@
 extern crate aesm_client;
 extern crate enclave_runner;
 extern crate sgxs_loaders;
+extern crate tokio;
 
 use aesm_client::AesmClient;
-use enclave_runner::usercalls::{SyncStream, UsercallExtension};
+use enclave_runner::usercalls::{AsyncStream, UsercallExtension};
 use enclave_runner::EnclaveBuilder;
 use sgxs_loaders::isgx::Device as IsgxDevice;
-
+use tokio::io::{AsyncRead, AsyncWrite};
 use std::io::{Read, Result as IoResult, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -35,17 +36,29 @@ impl CatService {
             .map(|c| CatService { c })
     }
 }
-impl SyncStream for CatService {
-    fn read(&self, buf: &mut [u8]) -> IoResult<usize> {
+
+impl Read for CatService {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
         self.c.lock().unwrap().stdout.as_mut().unwrap().read(buf)
     }
+}
 
-    fn write(&self, buf: &[u8]) -> IoResult<usize> {
+impl Write for CatService {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
         self.c.lock().unwrap().stdin.as_mut().unwrap().write(buf)
     }
 
-    fn flush(&self) -> IoResult<()> {
+    fn flush(&mut self) -> IoResult<()> {
         self.c.lock().unwrap().stdin.as_mut().unwrap().flush()
+    }
+}
+
+impl AsyncRead for CatService {
+}
+
+impl AsyncWrite for CatService {
+    fn shutdown(&mut self) -> tokio::prelude::Poll<(), std::io::Error> {
+        Ok(().into())
     }
 }
 
@@ -58,7 +71,7 @@ impl UsercallExtension for ExternalService {
         addr: &str,
         _local_addr: Option<&mut String>,
         _peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn SyncStream>>> {
+    ) -> IoResult<Option<Box<dyn AsyncStream>>> {
         // If the passed address is not "cat", we return none, whereby the passed address gets treated as
         // an IP address which is the default behavior.
         match &*addr {
