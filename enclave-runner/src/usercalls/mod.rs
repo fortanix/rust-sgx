@@ -1078,7 +1078,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     async fn read_alloc(&self, fd: Fd, buf: &mut OutputBuffer<'tcs>) -> IoResult<()> {
-        let vec: Vec<u8> = vec![0; 8192];
         let file_desc = self.lookup_fd(fd).await?;
         let v = file_desc.as_stream()?.async_read_alloc().await?;
         buf.set(v);
@@ -1089,7 +1088,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
     async fn write(&self, fd: Fd, buf: &[u8]) -> IoResult<usize> {
         let vec = buf.to_vec();
         let file_desc = self.lookup_fd(fd).await?;
-        file_desc.as_stream()?.async_write(vec).await
+        return file_desc.as_stream()?.async_write(vec).await;
     }
 
     #[inline(always)]
