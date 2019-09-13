@@ -16,40 +16,51 @@ use sgxs_loaders::isgx::Device as IsgxDevice;
 use tokio::io::{AsyncRead, AsyncWrite};
 use std::io::{Read, Result as IoResult, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use tokio::sync::lock::Lock;
+use tokio::prelude::Async;
 
 /// This example demonstrates use of usercall extensions.
 /// User call extension allow the enclave code to "connect" to an external service via a customized enclave runner.
 /// Here we customize the runner to intercept calls to connect to an address "cat" which actually connects the enclave application to
 /// stdin and stdout of `cat` process.
-
 struct CatService {
-    c: Arc<Mutex<Child>>,
+    c: Lock<Child>,
 }
+
 impl CatService {
     fn new() -> Result<CatService, std::io::Error> {
         Command::new("/bin/cat")
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())
             .spawn()
-            .map(|c| Arc::new(Mutex::new(c)))
+            .map(|c| Lock::new(c))
             .map(|c| CatService { c })
+    }
+}
+
+macro_rules! poll_lock_wouldblock {
+    ($lock:expr) => {
+        match $lock.clone().poll_lock() {
+            Async::NotReady => Err(std::io::ErrorKind::WouldBlock.into()),
+            Async::Ready(ret) => IoResult::Ok(ret),
+        }
     }
 }
 
 impl Read for CatService {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-        self.c.lock().unwrap().stdout.as_mut().unwrap().read(buf)
+//        self.c.lock().unwrap().stdout.as_mut().unwrap().read(buf)
+        poll_lock_wouldblock!(self.c)?.stdout.as_mut().unwrap().read(buf)
     }
 }
 
 impl Write for CatService {
     fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
-        self.c.lock().unwrap().stdin.as_mut().unwrap().write(buf)
+        poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().write(buf)
     }
 
     fn flush(&mut self) -> IoResult<()> {
-        self.c.lock().unwrap().stdin.as_mut().unwrap().flush()
+        poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().flush()
     }
 }
 
