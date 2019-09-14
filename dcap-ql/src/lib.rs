@@ -8,17 +8,13 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
-extern crate byteorder;
 extern crate dcap_ql_sys;
-#[macro_use]
 extern crate failure;
 #[macro_use]
 #[cfg(not(feature = "link"))]
 extern crate lazy_static;
 #[cfg(not(feature = "link"))]
 extern crate libc;
-#[macro_use]
-extern crate num_derive;
 extern crate num_traits;
 extern crate sgx_isa;
 extern crate sgxs_loaders;
@@ -30,8 +26,6 @@ pub use dcap_ql_sys::Quote3Error;
 use sgx_isa::{Report, Targetinfo};
 use sgxs_loaders::sgx_enclave_common::dl::os::unix::Library as Dl;
 use sgxs_loaders::sgx_enclave_common::Library as EnclaveCommonLibrary;
-
-pub mod quote;
 
 #[cfg(not(feature = "link"))]
 mod dl;

@@ -11,6 +11,7 @@ members = [
     "rs-libc",
     "sgxs",
     "sgx-isa",
+    "sgx-quote",
     "sgxs-loaders",
     "sgxs-tools"
 ]

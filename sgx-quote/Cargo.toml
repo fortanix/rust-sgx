@@ -1,0 +1,25 @@
+[package]
+name = "sgx-quote"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = """
+Rust definitions of quote structs in libsgx_dcap_ql.
+
+SGX: Software Guard Extensions
+DCAP: DataCenter Attestation Primitives
+QL: Quoting Library
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/api/sgx_quote/"
+homepage = "https://edp.fortanix.com/"
+keywords = ["sgx", "dcap", "quote"]
+categories = ["api-bindings"]
+autotests = true
+
+[dependencies]
+# External dependencies
+byteorder = "1.1" # Unlicense/MIT
+failure = "0.1"   # MIT/Apache-2.0
+num-derive = "0.2"  # MIT/Apache-2.0
+num-traits = "0.2"  # MIT/Apache-2.0
