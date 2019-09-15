@@ -348,6 +348,7 @@ dependencies = [
  "report-test 0.2.0",
  "reqwest 0.9.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sgx-quote 0.1.0",
 ]
 
 [[package]]

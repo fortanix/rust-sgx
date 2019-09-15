@@ -16,9 +16,9 @@ categories = ["development-tools"]
 
 [dependencies]
 # Project dependencies
-"enclave-runner" = { version = "0.2.0", path = "../enclave-runner" }
-"sgxs" = { version = "0.7.0", path = "../sgxs" }
-"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
+enclave-runner = { version = "0.2", path = "../enclave-runner" }
+sgxs = { version = "0.7", path = "../sgxs" }
+sgx-isa = { version = "0.3", path = "../sgx-isa" }
 
 # External dependencies
-failure = "0.1.1"   # MIT/Apache-2.0
+failure = "0.1"   # MIT/Apache-2.0

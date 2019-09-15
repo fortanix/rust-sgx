@@ -17,15 +17,15 @@ categories = ["os", "hardware-support"]
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.7.0", path = "../sgxs", features = ["crypto-openssl"] }
-fortanix-sgx-abi = { version = "0.3.0", path = "../fortanix-sgx-abi" }
-sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
+sgxs = { version = "0.7", path = "../sgxs", features = ["crypto-openssl"] }
+fortanix-sgx-abi = { version = "0.3", path = "../fortanix-sgx-abi" }
+sgx-isa = { version = "0.3", path = "../sgx-isa" }
 
 # External dependencies
-failure = "0.1.1"        # MIT/Apache-2.0
-failure_derive = "0.1.1" # MIT/Apache-2.0
-fnv = "1"                # MIT/Apache-2.0
-lazy_static = "1.2.0"    # MIT/Apache-2.0
-libc = "0.2.48"          # MIT/Apache-2.0
-nix = "0.13.0"           # MIT
-openssl = "0.10"         # Apache-2.0
+failure = "0.1"        # MIT/Apache-2.0
+failure_derive = "0.1" # MIT/Apache-2.0
+fnv = "1.0"            # MIT/Apache-2.0
+lazy_static = "1.2"    # MIT/Apache-2.0
+libc = "0.2"           # MIT/Apache-2.0
+nix = "0.13"           # MIT
+openssl = "0.10"       # Apache-2.0

@@ -34,13 +34,14 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Project dependencies
-"dcap-ql" = { version = "0.2.0", path = "../dcap-ql", features = ["link"] }
-"report-test" = { version = "0.2.0", path = "../report-test" }
+dcap-ql = { version = "0.2", path = "../dcap-ql", features = ["link"] }
+report-test = { version = "0.2", path = "../report-test" }
+sgx-quote = { version = "0.1", path = "../sgx-quote" }
 
 # External dependencies
-byteorder = "1.1.0"        # Unlicense/MIT
+byteorder = "1.1"          # Unlicense/MIT
 env_logger = "0.6"         # MIT/Apache-2.0
-lazy_static = "1"          # MIT/Apache-2.0
+lazy_static = "1.0"        # MIT/Apache-2.0
 log = "0.4"                # MIT/Apache-2.0
 reqwest = "0.9"            # MIT/Apache-2.0
-rustc-serialize = "0.3.24" # MIT/Apache-2.0
+rustc-serialize = "0.3"    # MIT/Apache-2.0

@@ -26,14 +26,14 @@ test-sgx = []
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.7.0", path = "../sgxs", optional = true }
+sgxs = { version = "0.7", path = "../sgxs", optional = true }
 
 # External dependencies
-byteorder = "1.0"          # Unlicense/MIT
-lazy_static = "1"          # MIT/Apache-2.0
-protobuf = "2.8.0"         # MIT/Apache-2.0
-failure = "0.1.1"          # MIT/Apache-2.0
-failure_derive = "0.1.1"   # MIT/Apache-2.0
+byteorder = "1.0"        # Unlicense/MIT
+lazy_static = "1.0"      # MIT/Apache-2.0
+protobuf = "2.8"         # MIT/Apache-2.0
+failure = "0.1"          # MIT/Apache-2.0
+failure_derive = "0.1"   # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 # We require a version of unix-socket with the following change:
@@ -41,16 +41,16 @@ failure_derive = "0.1.1"   # MIT/Apache-2.0
 # the future, https://github.com/rust-lang/rust/issues/42048 might provide std
 # support. In addition, we need UnixStream::connect_timeout, which may be
 # provided by https://github.com/rust-lang/rust/issues/53615.
-unix_socket2 = "0.5.4"     # MIT/Apache-2.0
+unix_socket2 = "0.5"     # MIT/Apache-2.0
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.7", features = ["combaseapi", "enclaveapi", "memoryapi", "objbase"] }
-sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
+winapi = { version = "0.3", features = ["combaseapi", "enclaveapi", "memoryapi", "objbase"] }
+sgx-isa = { version = "0.3", path = "../sgx-isa" }
 
 [build-dependencies]
-protoc-rust = "2.8.0" # MIT/Apache-2.0
+protoc-rust = "2.8" # MIT/Apache-2.0
 
 [dev-dependencies]
-sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
-"report-test" = { version = "0.2.0", path = "../report-test" }
-"sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
+sgx-isa = { version = "0.3", path = "../sgx-isa" }
+report-test = { version = "0.2", path = "../report-test" }
+sgxs-loaders = { version = "0.2", path = "../sgxs-loaders" }

@@ -18,7 +18,7 @@ use std::{mem, ptr, slice};
 use byteorder::{ByteOrder, LE};
 use rustc_serialize::hex::{FromHex, ToHex};
 
-use dcap_ql::{quote, Quote3Error};
+use dcap_ql::Quote3Error;
 
 mod ql;
 
@@ -90,21 +90,21 @@ fn get_quote_with_raw_tcb() -> Result<Vec<u8>, Quote3Error> {
 /// Check if a quote matches the QE ID and parse the QE certification data from
 /// the quote.
 fn parse_certdata(
-    qe_id: quote::QeId,
+    qe_id: sgx_quote::QeId,
     quote: &[u8],
-) -> Result<quote::Qe3CertDataPpid<'static>, Quote3Error> {
-    let quote = quote::Quote::parse(quote).map_err(|e| {
+) -> Result<sgx_quote::Qe3CertDataPpid<'static>, Quote3Error> {
+    let quote = sgx_quote::Quote::parse(quote).map_err(|e| {
         error!("PPID query: failed to parse quote: {}", e);
         Quote3Error::NoPlatformCertData
     })?;
 
-    let quote::QuoteHeader::V3 {
+    let sgx_quote::QuoteHeader::V3 {
         qe3_vendor_id,
         user_data,
         ..
     } = quote.header();
 
-    if **qe3_vendor_id != quote::QE3_VENDOR_ID_INTEL {
+    if **qe3_vendor_id != sgx_quote::QE3_VENDOR_ID_INTEL {
         error!("PPID query: QE vendor ID is not Intel");
         return Err(Quote3Error::NoPlatformCertData);
     }
@@ -117,21 +117,21 @@ fn parse_certdata(
     }
 
     let sig = quote
-        .signature::<quote::Quote3SignatureEcdsaP256>()
+        .signature::<sgx_quote::Quote3SignatureEcdsaP256>()
         .map_err(|e| {
             error!("PPID query: {}", e);
             Quote3Error::NoPlatformCertData
         })?;
 
     let cd = sig
-        .certification_data::<quote::Qe3CertDataPpid>()
+        .certification_data::<sgx_quote::Qe3CertDataPpid>()
         .map_err(|e| {
             error!("PPID query: {}", e);
             Quote3Error::NoPlatformCertData
         })?;
 
     // PpidEncryptedRsa2048 / PpidCleartext not supported
-    if sig.certification_data_type() != quote::CertificationDataType::PpidEncryptedRsa3072 {
+    if sig.certification_data_type() != sgx_quote::CertificationDataType::PpidEncryptedRsa3072 {
         error!(
             "PPID query: Invalid certification data type: {:?}",
             sig.certification_data_type()
@@ -148,7 +148,7 @@ fn parse_certdata(
 // This function interacts with the Intel Trusted Services API to get the PCK
 // cert. The `OCP_APIM_SUBSCRIPTION_KEY` environment variable must be set with
 // the user's API key.
-fn get_pckcert(certdata: &quote::Qe3CertDataPpid) -> Result<PckCertInfo<'static>, Quote3Error> {
+fn get_pckcert(certdata: &sgx_quote::Qe3CertDataPpid) -> Result<PckCertInfo<'static>, Quote3Error> {
     const CPUSVN_LEN: usize = 16;
     const TCBM_LEN: usize = CPUSVN_LEN + 2; // sizeof(CPUSVN) + sizeof(ISVSVN)
 
@@ -230,10 +230,11 @@ pub extern "C" fn sgx_ql_get_quote_config(
     cert_id: &PckCertId,
     p_cert_config: *mut *const Config,
 ) -> Quote3Error {
+    use sgx_quote::{QeId, Qe3CertDataPpid};
     lazy_static! {
-        static ref CERTDATA_CACHE: Mutex<HashMap<quote::QeId<'static>, quote::Qe3CertDataPpid<'static>>> =
+        static ref CERTDATA_CACHE: Mutex<HashMap<QeId<'static>, Qe3CertDataPpid<'static>>> =
             Mutex::default();
-        static ref CERT_CACHE: Mutex<HashMap<quote::Qe3CertDataPpid<'static>, PckCertInfo<'static>>> =
+        static ref CERT_CACHE: Mutex<HashMap<Qe3CertDataPpid<'static>, PckCertInfo<'static>>> =
             Mutex::default();
         static ref ENTERED_ONCE: Mutex<()> = Mutex::default();
     }
@@ -278,7 +279,7 @@ pub extern "C" fn sgx_ql_get_quote_config(
                     return Err(Quote3Error::InvalidParameter);
                 } else {
                     // This code path never gets called by DCAP QL 1.0
-                    certdata = quote::Qe3CertDataPpid {
+                    certdata = Qe3CertDataPpid {
                         ppid: slice::from_raw_parts(
                             cert_id.encrypted_ppid,
                             cert_id.encrypted_ppid_len as _,

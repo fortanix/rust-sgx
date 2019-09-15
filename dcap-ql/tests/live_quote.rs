@@ -6,13 +6,13 @@
 
 extern crate dcap_ql;
 extern crate report_test;
+extern crate sgx_quote;
 extern crate sgxs;
 extern crate sgxs_loaders;
 
 use std::env;
 
-use dcap_ql::quote;
-use dcap_ql::quote::CertificationDataType::*;
+use sgx_quote::CertificationDataType::*;
 use sgxs_loaders::sgx_enclave_common::Library as EnclaveCommonLibrary;
 
 fn parse_live_quote(mut loader: impl sgxs::loader::Load) {
@@ -41,9 +41,9 @@ fn parse_live_quote(mut loader: impl sgxs::loader::Load) {
     let ti = dcap_ql::target_info().unwrap();
     let report = report_test::report(&ti, &mut loader).unwrap();
     let quote = dcap_ql::quote(&report).unwrap();
-    let quote = quote::Quote::parse(&quote).unwrap();
+    let quote = sgx_quote::Quote::parse(&quote).unwrap();
     let sig = quote
-        .signature::<quote::Quote3SignatureEcdsaP256>()
+        .signature::<sgx_quote::Quote3SignatureEcdsaP256>()
         .unwrap();
 
     assert_eq!(sig.certification_data_type(), cd_type);

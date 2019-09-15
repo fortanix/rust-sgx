@@ -19,10 +19,10 @@ sgx-isa = { version = "0.3.1", path = "../sgx-isa" }
 # External dependencies
 byteorder = "1.0"                                     # Unlicense/MIT
 time = "0.1"                                          # MIT/Apache-2.0
-failure = "0.1.1"                                     # MIT/Apache-2.0
-failure_derive = "0.1.1"                              # MIT/Apache-2.0
+failure = "0.1"                                       # MIT/Apache-2.0
+failure_derive = "0.1"                                # MIT/Apache-2.0
 openssl = { version = "0.10", optional = true }       # Apache-2.0
-openssl-sys = { version = "0.9.24", optional = true } # Apache-2.0
+openssl-sys = { version = "0.9", optional = true }    # Apache-2.0
 foreign-types = { version = "0.3", optional = true }  # MIT/Apache-2.0
 
 [features]
