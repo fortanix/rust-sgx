@@ -230,11 +230,10 @@ pub extern "C" fn sgx_ql_get_quote_config(
     cert_id: &PckCertId,
     p_cert_config: *mut *const Config,
 ) -> Quote3Error {
-    use sgx_quote::{QeId, Qe3CertDataPpid};
     lazy_static! {
-        static ref CERTDATA_CACHE: Mutex<HashMap<QeId<'static>, Qe3CertDataPpid<'static>>> =
+        static ref CERTDATA_CACHE: Mutex<HashMap<sgx_quote::QeId<'static>, sgx_quote::Qe3CertDataPpid<'static>>> =
             Mutex::default();
-        static ref CERT_CACHE: Mutex<HashMap<Qe3CertDataPpid<'static>, PckCertInfo<'static>>> =
+        static ref CERT_CACHE: Mutex<HashMap<sgx_quote::Qe3CertDataPpid<'static>, PckCertInfo<'static>>> =
             Mutex::default();
         static ref ENTERED_ONCE: Mutex<()> = Mutex::default();
     }
@@ -279,7 +278,7 @@ pub extern "C" fn sgx_ql_get_quote_config(
                     return Err(Quote3Error::InvalidParameter);
                 } else {
                     // This code path never gets called by DCAP QL 1.0
-                    certdata = Qe3CertDataPpid {
+                    certdata = sgx_quote::Qe3CertDataPpid {
                         ppid: slice::from_raw_parts(
                             cert_id.encrypted_ppid,
                             cert_id.encrypted_ppid_len as _,
