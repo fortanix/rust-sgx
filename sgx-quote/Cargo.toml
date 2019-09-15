@@ -19,7 +19,7 @@ autotests = true
 
 [dependencies]
 # External dependencies
-byteorder = "1.1" # Unlicense/MIT
-failure = "0.1"   # MIT/Apache-2.0
+byteorder = "1.1"   # Unlicense/MIT
+failure = "0.1"     # MIT/Apache-2.0
 num-derive = "0.2"  # MIT/Apache-2.0
 num-traits = "0.2"  # MIT/Apache-2.0
