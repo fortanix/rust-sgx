@@ -9,6 +9,8 @@ use std::mem;
 
 use byteorder::{ByteOrder, LE};
 use num_traits::FromPrimitive;
+use openssl::x509::X509;
+use percent_encoding::percent_decode;
 
 // ====================================================
 // ================= TYPE DEFINITIONS =================
@@ -73,6 +75,13 @@ pub struct Qe3CertDataPpid<'a> {
     pub pceid: u16,
 }
 
+#[derive(Clone)]
+pub struct Qe3CertDataPckCertChain {
+    pub leaf_cert: X509,
+    pub intermed_cert: X509,
+    pub root_cert: X509,
+}
+
 pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
 
 // ===========================================
@@ -102,6 +111,12 @@ pub trait Qe3CertData<'a>: Sized {
     fn parse(type_: CertificationDataType, data: &'a [u8]) -> Result<Self>;
 }
 
+const QUOTE_HEADER_LEN: usize = 48;
+const QUOTE_SIGNATURE_START_BYTE: usize = 436;
+const ISV_ENCLAVE_REPORT_SIG_LEN: usize = 64;
+const ATT_KEY_PUB_LEN: usize = 64;
+const REPORT_DATA_OFFSET: usize = 320;
+const PCK_HASH_LEN: usize = 32;
 const ECDSA_P256_SIGNATURE_LEN: usize = 64;
 const ECDSA_P256_PUBLIC_KEY_LEN: usize = 64;
 const QE3_VENDOR_ID_LEN: usize = 16;
@@ -111,6 +126,28 @@ const CPUSVN_LEN: usize = 16;
 const QUOTE_VERSION_3: u16 = 3;
 
 impl<'a> Quote<'a> {
+    // This vector of the Quote Header and ISV Enclave Report is the material signed
+    // by the Quoting Enclave's Attestation Key and should be returned in raw form to
+    // verify the Attestation Key's signature. Specifically, the header's version
+    // number should also be kept intact in the vector, rather than being abstracted
+    // into the Header enum.
+    pub fn raw_header_and_body(quote: &'a [u8]) -> Result<Vec<u8>> {
+        Ok(quote[0..(QUOTE_HEADER_LEN + REPORT_BODY_LEN)].to_vec())
+    }
+
+    // The Report Data of the QE Report holds a SHA256 hash of (ECDSA Attestation Key || QE
+    // Authentication data) || 32-0x00's. This hash must be verified for attestation.
+    // The Report comes after the ISV Enclave Report Signature and Attestation Public Key in the
+    // Quote Signature. The structure of the QE Report in the Quote Signature is identical
+    // to the structure of any enclave's Report, so the Report Data begins at byte 320 of the Report.
+    pub fn raw_pck_hash(quote: &'a [u8]) -> Result<&[u8]> {
+        let start_byte = QUOTE_SIGNATURE_START_BYTE
+            + ISV_ENCLAVE_REPORT_SIG_LEN
+            + ATT_KEY_PUB_LEN
+            + REPORT_DATA_OFFSET;
+        Ok(&quote[start_byte.. start_byte + PCK_HASH_LEN])
+    }
+
     pub fn parse(mut quote: &'a [u8]) -> Result<Quote<'a>> {
         let version = quote.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
         if version != QUOTE_VERSION_3 {
@@ -220,6 +257,26 @@ impl<'a> Qe3CertData<'a> for Qe3CertDataPpid<'a> {
     }
 }
 
+impl Qe3CertData<'_> for Qe3CertDataPckCertChain {
+    fn parse(type_: CertificationDataType, data: &[u8]) -> Result<Self> {
+        if type_ != CertificationDataType::PckCertificateChain {
+            bail!("Invalid certification data type: {:?}", type_);
+        }
+
+        let utf8_decoded = percent_decode(data).decode_utf8()?.into_owned();
+        let pck_cert_chain = X509::stack_from_pem(&utf8_decoded.as_bytes()[..])?;
+        let leaf_cert = pck_cert_chain[0].clone();
+        let intermed_cert = pck_cert_chain[1].clone();
+        let root_cert = pck_cert_chain[2].clone();
+
+        Ok(Qe3CertDataPckCertChain {
+            leaf_cert,
+            intermed_cert,
+            root_cert,
+        })
+    }
+}
+
 // =============================================
 // ================= ACCESSORS =================
 // =============================================
@@ -323,12 +380,22 @@ impl<'a> Qe3CertDataPpid<'a> {
     }
 }
 
+impl Qe3CertDataPckCertChain {
+    pub fn clone_owned(&self) -> Qe3CertDataPckCertChain {
+        Qe3CertDataPckCertChain {
+            leaf_cert: (*self.leaf_cert).to_owned().into(),
+            intermed_cert: (*self.intermed_cert).to_owned().into(),
+            root_cert: (*self.root_cert).to_owned().into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_certdata() {
+    fn test_parse_certdata_ppid() {
         const TEST_QUOTE: &[u8] = &*include_bytes!("../tests/quote_raw_tcb.bin");
         const QE_ID: [u8; 16] = [
             0x00, 0xfb, 0xe6, 0x73, 0x33, 0x36, 0xea, 0xf7, 0xa4, 0xe3, 0xd8, 0xb9, 0x66, 0xa8,

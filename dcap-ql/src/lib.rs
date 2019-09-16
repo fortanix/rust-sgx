@@ -4,9 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
-       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
-       html_root_url = "https://edp.fortanix.com/docs/api/")]
+#![doc(
+    html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+    html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+    html_root_url = "https://edp.fortanix.com/docs/api/"
+)]
 
 extern crate byteorder;
 extern crate dcap_ql_sys;
@@ -20,6 +22,8 @@ extern crate libc;
 #[macro_use]
 extern crate num_derive;
 extern crate num_traits;
+extern crate openssl;
+extern crate percent_encoding;
 extern crate sgx_isa;
 extern crate sgxs_loaders;
 
