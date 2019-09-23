@@ -26,7 +26,9 @@ static const unsigned char table[] = { -1,
 -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
 };
 
+#ifndef _MSC_VER
 __attribute__ ((visibility ("hidden")))
+#endif
 unsigned long long __intscan(FILE *f, unsigned base, int pok, unsigned long long lim)
 {
 	const unsigned char *val = table+1;

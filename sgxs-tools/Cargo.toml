@@ -33,7 +33,6 @@ path = "src/sgx_detect/main.rs"
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
 "aesm-client" = { version = "0.2.0", path = "../aesm-client", features = ["sgxs"] }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
-"dcap-ql" = { version = "0.2.0", path = "../dcap-ql" }
 "report-test" = { version = "0.2.0", path = "../report-test" }
 "enclave-runner" = { version = "0.2.0", path = "../enclave-runner" }
 
@@ -62,6 +61,12 @@ serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
 serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 pe = { version = "0.1", optional = true }        # GPL
+
+[target.'cfg(unix)'.dependencies]
+"dcap-ql" = { version = "0.2.0", path = "../dcap-ql" }
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3.7", features = ["winbase"] }
 
 [features]
 pe2sgxs = ["pe", "broadcast"]

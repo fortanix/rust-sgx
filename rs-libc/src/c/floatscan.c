@@ -63,7 +63,6 @@ static long long scanexp(FILE *f, int pok)
 	return neg ? -y : y;
 }
 
-
 static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int pok)
 {
 	uint32_t x[KMAX];
@@ -418,7 +417,9 @@ static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok)
 	return scalbnl(y, e2);
 }
 
+#ifndef _MSC_VER
 __attribute__ ((visibility ("hidden")))
+#endif
 long double __floatscan(FILE *f, int prec, int pok)
 {
 	int sign = 1;

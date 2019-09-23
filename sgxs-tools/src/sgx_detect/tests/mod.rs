@@ -1,6 +1,8 @@
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::io::ErrorKind;
+use std::io::Error as IoError;
 
 use failure::Error;
 use petgraph::visit::EdgeRef;
@@ -514,10 +516,13 @@ struct DeviceLoader {
 impl Update for DeviceLoader {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(DeviceLoaderInner {
+            #[cfg(unix)]
             devpath: match support.loader_sgxdev {
                 Ok(ref dev) => Ok(dev.borrow().path().to_owned()),
                 Err(ref e) => Err(e.clone()),
             },
+            #[cfg(windows)]
+            devpath: Err(Rc::new(IoError::new(ErrorKind::NotFound, "Device Driver Path not supported in Windows").into())),
             modstatus: support.sgxdev_status.clone()
         });
     }
