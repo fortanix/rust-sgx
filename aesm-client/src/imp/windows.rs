@@ -277,8 +277,10 @@ impl AesmClient {
             )
             .into_io_error()
             .map_err(|e| {
-                if let Some(release) = (*(*interface).vtbl).release {
-                    release(interface);
+                if ((interface) != std::ptr::null_mut()) && ((*interface).vtbl  != std::ptr::null_mut()) {
+                    if let Some(release) = (*(*interface).vtbl).release {
+                        release(interface);
+                    }
                 }
                 CoUninitialize();
                 IoError::new(
