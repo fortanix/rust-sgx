@@ -28,7 +28,7 @@ use tokio::prelude::Stream as tokioStream;
 
 use crate::futures::compat::Future01CompatExt;
 use crate::futures::StreamExt;
-use futures::future::{Either, FutureExt, TryFutureExt};
+use futures::future::{Either, FutureExt, TryFutureExt, Future};
 use tokio::prelude::{Async, AsyncRead, AsyncWrite, Poll};
 use tokio::sync::lock::Lock;
 use tokio::sync::mpsc as async_mpsc;
@@ -1009,13 +1009,15 @@ pub trait UsercallExtension: 'static + Send + Sync + std::fmt::Debug {
     /// The enclave must not make any security decisions based on the local or
     /// peer address received.
     #[allow(unused)]
-    fn connect_stream(
-        &self,
-        addr: &str,
-        local_addr: Option<&mut String>,
-        peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn AsyncStream>>> {
-        Ok(None)
+    fn connect_stream<'future>(
+        &'future self,
+        addr: &'future str,
+        local_addr: Option<&'future mut String>,
+        peer_addr: Option<&'future mut String>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Option<Box<dyn AsyncStream>>>> +'future>> {
+        async {
+            Ok(None)
+        }.boxed_local()
     }
 
     /// Override the target for bind calls by the enclave. The runner should determine the service that the enclave is trying to bind to by looking at addr.
@@ -1172,7 +1174,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             &addr,
             local_addr_str.as_mut(),
             peer_addr_str.as_mut(),
-        )? {
+        ).await? {
             if let Some(local_addr) = local_addr {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
             }

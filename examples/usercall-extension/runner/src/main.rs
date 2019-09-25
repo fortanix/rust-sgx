@@ -49,7 +49,6 @@ macro_rules! poll_lock_wouldblock {
 
 impl Read for CatService {
     fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
-//        self.c.lock().unwrap().stdout.as_mut().unwrap().read(buf)
         poll_lock_wouldblock!(self.c)?.stdout.as_mut().unwrap().read(buf)
     }
 }
