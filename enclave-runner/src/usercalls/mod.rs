@@ -51,7 +51,6 @@ use self::nix::sys::signal;
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs;
 use crate::tcs::{CoResult, ThreadResult};
-use futures::compat::Stream01CompatExt;
 use std::thread::JoinHandle;
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
@@ -217,11 +216,11 @@ pub trait AsyncListener: 'static + Send {
     /// On success, user-space can fill in the strings as appropriate.
     ///
     /// The enclave must not make any security decisions based on the local address received.
-    fn accept<'a>(
-        &'a mut self,
-        local_addr: Option<&'a mut String>,
-        peer_addr: Option<&'a mut String>,
-    ) -> std::pin::Pin<Box<dyn futures::Future<Output = IoResult<Box<dyn AsyncStream>>> + 'a>>;
+    fn poll_accept(
+        &mut self,
+        local_addr: Option<&mut String>,
+        peer_addr: Option<&mut String>,
+    ) -> tokio::io::Result<Async<Option<Box<dyn AsyncStream>>>>;
 }
 
 struct AsyncStreamAdapter {
@@ -351,42 +350,82 @@ impl AsyncStreamContainer {
     }
 }
 
+struct AsyncListenerAdapter {
+    listener: Box<dyn AsyncListener>,
+    accept_queue: VecDeque<tokio::prelude::task::Task>,
+}
+
+impl AsyncListenerAdapter {
+    fn poll_accept(&mut self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> tokio::io::Result<Async<Option<Box<dyn AsyncStream>>>> {
+        match self.listener.poll_accept(local_addr, peer_addr) {
+            Ok(Async::NotReady) => {
+                self.accept_queue.push_back(tokio::prelude::task::current());
+                Ok(Async::NotReady)
+            }
+            Ok(Async::Ready(ret)) => {
+                notify_other_tasks(&mut self.accept_queue);
+                Ok(Async::Ready(ret))
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
 struct AsyncListenerContainer {
-    inner: Lock<Box<dyn AsyncListener>>,
+    inner: Lock<AsyncListenerAdapter>,
 }
 
 impl AsyncListenerContainer {
     fn new<L: AsyncListener>(l: Box<L>) -> Self {
         AsyncListenerContainer {
-            inner: Lock::new(l),
+            inner: Lock::new(AsyncListenerAdapter {
+                listener: l,
+                accept_queue: VecDeque::new(),
+            }),
         }
+    }
+
+    async fn async_accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Option<Box<dyn AsyncStream>>> {
+        let mut local_addr_owned: Option<String> = if local_addr.is_some() { Some(String::new()) } else { None };
+        let mut peer_addr_owned: Option<String> = if peer_addr.is_some() { Some(String::new()) } else { None };
+
+        let res = tokio::prelude::future::poll_fn(|| match self.inner.clone().poll_lock() {
+            Async::NotReady => Ok(Async::NotReady),
+            Async::Ready(mut inner) => inner.poll_accept(local_addr_owned.as_mut(), peer_addr_owned.as_mut()),
+        })
+        .compat()
+        .await;
+
+        if let Some(local_addr) = local_addr {
+            *local_addr = local_addr_owned.unwrap();
+        }
+        if let Some(peer_addr) = peer_addr {
+            *peer_addr = peer_addr_owned.unwrap();
+        }
+        res
     }
 }
 
-impl AsyncListener for futures::compat::Compat01As03<tokio::net::tcp::Incoming> {
-    fn accept<'a>(
-        &'a mut self,
-        local_addr: Option<&'a mut String>,
-        peer_addr: Option<&'a mut String>,
-    ) -> std::pin::Pin<Box<dyn futures::Future<Output = IoResult<Box<dyn AsyncStream>>> + 'a>> {
-        async move {
-            match self.next().await.unwrap() {
-                Err(e) => Err(e),
-                Ok(stream) => {
-                    if let Some(local_addr) = local_addr {
-                        match stream.local_addr() {
-                            Ok(local) => *local_addr = local.to_string(),
-                            Err(_) => *local_addr = "error".to_string(),
-                        }
-                    }
-                    if let Some(peer_addr) = peer_addr {
-                        *peer_addr = stream.peer_addr().unwrap().to_string();
-                    }
-                    Ok(Box::new(stream) as _)
+impl AsyncListener for tokio::net::tcp::Incoming {
+    fn poll_accept(
+        &mut self,
+        local_addr: Option<&mut String>,
+        peer_addr: Option<&mut String>,
+    ) -> tokio::io::Result<Async<Option<Box<dyn AsyncStream>>>> {
+        match self.poll() {
+            Ok(Async::Ready(Some(stream))) => {
+                if let Some(local_addr) = local_addr {
+                    *local_addr = stream.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
                 }
+                if let Some(peer_addr) = peer_addr {
+                    *peer_addr = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
+                }
+                Ok(Async::Ready(Some(Box::new(stream))))
             }
+            Ok(Async::Ready(None)) => Ok(Async::Ready(None)),
+            Ok(Async::NotReady) => Ok(Async::NotReady),
+            Err(e) => Err(e),
         }
-            .boxed_local()
     }
 }
 
@@ -1121,7 +1160,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             if let Some(local_addr) = local_addr {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
             }
-            let socket = stream_ext.incoming().compat();
+            let socket = stream_ext.incoming();
             return Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await);
         }
 
@@ -1130,7 +1169,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(local_addr) = local_addr {
             local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
-        let socket = socket.incoming().compat();
+        let socket = socket.incoming();
         Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await)
     }
 
@@ -1145,12 +1184,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
         let mut peer_addr_str = peer_addr.as_ref().map(|_| String::new());
 
         let file_desc = self.lookup_fd(fd).await?;
-        let mut fut = poll_lock_await_unwrap!(file_desc.as_listener()?.inner);
+        let stream = file_desc.as_listener()?.async_accept(local_addr_str.as_mut(), peer_addr_str.as_mut()).await?.unwrap();
 
-        let stream = fut
-            .accept(local_addr_str.as_mut(), peer_addr_str.as_mut())
-            .await
-            .unwrap();
         if let Some(local_addr) = local_addr {
             local_addr.set(&local_addr_str.unwrap().into_bytes()[..])
         }
