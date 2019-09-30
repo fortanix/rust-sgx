@@ -850,7 +850,7 @@ impl EnclaveState {
             entry: CoEntry::Initial(main.tcs, 0, 0, 0, 0, 0),
         };
 
-        let num_of_threads = num_cpus::get();
+        let num_of_threads = 100;
 
         let kind = EnclaveKind::Command(Command {
             panic_reason: Lock::new(PanicReason {
