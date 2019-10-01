@@ -25,13 +25,10 @@ extern crate std;
 
 #[cfg(all(feature = "nightly", target_env = "sgx"))]
 extern crate core;
-
 #[macro_use]
 extern crate bitflags;
-
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 use std::os::fortanix_sgx::arch;
-
 use core::{convert::TryFrom, num::TryFromIntError};
 
 #[cfg(not(feature = "large_array_derive"))]
