@@ -10,9 +10,7 @@
 //! convenient.
 //!
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
-#![feature(asm)]
-#![feature(lang_items)]
-#![feature(no_std)]
+#![cfg_attr(feature = "nightly", feature(asm))]
 
 #![no_std]
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
@@ -23,12 +21,12 @@
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 extern crate std;
 
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-extern crate core;
 #[macro_use]
 extern crate bitflags;
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 use std::os::fortanix_sgx::arch;
+#[cfg(all(feature = "nightly", target_env = "sgx", not(feature = "sgxstd")))]
+mod arch;
 use core::{convert::TryFrom, num::TryFromIntError, slice};
 
 #[cfg(not(feature = "large_array_derive"))]
@@ -728,78 +726,4 @@ fn test_eq() {
 
     b.miscmask = 0xdeadbeef;
     assert!(a == b);
-}
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-use core::mem::MaybeUninit;
-
-/// Wrapper struct to force 16-byte alignment.
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-#[repr(align(16))]
-#[unstable(feature = "sgx_platform", issue = "56975")]
-pub struct Align16<T>(pub T);
-
-/// Wrapper struct to force 128-byte alignment.
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-#[repr(align(128))]
-#[unstable(feature = "sgx_platform", issue = "56975")]
-pub struct Align128<T>(pub T);
-
-/// Wrapper struct to force 512-byte alignment.
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-#[repr(align(512))]
-#[unstable(feature = "sgx_platform", issue = "56975")]
-pub struct Align512<T>(pub T);
-
-const ENCLU_EREPORT: u32 = 0;
-const ENCLU_EGETKEY: u32 = 1;
-
-/// Call the `EGETKEY` instruction to obtain a 128-bit secret key.
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-#[unstable(feature = "sgx_platform", issue = "56975")]
-pub fn egetkey(request: &Align512<[u8; 512]>) -> Result<Align16<[u8; 16]>, u32> {
-    unsafe {
-        let mut out = MaybeUninit::uninit();
-        let error;
-
-        asm!(
-            "enclu"
-            : "={eax}"(error)
-            : "{eax}"(ENCLU_EGETKEY),
-              "{rbx}"(request),
-              "{rcx}"(out.as_mut_ptr())
-            : "flags"
-        );
-
-        match error {
-            0 => Ok(out.assume_init()),
-            err => Err(err),
-        }
-    }
-}
-
-/// Call the `EREPORT` instruction.
-///
-/// This creates a cryptographic report describing the contents of the current
-/// enclave. The report may be verified by the enclave described in
-/// `targetinfo`.
-#[cfg(all(feature = "nightly", target_env = "sgx"))]
-#[unstable(feature = "sgx_platform", issue = "56975")]
-pub fn ereport(
-    targetinfo: &Align512<[u8; 512]>,
-    reportdata: &Align128<[u8; 64]>,
-) -> Align512<[u8; 432]> {
-    unsafe {
-        let mut report = MaybeUninit::uninit();
-
-        asm!(
-            "enclu"
-            : /* no output registers */
-            : "{eax}"(ENCLU_EREPORT),
-              "{rbx}"(targetinfo),
-              "{rcx}"(reportdata),
-              "{rdx}"(report.as_mut_ptr())
-        );
-
-        report.assume_init()
-    }
 }
