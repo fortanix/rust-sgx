@@ -135,7 +135,7 @@ impl Signer {
             q2: [0; 384],
         };
 
-        let (s, q1, q2) = try!(key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig)));
+        let (s, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig))?;
         let n = key.n();
 
         // Pad to 384 bytes
