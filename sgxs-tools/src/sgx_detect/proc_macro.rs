@@ -314,7 +314,7 @@ pub fn derive_print(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let DeriveInput { ident, .. } = parse_macro_input!(item as DeriveInput);
 
     quote!(impl Print for #ident {
-        fn try_supported(&self) -> Option<Status> {
+        fn try_supported(&self, build_type: &BuildType) -> Option<Status> {
             None
         }
     })

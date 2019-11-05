@@ -31,7 +31,7 @@ efi_softwareguardstatus:
     status: Disabled
 enclaveos_dev:
   Err: No such file or directory (os error 2)
-nodeagent:
+node_agent:
   Err: "http://localhost:9092/v1/sys/version: error trying to connect: Connection refused (os error 111)"
-permdaemon:
+perm_daemon:
   Err: "[perm_daemon_test] perm daemon is not operational"

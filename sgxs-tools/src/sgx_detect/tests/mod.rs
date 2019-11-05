@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::io::ErrorKind;
 #[cfg(windows)]
 use std::io::Error as IoError;
+use std::process;
 
 use failure::Error;
 use petgraph::visit::EdgeRef;
@@ -283,7 +284,7 @@ impl Dependency<EnclaveAttributes> for SgxFeatures {
 
 impl Print for SgxFeatures {
     // used for visibility control
-    fn try_supported(&self) -> Option<Status> {
+    fn try_supported(&self, _build_type: &BuildType) -> Option<Status> {
         Some(self.cpu_cfg.as_ref().map(|c| c.sgx1).as_req())
     }
 
@@ -323,7 +324,7 @@ impl Dependency<EnclavePageCache> for EpcSize {
 }
 
 impl Print for EpcSize {
-    fn try_supported(&self) -> Option<Status> {
+    fn try_supported(&self, _build_type: &BuildType) -> Option<Status> {
         None
     }
 
@@ -784,19 +785,20 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
     const CONTROL_VISIBILITY: bool = true;
 }
 
+// EnclaveOS requirements
 #[derive(Default, DebugSupport, Update)]
 struct Eor {
-    graphene : Status,
-    nodeagent : Status,
-    permdaemon : Status,
+    graphene: Status,
+    node_agent: Status,
+    perm_daemon: Status,
 }
 
 impl Print for Eor {
-    fn supported(&self) -> Status {
-        if {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPostInstall} {
-            self.graphene & self.nodeagent & self.permdaemon
+    fn supported_for_config(&self, build_type: &BuildType) -> Status {
+        if build_type == &BuildType::EnclaveOSPreInstall {
+            self.graphene & self.perm_daemon
         } else {
-            self.graphene & self.permdaemon
+            self.graphene & self.perm_daemon & self.node_agent
         }
     }
 }
@@ -810,10 +812,7 @@ struct GrapheneDevice {
 impl Update for GrapheneDevice {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(GrapheneDeviceInner {
-            service: match support.enclaveos_dev {
-                Ok(_) => Ok(()),
-                Err(ref e) => Err(e.clone()),
-            },
+            service: support.enclaveos_dev.clone()
         });
     }
 }
@@ -838,8 +837,8 @@ struct NodeAgent {
 impl Update for NodeAgent{
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(NodeAgentInner {
-            version: match support.nodeagent {
-                Ok(_) => Ok(support.nodeagent.clone().unwrap().current_ver),
+            version: match support.node_agent.clone() {
+                Ok(nodeagent) => Ok(nodeagent.version),
                 Err(ref e) => Err(e.clone()),
             },
         });
@@ -854,8 +853,7 @@ impl Print for NodeAgent {
     fn print(&self, level: usize) {
         if self.supported() == Status::Supported  {
             println!("{:width$}{}{} ({})", "", self.supported().paint(), self.name(), self.inner.as_ref().map(|inner| inner.version.clone().unwrap()).unwrap(), width = level * 2);
-        }
-        else {
+        } else {
             println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
         }
     }
@@ -870,10 +868,7 @@ struct PermDaemon {
 impl Update for PermDaemon{
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(PermDaemonInner {
-            service: match support.permdaemon {
-                Ok(v) => Ok(v),
-                Err(ref e) => Err(e.clone()),
-            },
+            service: support.perm_daemon.clone()
         });
     }
 }
@@ -882,10 +877,18 @@ impl Print for PermDaemon {
     fn supported(&self) -> Status {
         self.inner.as_ref().map(|inner| inner.service.is_ok()).as_req()
     }
+
+    fn print(&self, level: usize) {
+        if self.supported() == Status::Supported {
+            println!( "{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+        } else {
+            println!("{:width$}{}{} {}", "", self.supported().paint(), self.name(), "(Okay if container runtime is CRI-O (openshift))", width = level * 2);
+        }
+    }
 }
 
 impl Tests {
-    fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>) {
+    fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>, build_type: &BuildType) {
         if self
             .dependencies
             .edges_directed(test.into(), petgraph::Direction::Incoming)
@@ -895,7 +898,7 @@ impl Tests {
         }
         if let Some(adj_level) = level.checked_sub(1) {
             self.functions[test].print(adj_level);
-            match self.functions[test].try_supported() {
+            match self.functions[test].try_supported(&build_type) {
                 None | Some(Status::Supported) => {},
                 _ => debug.push(path.clone()),
             }
@@ -907,14 +910,14 @@ impl Tests {
             .unwrap_or_default()
         {
             path.push(child);
-            self.print_recurse(child, level + 1, path, debug);
+            self.print_recurse(child, level + 1, path, debug, build_type);
             path.pop();
         }
     }
 
-    pub fn print(&self, verbose: bool) {
+    pub fn print(&self, verbose: bool, build_type: &BuildType) {
         let mut debug = vec![];
-        self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug);
+        self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug, build_type);
         for path in debug {
             let test = *path.last().unwrap();
             let path = path.into_iter().map(|test| self.functions[test].name()).collect();
@@ -927,18 +930,15 @@ impl Tests {
             println!("\nYou're all set to start running SGX programs!");
         }
 
-        // Creating two variables as mutex lock could not be taken up twice in a single expression
-        let eos_pre_install_check = {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPreInstall};
-        let eos_post_install_check= {*BUILD_FOR.lock().unwrap() == BuildType::EnclaveOSPostInstall};
-        if  eos_pre_install_check || eos_post_install_check {
+        if build_type != &BuildType::Generic {
             if self.functions.lookup::<Isa>().supported() &
                 self.functions.lookup::<Psw>().supported() &
-                self.functions.lookup::<Eor>().supported() == Status::Supported {
+                self.functions.lookup::<Eor>().supported_for_config(build_type) == Status::Supported {
                 println!("The system is configured for EnclaveOS applications!");
             } else {
                 println!("The system is not configured for EnclaveOS applications!");
                 // Using a non standard exit code for the failure case
-                *EXIT_CODE.lock().unwrap() = 10;
+                process::exit(10);
             }
         }
     }
@@ -1030,9 +1030,9 @@ impl Tests {
             "EnclavesOS system requirements" => Category(Eor, tests: {
                 @[update_supported = graphene]
                 "Graphene kernel device" => Test(GrapheneDevice),
-                @[update_supported = nodeagent]
-                "Node Agent " => Test(NodeAgent),
-                @[update_supported = permdaemon]
+                @[update_supported = node_agent]
+                "Node Agent" => Test(NodeAgent),
+                @[update_supported = perm_daemon]
                 "Perm Daemon" => Test(PermDaemon),
             }),
             //Category {
@@ -1077,7 +1077,7 @@ fn update<T: DetectItem, U: Dependency<T>>(
     dependent.update_dependency(dependency, support);
 
     let hiddenval = if U::CONTROL_VISIBILITY {
-        dependency.try_supported() == Some(Status::Fatal)
+        dependency.try_supported(&BuildType::Generic) == Some(Status::Fatal)
     } else {
         false
     };

@@ -24,20 +24,31 @@ pub trait Name {
     fn name(&self) -> &'static str;
 }
 
+#[derive(Debug, PartialEq)]
+pub enum BuildType {
+    Generic,
+    EnclaveOSPreInstall,
+    EnclaveOSPostInstall,
+}
+
 pub trait Print: Name {
-    fn try_supported(&self) -> Option<Status> {
-        Some(self.supported())
+    fn try_supported(&self, build_type: &BuildType) -> Option<Status> {
+        Some(self.supported_for_config(build_type))
     }
 
     fn supported(&self) -> Status {
-        panic!("Unable to answer supported query for {}", self.name())
+        panic!("Unable to answer supported query for {}\n", self.name())
+    }
+
+    fn supported_for_config(&self, _build_type: &BuildType) -> Status {
+        self.supported()
     }
 
     fn print(&self, level: usize) {
         println!(
             "{:width$}{}{}",
             "",
-            self.try_supported().map_or(Paint::new(""), Status::paint),
+            self.try_supported(&BuildType::Generic).map_or(Paint::new(""), Status::paint),
             self.name(),
             width = level * 2
         );

@@ -7,8 +7,6 @@ use byteorder::{ReadBytesExt, LE};
 
 use sgx_isa::{AttributesFlags, Miscselect};
 
-use std::sync::Mutex;
-
 fn check_bit_32(mut value: u32, bit: u8) -> bool {
     check_bit_erase_32(&mut value, bit)
 }
@@ -357,25 +355,15 @@ mod serde {
     }
 }
 
+// DataShield Status
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum DSStatus {
     Running,
     NotRunning,
 }
 
+// sample version String format: "1.7.380"
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeAgentStatus{
-    pub current_ver: String,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum BuildType {
-    Generic,
-    EnclaveOSPreInstall,
-    EnclaveOSPostInstall,
-}
-
-lazy_static! {
-    pub static ref BUILD_FOR: Mutex<BuildType> = Mutex::new(BuildType::Generic);
-    pub static ref EXIT_CODE: Mutex<i32> = Mutex::new(0);
+pub struct NodeAgentVersion {
+    pub version: String,
 }

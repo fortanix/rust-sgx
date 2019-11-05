@@ -42,24 +42,18 @@ extern crate mopa;
 extern crate serde_derive;
 #[macro_use]
 extern crate clap;
-#[macro_use]
-extern crate lazy_static;
 
 use std::arch::x86_64::{self, CpuidResult};
 use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
-use std::fmt;
+use std::{fmt, str};
 use std::fs::File;
 use std::rc::Rc;
-use std::process::{self, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::io::{self, BufRead, BufReader, Error as IOError, ErrorKind};
-
-use sysinfo::{ProcessExt, SystemExt};
 use reqwest;
-
 use failure::Error;
 use yansi::Paint;
-
 use aesm_client::AesmClient;
 use sgx_isa::{Sigstruct, Attributes, Einittoken};
 use sgxs::einittoken::EinittokenProvider;
@@ -83,11 +77,6 @@ mod tests;
 
 use crate::interpret::*;
 use crate::tests::Tests;
-
-#[derive(Deserialize, Debug, Clone)]
-struct Version {
-    version: String,
-}
 
 #[derive(Debug, Fail)]
 enum DetectError {
@@ -167,9 +156,9 @@ pub struct SgxSupport {
     #[serde(with = "detect_result")]
     enclaveos_dev: Result<(), Rc<Error>>,
     #[serde(with = "detect_result")]
-    nodeagent: Result<NodeAgentStatus, Rc<Error>>,
+    node_agent: Result<NodeAgentVersion, Rc<Error>>,
     #[serde(with = "detect_result")]
-    permdaemon: Result<(), Rc<Error>>,
+    perm_daemon: Result<(), Rc<Error>>,
 }
 
 struct FailTrace<'a>(pub &'a Error);
@@ -280,35 +269,30 @@ impl SgxSupport {
             }
             Ok(Rc::new(RefCell::new(lib.build())))
         })();
-        let gsgxdev= match File::open("/dev/gsgx") {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into()),
-        };
+        let gsgxdev = (|| -> Result<(), Error> {
+            File::open("/dev/gsgx")?;
+            Ok(())
+        })();
         let nodeagent_status = (|| {
-            let request_url = format!("http://localhost:9092/v1/sys/version");
-            let mut response = reqwest::get(&request_url)?;
-            let ver :Version = response.json().unwrap();
-            Ok(NodeAgentStatus{current_ver: ver.version.clone()})
+            let mut response = reqwest::get("http://localhost:9092/v1/sys/version")?;
+            let ver: NodeAgentVersion = response.json()?;
+            Ok(NodeAgentVersion{version: ver.version})
         })();
         let permdaemon_status = (|| -> Result<(), Error> {
             let mut isgx = false;
             let mut gsgx = false;
-            let mut installed = false;
-            let mut system = sysinfo::System::new();
-            system.refresh_all();
-            for proc in system.get_process_by_name("bash") {
-                if (proc.cmd().len() >= 2) && (installed == false) {
-                    installed = proc.cmd()[1].contains("sgx_perm_daemon");
-                    if installed {
-                        break;
-                    }
-                }
-            }
+            let daemon_status = Command::new("systemctl")
+                .arg("is-active")
+                .arg("sgx_perm_daemon")
+                .output()?
+                .stdout;
+            let daemon_active = str::from_utf8(&daemon_status)?
+                .eq("active\n");
             let stdout = Command::new("journalctl")
                 .stdout(Stdio::piped())
                 .spawn()?
                 .stdout
-                .ok_or_else(|| IOError::new(ErrorKind::Other,"[perm_daemon_test]Could not capture the journalctl output."))?;
+                .ok_or_else(|| IOError::new(ErrorKind::Other,"[perm_daemon_test] Could not capture the journalctl output."))?;
             BufReader::new(stdout)
                 .lines()
                 .filter_map(|line| line.ok())
@@ -320,7 +304,7 @@ impl SgxSupport {
                     isgx = true;
                 }
             });
-            if isgx && gsgx && installed {
+            if isgx && gsgx && daemon_active {
                 Ok(())
             } else {
                 Err(IOError::new(ErrorKind::Other, "[perm_daemon_test] perm daemon is not operational").into())
@@ -343,8 +327,8 @@ impl SgxSupport {
             sgxdev_status: rcerr(sgxdev_status),
             loader_encllib: rcerr(loader_encllib),
             enclaveos_dev: rcerr(gsgxdev),
-            nodeagent: rcerr(nodeagent_status),
-            permdaemon: rcerr(permdaemon_status),
+            node_agent: rcerr(nodeagent_status),
+            perm_daemon: rcerr(permdaemon_status),
         }
     }
 }
@@ -355,13 +339,6 @@ fn paintalt(enabled: &'static str, disabled: &'static str) -> Paint<&'static str
     } else {
         Paint::new(disabled)
     }
-}
-
-#[derive(Debug)]
-pub enum BuildType {
-    Generic,
-    EnclaveOSPreInstall,
-    EnclaveOSPostInstall,
 }
 
 fn main() {
@@ -381,14 +358,15 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
-        (@arg ENCLAVEOS_PRE:  --enclaveos_pre_install                           "Run extra diagnosics tests for enclaveod pre installation")
-        (@arg ENCLAVEOS_POST: --enclaveos_post_install                          "Run extra diagnosics tests for enclaveos post installed")
+        (@arg ENCLAVEOS_PRE:  --enclaveos_pre_install                           "Run extra diagnostics tests for enclaveos pre installation")
+        (@arg ENCLAVEOS_POST: --enclaveos_post_install                          "Run extra diagnostics tests for enclaveos post installation")
     ).get_matches();
 
+    let mut build_type = tests::BuildType::Generic;
     if args.is_present("ENCLAVEOS_PRE") {
-        *BUILD_FOR.lock().unwrap() = interpret::BuildType::EnclaveOSPreInstall;
+        build_type = tests::BuildType::EnclaveOSPreInstall;
     } else if args.is_present("ENCLAVEOS_POST") {
-        *BUILD_FOR.lock().unwrap() = interpret::BuildType::EnclaveOSPostInstall;
+        build_type = tests::BuildType::EnclaveOSPostInstall;
     }
 
     if args.is_present("PLAIN") || atty::isnt(atty::Stream::Stdout) {
@@ -411,7 +389,6 @@ fn main() {
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
-        tests.print(args.is_present("VERBOSE"));
+        tests.print(args.is_present("VERBOSE"), &build_type);
     }
-    process::exit(*EXIT_CODE.lock().unwrap());
 }
