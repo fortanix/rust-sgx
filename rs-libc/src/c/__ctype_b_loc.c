@@ -1,17 +1,16 @@
 #ifdef _MSC_VER
-    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        #define X(x) x
-    #else
-        #define X(x) (((x)/256 | (x)*256) % 65536)
-    #endif
+    #define __BYTE_ORDER __BYTE_ORDER__
+    #define __BIG_ENDIAN __ORDER_BIG_ENDIAN__
 #else
     #include <endian.h>
-    #if __BYTE_ORDER == __BIG_ENDIAN
-        #define X(x) x
-    #else
-        #define X(x) (((x)/256 | (x)*256) % 65536)
-    #endif
 #endif
+
+#if __BYTE_ORDER == __BIG_ENDIAN
+    #define X(x) x
+#else
+    #define X(x) (((x)/256 | (x)*256) % 65536)
+#endif
+
 static const unsigned short table[] = {
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,

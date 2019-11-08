@@ -16,7 +16,7 @@ fn main() {
     #[cfg(unix)]
     let p_s = ["src", "asm", &arch].iter().collect::<PathBuf>();
     #[cfg(windows)]
-    let p_s = ["src", "obj", &arch].iter().collect::<PathBuf>();
+    let p_s = ["src", "windows", &arch].iter().collect::<PathBuf>();
 
     let extension_filter = |ext| {
         move |f: Result<DirEntry, _>| {
@@ -45,7 +45,6 @@ fn main() {
         build.file(path);
     }
 
-
     let name = if env::var("TARGET").unwrap() == "x86_64-fortanix-unknown-sgx" {
         "libc.a"
     } else {
@@ -67,7 +66,7 @@ fn main() {
         }
     #[cfg(windows)]
         {
-            b = b.define("restrict", "__restrict").ar_flag("/NODEFAULTLIB:libc.dll");
+            b = b.define("restrict", "__restrict").ar_flag("/NODEFAULTLIB");
         }
 
     b.warnings(false).compile(name);

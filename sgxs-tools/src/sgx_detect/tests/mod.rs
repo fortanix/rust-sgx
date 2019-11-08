@@ -1,7 +1,9 @@
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
+#[cfg(windows)]
 use std::io::ErrorKind;
+#[cfg(windows)]
 use std::io::Error as IoError;
 
 use failure::Error;

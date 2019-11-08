@@ -14,16 +14,4 @@ members = [
     "sgxs-loaders",
     "sgxs-tools"
 ]
-default-members = [
-    "aesm-client",
-    "enclave-runner",
-    "fortanix-sgx-abi",
-    "fortanix-sgx-tools",
-    "report-test",
-    "rs-libc",
-    "sgxs",
-    "sgx-isa",
-    "sgxs-loaders",
-    "sgxs-tools"
-]
 exclude = ["examples"]
