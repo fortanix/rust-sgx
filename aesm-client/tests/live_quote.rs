@@ -12,8 +12,10 @@ extern crate sgxs_loaders;
 
 use aesm_client::AesmClient;
 use sgx_isa::Targetinfo;
+#[cfg(unix)]
 use sgxs_loaders::isgx::Device as IsgxDevice;
-
+#[cfg(windows)]
+use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
 #[test]
 fn live_quote() {
     const DUMMY_SPID: [u8; 16] = [0; 16];
