@@ -9,6 +9,7 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
+#[cfg(feature = "openssl")]
 extern crate openssl;
 extern crate sgx_isa;
 extern crate sgxs;

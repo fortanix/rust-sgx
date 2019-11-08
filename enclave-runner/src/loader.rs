@@ -12,10 +12,14 @@ use std::{arch, str};
 
 use failure::{Error, ResultExt};
 
-use openssl::hash::Hasher;
-use openssl::pkey::PKey;
+#[cfg(feature = "openssl")]
+use openssl::{
+    hash::Hasher,
+    pkey::PKey,
+};
 
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
@@ -61,6 +65,8 @@ pub struct EnclaveBuilder<'a> {
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
     usercall_ext : Option<Box<dyn UsercallExtension>>,
+    load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
+    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
 }
 
 #[derive(Debug, Fail)]
@@ -122,9 +128,16 @@ impl<'a> EnclaveBuilder<'a> {
             miscselect: None,
             signature: None,
             usercall_ext : None,
+            load_and_sign: None,
+            hash_enclave: None,
         };
 
         let _ = ret.coresident_signature();
+
+        #[cfg(feature = "openssl")]
+        ret.with_dummy_signature_signer::<Hasher, _, _, _, _>(|der| {
+            PKey::private_key_from_der(der).unwrap().rsa().unwrap()
+        });
 
         ret
     }
@@ -136,20 +149,31 @@ impl<'a> EnclaveBuilder<'a> {
             miscselect: None,
             signature: None,
             usercall_ext : None,
+            load_and_sign: None,
+            hash_enclave: None,
         };
 
         let _ = ret.coresident_signature();
 
+        #[cfg(feature = "openssl")]
+        ret.with_dummy_signature_signer::<Hasher, _, _, _, _>(|der| {
+            PKey::private_key_from_der(der).unwrap().rsa().unwrap()
+        });
+
         ret
     }
 
-    fn generate_dummy_signature(&self) -> Result<Sigstruct, Error> {
+    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, Error> {
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
 
         let mut enclave = self.enclave.try_clone().unwrap();
-        let mut signer = Signer::new(EnclaveHash::from_stream::<_, Hasher>(&mut enclave)?);
+        let hash = match self.hash_enclave.take() {
+            Some(f) => f(&mut enclave)?,
+            None => return Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
+        };
+        let mut signer = Signer::new(hash);
 
         let attributes = self.attributes.unwrap_or_else(|| Attributes {
             flags: AttributesFlags::DEBUG | AttributesFlags::MODE64BIT,
@@ -163,13 +187,32 @@ impl<'a> EnclaveBuilder<'a> {
             signer.miscselect(miscselect, !0);
         }
 
-        let key = PKey::private_key_from_der(include_bytes!("dummy.key")).unwrap();
-        Ok(signer.sign::<_, Hasher>(&*key.rsa().unwrap())?)
+        match self.load_and_sign.take() {
+            Some(f) => f(signer),
+            None => Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
+        }
     }
 
     pub fn dummy_signature(&mut self) -> &mut Self {
         self.signature = None;
         self
+    }
+
+    pub fn with_dummy_signature_signer<H, E, S, T, F>(&mut self, load_key: F)
+    where
+        H: SgxHashOps,
+        E: std::error::Error + Send + Sync + 'static,
+        S: SgxRsaOps<Error = E>,
+        T: AsRef<S>,
+        F: 'static + FnOnce(&[u8]) -> T,
+    {
+        self.load_and_sign = Some(Box::new(move |signer| {
+            let key = load_key(include_bytes!("dummy.key"));
+            signer.sign::<_, H>(key.as_ref()).map_err(|e| e.into())
+        }));
+        self.hash_enclave = Some(Box::new(|stream| {
+            EnclaveHash::from_stream::<_, H>(stream)
+        }));
     }
 
     pub fn coresident_signature(&mut self) -> IoResult<&mut Self> {

@@ -210,5 +210,25 @@ mod openssl {
     }
 }
 
+#[cfg(feature = "sha2")]
+mod sha2 {
+    use super::*;
+    use sha2::{Digest, Sha256};
+
+    impl SgxHashOps for Sha256 {
+        fn new() -> Self {
+            <Sha256 as Digest>::new()
+        }
+        fn update(&mut self, data: &[u8]) {
+            self.input(data)
+        }
+        fn finish(self) -> Hash {
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(self.result().as_slice());
+            hash
+        }
+    }
+}
+
 #[cfg(all(test))]
 mod tests;
