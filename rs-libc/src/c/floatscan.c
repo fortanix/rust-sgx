@@ -63,6 +63,7 @@ static long long scanexp(FILE *f, int pok)
 	return neg ? -y : y;
 }
 
+
 static long double decfloat(FILE *f, int c, int bits, int emin, int sign, int pok)
 {
 	uint32_t x[KMAX];

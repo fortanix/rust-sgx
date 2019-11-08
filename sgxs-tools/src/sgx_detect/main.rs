@@ -327,7 +327,6 @@ fn main() {
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();
         println!("");
-
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);

@@ -27,7 +27,6 @@ extern crate sgxs;
 extern crate unix_socket;
 #[cfg(windows)]
 extern crate winapi;
-#[cfg(windows)]
 extern crate sgx_isa;
 
 #[cfg(feature = "sgxs")]
@@ -36,8 +35,7 @@ use std::result::Result as StdResult;
 use protobuf::ProtobufResult;
 #[cfg(feature = "sgxs")]
 use sgxs::einittoken::{Einittoken, EinittokenProvider};
-#[cfg(feature = "sgxs")]
-use sgxs::sigstruct::{Attributes, Sigstruct};
+use sgx_isa::{Attributes, Sigstruct};
 
 include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
 mod error;
@@ -192,14 +190,12 @@ impl AesmClient {
 
     pub fn get_launch_token(
         &self,
-        mr_enclave: Vec<u8>,
-        signer_modulus: Vec<u8>,
-        attributes: Vec<u8>,
+        sigstruct: &Sigstruct,
+        attributes: Attributes,
     ) -> Result<Vec<u8>> {
         self.inner.get_launch_token(
-            mr_enclave,
-            signer_modulus,
-            attributes
+            sigstruct,
+            attributes,
         )
     }
 }
@@ -213,9 +209,8 @@ impl EinittokenProvider for AesmClient {
         _retry: bool,
     ) -> StdResult<Einittoken, ::failure::Error> {
         let token = self.get_launch_token(
-            sigstruct.enclavehash.to_vec(),
-            sigstruct.modulus.to_vec(),
-            attributes.as_ref().to_vec(),
+            sigstruct,
+            attributes,
         )?;
         Einittoken::try_copy_from(&token).ok_or(Error::InvalidTokenSize.into())
     }

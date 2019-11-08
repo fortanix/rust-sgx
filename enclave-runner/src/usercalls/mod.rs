@@ -37,6 +37,7 @@ mod interface;
 
 use self::abi::dispatch;
 use self::interface::{Handler, OutputBuffer};
+#[cfg(unix)]
 use self::libc::*;
 #[cfg(unix)]
 use self::nix::sys::signal;

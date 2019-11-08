@@ -7,6 +7,7 @@ use std::time::Duration;
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use protobuf::Message;
 use unix_socket::UnixStream;
+use sgxs::sigstruct::{Attributes, Sigstruct};
 
 pub use error::{AesmError, Error, Result};
 use {
@@ -149,15 +150,14 @@ impl AesmClient {
     /// Obtain launch token
     pub fn get_launch_token(
         &self,
-        mr_enclave: Vec<u8>,
-        signer_modulus: Vec<u8>,
-        attributes: Vec<u8>,
+        sigstruct: &Sigstruct,
+        attributes: Attributes,
     ) -> Result<Vec<u8>> {
         let mut req = Request_GetLaunchTokenRequest::new();
-        req.set_mr_enclave(mr_enclave);
+        req.set_mr_enclave(sigstruct.enclavehash.to_vec());
         // The field in the request protobuf is called mr_signer, but it wants the modulus.
-        req.set_mr_signer(signer_modulus);
-        req.set_se_attributes(attributes);
+        req.set_mr_signer(sigstruct.modulus.to_vec());
+        req.set_se_attributes(attributes.as_ref().to_vec());
         req.set_timeout(REMOTE_AESM_TIMEOUT_US);
 
         let mut res = self.transact(req)?;
