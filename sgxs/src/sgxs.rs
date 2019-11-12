@@ -467,7 +467,7 @@ impl<W: Write> SgxsWrite for W {
 
         let MeasuredData { chunks, reader } = data.into();
         let mut reader = reader.map(|r| r.chain(io::repeat(0)));
-        for (i, chunk) in chunks.into_iter().enumerate() {
+        for (i, chunk) in chunks.iter().enumerate() {
             let eext = MeasEExtend {
                 offset: offset + (i as u64 * 256),
             };
