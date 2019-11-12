@@ -15,6 +15,7 @@ const HEAP_SIZE: u64 = 0x2000000;
 const SSAFRAMESIZE: u32 = 1;
 const STACK_SIZE: u32 = 0x20000;
 const DEBUG: bool = true;
+const RUNNER: &'static str = "ftxsgx-runner";
 
 #[derive(Deserialize, Debug, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -24,6 +25,7 @@ struct Target {
     stack_size: Option<u32>,
     threads: Option<u32>,
     debug: Option<bool>,
+    runner: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -76,6 +78,7 @@ fn run() -> Result<(), Error> {
     let available_cpus = num_cpus::get() as u32;
     let threads = custom_values.threads.unwrap_or(available_cpus).to_string();
     let debug = custom_values.debug.unwrap_or(DEBUG);
+    let runner = custom_values.runner.unwrap_or(RUNNER.to_owned());
 
     let args: Vec<String> = env::args().collect();
     let mut ftxsgx_elf2sgxs_command = Command::new("ftxsgx-elf2sgxs");
@@ -93,10 +96,8 @@ fn run() -> Result<(), Error> {
     }
     run_command(ftxsgx_elf2sgxs_command)?;
 
-    let mut ftxsgx_runner_command = Command::new("ftxsgx-runner");
-    ftxsgx_runner_command.arg(args[1].clone() + ".sgxs")
-        .arg("--signature")
-        .arg("dummy");
+    let mut ftxsgx_runner_command = Command::new(runner);
+    ftxsgx_runner_command.arg(args[1].clone() + ".sgxs");
 
     run_command(ftxsgx_runner_command)?;
 
