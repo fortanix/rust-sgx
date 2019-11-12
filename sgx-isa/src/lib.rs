@@ -10,6 +10,7 @@
 //! convenient.
 //!
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
+#![cfg_attr(feature = "nightly", feature(asm))]
 
 #![no_std]
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
@@ -22,10 +23,10 @@ extern crate std;
 
 #[macro_use]
 extern crate bitflags;
-
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 use std::os::fortanix_sgx::arch;
-
+#[cfg(all(feature = "nightly", target_env = "sgx", not(feature = "sgxstd")))]
+mod arch;
 use core::{convert::TryFrom, num::TryFromIntError, slice};
 
 #[cfg(not(feature = "large_array_derive"))]
