@@ -135,7 +135,7 @@ impl<R: Read> SgxsRead for R {
         use byteorder::{LittleEndian, ReadBytesExt};
 
         let mut header = [0u8; 64];
-        if !try!(read_fill(self, &mut header)) {
+        if !(read_fill(self, &mut header)?) {
             return Ok(None);
         }
         let mut headerp = &header[..];
@@ -154,7 +154,7 @@ impl<R: Read> SgxsRead for R {
                 let header = unsafe { &*(headerp as *const _ as *const MeasEExtend) }.clone();
 
                 let mut data = [0u8; 256];
-                if !try!(read_fill(self, &mut data)) {
+                if !(read_fill(self, &mut data)?) {
                     return Err(IoError::new(
                         IoErrorKind::UnexpectedEof,
                         "failed to fill whole buffer",
@@ -255,7 +255,7 @@ impl<'a, R: SgxsRead + 'a> CanonicalSgxsReader<'a, R> {
 
 impl<'a, R: SgxsRead + 'a> SgxsRead for CanonicalSgxsReader<'a, R> {
     fn read_meas(&mut self) -> Result<Option<Meas>> {
-        let meas = try!(self.reader.read_meas());
+        let meas = self.reader.read_meas()?;
 
         match meas {
             Some(Meas::ECreate(_)) | Some(Meas::Unsized(_)) => {
@@ -308,7 +308,7 @@ pub struct CreateInfo {
 impl<'a, R: SgxsRead + 'a> PageReader<'a, R> {
     pub fn new(reader: &'a mut R) -> Result<(CreateInfo, Self)> {
         let mut cread = CanonicalSgxsReader::new(reader);
-        let cinfo = match try!(cread.read_meas()) {
+        let cinfo = match cread.read_meas()? {
             Some(Meas::ECreate(ecreate)) => CreateInfo {
                 ecreate,
                 sized: true,
@@ -334,7 +334,7 @@ impl<'a, R: SgxsRead + 'a> PageReader<'a, R> {
         let mut page = [0u8; 4096];
         loop {
             let chunks_measured = self.reader.chunks_measured;
-            let meas = try!(self.reader.read_meas());
+            let meas = self.reader.read_meas()?;
             match meas {
                 meas @ Some(Meas::EAdd(_)) | meas @ None => {
                     let meas = match meas {
@@ -444,10 +444,10 @@ impl<W: Write> SgxsWrite for W {
                 }
             };
         }
-        try!(self.write_all(&buf));
+        self.write_all(&buf)?;
 
         match meas {
-            &EExtend { ref data, .. } | &Unmeasured { ref data, .. } => try!(self.write_all(data)),
+            &EExtend { ref data, .. } | &Unmeasured { ref data, .. } => self.write_all(data)?,
             _ => {}
         }
 
@@ -460,10 +460,10 @@ impl<W: Write> SgxsWrite for W {
         offset: u64,
         secinfo: SecinfoTruncated,
     ) -> Result<()> {
-        try!(self.write_meas(&Meas::EAdd(MeasEAdd {
+        self.write_meas(&Meas::EAdd(MeasEAdd {
             offset: offset,
             secinfo: secinfo
-        })));
+        }))?;
 
         let MeasuredData { chunks, reader } = data.into();
         let mut reader = reader.map(|r| r.chain(io::repeat(0)));
@@ -473,10 +473,10 @@ impl<W: Write> SgxsWrite for W {
             };
             match *chunk {
                 PageChunk::Skipped => continue,
-                PageChunk::Included => try!(self.write_meas(&Meas::BareUnmeasured(eext))),
-                PageChunk::IncludedMeasured => try!(self.write_meas(&Meas::BareEExtend(eext))),
+                PageChunk::Included => self.write_meas(&Meas::BareUnmeasured(eext))?,
+                PageChunk::IncludedMeasured => self.write_meas(&Meas::BareEExtend(eext))?,
             }
-            try!(io::copy(&mut reader.as_mut().unwrap().take(256), self));
+            io::copy(&mut reader.as_mut().unwrap().take(256), self)?;
         }
 
         Ok(())
@@ -490,7 +490,7 @@ impl<W: Write> SgxsWrite for W {
         secinfo: SecinfoTruncated,
     ) -> Result<()> {
         for i in 0..(n as u64) {
-            try!(self.write_page(data.as_mut(), offset + 4096 * i, secinfo.clone()));
+            self.write_page(data.as_mut(), offset + 4096 * i, secinfo.clone())?;
         }
         Ok(())
     }
@@ -504,9 +504,9 @@ pub struct CanonicalSgxsWriter<'a, W: SgxsWrite + 'a> {
 impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a, W> {
     pub fn new(writer: &'a mut W, ecreate: MeasECreate, sized: bool) -> Result<Self> {
         if sized {
-            try!(writer.write_meas(&Meas::ECreate(ecreate)));
+            writer.write_meas(&Meas::ECreate(ecreate))?;
         } else {
-            try!(writer.write_meas(&Meas::Unsized(ecreate)));
+            writer.write_meas(&Meas::Unsized(ecreate))?;
         }
         Ok(CanonicalSgxsWriter {
             writer: writer,
@@ -534,7 +534,7 @@ impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a, W> {
         secinfo: SecinfoTruncated,
     ) -> Result<()> {
         self.check_offset(offset)?;
-        try!(self.writer.write_page(data, self.next_offset, secinfo));
+        self.writer.write_page(data, self.next_offset, secinfo)?;
         self.skip_page();
         Ok(())
     }
@@ -548,7 +548,7 @@ impl<'a, W: SgxsWrite + 'a> CanonicalSgxsWriter<'a, W> {
         secinfo: SecinfoTruncated,
     ) -> Result<()> {
         self.check_offset(offset)?;
-        try!(self.writer.write_pages(data, n, self.next_offset, secinfo));
+        self.writer.write_pages(data, n, self.next_offset, secinfo)?;
         self.skip_pages(n);
         Ok(())
     }

@@ -315,11 +315,11 @@ impl<'a> LayoutInfo<'a> {
         } else {
             bail!("Only 64-bit ELF supported!");
         }
-        let sym = try!(Self::check_symbols(&elf));
-        let dyn = try!(Self::check_dynamic(&elf));
-        try!(Self::check_relocs(&elf, dyn.as_ref()));
-        let ehfrm = try!(Self::check_section(&elf, ".eh_frame_hdr"));
-        let text = try!(Self::check_section(&elf, ".text"));
+        let sym = Self::check_symbols(&elf)?;
+        let dyn = Self::check_dynamic(&elf)?;
+        Self::check_relocs(&elf, dyn.as_ref())?;
+        let ehfrm = Self::check_section(&elf, ".eh_frame_hdr")?;
+        let text = Self::check_section(&elf, ".text")?;
 
         Ok(LayoutInfo {
             elf,
@@ -443,12 +443,12 @@ impl<'a> LayoutInfo<'a> {
                 }
             }
 
-            try!(writer.write_pages(
+            writer.write_pages(
                 Some(&mut data),
                 (size_fit_page(end - base) / 0x1000) as usize,
                 Some(base),
                 secinfo
-            ))
+            )?
         }
 
         Ok(())
@@ -500,12 +500,12 @@ impl<'a> LayoutInfo<'a> {
         let secinfo = SecinfoTruncated {
             flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
         };
-        try!(writer.write_pages::<&[u8]>(
+        writer.write_pages::<&[u8]>(
             None,
             (self.heap_size as usize) / 0x1000,
             Some(heap_addr),
             secinfo
-        ));
+        )?;
 
         for i in 0..self.threads {
             let stack_addr = thread_start + THREAD_GUARD_SIZE;
@@ -517,12 +517,12 @@ impl<'a> LayoutInfo<'a> {
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
-            try!(writer.write_pages::<&[u8]>(
+            writer.write_pages::<&[u8]>(
                 None,
                 (self.stack_size as usize) / 0x1000,
                 Some(stack_addr),
                 secinfo
-            ));
+            )?;
 
             // Output TLS
             let secondary = match (self.library, i) {
@@ -535,7 +535,7 @@ impl<'a> LayoutInfo<'a> {
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
-            try!(writer.write_pages(Some(&mut &tls[..]), 1, Some(tls_addr), secinfo));
+            writer.write_pages(Some(&mut &tls[..]), 1, Some(tls_addr), secinfo)?;
 
             // Output TCS, SSA
             let tcs = Tcs {
@@ -552,16 +552,16 @@ impl<'a> LayoutInfo<'a> {
             let secinfo = SecinfoTruncated {
                 flags: PageType::Tcs.into(),
             };
-            try!(writer.write_page(Some(&mut &tcs[..]), Some(tcs_addr), secinfo));
+            writer.write_page(Some(&mut &tcs[..]), Some(tcs_addr), secinfo)?;
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
-            try!(writer.write_pages::<&[u8]>(
+            writer.write_pages::<&[u8]>(
                 None,
                 (nssa * self.ssaframesize) as usize,
                 None,
                 secinfo
-            ));
+            )?;
 
             thread_start += thread_size;
         }
@@ -609,9 +609,9 @@ macro_rules! impl_numarg(
 impl_numarg!(u32, u64, usize);
 
 fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, IoError> {
-    let mut f = try!(File::open(path));
+    let mut f = File::open(path)?;
     let mut buf = vec![];
-    try!(f.read_to_end(&mut buf));
+    f.read_to_end(&mut buf)?;
     Ok(buf)
 }
 
