@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use std::fmt;
+use std::ffi::CString;
 
 use winapi::_core::ffi::c_void;
 
-use sgxs::sigstruct::{Attributes, Sigstruct};
+use sgx_isa::{Attributes, Sigstruct};
 
 
 use error::{Error, Result};
@@ -13,7 +14,6 @@ extern crate libloading as dl;
 
 #[derive(Clone, Debug, Default)]
 pub struct AesmClient {
-    _private: (),
     library: Library,
 }
 const LIBRARY: &str = "sgx_uae_service.dll";
@@ -104,7 +104,7 @@ impl AesmClient {
     }
 
     pub fn try_connect(&self) -> Result<()> {
-        // !!! try using QueryServiceStatusEx
+        // TODO: use QueryServiceStatusEx
         libloading::Library::new("sgx_uae_service.dll")?;
         Ok(())
     }

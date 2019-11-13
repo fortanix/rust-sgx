@@ -24,7 +24,7 @@ dependencies = [
 
 [[package]]
 name = "aesm-client"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "byteorder 1.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -497,7 +497,7 @@ dependencies = [
 name = "fortanix-sgx-tools"
 version = "0.2.0"
 dependencies = [
- "aesm-client 0.2.0",
+ "aesm-client 0.3.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "enclave-runner 0.2.0",
  "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1566,7 +1566,7 @@ dependencies = [
 name = "sgxs-tools"
 version = "0.7.0"
 dependencies = [
- "aesm-client 0.2.0",
+ "aesm-client 0.3.0",
  "atty 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
  "broadcast 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 1.2.7 (registry+https://github.com/rust-lang/crates.io-index)",

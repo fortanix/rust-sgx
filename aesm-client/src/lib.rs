@@ -21,12 +21,12 @@ extern crate failure_derive;
 #[cfg(unix)]
 extern crate lazy_static;
 extern crate protobuf;
+#[cfg(feature = "sgxs")]
 extern crate sgxs;
 #[cfg(unix)]
 extern crate unix_socket;
 #[cfg(windows)]
 extern crate winapi;
-#[cfg(windows)]
 extern crate sgx_isa;
 
 #[cfg(feature = "sgxs")]
@@ -35,7 +35,7 @@ use std::result::Result as StdResult;
 use protobuf::ProtobufResult;
 #[cfg(feature = "sgxs")]
 use sgxs::einittoken::{Einittoken, EinittokenProvider};
-use sgxs::sigstruct::{Attributes, Sigstruct};
+use sgx_isa::{Attributes, Sigstruct};
 
 include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
 mod error;
