@@ -122,29 +122,16 @@ impl Tcs for ErasedTcs {
 
 impl<'a> EnclaveBuilder<'a> {
     pub fn new(enclave_path: &'a Path) -> EnclaveBuilder<'a> {
-        let mut ret = EnclaveBuilder {
-            enclave: EnclaveSource::Path(enclave_path),
-            attributes: None,
-            miscselect: None,
-            signature: None,
-            usercall_ext : None,
-            load_and_sign: None,
-            hash_enclave: None,
-        };
-
-        let _ = ret.coresident_signature();
-
-        #[cfg(feature = "openssl")]
-        ret.with_dummy_signature_signer::<Hasher, _, _, _, _>(|der| {
-            PKey::private_key_from_der(der).unwrap().rsa().unwrap()
-        });
-
-        ret
+        Self::new_with_source(EnclaveSource::Path(enclave_path))
     }
 
     pub fn new_from_memory(enclave_data: &'a [u8]) -> EnclaveBuilder<'a> {
+        Self::new_with_source(EnclaveSource::Data(enclave_data))
+    }
+
+    fn new_with_source(enclave: EnclaveSource<'a>) -> EnclaveBuilder<'a> {
         let mut ret = EnclaveBuilder {
-            enclave: EnclaveSource::Data(enclave_data),
+            enclave,
             attributes: None,
             miscselect: None,
             signature: None,
