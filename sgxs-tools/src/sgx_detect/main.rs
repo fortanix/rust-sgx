@@ -57,11 +57,22 @@ use yansi::Paint;
 use aesm_client::AesmClient;
 use sgx_isa::{Sigstruct, Attributes, Einittoken};
 use sgxs::einittoken::EinittokenProvider;
-use sgxs_loaders::isgx::Device as IsgxDevice;
+#[cfg(unix)]
+use sgxs_loaders::isgx::Device as SgxDevice;
+#[cfg(windows)]
+use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 use sgxs_loaders::sgx_enclave_common::Library as EnclCommonLib;
 
 mod interpret;
-mod linux;
+#[cfg(windows)]
+extern crate winapi;
+
+#[cfg(windows)]
+#[path = "imp/windows.rs"]
+mod imp;
+#[cfg(unix)]
+#[path = "imp/linux.rs"]
+mod imp;
 mod tests;
 
 use crate::interpret::*;
@@ -137,7 +148,7 @@ pub struct SgxSupport {
     #[serde(skip, default)]
     dcap_library: bool,
     #[serde(skip, default = "no_deserialize")]
-    loader_sgxdev: Result<Rc<RefCell<IsgxDevice>>, Rc<Error>>,
+    loader_sgxdev: Result<Rc<RefCell<SgxDevice>>, Rc<Error>>,
     #[serde(skip, default = "no_deserialize")]
     sgxdev_status: Result<KmodStatus, Rc<Error>>,
     #[serde(skip, default = "no_deserialize")]
@@ -216,12 +227,12 @@ impl SgxSupport {
                 _ => true,
             })
             .collect();
-        let msr_3ah = linux::rdmsr(0x3a).map(Msr3ah::from);
-        let efi_epcbios = linux::read_efi_var("EPCBIOS", "c60aa7f6-e8d6-4956-8ba1-fe26298f5e87")
+        let msr_3ah = imp::rdmsr(0x3a).map(Msr3ah::from);
+        let efi_epcbios = imp::read_efi_var("EPCBIOS", "c60aa7f6-e8d6-4956-8ba1-fe26298f5e87")
             .map(EfiEpcbios::from);
-        let efi_epcsw = linux::read_efi_var("EPCSW", "d69a279b-58eb-45d1-a148-771bb9eb5251")
+        let efi_epcsw = imp::read_efi_var("EPCSW", "d69a279b-58eb-45d1-a148-771bb9eb5251")
             .map(EfiEpcsw::from);
-        let efi_softwareguardstatus = linux::read_efi_var(
+        let efi_softwareguardstatus = imp::read_efi_var(
             "SOFTWAREGUARDSTATUS",
             "9cb2e73f-7325-40f4-a484-659bb344c3cd",
         )
@@ -231,16 +242,20 @@ impl SgxSupport {
             client.try_connect()?;
             Ok(TimeoutHardError::new(client))
         })();
-        let aesm_status = linux::aesm_status().map_err(|e| debug!("{}", FailTrace(&e))).ok();
-        let dcap_library = dcap_ql::is_loaded();
+        let aesm_status = imp::aesm_status().map_err(|e| debug!("{}", FailTrace(&e))).ok();
+        #[cfg(unix)]
+            let dcap_library = dcap_ql::is_loaded();
+        #[cfg(windows)]
+            let dcap_library = false;
+
         let loader_sgxdev = (|| {
-            let mut dev = IsgxDevice::new()?;
+            let mut dev = SgxDevice::new()?;
             if let Ok(ref aesm) = aesm_service {
                 dev = dev.einittoken_provider(aesm.clone());
             }
             Ok(Rc::new(RefCell::new(dev.build())))
         })();
-        let sgxdev_status = linux::kmod_status();
+        let sgxdev_status = imp::kmod_status();
         let loader_encllib = (|| {
             let mut lib = EnclCommonLib::load(None)?;
             if let Ok(ref aesm) = aesm_service {
@@ -260,7 +275,7 @@ impl SgxSupport {
             efi_softwareguardstatus: rcerr(efi_softwareguardstatus),
             aesm_service: rcerr(aesm_service),
             aesm_status,
-            dcap_library: dcap_library,
+            dcap_library,
             loader_sgxdev: rcerr(loader_sgxdev),
             sgxdev_status: rcerr(sgxdev_status),
             loader_encllib: rcerr(loader_encllib),

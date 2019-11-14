@@ -19,7 +19,12 @@ use aesm_client::AesmClient;
 use sgx_isa::Enclu;
 use sgxs::loader::{Load, Tcs};
 use sgxs::sigstruct::read as read_sigstruct;
-use sgxs_loaders::isgx;
+
+#[cfg(unix)]
+use sgxs_loaders::isgx::Device as SgxDevice;
+#[cfg(windows)]
+use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
+
 
 fn enclu_eenter(tcs: &mut dyn Tcs) {
     let result: u32;
@@ -50,7 +55,7 @@ post:
 }
 
 fn main() {
-    let matches = App::new("sgxs-load")
+    let mut matches = App::new("sgxs-load")
         .about("SGXS loader")
         .arg(
             Arg::with_name("debug")
@@ -58,12 +63,6 @@ fn main() {
                 .long("debug")
                 .requires("le-sgxs")
                 .help("Request a debug token"),
-        )
-        .arg(
-            Arg::with_name("device")
-                .long("device")
-                .takes_value(true)
-                .help("Sets the SGX device to use (default: /dev/sgx)"),
         )
         .arg(
             Arg::with_name("sgxs")
@@ -74,13 +73,27 @@ fn main() {
             Arg::with_name("sigstruct")
                 .required(true)
                 .help("Sets the enclave SIGSTRUCT file to use"),
-        )
-        .get_matches();
-
-    let mut dev = match matches.value_of("device") {
-        Some(dev) => isgx::Device::open(dev),
-        None => isgx::Device::new(),
+        );
+    if cfg!(target_os = "unix") {
+        matches = matches.arg(
+            Arg::with_name("device")
+                .long("device")
+                .takes_value(true)
+                .help("Sets the SGX device to use (default: /dev/sgx)"),
+        );
     }
+
+    let matches = matches.get_matches();
+
+    #[cfg(unix)]
+    let device = match matches.value_of("device") {
+        Some(dev) => SgxDevice::open(dev),
+        None => SgxDevice::new(),
+    };
+    #[cfg(windows)]
+    let device = SgxDevice::new();
+
+    let mut dev = device
     .unwrap()
     .einittoken_provider(AesmClient::new())
     .build();

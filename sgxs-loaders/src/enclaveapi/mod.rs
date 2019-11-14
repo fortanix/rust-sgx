@@ -128,7 +128,7 @@ impl EnclaveLoad for WinInnerLibrary {
             0b101 => PAGE_EXECUTE_READ,
             0b110 => return Err(Error::Add(ErrorKind::InvalidInput.into())),
             0b111 => PAGE_EXECUTE_READWRITE,
-            0b1000...std::u64::MAX => unreachable!(),
+            0b1000..=std::u64::MAX => unreachable!(),
         };
         match PageType::try_from(eadd.secinfo.flags.page_type()) {
             Ok(PageType::Reg) => {}
@@ -265,7 +265,7 @@ impl loader::Load for Sgx {
 }
 
 impl DeviceBuilder {
-    pub fn einittoken_provider<P: Into<Box<EinittokenProvider>>>(
+    pub fn einittoken_provider<P: Into<Box<dyn EinittokenProvider>>>(
         mut self,
         einittoken_provider: P,
     ) -> Self {

@@ -418,7 +418,9 @@ static long double hexfloat(FILE *f, int bits, int emin, int sign, int pok)
 	return scalbnl(y, e2);
 }
 
+#ifndef _MSC_VER
 __attribute__ ((visibility ("hidden")))
+#endif
 long double __floatscan(FILE *f, int prec, int pok)
 {
 	int sign = 1;

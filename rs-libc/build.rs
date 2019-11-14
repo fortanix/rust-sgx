@@ -13,7 +13,10 @@ use std::path::PathBuf;
 fn main() {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let p_c = ["src", "c"].iter().collect::<PathBuf>();
+    #[cfg(unix)]
     let p_s = ["src", "asm", &arch].iter().collect::<PathBuf>();
+    #[cfg(windows)]
+    let p_s = ["src", "windows", &arch].iter().collect::<PathBuf>();
 
     let extension_filter = |ext| {
         move |f: Result<DirEntry, _>| {
@@ -28,11 +31,17 @@ fn main() {
         }
     };
 
-    let i_c = read_dir(p_c).unwrap().filter_map(extension_filter("c"));
-    let i_s = read_dir(p_s).unwrap().filter_map(extension_filter("S"));
-
     let mut build = cc::Build::new();
-    for path in i_c.chain(i_s) {
+
+    #[cfg(unix)]
+    for path in read_dir(p_s).unwrap().filter_map(extension_filter("S")) {
+        build.file(path);
+    }
+    #[cfg(windows)]
+    for path in read_dir(p_s).unwrap().filter_map(extension_filter("o")) {
+        build.object(path);
+    }
+    for path in read_dir(p_c).unwrap().filter_map(extension_filter("c")) {
         build.file(path);
     }
 
@@ -42,7 +51,7 @@ fn main() {
         "librsc.a"
     };
 
-    build
+    let mut b = build
         .define(
             "weak_alias(old,new)",
             Some("extern __typeof(old) new __attribute__((alias(#old)))"),
@@ -50,8 +59,15 @@ fn main() {
         .flag("-U_FORTIFY_SOURCE")
         .define("_FORTIFY_SOURCE", Some("0"))
         .define("__NO_STRING_INLINES", None)
-        .define("__NO_MATH_INLINES", None)
-        .flag("-ffreestanding")
-        .warnings(false)
-        .compile(name);
+        .define("__NO_MATH_INLINES", None);
+    #[cfg(unix)]
+        {
+            b = b.flag("-ffreestanding");
+        }
+    #[cfg(windows)]
+        {
+            b = b.define("restrict", "__restrict").ar_flag("/NODEFAULTLIB");
+        }
+
+    b.warnings(false).compile(name);
 }

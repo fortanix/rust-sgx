@@ -51,7 +51,10 @@ pub enum InfoType {
     EnclaveLaunchToken = 1,
 }
 
+#[cfg(unix)]
 pub const LIBRARY: &str = "libsgx_enclave_common.so.1";
+#[cfg(windows)]
+pub const LIBRARY: &str = "sgx_enclave_common.dll";
 
 pub const SYM_ENCLAVE_CREATE: &[u8] = b"enclave_create\0";
 pub type EnclaveCreateFn = unsafe extern "C" fn(
