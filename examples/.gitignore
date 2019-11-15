@@ -1,4 +1,5 @@
 **/.cargo/*
 !**/.cargo/config
+**/Cargo.lock
 /target
 target/
