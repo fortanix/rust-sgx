@@ -18,14 +18,14 @@ use usercalls::UsercallExtension;
 pub struct Command {
     main: ErasedTcs,
     threads: Vec<ErasedTcs>,
-    address: *mut c_void,
+    address: usize,
     size: usize,
     usercall_ext : Option<Box<dyn UsercallExtension>>,
 }
 
 impl MappingInfo for Command {
     fn address(&self) -> *mut c_void {
-        self.address
+        self.address as _
     }
 
     fn size(&self) -> usize {
@@ -42,7 +42,7 @@ impl Command {
         Command {
             main,
             threads: tcss,
-            address,
+            address: address as _,
             size,
             usercall_ext,
         }

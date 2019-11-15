@@ -17,6 +17,8 @@ extern crate openssl;
 #[cfg(feature = "crypto-openssl")]
 extern crate openssl_sys;
 extern crate sgx_isa as abi;
+#[cfg(feature = "sha2")]
+extern crate sha2;
 extern crate time;
 #[macro_use]
 extern crate failure_derive;
