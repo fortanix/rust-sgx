@@ -12,7 +12,7 @@ use std::{arch, str};
 
 use failure::{Error, ResultExt};
 
-#[cfg(feature = "openssl")]
+#[cfg(feature = "crypto-openssl")]
 use openssl::{
     hash::Hasher,
     pkey::PKey,
@@ -142,7 +142,7 @@ impl<'a> EnclaveBuilder<'a> {
 
         let _ = ret.coresident_signature();
 
-        #[cfg(feature = "openssl")]
+        #[cfg(feature = "crypto-openssl")]
         ret.with_dummy_signature_signer::<Hasher, _, _, _, _>(|der| {
             PKey::private_key_from_der(der).unwrap().rsa().unwrap()
         });
@@ -185,7 +185,16 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    pub fn with_dummy_signature_signer<H, E, S, T, F>(&mut self, load_key: F)
+    /// Use custom implemetations of [`SgxHashOps`] and [`SgxRsaOps`] for producing dummy signature.
+    ///
+    /// The hasher is specified through type parameter `H`, and the signer through `S`.
+    /// `load_key` is used to parse an RSA private key in DER format and should return a type `T`
+    /// that implements `AsRef<S>` where `S` is a type that implements [`SgxRsaOps`]. `E` is the
+    /// associated `Error` type of `S` when implementing [`SgxRsaOps`].
+    ///
+    /// [`SgxHashOps`]: ../sgxs/crypto/trait.SgxHashOps.html
+    /// [`SgxRsaOps`]: ../sgxs/crypto/trait.SgxRsaOps.html
+    pub fn with_dummy_signature_signer<H, S, F, E, T>(&mut self, load_key: F)
     where
         H: SgxHashOps,
         E: std::error::Error + Send + Sync + 'static,

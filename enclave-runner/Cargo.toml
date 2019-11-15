@@ -31,4 +31,5 @@ nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
 
 [features]
-default = ["openssl", "sgxs/crypto-openssl"]
+default = ["crypto-openssl"]
+crypto-openssl = ["openssl", "sgxs/crypto-openssl"]
