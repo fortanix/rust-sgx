@@ -384,6 +384,14 @@ impl<'a> LayoutInfo<'a> {
                 u64_to_bytes(enclave_size),
             ));
         }
+        if let Some(sec_no_sgx) = self.elf.find_section_by_name(".text_no_sgx") {
+            // Overwrite .text_no_sgx section with NOPs
+            splices.push(Splice(
+                sec_no_sgx.address(),
+                vec![0x90; sec_no_sgx.size() as usize]
+            ));
+        }
+
         splices.sort(); // `Splice` sorts by address
         let mut cur_splice = splices.iter().peekable();
 
@@ -411,7 +419,7 @@ impl<'a> LayoutInfo<'a> {
             if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(err_msg)? {
                 base_data = data;
             } else {
-                // Reachable if xmas-elf changes definitition of SegmentData
+                // Reachable if xmas-elf changes definition of SegmentData
                 unreachable!();
             }
 
@@ -428,7 +436,7 @@ impl<'a> LayoutInfo<'a> {
 
             while cur_splice
                 .peek()
-                .map_or(false, |s| s.0 >= base && (s.0 + (s.1.len() as u64)) < end)
+                .map_or(false, |s| s.0 >= base && (s.0 + (s.1.len() as u64)) <= end)
             {
                 let splice = cur_splice.next().unwrap();
 
