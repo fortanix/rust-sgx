@@ -66,22 +66,43 @@ fn u64_to_bytes(v: u64) -> Vec<u8> {
     }
 }
 
-struct Splice(u64, Vec<u8>);
+struct Splice {
+    address: u64,
+    value: Vec<u8>,
+    truncate: bool, /* remove the splice if it is at the end of a segment */
+}
 
 impl PartialEq for Splice {
     fn eq(&self, other: &Self) -> bool {
-        self.0.eq(&other.0)
+        self.address.eq(&other.address)
     }
 }
 impl Eq for Splice {}
 impl PartialOrd for Splice {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.0.partial_cmp(&other.0)
+        self.address.partial_cmp(&other.address)
     }
 }
 impl Ord for Splice {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0.cmp(&other.0)
+        self.address.cmp(&other.address)
+    }
+}
+impl Splice {
+    fn for_sym_u64(address: &DynSymEntry, value: u64) -> Splice {
+        Splice {
+            address: address.value(),
+            value: u64_to_bytes(value),
+            truncate: false,
+        }
+    }
+
+    fn for_sym_u8(address: &DynSymEntry, value: u8) -> Splice {
+        Splice {
+            address: address.value(),
+            value: vec![value],
+            truncate: false,
+        }
     }
 }
 
@@ -345,51 +366,40 @@ impl<'a> LayoutInfo<'a> {
         enclave_size: Option<u64>,
     ) -> Result<(), Error> {
         let mut splices = vec![
-            Splice(self.sym.HEAP_BASE.value(), u64_to_bytes(heap_addr)),
-            Splice(self.sym.HEAP_SIZE.value(), u64_to_bytes(self.heap_size)),
-            Splice(
-                self.sym.RELA.value(),
-                u64_to_bytes(
-                    self.dyn
-                        .as_ref()
-                        .and_then(|d| d.rela.get_ptr().ok())
-                        .unwrap_or(0),
-                ),
+            Splice::for_sym_u64(self.sym.HEAP_BASE, heap_addr),
+            Splice::for_sym_u64(self.sym.HEAP_SIZE, self.heap_size),
+            Splice::for_sym_u64(
+                self.sym.RELA,               
+                self.dyn
+                    .as_ref()
+                    .and_then(|d| d.rela.get_ptr().ok())
+                    .unwrap_or(0),
+                
             ),
-            Splice(
-                self.sym.RELACOUNT.value(),
-                u64_to_bytes(
-                    self.dyn
-                        .as_ref()
-                        .and_then(|d| d.relacount.get_val().ok())
-                        .unwrap_or(0),
-                ),
+            Splice::for_sym_u64(
+                self.sym.RELACOUNT,
+                self.dyn
+                    .as_ref()
+                    .and_then(|d| d.relacount.get_val().ok())
+                    .unwrap_or(0),
             ),
-            Splice(self.sym.CFGDATA_BASE.value(), u64_to_bytes(memory_size)),
-            Splice(self.sym.DEBUG.value(), vec![if self.debug { 1 } else { 0 }]),
-            Splice(
-                self.sym.EH_FRM_HDR_BASE.value(),
-                u64_to_bytes(self.ehfrm.offset),
-            ),
-            Splice(
-                self.sym.EH_FRM_HDR_SIZE.value(),
-                u64_to_bytes(self.ehfrm.size),
-            ),
-            Splice(self.sym.TEXT_BASE.value(), u64_to_bytes(self.text.offset)),
-            Splice(self.sym.TEXT_SIZE.value(), u64_to_bytes(self.text.size)),
+            Splice::for_sym_u64(self.sym.CFGDATA_BASE, memory_size),
+            Splice::for_sym_u8(self.sym.DEBUG, if self.debug { 1u8 } else { 0u8 }),
+            Splice::for_sym_u64(self.sym.EH_FRM_HDR_BASE, self.ehfrm.offset),
+            Splice::for_sym_u64(self.sym.EH_FRM_HDR_SIZE, self.ehfrm.size),
+            Splice::for_sym_u64(self.sym.TEXT_BASE, self.text.offset),
+            Splice::for_sym_u64(self.sym.TEXT_SIZE, self.text.size),
         ];
         if let Some(enclave_size) = enclave_size {
-            splices.push(Splice(
-                self.sym.ENCLAVE_SIZE.value(),
-                u64_to_bytes(enclave_size),
-            ));
+            splices.push(Splice::for_sym_u64(self.sym.ENCLAVE_SIZE, enclave_size));
         }
         if let Some(sec_no_sgx) = self.elf.find_section_by_name(".text_no_sgx") {
             // Overwrite .text_no_sgx section with NOPs
-            splices.push(Splice(
-                sec_no_sgx.address(),
-                vec![0x90; sec_no_sgx.size() as usize]
-            ));
+            splices.push(Splice {
+                address: sec_no_sgx.address(),
+                value: vec![0x90; sec_no_sgx.size() as usize],
+                truncate: true, /* try to remove if at end of segment */
+            });
         }
 
         splices.sort(); // `Splice` sorts by address
@@ -414,7 +424,7 @@ impl<'a> LayoutInfo<'a> {
             }
             let start = ph.virtual_addr();
             let base = start & !0xfff;
-            let end = start + ph.mem_size();
+            let mut end = start + ph.mem_size();
             let base_data;
             if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(err_msg)? {
                 base_data = data;
@@ -426,9 +436,7 @@ impl<'a> LayoutInfo<'a> {
             let mut data: Box<dyn Read>;
             let mut cur_ptr = base;
 
-            if cur_splice.peek().map_or(false, |s| cur_ptr == s.0) {
-                data = Box::new(&cur_splice.next().unwrap().1[..]);
-            } else if cur_ptr == start {
+            if cur_ptr == start {
                 data = Box::new(base_data);
             } else {
                 data = Box::new(repeat(0).take(start - cur_ptr).chain(&base_data[..]));
@@ -436,18 +444,25 @@ impl<'a> LayoutInfo<'a> {
 
             while cur_splice
                 .peek()
-                .map_or(false, |s| s.0 >= base && (s.0 + (s.1.len() as u64)) <= end)
+                .map_or(false, |s| s.address >= base && (s.address + (s.value.len() as u64)) <= end)
             {
                 let splice = cur_splice.next().unwrap();
 
-                let nd = data.take(splice.0 - base);
-                cur_ptr = splice.0 + (splice.1.len() as u64);
-                let nd = nd.chain(&splice.1[..]);
-                if cur_ptr < start {
-                    data =
-                        Box::new(nd.chain(repeat(0).take(start - cur_ptr).chain(&base_data[..])));
+                let nd = data.take(splice.address - base); /* add data up to the splice */
+                
+                cur_ptr = splice.address + (splice.value.len() as u64);
+                if splice.truncate && cur_ptr == end {
+                    end = splice.address;
+                    data = Box::new(nd);
                 } else {
-                    data = Box::new(nd.chain(&base_data[(cur_ptr - start) as usize..]));
+                    let nd = nd.chain(&splice.value[..]); /* add splice value */
+                
+                    if cur_ptr < start {
+                        data =
+                            Box::new(nd.chain(repeat(0).take(start - cur_ptr).chain(&base_data[..])));
+                    } else {
+                        data = Box::new(nd.chain(&base_data[(cur_ptr - start) as usize..]));
+                    }
                 }
             }
 
