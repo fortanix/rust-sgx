@@ -59,17 +59,11 @@ struct Dynamic<'a> {
     relacount: &'a DynEntry<u64>,
 }
 
-fn u64_to_bytes(v: u64) -> Vec<u8> {
-    unsafe {
-        std::slice::from_raw_parts(&v as *const u64 as *const u8, std::mem::size_of_val(&v))
-            .to_vec()
-    }
-}
-
 struct Splice {
     address: u64,
     value: Vec<u8>,
-    truncate: bool, /* remove the splice if it is at the end of a segment */
+    /// Remove the splice if it is at the end of a segment
+    truncate: bool,
 }
 
 impl PartialEq for Splice {
@@ -92,7 +86,7 @@ impl Splice {
     fn for_sym_u64(address: &DynSymEntry, value: u64) -> Splice {
         Splice {
             address: address.value(),
-            value: u64_to_bytes(value),
+            value: value.to_le_bytes().to_vec(),
             truncate: false,
         }
     }
@@ -384,7 +378,7 @@ impl<'a> LayoutInfo<'a> {
                     .unwrap_or(0),
             ),
             Splice::for_sym_u64(self.sym.CFGDATA_BASE, memory_size),
-            Splice::for_sym_u8(self.sym.DEBUG, if self.debug { 1u8 } else { 0u8 }),
+            Splice::for_sym_u8(self.sym.DEBUG, self.debug as _),
             Splice::for_sym_u64(self.sym.EH_FRM_HDR_BASE, self.ehfrm.offset),
             Splice::for_sym_u64(self.sym.EH_FRM_HDR_SIZE, self.ehfrm.size),
             Splice::for_sym_u64(self.sym.TEXT_BASE, self.text.offset),
