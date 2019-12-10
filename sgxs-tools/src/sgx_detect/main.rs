@@ -49,8 +49,8 @@ use std::ffi::{OsStr, OsString};
 use std::{fmt, str};
 use std::fs::File;
 use std::rc::Rc;
-use std::process::{Command, Stdio};
-use std::io::{self, BufRead, BufReader, Error as IOError, ErrorKind};
+use std::process::Command;
+use std::io::{self, BufRead, Error as IOError, ErrorKind};
 use reqwest;
 use failure::Error;
 use yansi::Paint;
@@ -159,6 +159,7 @@ pub struct SgxSupport {
     node_agent: Result<NodeAgentVersion, Rc<Error>>,
     #[serde(with = "detect_result")]
     perm_daemon: Result<(), Rc<Error>>,
+    build_type: tests::BuildType,
 }
 
 struct FailTrace<'a>(pub &'a Error);
@@ -217,7 +218,7 @@ impl EinittokenProvider for TimeoutHardError<AesmClient> {
 }
 
 impl SgxSupport {
-    fn detect() -> Self {
+    fn detect(build_type :tests::BuildType) -> Self {
         fn rcerr<T>(v: Result<T, Error>) -> Result<T, Rc<Error>> {
             v.map_err(Rc::new)
         }
@@ -288,15 +289,13 @@ impl SgxSupport {
                 .stdout;
             let daemon_active = str::from_utf8(&daemon_status)?
                 .eq("active\n");
-            let stdout = Command::new("journalctl")
-                .stdout(Stdio::piped())
-                .spawn()?
+            Command::new("journalctl")
+                .arg("-u")
+                .arg("sgx_perm_daemon")
+                .output()?
                 .stdout
-                .ok_or_else(|| IOError::new(ErrorKind::Other,"[perm_daemon_test] Could not capture the journalctl output."))?;
-            BufReader::new(stdout)
                 .lines()
                 .filter_map(|line| line.ok())
-                .filter(|line| line.find("sgx_perm_daemon").is_some())
                 .for_each(|line| {
                 if line.contains("gsgx: 10:54") {
                     gsgx = true;
@@ -329,6 +328,7 @@ impl SgxSupport {
             enclaveos_dev: rcerr(gsgxdev),
             node_agent: rcerr(nodeagent_status),
             perm_daemon: rcerr(permdaemon_status),
+            build_type,
         }
     }
 }
@@ -358,8 +358,8 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
-        (@arg ENCLAVEOS_PRE:  --enclaveos_pre_install                           "Run extra diagnostics tests for enclaveos pre installation")
-        (@arg ENCLAVEOS_POST: --enclaveos_post_install                          "Run extra diagnostics tests for enclaveos post installation")
+        (@arg ENCLAVEOS_PRE:  --("enclaveos-pre-install")                       "Run extra diagnostics tests for EnclaveOS pre installation")
+        (@arg ENCLAVEOS_POST: --("enclaveos-post-install")                      "Run extra diagnostics tests for EnclaveOS post installation")
     ).get_matches();
 
     let mut build_type = tests::BuildType::Generic;
@@ -381,7 +381,7 @@ fn main() {
     }
 
     println!("Detecting SGX, this may take a minute...");
-    let support = support.unwrap_or_else(SgxSupport::detect);
+    let support = support.unwrap_or_else(|| SgxSupport::detect(build_type.clone()));
 
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();

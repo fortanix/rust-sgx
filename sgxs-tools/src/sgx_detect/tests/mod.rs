@@ -284,7 +284,7 @@ impl Dependency<EnclaveAttributes> for SgxFeatures {
 
 impl Print for SgxFeatures {
     // used for visibility control
-    fn try_supported(&self, _build_type: &BuildType) -> Option<Status> {
+    fn try_supported(&self) -> Option<Status> {
         Some(self.cpu_cfg.as_ref().map(|c| c.sgx1).as_req())
     }
 
@@ -324,7 +324,7 @@ impl Dependency<EnclavePageCache> for EpcSize {
 }
 
 impl Print for EpcSize {
-    fn try_supported(&self, _build_type: &BuildType) -> Option<Status> {
+    fn try_supported(&self) -> Option<Status> {
         None
     }
 
@@ -786,21 +786,53 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
 }
 
 // EnclaveOS requirements
-#[derive(Default, DebugSupport, Update)]
+#[derive(Debug, Default, DebugSupport, Update)]
 struct Eor {
     graphene: Status,
     node_agent: Status,
     perm_daemon: Status,
+    build_type: BuildType,
 }
 
 impl Print for Eor {
-    fn supported_for_config(&self, build_type: &BuildType) -> Status {
-        if build_type == &BuildType::EnclaveOSPreInstall {
+    fn supported(&self) -> Status {
+        if self.build_type == BuildType::EnclaveOSPreInstall {
             self.graphene & self.perm_daemon
         } else {
             self.graphene & self.perm_daemon & self.node_agent
         }
     }
+}
+
+#[derive(Clone, Debug, Default, DebugSupport)]
+struct EnvType {
+    build_type: BuildType,
+}
+
+impl Name for EnvType {
+    fn name(&self) -> &'static str {
+        "EnvType for sgx-detect"
+    }
+}
+
+impl Update for EnvType {
+    fn update(&mut self, support: &SgxSupport) {
+        self.build_type = support.build_type
+    }
+}
+
+impl Print for EnvType {
+    fn supported(&self) -> Status {
+        if self.build_type == BuildType::Generic {
+            return Status::Fatal
+        }
+        Status::Supported
+    }
+}
+
+#[dependency]
+impl Dependency<EnvType> for Eor {
+    const CONTROL_VISIBILITY: bool = true;
 }
 
 #[optional_inner]
@@ -888,7 +920,7 @@ impl Print for PermDaemon {
 }
 
 impl Tests {
-    fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>, build_type: &BuildType) {
+    fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>) {
         if self
             .dependencies
             .edges_directed(test.into(), petgraph::Direction::Incoming)
@@ -898,7 +930,7 @@ impl Tests {
         }
         if let Some(adj_level) = level.checked_sub(1) {
             self.functions[test].print(adj_level);
-            match self.functions[test].try_supported(&build_type) {
+            match self.functions[test].try_supported() {
                 None | Some(Status::Supported) => {},
                 _ => debug.push(path.clone()),
             }
@@ -910,14 +942,14 @@ impl Tests {
             .unwrap_or_default()
         {
             path.push(child);
-            self.print_recurse(child, level + 1, path, debug, build_type);
+            self.print_recurse(child, level + 1, path, debug);
             path.pop();
         }
     }
 
     pub fn print(&self, verbose: bool, build_type: &BuildType) {
         let mut debug = vec![];
-        self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug, build_type);
+        self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug);
         for path in debug {
             let test = *path.last().unwrap();
             let path = path.into_iter().map(|test| self.functions[test].name()).collect();
@@ -933,7 +965,7 @@ impl Tests {
         if build_type != &BuildType::Generic {
             if self.functions.lookup::<Isa>().supported() &
                 self.functions.lookup::<Psw>().supported() &
-                self.functions.lookup::<Eor>().supported_for_config(build_type) == Status::Supported {
+                self.functions.lookup::<Eor>().supported() == Status::Supported {
                 println!("The system is configured for EnclaveOS applications!");
             } else {
                 println!("The system is not configured for EnclaveOS applications!");
@@ -1027,7 +1059,7 @@ impl Tests {
                     "Production mode (Intel whitelisted)" => Test(RunEnclaveProdWl),
                 }),
             }),
-            "EnclavesOS system requirements" => Category(Eor, tests: {
+            "EnclaveOS system requirements" => Category(Eor, tests: {
                 @[update_supported = graphene]
                 "Graphene kernel device" => Test(GrapheneDevice),
                 @[update_supported = node_agent]
@@ -1077,7 +1109,7 @@ fn update<T: DetectItem, U: Dependency<T>>(
     dependent.update_dependency(dependency, support);
 
     let hiddenval = if U::CONTROL_VISIBILITY {
-        dependency.try_supported(&BuildType::Generic) == Some(Status::Fatal)
+        dependency.try_supported() == Some(Status::Fatal)
     } else {
         false
     };
