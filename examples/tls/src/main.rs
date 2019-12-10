@@ -101,7 +101,7 @@ fn serve(mut conn: TcpStream, key: &mut Pk, cert: &mut Certificate) -> TlsResult
     let session = ctx.establish(&mut conn, None)?;
     println!("Connection established!");
     let mut reader = BufReader::new(session);
-    while let Ok(1...std::usize::MAX) = reader.read_line(&mut buf) {
+    while let Ok(1..=std::usize::MAX) = reader.read_line(&mut buf) {
         let session = reader.get_mut();
         session.write_all(&buf.as_bytes()).unwrap();
         buf.clear();
