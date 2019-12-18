@@ -22,6 +22,7 @@ categories = ["hardware-support"]
 [dependencies]
 # External dependencies
 bitflags = "1" # MIT/Apache-2.0
+serde = { version = "1.0.104", features = ["derive"], optional = true } # MIT/Apache-2.0
 
 [features]
 large_array_derive = []
