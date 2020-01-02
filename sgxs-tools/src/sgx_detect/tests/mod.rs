@@ -785,22 +785,30 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
     const CONTROL_VISIBILITY: bool = true;
 }
 
-// EnclaveOS requirements
+// Data Shield requirements
 #[derive(Debug, Default, DebugSupport, Update)]
-struct Eor {
-    graphene: Status,
-    node_agent: Status,
-    perm_daemon: Status,
+struct DataShield {
+    enclave_os: Status,
+    enclave_manager: Status,
     build_type: BuildType,
 }
 
-impl Print for Eor {
+impl Print for DataShield {
     fn supported(&self) -> Status {
-        if self.build_type == BuildType::EnclaveOSPreInstall {
-            self.graphene & self.perm_daemon
-        } else {
-            self.graphene & self.perm_daemon & self.node_agent
-        }
+        self.enclave_os & self.enclave_manager
+    }
+}
+
+// EnclaveOS requirements
+#[derive(Debug, Default, DebugSupport, Update)]
+struct EnclaveOS {
+    graphene: Status,
+    perm_daemon: Status,
+}
+
+impl Print for EnclaveOS {
+    fn supported(&self) -> Status {
+        self.graphene & self.perm_daemon
     }
 }
 
@@ -817,7 +825,7 @@ impl Name for EnvType {
 
 impl Update for EnvType {
     fn update(&mut self, support: &SgxSupport) {
-        self.build_type = support.build_type
+        self.build_type = support.build_type;
     }
 }
 
@@ -831,8 +839,11 @@ impl Print for EnvType {
 }
 
 #[dependency]
-impl Dependency<EnvType> for Eor {
+impl Dependency<EnvType> for DataShield {
     const CONTROL_VISIBILITY: bool = true;
+    fn update_dependency(&mut self, _dependency: &EnvType, support: &SgxSupport) {
+        self.build_type = support.build_type;
+    }
 }
 
 #[optional_inner]
@@ -862,13 +873,13 @@ impl Print for GrapheneDevice {
 
 #[optional_inner]
 #[derive(Clone, DebugSupport)]
-struct NodeAgent {
+struct EnclaveManager {
     version: Result<String, Rc<Error>>,
 }
 
-impl Update for NodeAgent{
+impl Update for EnclaveManager{
     fn update(&mut self, support: &SgxSupport) {
-        self.inner = Some(NodeAgentInner {
+        self.inner = Some(EnclaveManagerInner {
             version: match support.node_agent.clone() {
                 Ok(nodeagent) => Ok(nodeagent.version),
                 Err(ref e) => Err(e.clone()),
@@ -877,7 +888,7 @@ impl Update for NodeAgent{
     }
 }
 
-impl Print for NodeAgent {
+impl Print for EnclaveManager {
     fn supported(&self) -> Status {
         self.inner.as_ref().map(|inner| inner.version.is_ok()).as_req()
     }
@@ -963,12 +974,18 @@ impl Tests {
         }
 
         if build_type != &BuildType::Generic {
+            let (type_name, support_for_type) = match build_type {
+                BuildType::Generic => ("", Status::Supported),
+                BuildType::EnclaveOS => ("EnclaveOS", self.functions.lookup::<EnclaveOS>().supported()),
+                BuildType::EnclaveManager => ("EnclaveManager", self.functions.lookup::<EnclaveManager>().supported()),
+                BuildType::DataShield => ("DataShield", self.functions.lookup::<DataShield>().supported()),
+            };
             if self.functions.lookup::<Isa>().supported() &
                 self.functions.lookup::<Psw>().supported() &
-                self.functions.lookup::<Eor>().supported() == Status::Supported {
-                println!("The system is configured for EnclaveOS applications!");
+                support_for_type == Status::Supported {
+                println!("The system is configured for {} applications!", type_name);
             } else {
-                println!("The system is not configured for EnclaveOS applications!");
+                println!("The system is not configured for {} applications!", type_name);
                 // Using a non standard exit code for the failure case
                 process::exit(10);
             }
@@ -1059,13 +1076,16 @@ impl Tests {
                     "Production mode (Intel whitelisted)" => Test(RunEnclaveProdWl),
                 }),
             }),
-            "EnclaveOS system requirements" => Category(Eor, tests: {
-                @[update_supported = graphene]
-                "Graphene kernel device" => Test(GrapheneDevice),
-                @[update_supported = node_agent]
-                "Node Agent" => Test(NodeAgent),
-                @[update_supported = perm_daemon]
-                "Perm Daemon" => Test(PermDaemon),
+            "DataShield Components" => Category(DataShield, tests: {
+                 @[update_supported = enclave_os]
+                "EnclaveOS" => Category(EnclaveOS, tests: {
+                   @[update_supported = graphene]
+                    "Graphene kernel device" => Test(GrapheneDevice),
+                   @[update_supported = perm_daemon]
+                    "Perm Daemon" => Test(PermDaemon),
+                }),
+                @[update_supported = enclave_manager]
+                "Enclave Manager Node Agent" => Test(EnclaveManager),
             }),
             //Category {
             //    name: "SGX remote attestation",

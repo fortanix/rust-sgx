@@ -27,8 +27,9 @@ pub trait Name {
 #[derive(Copy, Clone, Deserialize, Serialize, Debug, PartialEq)]
 pub enum BuildType {
     Generic,
-    EnclaveOSPreInstall,
-    EnclaveOSPostInstall,
+    EnclaveOS,
+    EnclaveManager,
+    DataShield,
 }
 
 impl Default for BuildType {

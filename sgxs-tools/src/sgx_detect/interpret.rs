@@ -355,13 +355,6 @@ mod serde {
     }
 }
 
-// DataShield Status
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum DSStatus {
-    Running,
-    NotRunning,
-}
-
 // sample version String format: "1.7.380"
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeAgentVersion {

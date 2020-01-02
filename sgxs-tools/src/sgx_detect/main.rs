@@ -309,7 +309,6 @@ impl SgxSupport {
                 Err(IOError::new(ErrorKind::Other, "[perm_daemon_test] perm daemon is not operational").into())
             }
         })();
-
         SgxSupport {
             cpuid_7h: rcerr(cpuid_7h),
             cpuid_12h_0: rcerr(cpuid_12h_0),
@@ -358,15 +357,18 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
-        (@arg ENCLAVEOS_PRE:  --("enclaveos-pre-install")                       "Run extra diagnostics tests for EnclaveOS pre installation")
-        (@arg ENCLAVEOS_POST: --("enclaveos-post-install")                      "Run extra diagnostics tests for EnclaveOS post installation")
+        (@arg ENCLAVEOS:       --("enclave-os")                                 "Run extra diagnostics tests for EnclaveOS requirements")
+        (@arg ENCLAVE_MANAGER: --("enclave-manager")                            "Run extra diagnostics tests for Enclave Manager requirements")
+        (@arg DATA_SHIELD:     --("data-shield")                                "Run extra diagnostics tests for Data Shield requirements")
     ).get_matches();
 
     let mut build_type = tests::BuildType::Generic;
-    if args.is_present("ENCLAVEOS_PRE") {
-        build_type = tests::BuildType::EnclaveOSPreInstall;
-    } else if args.is_present("ENCLAVEOS_POST") {
-        build_type = tests::BuildType::EnclaveOSPostInstall;
+    if args.is_present("ENCLAVEOS") {
+        build_type = tests::BuildType::EnclaveOS;
+    } else if args.is_present("ENCLAVE_MANAGER") {
+        build_type = tests::BuildType::EnclaveManager;
+    } else if args.is_present("DATA_SHIELD") {
+        build_type = tests::BuildType::DataShield;
     }
 
     if args.is_present("PLAIN") || atty::isnt(atty::Stream::Stdout) {
