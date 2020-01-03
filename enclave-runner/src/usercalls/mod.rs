@@ -376,7 +376,7 @@ struct AsyncListenerContainer {
 }
 
 impl AsyncListenerContainer {
-    fn new<L: AsyncListener>(l: Box<L>) -> Self {
+    fn new(l: Box<dyn AsyncListener>) -> Self {
         AsyncListenerContainer {
             inner: Lock::new(AsyncListenerAdapter {
                 listener: l,
@@ -439,8 +439,8 @@ impl AsyncFileDesc {
         AsyncFileDesc::Stream(AsyncStreamContainer::new(Box::new(s)))
     }
 
-    fn listener<L: AsyncListener>(l: L) -> AsyncFileDesc {
-        AsyncFileDesc::Listener(AsyncListenerContainer::new(Box::new(l)))
+    fn listener(l: Box<dyn AsyncListener>) -> AsyncFileDesc {
+        AsyncFileDesc::Listener(AsyncListenerContainer::new(l))
     }
 
     fn as_stream(&self) -> IoResult<&AsyncStreamContainer> {
@@ -1071,7 +1071,7 @@ pub trait UsercallExtension: 'static + Send + Sync + std::fmt::Debug {
         &self,
         addr: &str,
         local_addr: Option<&mut String>,
-    ) -> IoResult<Option<tokio::net::TcpListener>> {
+    ) -> IoResult<Option<Box<dyn AsyncListener>>> {
         Ok(None)
     }
 }
@@ -1160,8 +1160,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             if let Some(local_addr) = local_addr {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
             }
-            let socket = stream_ext.incoming();
-            return Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await);
+            return Ok(self.alloc_fd(AsyncFileDesc::listener(stream_ext)).await);
         }
 
         // !!! see if there's a better way
@@ -1170,7 +1169,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
         let socket = socket.incoming();
-        Ok(self.alloc_fd(AsyncFileDesc::listener(socket)).await)
+        Ok(self.alloc_fd(AsyncFileDesc::listener(Box::new(socket))).await)
     }
 
     #[inline(always)]
