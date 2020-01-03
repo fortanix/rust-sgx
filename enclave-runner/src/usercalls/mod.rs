@@ -302,7 +302,7 @@ struct AsyncStreamContainer {
 }
 
 impl AsyncStreamContainer {
-    fn new<S: AsyncStream>(s: Box<S>) -> Self {
+    fn new(s: Box<dyn AsyncStream>) -> Self {
         AsyncStreamContainer {
             inner: Lock::new(AsyncStreamAdapter {
                 stream: s,
@@ -435,8 +435,8 @@ enum AsyncFileDesc {
 }
 
 impl AsyncFileDesc {
-    fn stream<S: AsyncStream>(s: S) -> AsyncFileDesc {
-        AsyncFileDesc::Stream(AsyncStreamContainer::new(Box::new(s)))
+    fn stream(s: Box<dyn AsyncStream>) -> AsyncFileDesc {
+        AsyncFileDesc::Stream(AsyncStreamContainer::new(s))
     }
 
     fn listener(l: Box<dyn AsyncListener>) -> AsyncFileDesc {
@@ -600,21 +600,21 @@ impl EnclaveState {
 
         fds.insert(
             FD_STDIN,
-            Arc::new(AsyncFileDesc::stream(ReadOnly(
+            Arc::new(AsyncFileDesc::stream(Box::new(ReadOnly(
                 Stdin,
-            ))),
+            )))),
         );
         fds.insert(
             FD_STDOUT,
-            Arc::new(AsyncFileDesc::stream(WriteOnly(
+            Arc::new(AsyncFileDesc::stream(Box::new(WriteOnly(
                 tokio_io::io::AllowStdIo::new(io::stdout()),
-            ))),
+            )))),
         );
         fds.insert(
             FD_STDERR,
-            Arc::new(AsyncFileDesc::stream(WriteOnly(
+            Arc::new(AsyncFileDesc::stream(Box::new(WriteOnly(
                 tokio_io::io::AllowStdIo::new(io::stderr()),
-            ))),
+            )))),
         );
         let last_fd = AtomicUsize::new(fds.keys().cloned().max().unwrap() as _);
 
@@ -1232,7 +1232,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 Err(_) => peer_addr.set(&b"error"[..]),
             }
         }
-        Ok(self.alloc_fd(AsyncFileDesc::stream(stream)).await)
+        Ok(self.alloc_fd(AsyncFileDesc::stream(Box::new(stream))).await)
     }
 
     #[inline(always)]
