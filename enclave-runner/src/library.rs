@@ -17,6 +17,7 @@ use std::fmt;
 use std::os::raw::c_void;
 
 pub struct Library {
+    rt: tokio::runtime::Runtime,
     enclave: Arc<EnclaveState>,
     address: *mut c_void,
     size: usize,
@@ -48,8 +49,10 @@ impl Library {
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
     ) -> Library {
+        let (rt, enclave) = EnclaveState::library(tcss, usercall_ext);
         Library {
-            enclave: EnclaveState::library(tcss, usercall_ext),
+            rt,
+            enclave,
             address,
             size,
         }
@@ -67,13 +70,13 @@ impl Library {
     /// The caller must ensure that the parameters passed-in match what the
     /// enclave is expecting.
     pub unsafe fn call(
-        &self,
+        &mut self,
         p1: u64,
         p2: u64,
         p3: u64,
         p4: u64,
         p5: u64,
     ) -> Result<(u64, u64), Error> {
-        EnclaveState::library_entry(&self.enclave, p1, p2, p3, p4, p5)
+        EnclaveState::library_entry(&mut self.rt, &self.enclave, p1, p2, p3, p4, p5)
     }
 }
