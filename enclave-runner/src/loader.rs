@@ -274,7 +274,7 @@ impl<'a> EnclaveBuilder<'a> {
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s)| Command::internal_new(t, *a, s, c))
+            .map(|(t, a, s)| Command::internal_new(t, a, s, c))
     }
 
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {

@@ -28,12 +28,11 @@ use failure;
 use fnv::FnvHashMap;
 
 use crate::futures::StreamExt;
-use futures::future::{Either, FutureExt, TryFutureExt, Future, poll_fn};
+use futures::future::{Either, FutureExt, Future, poll_fn};
 use tokio::prelude::{AsyncRead, AsyncWrite};
 use tokio::sync::Mutex;
 use tokio::sync::mpsc as async_mpsc;
 use tokio::stream::Stream as TokioStream;
-use tokio::net::tcp::Incoming;
 
 use fortanix_sgx_abi::*;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -59,20 +58,19 @@ const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 
 type UsercallSendData = (ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>);
 
-struct ReadOnly<R>(R);
-struct WriteOnly<W>(W);
+struct ReadOnly<R>(Pin<Box<R>>);
+struct WriteOnly<W>(Pin<Box<W>>);
 
 macro_rules! forward {
-    (fn $n:ident(self: Pin<&mut Self> $(, $p:ident : $t:ty)*) -> $ret:ty) => {
-        fn $n(self: Pin<&mut Self> $(, $p: $t)*) -> $ret {
-            let s = Pin::new(&mut self.0);
-            s.$n($($p),*)
+    (fn $n:ident(mut self: Pin<&mut Self> $(, $p:ident : $t:ty)*) -> $ret:ty) => {
+        fn $n(mut self: Pin<&mut Self> $(, $p: $t)*) -> $ret {
+            self.0.as_mut().$n($($p),*)
         }
     }
 }
 
 impl<R: std::marker::Unpin + tokio::io::AsyncRead> AsyncRead for ReadOnly<R> {
-    forward!(fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
+    forward!(fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
 }
 
 impl<T> AsyncRead for WriteOnly<T> {
@@ -96,15 +94,15 @@ impl<T> AsyncWrite for ReadOnly<T> {
 }
 
 impl<W: std::marker::Unpin + AsyncWrite> AsyncWrite for WriteOnly<W> {
-    forward!(fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>>);
-    forward!(fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
-    forward!(fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
+    forward!(fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>>);
+    forward!(fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
+    forward!(fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
 }
 
 struct Stdin;
 
-impl Read for Stdin {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+impl AsyncRead for Stdin {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
         const BUF_SIZE: usize = 8192;
 
         trait AsIoResult<T> {
@@ -126,7 +124,7 @@ impl Read for Stdin {
         }
 
         lazy_static::lazy_static! {
-            static ref STDIN: Mutex<AsyncStdin> = {
+            static ref STDIN: futures::lock::Mutex<AsyncStdin> = {
                 let (mut tx, rx) = async_mpsc::channel(8);
                 thread::spawn(move || {
                     let mut buf = [0u8; BUF_SIZE];
@@ -140,28 +138,30 @@ impl Read for Stdin {
                         };
                     }
                 });
-                Mutex::new(AsyncStdin { rx, buf: VecDeque::new() })
+                futures::lock::Mutex::new(AsyncStdin { rx, buf: VecDeque::new() })
             };
         }
 
-        let mut stdin = STDIN.lock().as_io_result()?;
-        if stdin.buf.is_empty() {
-            let pipeerr = || -> io::Error { io::ErrorKind::BrokenPipe.into() };
-            stdin.buf = stdin
-                .rx
-                .poll()
-                .map_err(|_| pipeerr())?
-                .as_io_result()?
-                .ok_or_else(pipeerr)?;
+        match Pin::new(&mut STDIN.lock()).poll(cx) {
+            Poll::Ready(mut stdin) => {
+                if stdin.buf.is_empty() {
+                    //let pipeerr = || -> io::Error { io::ErrorKind::BrokenPipe.into() };
+                    stdin.buf = match Pin::new(&mut stdin.rx).poll_next(cx) {
+                        Poll::Ready(Some(vec)) => vec,
+                        _ => return Poll::Pending,
+                    };
+                }
+                let inbuf = match stdin.buf.as_slices() {
+                    (&[], inbuf) => inbuf,
+                    (inbuf, _) => inbuf,
+                };
+                let len = cmp::min(buf.len(), inbuf.len());
+                buf[..len].copy_from_slice(&inbuf[..len]);
+                stdin.buf.drain(..len);
+                Poll::Ready(Ok(len))
+            }
+            Poll::Pending => Poll::Pending
         }
-        let inbuf = match stdin.buf.as_slices() {
-            (&[], inbuf) => inbuf,
-            (inbuf, _) => inbuf,
-        };
-        let len = cmp::min(buf.len(), inbuf.len());
-        buf[..len].copy_from_slice(&inbuf[..len]);
-        stdin.buf.drain(..len);
-        Ok(len)
     }
 }
 
@@ -169,7 +169,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
     fn poll_read_alloc(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<Vec<u8>>>
     {
         let mut v: Vec<u8> = vec![0; 8192];
-        self.poll_read(&mut cx, v.as_mut_slice()).map(move |size| {
+        self.poll_read(cx, v.as_mut_slice()).map(move |size| {
             size.map(|size| { v.resize(size, 0); v })
         })
     }
@@ -178,7 +178,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
 impl<S: AsyncRead + AsyncWrite + Sync + Send + 'static> AsyncStream for S {}
 
 /// AsyncListener lets an implementation implement a slightly modified form of `std::net::TcpListener::accept`.
-pub trait AsyncListener: 'static + Send {
+pub trait AsyncListener: Send {
     /// The enclave may optionally request the local or peer addresses
     /// be returned in `local_addr` or `peer_addr`, respectively.
     /// If `local_addr` and/or `peer_addr` are not `None`, they will point to an empty `String`.
@@ -186,7 +186,7 @@ pub trait AsyncListener: 'static + Send {
     ///
     /// The enclave must not make any security decisions based on the local address received.
     fn poll_accept(
-        &mut self,
+        self: Pin<&mut Self>,
         cx: &mut Context,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
@@ -209,9 +209,8 @@ fn notify_other_tasks(cx: &mut Context, queue: &mut VecDeque<Waker>) {
 }
 
 impl AsyncStreamAdapter {
-    fn poll_read_alloc(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<Vec<u8>>> {
-        let s = Pin::new(&mut self.stream);
-        match s.poll_read_alloc(cx) {
+    fn poll_read_alloc(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<Vec<u8>>> {
+        match self.stream.as_mut().poll_read_alloc(cx) {
             Poll::Pending => {
                 self.read_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -224,9 +223,8 @@ impl AsyncStreamAdapter {
         }
     }
 
-    fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
-        let s = Pin::new(&mut self.stream);
-        match s.poll_read(cx, buf) {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
+        match self.stream.as_mut().poll_read(cx, buf) {
             Poll::Pending => {
                 self.read_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -239,9 +237,8 @@ impl AsyncStreamAdapter {
         }
     }
 
-    fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
-        let s = Pin::new(&mut self.stream);
-        match s.poll_write(cx, buf) {
+    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
+        match self.stream.as_mut().poll_write(cx, buf) {
             Poll::Pending => {
                 self.write_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -254,9 +251,8 @@ impl AsyncStreamAdapter {
         }
     }
 
-    fn poll_flush(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<()>> {
-        let s = Pin::new(&mut self.stream);
-        match s.poll_flush(cx) {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>> {
+        match self.stream.as_mut().poll_flush(cx) {
             Poll::Pending => {
                 self.flush_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -271,26 +267,27 @@ impl AsyncStreamAdapter {
 }
 
 struct AsyncStreamContainer {
-    inner: futures::lock::Mutex<AsyncStreamAdapter>,
+    inner: futures::lock::Mutex<Pin<Box<AsyncStreamAdapter>>>,
 }
 
 impl AsyncStreamContainer {
     fn new(s: Box<dyn AsyncStream>) -> Self {
         AsyncStreamContainer {
-            inner: futures::lock::Mutex::new(AsyncStreamAdapter {
+            inner: futures::lock::Mutex::new(Box::pin(AsyncStreamAdapter {
                 stream: s.into(),
                 read_queue: VecDeque::new(),
                 write_queue: VecDeque::new(),
                 flush_queue: VecDeque::new(),
-            }),
+            })),
         }
     }
 
     async fn async_read(&self, buf: &mut [u8]) -> IoResult<usize> {
         poll_fn(|cx| {
-            let inner: Pin<_> = Pin::new(&mut self.inner.lock());
-            match inner.poll(cx) {
-                Poll::Ready(adapter) => adapter.poll_read(cx, buf),
+            let inner_ref = &mut self.inner.lock();
+            let mut inner = Pin::new(inner_ref);
+            match inner.as_mut().poll(cx) {
+                Poll::Ready(mut adapter) => adapter.as_mut().poll_read(cx, buf),
                 Poll::Pending => Poll::Pending,
             }
         }).await
@@ -298,9 +295,10 @@ impl AsyncStreamContainer {
 
     async fn async_read_alloc(&self) -> IoResult<Vec<u8>> {
         poll_fn(|cx| {
-            let inner: Pin<_> = Pin::new(&mut self.inner.lock());
-            match inner.poll(cx) {
-                Poll::Ready(adapter) => adapter.poll_read_alloc(cx),
+            let inner_ref = &mut self.inner.lock();
+            let mut inner = Pin::new(inner_ref);
+            match inner.as_mut().poll(cx) {
+                Poll::Ready(mut adapter) => adapter.as_mut().poll_read_alloc(cx),
                 Poll::Pending => Poll::Pending,
             }
         }).await
@@ -308,9 +306,10 @@ impl AsyncStreamContainer {
 
     async fn async_write(&self, buf: &[u8]) -> IoResult<usize> {
         poll_fn(|cx| {
-            let inner: Pin<_> = Pin::new(&mut self.inner.lock());
-            match inner.poll(cx) {
-                Poll::Ready(adapter) => adapter.poll_write(cx, buf),
+            let inner_ref = &mut self.inner.lock();
+            let mut inner = Pin::new(inner_ref);
+            match inner.as_mut().poll(cx) {
+                Poll::Ready(mut adapter) => adapter.as_mut().poll_write(cx, buf),
                 Poll::Pending => Poll::Pending,
             }
         }).await
@@ -318,9 +317,10 @@ impl AsyncStreamContainer {
 
     async fn async_flush(&self) -> IoResult<()> {
         poll_fn(|cx| {
-            let inner: Pin<_> = Pin::new(&mut self.inner.lock());
-            match inner.poll(cx) {
-                Poll::Ready(adapter) => adapter.poll_flush(cx),
+            let inner_ref = &mut self.inner.lock();
+            let mut inner = Pin::new(inner_ref);
+            match inner.as_mut().poll(cx) {
+                Poll::Ready(mut adapter) => adapter.as_mut().poll_flush(cx),
                 Poll::Pending => Poll::Pending,
             }
         }).await
@@ -328,13 +328,18 @@ impl AsyncStreamContainer {
 }
 
 struct AsyncListenerAdapter {
-    listener: Box<dyn AsyncListener>,
+    listener: Pin<Box<dyn AsyncListener>>,
     accept_queue: VecDeque<Waker>,
 }
 
 impl AsyncListenerAdapter {
-    fn poll_accept(&mut self, cx: &mut Context, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
-        match self.listener.poll_accept(cx, local_addr, peer_addr) {
+    fn poll_accept(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+        local_addr: Option<&mut String>,
+        peer_addr: Option<&mut String>
+    ) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
+        match self.listener.as_mut().poll_accept(cx, local_addr, peer_addr) {
             Poll::Pending => {
                 self.accept_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -349,29 +354,25 @@ impl AsyncListenerAdapter {
 }
 
 struct AsyncListenerContainer {
-    inner: futures::lock::Mutex<AsyncListenerAdapter>,
+    inner: futures::lock::Mutex<Pin<Box<AsyncListenerAdapter>>>,
 }
 
 impl AsyncListenerContainer {
     fn new(l: Box<dyn AsyncListener>) -> Self {
         AsyncListenerContainer {
-            inner: futures::lock::Mutex::new(AsyncListenerAdapter {
-                listener: l,
+            inner: futures::lock::Mutex::new(Pin::new(Box::new(AsyncListenerAdapter {
+                listener: l.into(),
                 accept_queue: VecDeque::new(),
-            }),
+            }))),
         }
     }
 
     async fn async_accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Option<Box<dyn AsyncStream>>> {
         let mut local_addr_owned: Option<String> = if local_addr.is_some() { Some(String::new()) } else { None };
         let mut peer_addr_owned: Option<String> = if peer_addr.is_some() { Some(String::new()) } else { None };
-
+        let lock = &mut self.inner.lock().await;
         let res = poll_fn(|cx| {
-            let inner: Pin<_> = Pin::new(&mut self.inner.lock());
-            match inner.poll(cx) {
-                Poll::Ready(adapter) => adapter.poll_accept(cx, local_addr_owned.as_mut(), peer_addr_owned.as_mut()),
-                Poll::Pending => Poll::Pending,
-            }
+           lock.as_mut().poll_accept(cx, local_addr_owned.as_mut(), peer_addr_owned.as_mut())
         }).await;
 
         if let Some(local_addr) = local_addr {
@@ -384,14 +385,16 @@ impl AsyncListenerContainer {
     }
 }
 
-impl AsyncListener for tokio::net::tcp::Incoming<'static> {
+impl AsyncListener for tokio::net::TcpListener {
     fn poll_accept(
-        &mut self,
+        mut self: Pin<&mut Self>,
         cx: &mut Context,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
     ) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
-        match Pin::new(&mut self).poll_next(cx) {
+        let mut incoming = self.incoming();
+        let inner = Pin::new(&mut incoming);
+        match inner.poll_next(cx) {
             Poll::Ready(Some(Ok(stream))) => {
                 if let Some(local_addr) = local_addr {
                     *local_addr = stream.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
@@ -580,19 +583,19 @@ impl EnclaveState {
         fds.insert(
             FD_STDIN,
             Arc::new(AsyncFileDesc::stream(Box::new(ReadOnly(
-                Stdin,
+                Box::pin(Stdin)
             )))),
         );
         fds.insert(
             FD_STDOUT,
             Arc::new(AsyncFileDesc::stream(Box::new(WriteOnly(
-                tokio::io::stdout(),
+                Box::pin(tokio::io::stdout()),
             )))),
         );
         fds.insert(
             FD_STDERR,
             Arc::new(AsyncFileDesc::stream(Box::new(WriteOnly(
-                tokio::io::stderr(),
+                Box::pin(tokio::io::stderr()),
             )))),
         );
         let last_fd = AtomicUsize::new(fds.keys().cloned().max().unwrap() as _);
@@ -605,7 +608,7 @@ impl EnclaveState {
             threads_queue.push(Self::event_queue_add_tcs(&mut event_queues, thread));
         }
 
-        let mut rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
         (rt,
         Arc::new(EnclaveState {
             kind,
@@ -619,13 +622,15 @@ impl EnclaveState {
     }
 
     fn syscall_loop(
-        rt: tokio::runtime::Runtime,
+        rt: &mut tokio::runtime::Runtime,
         enclave: Arc<EnclaveState>,
         io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
     ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
+        let local_set = tokio::task::LocalSet::new();
+
         let return_future = async move {
             while let (Some(work), stream) = rx_return_channel.into_future().await {
                 rx_return_channel = stream;
@@ -668,7 +673,7 @@ impl EnclaveState {
             let mut recv_queue = io_queue_receive.into_future();
             while let (Some(work), stream) = recv_queue.await {
                 let work_sender_clone = work_sender.clone();
-                let mut tx_clone = tx_return_channel.clone();
+                let tx_clone = tx_return_channel.clone();
                 let enclave_clone = enclave_clone.clone();
                 recv_queue = stream.into_future();
                 let (coresult, mut state, buf) = work;
@@ -715,7 +720,7 @@ impl EnclaveState {
                             };
                             let _ = tx_clone.send((ret, state.mode));
                         };
-                        rt.block_on(fut);
+                        tokio::task::spawn_local(fut);
                     }
                     CoResult::Return((tcs, v1, v2)) => {
                         let fut = async move {
@@ -747,7 +752,7 @@ impl EnclaveState {
                             };
                             let _ = tx_clone.send((ret, state.mode));
                         };
-                        rt.spawn(fut);
+                        tokio::task::spawn_local(fut);
                     }
                 };
             }
@@ -762,11 +767,11 @@ impl EnclaveState {
                 }
             });
 
-        rt.block_on(select_fut.unit_error()).unwrap()
+        local_set.block_on(rt, select_fut.unit_error()).unwrap()
     }
 
     fn run(
-        rt: tokio::runtime::Runtime,
+        rt: &mut tokio::runtime::Runtime,
         enclave: Arc<EnclaveState>,
         num_of_worker_threads: usize,
         start_work: Work,
@@ -836,9 +841,9 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let (rt, enclave) = EnclaveState::new(kind, event_queues, usercall_ext, threads);
+        let (mut rt, enclave) = EnclaveState::new(kind, event_queues, usercall_ext, threads);
 
-        let main_result = EnclaveState::run(rt, enclave.clone(), num_of_threads, main_work);
+        let main_result = EnclaveState::run(&mut rt, enclave.clone(), num_of_threads, main_work);
 
         let main_panicking = match main_result {
             Err(EnclaveAbort::MainReturned)
@@ -889,7 +894,7 @@ impl EnclaveState {
     }
 
     pub(crate) fn library_entry(
-        rt: tokio::runtime::Runtime,
+        rt: &mut tokio::runtime::Runtime,
         enclave: &Arc<Self>,
         p1: u64,
         p2: u64,
@@ -1144,7 +1149,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(local_addr) = local_addr {
             local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
-        let socket = socket.incoming();
         Ok(self.alloc_fd(AsyncFileDesc::listener(Box::new(socket))).await)
     }
 
