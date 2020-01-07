@@ -38,7 +38,7 @@ impl Command {
     /// Panics if the number of TCSs is 0.
     pub(crate) fn internal_new(
         mut tcss: Vec<ErasedTcs>,
-        address: *mut c_void,
+        address: c_void,
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
     ) -> Command {
