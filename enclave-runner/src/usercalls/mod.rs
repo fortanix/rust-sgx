@@ -11,7 +11,7 @@ extern crate nix;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
+use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::net::ToSocketAddrs;
 use std::result::Result as StdResult;
 use std::str;
@@ -63,41 +63,42 @@ struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
 
 macro_rules! forward {
-    (fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
-        fn $n(&mut self $(, $p: $t)*) -> $ret {
-            self.0 .$n($($p),*)
+    (fn $n:ident(self: Pin<&mut Self> $(, $p:ident : $t:ty)*) -> $ret:ty) => {
+        fn $n(self: Pin<&mut Self> $(, $p: $t)*) -> $ret {
+            let s = Pin::new(&mut self.0);
+            s.$n($($p),*)
         }
     }
 }
 
-impl<R: AsyncRead> AsyncRead for ReadOnly<R> {
-    forward!(fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
+impl<R: std::marker::Unpin + tokio::io::AsyncRead> AsyncRead for ReadOnly<R> {
+    forward!(fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
 }
 
 impl<T> AsyncRead for WriteOnly<T> {
-    fn poll_read(&mut self, _cx: &mut Context, _buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
+    fn poll_read(self: Pin<&mut Self>, _cx: &mut Context, _buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
         Poll::Ready(Err(IoErrorKind::BrokenPipe.into()))
     }
 }
 
 impl<T> AsyncWrite for ReadOnly<T> {
-    fn poll_write(&mut self, _cx: &mut Context, _buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
+    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context, _buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
         Poll::Ready(Err(IoErrorKind::BrokenPipe.into()))
     }
 
-    fn poll_flush(&mut self, _cx: &mut Context) -> Poll<tokio::io::Result<()>> {
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<tokio::io::Result<()>> {
         Poll::Ready(Err(IoErrorKind::BrokenPipe.into()))
     }
 
-    fn poll_shutdown(&mut self, _cx: &mut Context) -> Poll<tokio::io::Result<()>> {
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context) -> Poll<tokio::io::Result<()>> {
         Poll::Ready(Err(IoErrorKind::BrokenPipe.into()))
     }
 }
 
-impl<W: AsyncWrite> AsyncWrite for WriteOnly<W> {
-    forward!(fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>>);
-    forward!(fn poll_flush(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
-    forward!(fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
+impl<W: std::marker::Unpin + AsyncWrite> AsyncWrite for WriteOnly<W> {
+    forward!(fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>>);
+    forward!(fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
+    forward!(fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<tokio::io::Result<()>>);
 }
 
 struct Stdin;
@@ -175,7 +176,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
 }
 
 impl<S: AsyncRead + AsyncWrite + Sync + Send + 'static> AsyncStream for S {}
-impl<T: AsyncStream> AsyncStream for Box<T> {}
+
 /// AsyncListener lets an implementation implement a slightly modified form of `std::net::TcpListener::accept`.
 pub trait AsyncListener: 'static + Send {
     /// The enclave may optionally request the local or peer addresses
@@ -186,6 +187,7 @@ pub trait AsyncListener: 'static + Send {
     /// The enclave must not make any security decisions based on the local address received.
     fn poll_accept(
         &mut self,
+        cx: &mut Context,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
     ) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>>;
@@ -208,7 +210,8 @@ fn notify_other_tasks(cx: &mut Context, queue: &mut VecDeque<Waker>) {
 
 impl AsyncStreamAdapter {
     fn poll_read_alloc(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<Vec<u8>>> {
-        match self.stream.poll_read_alloc(cx) {
+        let s = Pin::new(&mut self.stream);
+        match s.poll_read_alloc(cx) {
             Poll::Pending => {
                 self.read_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -222,7 +225,8 @@ impl AsyncStreamAdapter {
     }
 
     fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
-        match self.stream.poll_read(buf) {
+        let s = Pin::new(&mut self.stream);
+        match s.poll_read(cx, buf) {
             Poll::Pending => {
                 self.read_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -236,12 +240,13 @@ impl AsyncStreamAdapter {
     }
 
     fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<tokio::io::Result<usize>> {
-        match self.stream.poll_write(buf) {
+        let s = Pin::new(&mut self.stream);
+        match s.poll_write(cx, buf) {
             Poll::Pending => {
                 self.write_queue.push_back(cx.waker().clone());
                 Poll::Pending
             }
-            Poll::Ready(ret) => {
+            Poll::Ready(Ok(ret)) => {
                 notify_other_tasks(cx, &mut self.write_queue);
                 Poll::Ready(Ok(ret))
             }
@@ -250,12 +255,13 @@ impl AsyncStreamAdapter {
     }
 
     fn poll_flush(&mut self, cx: &mut Context) -> Poll<tokio::io::Result<()>> {
-        match self.stream.poll_flush() {
+        let s = Pin::new(&mut self.stream);
+        match s.poll_flush(cx) {
             Poll::Pending => {
                 self.flush_queue.push_back(cx.waker().clone());
                 Poll::Pending
             }
-            Poll::Ready(ret) => {
+            Poll::Ready(Ok(ret)) => {
                 notify_other_tasks(cx, &mut self.flush_queue);
                 Poll::Ready(Ok(ret))
             }
@@ -280,7 +286,7 @@ impl AsyncStreamContainer {
         }
     }
 
-    async fn async_read(&self, cx: &mut Context<'_>, buf: &mut [u8]) -> IoResult<usize> {
+    async fn async_read(&self, buf: &mut [u8]) -> IoResult<usize> {
         poll_fn(|cx| {
             let inner: Pin<_> = Pin::new(&mut self.inner.lock());
             match inner.poll(cx) {
@@ -290,7 +296,7 @@ impl AsyncStreamContainer {
         }).await
     }
 
-    async fn async_read_alloc(&self, cx: &mut Context<'_>) -> IoResult<Vec<u8>> {
+    async fn async_read_alloc(&self) -> IoResult<Vec<u8>> {
         poll_fn(|cx| {
             let inner: Pin<_> = Pin::new(&mut self.inner.lock());
             match inner.poll(cx) {
@@ -300,7 +306,7 @@ impl AsyncStreamContainer {
         }).await
     }
 
-    async fn async_write(&self, cx: &mut Context<'_>, buf: &[u8]) -> IoResult<usize> {
+    async fn async_write(&self, buf: &[u8]) -> IoResult<usize> {
         poll_fn(|cx| {
             let inner: Pin<_> = Pin::new(&mut self.inner.lock());
             match inner.poll(cx) {
@@ -310,7 +316,7 @@ impl AsyncStreamContainer {
         }).await
     }
 
-    async fn async_flush(&self, cx: &mut Context<'_>) -> IoResult<()> {
+    async fn async_flush(&self) -> IoResult<()> {
         poll_fn(|cx| {
             let inner: Pin<_> = Pin::new(&mut self.inner.lock());
             match inner.poll(cx) {
@@ -328,7 +334,7 @@ struct AsyncListenerAdapter {
 
 impl AsyncListenerAdapter {
     fn poll_accept(&mut self, cx: &mut Context, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
-        match self.listener.poll_accept(local_addr, peer_addr) {
+        match self.listener.poll_accept(cx, local_addr, peer_addr) {
             Poll::Pending => {
                 self.accept_queue.push_back(cx.waker().clone());
                 Poll::Pending
@@ -378,25 +384,26 @@ impl AsyncListenerContainer {
     }
 }
 
-impl AsyncListener for tokio::net::tcp::Incoming<'_> {
+impl AsyncListener for tokio::net::tcp::Incoming<'static> {
     fn poll_accept(
         &mut self,
+        cx: &mut Context,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
-    ) -> tokio::io::Result<Poll<Option<Box<dyn AsyncStream>>>> {
-        match self.poll_next() {
-            Ok(Poll::Ready(Some(stream))) => {
+    ) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
+        match Pin::new(&mut self).poll_next(cx) {
+            Poll::Ready(Some(Ok(stream))) => {
                 if let Some(local_addr) = local_addr {
                     *local_addr = stream.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
                 }
                 if let Some(peer_addr) = peer_addr {
                     *peer_addr = stream.peer_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
                 }
-                Ok(Poll::Ready(Some(Box::new(stream))))
+                Poll::Ready(Ok(Some(Box::new(stream))))
             }
-            Ok(Poll::Ready(None)) => Ok(Poll::Ready(None)),
-            Ok(Poll::Pending) => Ok(Poll::Pending),
-            Err(e) => Err(e),
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Err(e)),
+            Poll::Ready(None) => Poll::Ready(Ok(None)),
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -708,7 +715,7 @@ impl EnclaveState {
                             };
                             let _ = tx_clone.send((ret, state.mode));
                         };
-                        rt.spawn(fut);
+                        rt.block_on(fut);
                     }
                     CoResult::Return((tcs, v1, v2)) => {
                         let fut = async move {
@@ -882,6 +889,7 @@ impl EnclaveState {
     }
 
     pub(crate) fn library_entry(
+        rt: tokio::runtime::Runtime,
         enclave: &Arc<Self>,
         p1: u64,
         p2: u64,
@@ -903,7 +911,7 @@ impl EnclaveState {
         // one for usercall handling the other for actually running
         let num_of_worker_threads = 1;
 
-        let library_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, work);
+        let library_result = EnclaveState::run(rt, enclave.clone(), num_of_worker_threads, work);
 
         match library_result {
             Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
@@ -1082,29 +1090,29 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    async fn read(&self, cx: &mut Context<'_>, fd: Fd, buf: &mut [u8]) -> IoResult<usize> {
+    async fn read(&self, fd: Fd, buf: &mut [u8]) -> IoResult<usize> {
         let file_desc = self.lookup_fd(fd).await?;
-        file_desc.as_stream()?.async_read(cx, buf).await
+        file_desc.as_stream()?.async_read(buf).await
     }
 
     #[inline(always)]
-    async fn read_alloc(&self, cx: &mut Context<'_>, fd: Fd, buf: &mut OutputBuffer<'tcs>) -> IoResult<()> {
+    async fn read_alloc(&self, fd: Fd, buf: &mut OutputBuffer<'tcs>) -> IoResult<()> {
         let file_desc = self.lookup_fd(fd).await?;
-        let v = file_desc.as_stream()?.async_read_alloc(cx).await?;
+        let v = file_desc.as_stream()?.async_read_alloc().await?;
         buf.set(v);
         Ok(())
     }
 
     #[inline(always)]
-    async fn write(&self, cx: &mut Context<'_>, fd: Fd, buf: &[u8]) -> IoResult<usize> {
+    async fn write(&self, fd: Fd, buf: &[u8]) -> IoResult<usize> {
         let file_desc = self.lookup_fd(fd).await?;
-        return file_desc.as_stream()?.async_write(cx, buf).await;
+        return file_desc.as_stream()?.async_write(buf).await;
     }
 
     #[inline(always)]
-    async fn flush(&self, cx: &mut Context<'_>, fd: Fd) -> IoResult<()> {
+    async fn flush(&self, fd: Fd) -> IoResult<()> {
         let file_desc = self.lookup_fd(fd).await?;
-        file_desc.as_stream()?.async_flush(cx).await
+        file_desc.as_stream()?.async_flush().await
     }
 
     #[inline(always)]
