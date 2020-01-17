@@ -30,4 +30,4 @@ failure_derive = "0.1.1" # MIT/Apache-2.0
 libloading = "0.5"       # ISC
 
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3.7", features = ["enclaveapi","memoryapi"] }
+winapi = { version = "0.3.7", features = ["enclaveapi","memoryapi","processthreadsapi"] }
