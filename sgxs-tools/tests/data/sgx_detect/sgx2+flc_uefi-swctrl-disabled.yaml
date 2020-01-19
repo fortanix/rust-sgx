@@ -65,3 +65,10 @@ efi_epcsw:
 efi_softwareguardstatus:
   Ok:
     status: SoftwareControlled
+enclaveos_dev:
+  Err: No such file or directory (os error 2)
+node_agent:
+  Err: "http://localhost:9092/v1/sys/version: error trying to connect: Connection refused (os error 111)"
+perm_daemon:
+  Err: "[perm_daemon_test] perm daemon is not operational"
+env_config: Generic

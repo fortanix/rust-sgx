@@ -354,3 +354,9 @@ mod serde {
         }
     }
 }
+
+// sample version String format: "1.7.380"
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeAgentVersion {
+    pub version: String,
+}

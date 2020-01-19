@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::io::ErrorKind;
 #[cfg(windows)]
 use std::io::Error as IoError;
+use std::process;
 
 use failure::Error;
 use petgraph::visit::EdgeRef;
@@ -784,6 +785,144 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
     const CONTROL_VISIBILITY: bool = true;
 }
 
+// Data Shield requirements
+#[derive(Debug, Default, DebugSupport, Update)]
+struct DataShield {
+    enclave_os: Status,
+    enclave_manager: Status,
+}
+
+impl Print for DataShield {
+    fn supported(&self) -> Status {
+        self.enclave_os & self.enclave_manager
+    }
+}
+
+// EnclaveOS requirements
+#[derive(Debug, Default, DebugSupport, Update)]
+struct EnclaveOS {
+    graphene: Status,
+    perm_daemon: Status,
+}
+
+impl Print for EnclaveOS {
+    fn supported(&self) -> Status {
+        self.graphene & self.perm_daemon
+    }
+}
+
+#[derive(Clone, Debug, Default, DebugSupport)]
+struct EnvTypeNotGeneric {
+    env_config: EnvConfig,
+}
+
+impl Name for EnvTypeNotGeneric {
+    fn name(&self) -> &'static str {
+        "Non-Generic Environment Type check for sgx-detect"
+    }
+}
+
+impl Update for EnvTypeNotGeneric {
+    fn update(&mut self, support: &SgxSupport) {
+        self.env_config = support.env_config;
+    }
+}
+
+impl Print for EnvTypeNotGeneric {
+    fn supported(&self) -> Status {
+        (self.env_config != EnvConfig::Generic).as_req()
+    }
+}
+
+#[dependency]
+impl Dependency<EnvTypeNotGeneric> for DataShield {
+    const CONTROL_VISIBILITY: bool = true;
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct GrapheneDevice {
+    service: Result<(), Rc<Error>>,
+}
+
+impl Update for GrapheneDevice {
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(GrapheneDeviceInner {
+            service: support.enclaveos_dev.clone()
+        });
+    }
+}
+
+impl Print for GrapheneDevice {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.service.is_ok()).as_req()
+    }
+
+    fn print(&self, level: usize) {
+        print!("{:width$}{}{} (/dev/gsgx)", "", self.supported().paint(), self.name(), width = level * 2);
+        println!("");
+    }
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct EnclaveManager {
+    version: Result<String, Rc<Error>>,
+}
+
+impl Update for EnclaveManager{
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(EnclaveManagerInner {
+            version: match support.node_agent.clone() {
+                Ok(nodeagent) => Ok(nodeagent.version),
+                Err(ref e) => Err(e.clone()),
+            },
+        });
+    }
+}
+
+impl Print for EnclaveManager {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.version.is_ok()).as_req()
+    }
+
+    fn print(&self, level: usize) {
+        if self.supported() == Status::Supported  {
+            println!("{:width$}{}{} ({})", "", self.supported().paint(), self.name(), self.inner.as_ref().map(|inner| inner.version.clone().unwrap()).unwrap(), width = level * 2);
+        } else {
+            println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+        }
+    }
+}
+
+#[optional_inner]
+#[derive(Clone, DebugSupport)]
+struct PermDaemon {
+    service: Result<(), Rc<Error>>,
+}
+
+impl Update for PermDaemon{
+    fn update(&mut self, support: &SgxSupport) {
+        self.inner = Some(PermDaemonInner {
+            service: support.perm_daemon.clone()
+        });
+    }
+}
+
+impl Print for PermDaemon {
+    fn supported(&self) -> Status {
+        self.inner.as_ref().map(|inner| inner.service.is_ok()).as_req()
+    }
+
+    fn print(&self, level: usize) {
+        if self.supported() == Status::Supported {
+            println!( "{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+        } else {
+            println!("{:width$}{}{} {}", "", self.supported().paint(), self.name(), "(Okay if container runtime is CRI-O (openshift))", width = level * 2);
+        }
+    }
+}
+
 impl Tests {
     fn print_recurse(&self, test: TypeIdIdx, level: usize, path: &mut Vec<TypeIdIdx>, debug: &mut Vec<Vec<TypeIdIdx>>) {
         if self
@@ -812,7 +951,7 @@ impl Tests {
         }
     }
 
-    pub fn print(&self, verbose: bool) {
+    pub fn print(&self, verbose: bool, env_config: EnvConfig) {
         let mut debug = vec![];
         self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug);
         for path in debug {
@@ -825,6 +964,24 @@ impl Tests {
         if self.functions.lookup::<Isa>().supported() &
             self.functions.lookup::<Psw>().supported() == Status::Supported {
             println!("\nYou're all set to start running SGX programs!");
+        }
+
+        if env_config != EnvConfig::Generic {
+            let (type_name, support_for_type) = match env_config {
+                EnvConfig::Generic => ("", Status::Supported),
+                EnvConfig::EnclaveOS => ("EnclaveOS", self.functions.lookup::<EnclaveOS>().supported()),
+                EnvConfig::EnclaveManager => ("EnclaveManager", self.functions.lookup::<EnclaveManager>().supported()),
+                EnvConfig::DataShield => ("DataShield", self.functions.lookup::<DataShield>().supported()),
+            };
+            if self.functions.lookup::<Isa>().supported() &
+                self.functions.lookup::<Psw>().supported() &
+                support_for_type == Status::Supported {
+                println!("The system is configured for {} applications!", type_name);
+            } else {
+                println!("The system is not configured for {} applications!", type_name);
+                // Using a non standard exit code for the failure case
+                process::exit(10);
+            }
         }
     }
 
@@ -911,6 +1068,17 @@ impl Tests {
                     @[update_supported = prod_wl]
                     "Production mode (Intel whitelisted)" => Test(RunEnclaveProdWl),
                 }),
+            }),
+            "DataShield Components" => Category(DataShield, tests: {
+                 @[update_supported = enclave_os]
+                "EnclaveOS" => Category(EnclaveOS, tests: {
+                   @[update_supported = graphene]
+                    "Graphene kernel device" => Test(GrapheneDevice),
+                   @[update_supported = perm_daemon]
+                    "Perm Daemon" => Test(PermDaemon),
+                }),
+                @[update_supported = enclave_manager]
+                "Enclave Manager Node Agent" => Test(EnclaveManager),
             }),
             //Category {
             //    name: "SGX remote attestation",

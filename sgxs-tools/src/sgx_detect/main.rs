@@ -46,14 +46,14 @@ extern crate clap;
 use std::arch::x86_64::{self, CpuidResult};
 use std::cell::{Cell, RefCell};
 use std::ffi::{OsStr, OsString};
-use std::fmt;
+use std::{fmt, str};
 use std::fs::File;
-use std::io;
 use std::rc::Rc;
-
+use std::process::Command;
+use std::io::{self, BufRead, Error as IOError, ErrorKind};
+use reqwest;
 use failure::Error;
 use yansi::Paint;
-
 use aesm_client::AesmClient;
 use sgx_isa::{Sigstruct, Attributes, Einittoken};
 use sgxs::einittoken::EinittokenProvider;
@@ -153,6 +153,13 @@ pub struct SgxSupport {
     sgxdev_status: Result<KmodStatus, Rc<Error>>,
     #[serde(skip, default = "no_deserialize")]
     loader_encllib: Result<Rc<RefCell<EnclCommonLib>>, Rc<Error>>,
+    #[serde(with = "detect_result")]
+    enclaveos_dev: Result<(), Rc<Error>>,
+    #[serde(with = "detect_result")]
+    node_agent: Result<NodeAgentVersion, Rc<Error>>,
+    #[serde(with = "detect_result")]
+    perm_daemon: Result<(), Rc<Error>>,
+    env_config: tests::EnvConfig,
 }
 
 struct FailTrace<'a>(pub &'a Error);
@@ -211,7 +218,7 @@ impl EinittokenProvider for TimeoutHardError<AesmClient> {
 }
 
 impl SgxSupport {
-    fn detect() -> Self {
+    fn detect(env_config :tests::EnvConfig) -> Self {
         fn rcerr<T>(v: Result<T, Error>) -> Result<T, Rc<Error>> {
             v.map_err(Rc::new)
         }
@@ -263,7 +270,45 @@ impl SgxSupport {
             }
             Ok(Rc::new(RefCell::new(lib.build())))
         })();
-
+        let gsgxdev = (|| -> Result<(), Error> {
+            File::open("/dev/gsgx")?;
+            Ok(())
+        })();
+        let nodeagent_status = (|| {
+            let mut response = reqwest::get("http://localhost:9092/v1/sys/version")?;
+            let ver: NodeAgentVersion = response.json()?;
+            Ok(NodeAgentVersion{version: ver.version})
+        })();
+        let permdaemon_status = (|| -> Result<(), Error> {
+            let mut isgx = false;
+            let mut gsgx = false;
+            let daemon_status = Command::new("systemctl")
+                .arg("is-active")
+                .arg("sgx_perm_daemon")
+                .output()?
+                .stdout;
+            let daemon_active = str::from_utf8(&daemon_status)?
+                .eq("active\n");
+            Command::new("journalctl")
+                .arg("-u")
+                .arg("sgx_perm_daemon")
+                .output()?
+                .stdout
+                .lines()
+                .filter_map(|line| line.ok())
+                .for_each(|line| {
+                if line.contains("gsgx: 10:54") {
+                    gsgx = true;
+                } else if line.contains("isgx: 10:55"){
+                    isgx = true;
+                }
+            });
+            if isgx && gsgx && daemon_active {
+                Ok(())
+            } else {
+                Err(IOError::new(ErrorKind::Other, "[perm_daemon_test] perm daemon is not operational").into())
+            }
+        })();
         SgxSupport {
             cpuid_7h: rcerr(cpuid_7h),
             cpuid_12h_0: rcerr(cpuid_12h_0),
@@ -279,6 +324,10 @@ impl SgxSupport {
             loader_sgxdev: rcerr(loader_sgxdev),
             sgxdev_status: rcerr(sgxdev_status),
             loader_encllib: rcerr(loader_encllib),
+            enclaveos_dev: rcerr(gsgxdev),
+            node_agent: rcerr(nodeagent_status),
+            perm_daemon: rcerr(permdaemon_status),
+            env_config,
         }
     }
 }
@@ -308,7 +357,22 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
+        (@group environment_type =>
+            (@arg ENCLAVE_OS: --("enclave-os")                                   "Run extra diagnostics tests for EnclaveOS")
+            (@arg ENCLAVE_MANAGER: --("enclave-manager")                        "Run extra diagnostics tests for Enclave Manager")
+            (@arg DATA_SHIELD: --("data-shield")                                "Run extra diagnostics tests for Data Shield")
+        )
     ).get_matches();
+
+    let env_config = if args.is_present("ENCLAVE_OS") {
+        tests::EnvConfig::EnclaveOS
+    } else if args.is_present("ENCLAVE_MANAGER") {
+        tests::EnvConfig::EnclaveManager
+    } else if args.is_present("DATA_SHIELD") {
+        tests::EnvConfig::DataShield
+    } else{
+        tests::EnvConfig::Generic
+    };
 
     if args.is_present("PLAIN") || atty::isnt(atty::Stream::Stdout) {
         Paint::disable()
@@ -322,7 +386,7 @@ fn main() {
     }
 
     println!("Detecting SGX, this may take a minute...");
-    let support = support.unwrap_or_else(SgxSupport::detect);
+    let support = support.unwrap_or_else(|| SgxSupport::detect(env_config));
 
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();
@@ -330,6 +394,6 @@ fn main() {
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
-        tests.print(args.is_present("VERBOSE"));
+        tests.print(args.is_present("VERBOSE"), env_config);
     }
 }

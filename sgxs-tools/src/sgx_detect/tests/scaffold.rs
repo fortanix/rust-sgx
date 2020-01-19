@@ -24,6 +24,18 @@ pub trait Name {
     fn name(&self) -> &'static str;
 }
 
+#[derive(Copy, Clone, Deserialize, Serialize, Debug, PartialEq)]
+pub enum EnvConfig {
+    Generic,
+    EnclaveOS,
+    EnclaveManager,
+    DataShield,
+}
+
+impl Default for EnvConfig {
+    fn default() -> Self {EnvConfig::Generic}
+}
+
 pub trait Print: Name {
     fn try_supported(&self) -> Option<Status> {
         Some(self.supported())
