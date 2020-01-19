@@ -159,7 +159,7 @@ pub struct SgxSupport {
     node_agent: Result<NodeAgentVersion, Rc<Error>>,
     #[serde(with = "detect_result")]
     perm_daemon: Result<(), Rc<Error>>,
-    build_type: tests::BuildType,
+    env_config: tests::EnvConfig,
 }
 
 struct FailTrace<'a>(pub &'a Error);
@@ -218,7 +218,7 @@ impl EinittokenProvider for TimeoutHardError<AesmClient> {
 }
 
 impl SgxSupport {
-    fn detect(build_type :tests::BuildType) -> Self {
+    fn detect(env_config :tests::EnvConfig) -> Self {
         fn rcerr<T>(v: Result<T, Error>) -> Result<T, Rc<Error>> {
             v.map_err(Rc::new)
         }
@@ -327,7 +327,7 @@ impl SgxSupport {
             enclaveos_dev: rcerr(gsgxdev),
             node_agent: rcerr(nodeagent_status),
             perm_daemon: rcerr(permdaemon_status),
-            build_type,
+            env_config,
         }
     }
 }
@@ -357,19 +357,22 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
-        (@arg ENCLAVEOS:       --("enclave-os")                                 "Run extra diagnostics tests for EnclaveOS requirements")
-        (@arg ENCLAVE_MANAGER: --("enclave-manager")                            "Run extra diagnostics tests for Enclave Manager requirements")
-        (@arg DATA_SHIELD:     --("data-shield")                                "Run extra diagnostics tests for Data Shield requirements")
+        (@group environment_type =>
+            (@arg ENCLAVE_OS: --("enclave-os")                                   "Run extra diagnostics tests for EnclaveOS")
+            (@arg ENCLAVE_MANAGER: --("enclave-manager")                        "Run extra diagnostics tests for Enclave Manager")
+            (@arg DATA_SHIELD: --("data-shield")                                "Run extra diagnostics tests for Data Shield")
+        )
     ).get_matches();
 
-    let mut build_type = tests::BuildType::Generic;
-    if args.is_present("ENCLAVEOS") {
-        build_type = tests::BuildType::EnclaveOS;
+    let env_config = if args.is_present("ENCLAVE_OS") {
+        tests::EnvConfig::EnclaveOS
     } else if args.is_present("ENCLAVE_MANAGER") {
-        build_type = tests::BuildType::EnclaveManager;
+        tests::EnvConfig::EnclaveManager
     } else if args.is_present("DATA_SHIELD") {
-        build_type = tests::BuildType::DataShield;
-    }
+        tests::EnvConfig::DataShield
+    } else{
+        tests::EnvConfig::Generic
+    };
 
     if args.is_present("PLAIN") || atty::isnt(atty::Stream::Stdout) {
         Paint::disable()
@@ -383,7 +386,7 @@ fn main() {
     }
 
     println!("Detecting SGX, this may take a minute...");
-    let support = support.unwrap_or_else(|| SgxSupport::detect(build_type.clone()));
+    let support = support.unwrap_or_else(|| SgxSupport::detect(env_config));
 
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();
@@ -391,6 +394,6 @@ fn main() {
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
-        tests.print(args.is_present("VERBOSE"), &build_type);
+        tests.print(args.is_present("VERBOSE"), env_config);
     }
 }

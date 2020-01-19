@@ -790,7 +790,6 @@ impl Dependency<RunEnclaveProdWl> for RunEnclaveProd {
 struct DataShield {
     enclave_os: Status,
     enclave_manager: Status,
-    build_type: BuildType,
 }
 
 impl Print for DataShield {
@@ -813,37 +812,31 @@ impl Print for EnclaveOS {
 }
 
 #[derive(Clone, Debug, Default, DebugSupport)]
-struct EnvType {
-    build_type: BuildType,
+struct EnvTypeNotGeneric {
+    env_config: EnvConfig,
 }
 
-impl Name for EnvType {
+impl Name for EnvTypeNotGeneric {
     fn name(&self) -> &'static str {
-        "EnvType for sgx-detect"
+        "Non-Generic Environment Type check for sgx-detect"
     }
 }
 
-impl Update for EnvType {
+impl Update for EnvTypeNotGeneric {
     fn update(&mut self, support: &SgxSupport) {
-        self.build_type = support.build_type;
+        self.env_config = support.env_config;
     }
 }
 
-impl Print for EnvType {
+impl Print for EnvTypeNotGeneric {
     fn supported(&self) -> Status {
-        if self.build_type == BuildType::Generic {
-            return Status::Fatal
-        }
-        Status::Supported
+        (self.env_config != EnvConfig::Generic).as_req()
     }
 }
 
 #[dependency]
-impl Dependency<EnvType> for DataShield {
+impl Dependency<EnvTypeNotGeneric> for DataShield {
     const CONTROL_VISIBILITY: bool = true;
-    fn update_dependency(&mut self, _dependency: &EnvType, support: &SgxSupport) {
-        self.build_type = support.build_type;
-    }
 }
 
 #[optional_inner]
@@ -958,7 +951,7 @@ impl Tests {
         }
     }
 
-    pub fn print(&self, verbose: bool, build_type: &BuildType) {
+    pub fn print(&self, verbose: bool, env_config: EnvConfig) {
         let mut debug = vec![];
         self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug);
         for path in debug {
@@ -973,12 +966,12 @@ impl Tests {
             println!("\nYou're all set to start running SGX programs!");
         }
 
-        if build_type != &BuildType::Generic {
-            let (type_name, support_for_type) = match build_type {
-                BuildType::Generic => ("", Status::Supported),
-                BuildType::EnclaveOS => ("EnclaveOS", self.functions.lookup::<EnclaveOS>().supported()),
-                BuildType::EnclaveManager => ("EnclaveManager", self.functions.lookup::<EnclaveManager>().supported()),
-                BuildType::DataShield => ("DataShield", self.functions.lookup::<DataShield>().supported()),
+        if env_config != EnvConfig::Generic {
+            let (type_name, support_for_type) = match env_config {
+                EnvConfig::Generic => ("", Status::Supported),
+                EnvConfig::EnclaveOS => ("EnclaveOS", self.functions.lookup::<EnclaveOS>().supported()),
+                EnvConfig::EnclaveManager => ("EnclaveManager", self.functions.lookup::<EnclaveManager>().supported()),
+                EnvConfig::DataShield => ("DataShield", self.functions.lookup::<DataShield>().supported()),
             };
             if self.functions.lookup::<Isa>().supported() &
                 self.functions.lookup::<Psw>().supported() &

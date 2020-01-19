@@ -25,15 +25,15 @@ pub trait Name {
 }
 
 #[derive(Copy, Clone, Deserialize, Serialize, Debug, PartialEq)]
-pub enum BuildType {
+pub enum EnvConfig {
     Generic,
     EnclaveOS,
     EnclaveManager,
     DataShield,
 }
 
-impl Default for BuildType {
-    fn default() -> Self {BuildType::Generic}
+impl Default for EnvConfig {
+    fn default() -> Self {EnvConfig::Generic}
 }
 
 pub trait Print: Name {
