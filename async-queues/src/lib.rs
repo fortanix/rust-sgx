@@ -42,7 +42,7 @@ struct Queue<T>(FifoDescriptorContainer<T>);
 
 impl<T> Queue<T> {
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity <= usize::pow(2, 31));
+        assert!(capacity <= usize::pow(2, 31) && capacity.count_ones() == 1);
         let offsets: Box<AtomicUsize> = Box::new(AtomicUsize::new(0));
         let data: Box<[Slot<T>]> = iter::repeat_with(|| unsafe { mem::zeroed() }).take(capacity).collect::<Vec<_>>()
             .into_boxed_slice();
@@ -148,18 +148,17 @@ impl Offsets {
 
 impl<T: Copy> FifoDescriptorContainer<T> {
     pub fn new(capacity: usize) -> Self {
-        assert!(capacity <= usize::pow(2, 31));
+        assert!(capacity <= usize::pow(2, 31) && capacity.count_ones() == 1);
         let offsets: Box<AtomicUsize> = Box::new(AtomicUsize::new(0));
         let data: Box<[Slot<T>]> = iter::repeat_with(|| unsafe { mem::zeroed() }).take(capacity).collect::<Vec<_>>()
             .into_boxed_slice();
         assert_eq!(data.len(), capacity);
         let data = Box::into_raw(data) as *mut Slot<T>;
-        //let descriptor = FifoDescriptor { data, capacity: capacity as u32, offsets: Box::into_raw(offsets) };
         Self::from_raw(data, capacity, Box::into_raw(offsets))
     }
 
     pub fn from_raw(data: *mut Slot<T>, capacity: usize, offsets: *mut AtomicUsize) -> Self {
-        assert!(capacity <= usize::pow(2, 31));
+        assert!(capacity <= usize::pow(2, 31) && capacity.count_ones() == 1);
         FifoDescriptorContainer {
             inner: FifoDescriptor { data, capacity, offsets }
         }
