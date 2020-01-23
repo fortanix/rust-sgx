@@ -69,7 +69,7 @@ macro_rules! forward {
     }
 }
 
-impl<R: std::marker::Unpin + tokio::io::AsyncRead> AsyncRead for ReadOnly<R> {
+impl<R: std::marker::Unpin + AsyncRead> AsyncRead for ReadOnly<R> {
     forward!(fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
 }
 
@@ -145,9 +145,10 @@ impl AsyncRead for Stdin {
         match Pin::new(&mut STDIN.lock()).poll(cx) {
             Poll::Ready(mut stdin) => {
                 if stdin.buf.is_empty() {
-                    //let pipeerr = || -> io::Error { io::ErrorKind::BrokenPipe.into() };
+                    let pipeerr = tokio::io::Error::new(tokio::io::ErrorKind::BrokenPipe, "broken pipe");
                     stdin.buf = match Pin::new(&mut stdin.rx).poll_next(cx) {
                         Poll::Ready(Some(vec)) => vec,
+                        Poll::Ready(None) => return Poll::Ready(Err(pipeerr)),
                         _ => return Poll::Pending,
                     };
                 }
