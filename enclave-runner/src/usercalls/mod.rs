@@ -713,9 +713,9 @@ impl EnclaveState {
                                     println!("Attaching debugger");
                                     #[cfg(unix)]
                                     trap_attached_debugger(usercall.tcs_address() as _).await;
-                                    Err(EnclaveAbort::Exit {
-                                        panic: EnclavePanic::from(buf.into_inner()),
-                                    })
+                                    let err = EnclavePanic::from(buf.into_inner());
+                                    println!("{}", err);
+                                    std::process::exit(1);
                                 }
                                 Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
                                 Err(EnclaveAbort::IndefiniteWait) => {
