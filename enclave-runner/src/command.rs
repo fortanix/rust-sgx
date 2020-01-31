@@ -21,6 +21,7 @@ pub struct Command {
     address: usize,
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
+    forward_panics: bool,
 }
 
 impl MappingInfo for Command {
@@ -41,6 +42,7 @@ impl Command {
         address: *mut c_void,
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        forward_panics: bool,
     ) -> Command {
         let main = tcss.remove(0);
         Command {
@@ -49,6 +51,7 @@ impl Command {
             address: address as _,
             size,
             usercall_ext,
+            forward_panics,
         }
     }
 
@@ -57,6 +60,6 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics)
     }
 }

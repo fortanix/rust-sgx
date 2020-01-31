@@ -66,6 +66,7 @@ pub struct EnclaveBuilder<'a> {
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
+    forward_panics: bool,
 }
 
 #[derive(Debug, Fail)]
@@ -138,6 +139,7 @@ impl<'a> EnclaveBuilder<'a> {
             usercall_ext: None,
             load_and_sign: None,
             hash_enclave: None,
+            forward_panics: false,
         };
 
         let _ = ret.coresident_signature();
@@ -248,10 +250,20 @@ impl<'a> EnclaveBuilder<'a> {
         self.usercall_ext = Some(extension.into());
     }
 
+    /// Whether to panic the runner if any enclave thread panics.
+    /// Defaults to `false`.
+    /// Note: If multiple enclaves are loaded, and an enclave with this set to
+    /// true panics, then all enclaves handled by this runner will exit because
+    /// the runner itself will panic.
+    pub fn forward_panics(&mut self, fp: bool) -> &mut Self {
+        self.forward_panics = fp;
+        self
+    }
+
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -261,6 +273,7 @@ impl<'a> EnclaveBuilder<'a> {
         let attributes = self.attributes.unwrap_or(signature.attributes);
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
         let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
+        let forward_panics = self.forward_panics;
         if mapping.tcss.is_empty() {
             unimplemented!()
         }
@@ -268,18 +281,19 @@ impl<'a> EnclaveBuilder<'a> {
             mapping.tcss.into_iter().map(ErasedTcs::new).collect(),
             mapping.info.address(),
             mapping.info.size(),
+            forward_panics,
         ))
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s)| Command::internal_new(t, a, s, c))
+            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp))
     }
 
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s)| Library::internal_new(t, a, s, c))
+            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
     }
 }
