@@ -100,19 +100,17 @@ unsafe impl <T:Send> Send for FifoDescriptorContainer<T> {}
 struct Offsets {
     read: u32,
     write: u32,
-    read_blocked: bool,
 }
 
 impl Offsets {
     fn as_usize(&self) -> usize {
-        ((self.write as usize) << 32) | (if self.read_blocked { 1 << 31 } else { 0 }) | (self.read as usize)
+        ((self.write as usize) << 32) | (self.read as usize)
     }
 
     fn from_usize(offsets: usize) -> Self {
         Offsets {
             write: (offsets >> 32) as u32,
-            read_blocked: offsets & (1 << 31) != 0,
-            read: (offsets & ((1 << 31) - 1)) as u32,
+            read: (offsets & ((1 << 32) - 1)) as u32,
         }
     }
 
@@ -121,7 +119,7 @@ impl Offsets {
     }
 
     fn is_full(&self, capacity: u32) -> bool {
-        self.read | capacity == self.write | capacity && !self.is_empty()
+        (self.read | capacity) == (self.write | capacity) && (!self.is_empty())
     }
 
     fn read_offset(&self, capacity: u32) -> isize {
@@ -138,7 +136,6 @@ impl Offsets {
 
     fn increment_write_offset(&mut self, capacity: u32) {
         self.write = (self.write + 1) & ((capacity << 1) - 1);
-        self.read_blocked = false;
     }
 
     fn len(&self, capacity: u32) -> usize {
@@ -174,6 +171,7 @@ impl<T: Copy> FifoDescriptorContainer<T> {
 
     pub unsafe fn send(&self, id: usize, data: T) -> Option<bool /* wakeup reader? */> {
         let (mut old_offsets, mut offsets);
+
         loop {
             // 1. Load the current offsets.
             old_offsets = (*self.inner.offsets).load(Ordering::Acquire);
@@ -200,25 +198,17 @@ impl<T: Copy> FifoDescriptorContainer<T> {
         // Use `Ordering::Release` so that everyone sees the above write to `data` before the non-zero `id`.
         slot.id.store(id, Ordering::Release);
 
-        Some(Offsets::from_usize(old_offsets).read_blocked)
+        Some(Offsets::from_usize(old_offsets).is_empty())
     }
 
     pub unsafe fn recv(&self) -> Option<(usize, T, bool /* wakeup writer? */)> {
         // 1. Load the current offsets.
-        let mut old_offsets = (*self.inner.offsets).load(Ordering::Acquire);
+        let old_offsets = (*self.inner.offsets).load(Ordering::Acquire);
 
-        // 2. If the queue is empty, set `read_blocked` and wait
-        let mut offsets;
-        while { offsets = Offsets::from_usize(old_offsets); offsets.is_empty() } {
-            if offsets.read_blocked {
-                return None
-            }
-            old_offsets = (*self.inner.offsets).fetch_or(1 << 31, Ordering::Release); // set `read_blocked`
-        }
-
-        // Unset `read_blocked` in case the above loop set `read_blocked` right after something was sent.
-        if offsets.read_blocked {
-            (*self.inner.offsets).fetch_and(!(1 << 31), Ordering::Relaxed);
+        // 2. If the queue is empty, wait, then go to step 1
+        let mut offsets = Offsets::from_usize(old_offsets);
+        if offsets.is_empty() {
+            return None;
         }
 
         // 3. Add 1 to the read offset.
