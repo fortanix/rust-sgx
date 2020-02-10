@@ -59,21 +59,17 @@ type UsercallSendData = (ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]
 
 struct ReadOnly<R>(R);
 struct WriteOnly<W>(W);
-macro_rules! poll_lock_as_future01 {
-    ($lock:expr) => {
-    tokio::prelude::future::poll_fn( ||
-        match $lock.clone().poll_lock() {
-            Async::NotReady => IoResult::Ok(Async::NotReady),
-            Async::Ready(ret) => IoResult::Ok(Async::Ready(ret)),
-        })
-    }
-}
 
 macro_rules! poll_lock_await_unwrap {
     ($lock:expr) => {
-        poll_lock_as_future01!($lock).compat().await.unwrap()
+        tokio::prelude::future::poll_fn( ||
+            match $lock.clone().poll_lock() {
+                Async::NotReady => IoResult::Ok(Async::NotReady),
+                Async::Ready(ret) => IoResult::Ok(Async::Ready(ret)),
+        }).compat().await.unwrap()
     }
 }
+
 macro_rules! forward {
     (fn $n:ident(&mut self $(, $p:ident : $t:ty)*) -> $ret:ty) => {
         fn $n(&mut self $(, $p: $t)*) -> $ret {
@@ -122,7 +118,7 @@ where
     T: std::io::Write,
 {
     fn shutdown(&mut self) -> Poll<(), std::io::Error> {
-        Ok(().into())
+        self.0.flush().map(|k| k.into())
     }
 }
 
@@ -198,7 +194,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
             match size {
                 Async::NotReady => Async::NotReady,
                 Async::Ready(size) => {
-                    v.resize(size, 0);
+                    v.truncate(size);
                     Async::Ready(v)
                 }
             }
@@ -685,8 +681,8 @@ impl EnclaveState {
         let io_future = async move {
             let mut recv_queue = io_queue_receive.into_future();
             while let Ok((Some(work), stream)) = recv_queue.compat().await {
-                let work_sender_clone = work_sender.clone();
-                let mut tx_clone = tx_return_channel.clone();
+                let work_sender = work_sender.clone();
+                let mut tx_return_channel = tx_return_channel.clone();
                 let enclave_clone = enclave_clone.clone();
                 recv_queue = stream.into_future();
                 let (coresult, mut state, buf) = work;
@@ -696,7 +692,7 @@ impl EnclaveState {
                             let mut input = IOHandlerInput {
                                 enclave: enclave_clone.clone(),
                                 tcs: &mut state,
-                                work_sender: &work_sender_clone,
+                                work_sender: &work_sender,
                             };
                             let handler = Handler(&mut input);
                             let (_handler, result) = {
@@ -705,7 +701,7 @@ impl EnclaveState {
                             };
                             let ret = match result {
                                 Ok(ret) => {
-                                    work_sender_clone
+                                    work_sender
                                         .send(Work {
                                             tcs: state,
                                             entry: CoEntry::Resume(usercall, ret),
@@ -731,7 +727,7 @@ impl EnclaveState {
                                 Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
                                 Err(EnclaveAbort::Secondary) => Err(EnclaveAbort::Secondary),
                             };
-                            let _ = tx_clone.try_send((ret, state.mode));
+                            let _ = tx_return_channel.try_send((ret, state.mode));
                         }
                             .unit_error()
                             .boxed_local()
@@ -766,7 +762,7 @@ impl EnclaveState {
                                     Ok((0, 0))
                                 }
                             };
-                            let _ = tx_clone.try_send((ret, state.mode));
+                            let _ = tx_return_channel.try_send((ret, state.mode));
                         }
                             .unit_error()
                             .boxed_local()
@@ -810,7 +806,7 @@ impl EnclaveState {
                     }
                 }));
             }
-            return thread_handles;
+            thread_handles
         }
 
         let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::unbounded_channel();
@@ -851,7 +847,7 @@ impl EnclaveState {
             entry: CoEntry::Initial(main.tcs, 0, 0, 0, 0, 0),
         };
 
-        let num_of_threads = num_cpus::get();
+        let num_of_worker_threads = num_cpus::get();
 
         let kind = EnclaveKind::Command(Command {
             panic_reason: Lock::new(PanicReason {
@@ -861,7 +857,7 @@ impl EnclaveState {
         });
         let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads);
 
-        let main_result = EnclaveState::run(enclave.clone(), num_of_threads, main_work);
+        let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
         let main_panicking = match main_result {
             Err(EnclaveAbort::MainReturned)
@@ -1086,7 +1082,6 @@ impl<T: UsercallExtension> From<T> for Box<dyn UsercallExtension> {
 struct UsercallExtensionDefault;
 impl UsercallExtension for UsercallExtensionDefault {}
 
-#[allow(unused_variables)]
 impl<'tcs> IOHandlerInput<'tcs> {
     async fn lookup_fd(&self, fd: Fd) -> IoResult<Arc<AsyncFileDesc>> {
         match poll_lock_await_unwrap!(self.enclave.fds).get(&fd) {
@@ -1163,8 +1158,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             return Ok(self.alloc_fd(AsyncFileDesc::listener(stream_ext)).await);
         }
 
-        // !!! see if there's a better way
-        let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.as_mut_slice()[0])?;
+        let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.next().unwrap())?;
         if let Some(local_addr) = local_addr {
             local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
@@ -1217,9 +1211,20 @@ impl<'tcs> IOHandlerInput<'tcs> {
             }
             return Ok(self.alloc_fd(AsyncFileDesc::stream(stream_ext)).await);
         }
-        let stream = tokio::net::TcpStream::connect(&addr.to_socket_addrs()?.as_mut_slice()[0])
-            .compat()
-            .await?;
+
+        // try to connect to all socket addresses one by one
+        let mut stream = None;
+        for socket_addr in addr.to_socket_addrs()? {
+            stream = Some(tokio::net::TcpStream::connect(&socket_addr).compat().await);
+            if stream.as_ref().unwrap().is_ok() {
+                break;
+            }
+        }
+        let stream = match stream {
+            None => return Err(IoErrorKind::InvalidInput.into()),
+            Some(s) => s?
+        };
+
         if let Some(local_addr) = local_addr {
             match stream.local_addr() {
                 Ok(local) => local_addr.set(local.to_string().into_bytes()),
@@ -1237,14 +1242,14 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     fn launch_thread(&self) -> IoResult<()> {
-        let command = self
-            .enclave
+        // check if enclave is of type command
+        self.enclave
             .kind
             .as_command()
             .ok_or(IoErrorKind::InvalidInput)?;
         let new_tcs = match self.enclave.threads_queue.pop() {
             Ok(tcs) => tcs,
-            Err(a) => {
+            Err(_) => {
                 return Err(IoErrorKind::WouldBlock.into());
             }
         };
@@ -1260,8 +1265,18 @@ impl<'tcs> IOHandlerInput<'tcs> {
         });
         match ret {
             Ok(()) => Ok(()),
-            Err(err) => {
-                let y = err.into_inner();
+            Err(e) => {
+                let event_queue = e.0.tcs.event_queue;
+                let entry = e.0.entry;
+                match entry {
+                    CoEntry::Initial(tcs, _, _ ,_, _, _) => {
+                        self.enclave.threads_queue.push(StoppedTcs {
+                            tcs,
+                            event_queue,
+                        });
+                    },
+                    _ => unreachable!(),
+                };
                 Err(std::io::Error::new(
                     IoErrorKind::NotConnected,
                     "Work Sender: send error",
@@ -1318,7 +1333,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 } else {
                     match self.tcs.event_queue.try_next() {
                         Ok(Some(ev)) => Ok(ev),
-                        Err(e) => break,
+                        Err(_) => break,
                         Ok(None) => Err(()),
                     }
                 }
@@ -1412,8 +1427,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
     #[inline(always)]
     fn async_queues(
         &self,
-        usercall_queue: &mut FifoDescriptor<Usercall>,
-        return_queue: &mut FifoDescriptor<Return>,
+        _usercall_queue: &mut FifoDescriptor<Usercall>,
+        _return_queue: &mut FifoDescriptor<Return>,
     ) -> IoResult<()> {
         Err(IoErrorKind::Other.into())
     }
