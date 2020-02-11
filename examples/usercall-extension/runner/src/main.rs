@@ -7,45 +7,68 @@
 extern crate aesm_client;
 extern crate enclave_runner;
 extern crate sgxs_loaders;
+extern crate tokio;
 
 use aesm_client::AesmClient;
-use enclave_runner::usercalls::{SyncStream, UsercallExtension};
+use enclave_runner::usercalls::{AsyncStream, UsercallExtension};
 use enclave_runner::EnclaveBuilder;
 use sgxs_loaders::isgx::Device as IsgxDevice;
-
+use tokio::io::{AsyncRead, AsyncWrite};
 use std::io::{Read, Result as IoResult, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use tokio::sync::lock::Lock;
+use tokio::prelude::Async;
 
 /// This example demonstrates use of usercall extensions.
 /// User call extension allow the enclave code to "connect" to an external service via a customized enclave runner.
 /// Here we customize the runner to intercept calls to connect to an address "cat" which actually connects the enclave application to
 /// stdin and stdout of `cat` process.
-
 struct CatService {
-    c: Arc<Mutex<Child>>,
+    c: Lock<Child>,
 }
+
 impl CatService {
     fn new() -> Result<CatService, std::io::Error> {
         Command::new("/bin/cat")
             .stdout(Stdio::piped())
             .stdin(Stdio::piped())
             .spawn()
-            .map(|c| Arc::new(Mutex::new(c)))
+            .map(|c| Lock::new(c))
             .map(|c| CatService { c })
     }
 }
-impl SyncStream for CatService {
-    fn read(&self, buf: &mut [u8]) -> IoResult<usize> {
-        self.c.lock().unwrap().stdout.as_mut().unwrap().read(buf)
+
+macro_rules! poll_lock_wouldblock {
+    ($lock:expr) => {
+        match $lock.clone().poll_lock() {
+            Async::NotReady => Err(std::io::ErrorKind::WouldBlock.into()),
+            Async::Ready(ret) => IoResult::Ok(ret),
+        }
+    }
+}
+
+impl Read for CatService {
+    fn read(&mut self, buf: &mut [u8]) -> IoResult<usize> {
+        poll_lock_wouldblock!(self.c)?.stdout.as_mut().unwrap().read(buf)
+    }
+}
+
+impl Write for CatService {
+    fn write(&mut self, buf: &[u8]) -> IoResult<usize> {
+        poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().write(buf)
     }
 
-    fn write(&self, buf: &[u8]) -> IoResult<usize> {
-        self.c.lock().unwrap().stdin.as_mut().unwrap().write(buf)
+    fn flush(&mut self) -> IoResult<()> {
+        poll_lock_wouldblock!(self.c)?.stdin.as_mut().unwrap().flush()
     }
+}
 
-    fn flush(&self) -> IoResult<()> {
-        self.c.lock().unwrap().stdin.as_mut().unwrap().flush()
+impl AsyncRead for CatService {
+}
+
+impl AsyncWrite for CatService {
+    fn shutdown(&mut self) -> tokio::prelude::Poll<(), std::io::Error> {
+        Ok(().into())
     }
 }
 
@@ -58,7 +81,7 @@ impl UsercallExtension for ExternalService {
         addr: &str,
         _local_addr: Option<&mut String>,
         _peer_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn SyncStream>>> {
+    ) -> IoResult<Option<Box<dyn AsyncStream>>> {
         // If the passed address is not "cat", we return none, whereby the passed address gets treated as
         // an IP address which is the default behavior.
         match &*addr {

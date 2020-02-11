@@ -5,14 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![feature(asm)]
-#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
-       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
-       html_root_url = "https://edp.fortanix.com/docs/api/")]
+#![doc(
+    html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+    html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+    html_root_url = "https://edp.fortanix.com/docs/api/"
+)]
 
 #[cfg(feature = "crypto-openssl")]
 extern crate openssl;
 extern crate sgx_isa;
 extern crate sgxs;
+extern crate tokio;
+extern crate tokio_io;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -21,6 +25,7 @@ extern crate fnv;
 extern crate fortanix_sgx_abi;
 #[macro_use]
 extern crate lazy_static;
+extern crate futures;
 
 mod command;
 mod library;
@@ -28,6 +33,6 @@ mod loader;
 mod tcs;
 pub mod usercalls;
 
-pub use command::Command;
-pub use library::Library;
-pub use loader::{EnclaveBuilder, EnclavePanic};
+pub use crate::command::Command;
+pub use crate::library::Library;
+pub use crate::loader::{EnclaveBuilder, EnclavePanic};

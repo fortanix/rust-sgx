@@ -5,6 +5,7 @@ authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 
 [dependencies]
-aesm-client = { version = "0.2", features = ["sgxs"]}
-enclave-runner = "0.2"
-sgxs-loaders = "0.2"
+aesm-client = { version = "0.2.0", features = ["sgxs"], path="../../../aesm-client"}
+enclave-runner = { version = "0.2.0", path="../../../enclave-runner"}
+sgxs-loaders = { version = "0.2.0",   path="../../../sgxs-loaders"}
+tokio = "0.1.22"         # MIT

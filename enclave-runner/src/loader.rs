@@ -23,10 +23,9 @@ use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
-use tcs::DebugBuffer;
-use {Command, Library};
-use usercalls::UsercallExtension;
-
+use crate::tcs::DebugBuffer;
+use crate::usercalls::UsercallExtension;
+use crate::{Command, Library};
 
 enum EnclaveSource<'a> {
     Path(&'a Path),
@@ -64,7 +63,7 @@ pub struct EnclaveBuilder<'a> {
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
-    usercall_ext : Option<Box<dyn UsercallExtension>>,
+    usercall_ext: Option<Box<dyn UsercallExtension>>,
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
 }
@@ -96,6 +95,7 @@ impl From<DebugBuffer> for EnclavePanic {
     }
 }
 
+// Erased here refers to Type Erasure
 #[derive(Debug)]
 pub(crate) struct ErasedTcs {
     address: *mut c_void,
@@ -135,7 +135,7 @@ impl<'a> EnclaveBuilder<'a> {
             attributes: None,
             miscselect: None,
             signature: None,
-            usercall_ext : None,
+            usercall_ext: None,
             load_and_sign: None,
             hash_enclave: None,
         };
@@ -248,7 +248,10 @@ impl<'a> EnclaveBuilder<'a> {
         self.usercall_ext = Some(extension.into());
     }
 
-    fn load<T: Load>(mut self, loader: &mut T) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
+    fn load<T: Load>(
+        mut self,
+        loader: &mut T,
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -270,7 +273,8 @@ impl<'a> EnclaveBuilder<'a> {
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
         let c = self.usercall_ext.take();
-        self.load(loader).map(|(t, a, s)|  Command::internal_new(t, a, s, c))
+        self.load(loader)
+            .map(|(t, a, s)| Command::internal_new(t, a, s, c))
     }
 
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
