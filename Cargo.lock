@@ -8,7 +8,7 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aesm-client"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "byteorder",
  "failure",
@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-provider"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "byteorder",
  "dcap-ql",
@@ -446,7 +446,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "byteorder",
  "dcap-ql-sys",
@@ -506,7 +506,7 @@ checksum = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 
 [[package]]
 name = "enclave-runner"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "crossbeam",
  "failure",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "aesm-client",
  "clap",
@@ -1792,7 +1792,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "enclave-runner",
  "failure",
@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "aesm-client",
  "atty",
