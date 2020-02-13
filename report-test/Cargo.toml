@@ -1,6 +1,6 @@
 [package]
 name = "report-test"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -16,7 +16,7 @@ categories = ["development-tools"]
 
 [dependencies]
 # Project dependencies
-"enclave-runner" = { version = "0.2.0", path = "../enclave-runner" }
+"enclave-runner" = { version = "0.3.0", path = "../enclave-runner" }
 "sgxs" = { version = "0.7.0", path = "../sgxs" }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 
