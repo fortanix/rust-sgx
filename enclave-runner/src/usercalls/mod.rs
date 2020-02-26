@@ -4,8 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#[cfg(all(unix, not(target_abi = "musl")))]
 extern crate libc;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_abi = "musl")))]
 extern crate nix;
 
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -44,9 +45,9 @@ mod interface;
 
 use self::abi::dispatch;
 use self::interface::{Handler, OutputBuffer};
-#[cfg(unix)]
-use self::libc::*;
-#[cfg(unix)]
+#[cfg(all(unix, not(target_abi = "musl")))]
+use self::libc::{c_int, c_void, siginfo_t, ucontext_t};
+#[cfg(all(unix, not(target_abi = "musl")))]
 use self::nix::sys::signal;
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs;
@@ -711,7 +712,7 @@ impl EnclaveState {
                                 }
                                 Err(EnclaveAbort::Exit { panic: true }) => {
                                     println!("Attaching debugger");
-                                    #[cfg(unix)]
+                                    #[cfg(all(unix, not(target_abi = "musl")))]
                                     trap_attached_debugger(usercall.tcs_address() as _).await;
                                     Err(EnclaveAbort::Exit {
                                         panic: EnclavePanic::from(buf.into_inner()),
@@ -992,7 +993,7 @@ enum Greg {
     CR2,
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_abi = "musl")))]
 /* Here we are passing control to debugger `fixup` style by raising Sigtrap.
  * If there is no debugger attached, this function, would skip the `int3` instructon
  * and resume execution.
@@ -1009,7 +1010,7 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
     return;
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, not(target_abi = "musl")))]
 /* Raising Sigtrap to allow debugger to take control.
  * Here, we also store tcs in rbx, so that the debugger could read it, to
  * set sgx state and correctly map the enclave symbols.
