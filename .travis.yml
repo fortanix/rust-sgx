@@ -7,24 +7,52 @@ branches:
     # Not really necessary, just to get a green badge on “master”
     - master
 language: rust
-dist: xenial
-addons:
-  apt:
-    sources:
-    - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu xenial main'
-      key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
-    packages:
-    - protobuf-compiler
-    - libsgx-dcap-ql-dev
-    - libclang-3.8-dev
-rust:
-  - nightly
-env:
-  - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
-before_script:
-  - rustup target add x86_64-fortanix-unknown-sgx
-script:
-  - cargo test --verbose --all
-  - cargo test --verbose -p sgx-isa --features sgxstd -Z package-features --target x86_64-fortanix-unknown-sgx --no-run
-  - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
-  - cargo test --verbose -p dcap-ql --features link -Z package-features
+
+matrix:
+  include:
+    - os: linux
+      dist: xenial
+      addons:
+        apt:
+          sources:
+            - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu xenial main'
+              key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
+          packages:
+            - protobuf-compiler
+            - libsgx-dcap-ql-dev
+            - libclang-3.8-dev
+      rust:
+        - nightly
+      env:
+        - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
+      before_script:
+        - rustup target add x86_64-fortanix-unknown-sgx
+      script:
+        - cargo test --verbose --all
+        - cargo test --verbose -p sgx-isa --features sgxstd -Z package-features --target x86_64-fortanix-unknown-sgx --no-run
+        - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
+        - cargo test --verbose -p dcap-ql --features link -Z package-features
+
+    - os: windows
+      before_install:
+        - choco install protoc
+        - choco install openssl
+      rust:
+        - nightly
+      env:
+        - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config OPENSSL_DIR="C:\Program Files\OpenSSL-Win64"
+      before_script:
+        - rustup default nightly-x86_64-pc-windows-msvc
+        - rustup target add x86_64-fortanix-unknown-sgx
+      script:
+        - rustup toolchain list
+        - cargo test --verbose -p aesm-client
+        - cargo test --verbose -p enclave-runner
+        - cargo test --verbose -p fortanix-sgx-abi
+        - cargo test --verbose -p fortanix-sgx-tools
+        - cargo test --verbose -p report-test
+        - cargo test --verbose -p rs-libc
+        - cargo test --verbose -p sgxs
+        - cargo test --verbose -p sgxs-loaders
+        - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
+  
