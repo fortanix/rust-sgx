@@ -179,12 +179,16 @@ impl AesmClient {
         report: Vec<u8>,
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
+        quote_type: QuoteType,
+        nonce: [u8; 16],
     ) -> Result<QuoteResult> {
         self.inner.get_quote(
             session,
             report,
             spid,
             sig_rl,
+            quote_type,
+            nonce,
         )
     }
 
@@ -371,6 +375,8 @@ mod tests {
                 vec![0u8; Report::UNPADDED_SIZE],
                 vec![0u8; SPID_SIZE],
                 vec![],
+                QuoteType::Linkable,
+                [0; 16],
             )
             .unwrap_err();
 
