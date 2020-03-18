@@ -37,7 +37,7 @@ fn live_quote() {
             DUMMY_SPID.to_vec(),
             vec![],
             QuoteType::Linkable,
-            [0; 16],
+            [0; 16].to_vec(),
         )
         .expect("quote result");
 }

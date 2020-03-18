@@ -117,7 +117,7 @@ impl AesmClient {
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
         quote_type: QuoteType,
-        nonce: [u8; 16],
+        nonce: Vec<u8>,
     ) -> Result<QuoteResult> {
         let quote_buffer_size = session.quote_buffer_size(&sig_rl);
         let mut qe_report: Vec<u8> = vec![0; Report::UNPADDED_SIZE];
@@ -134,7 +134,7 @@ impl AesmClient {
                     report.as_ptr() as _,
                     quote_type.into(),
                     spid.as_ptr() as _,
-                    nonce.as_ptr() as _,
+                    &nonce[0],
                     sig_rl_in,
                     sig_rl_size_in as _,
                     qe_report.as_mut_ptr() as _,

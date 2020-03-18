@@ -115,13 +115,13 @@ impl AesmClient {
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
         quote_type: QuoteType,
-        nonce: [u8; 16],
+        nonce: Vec<u8>,
     ) -> Result<QuoteResult> {
         let mut req = Request_GetQuoteRequest::new();
         req.set_report(report);
         req.set_quote_type(quote_type.into());
         req.set_spid(spid);
-        req.set_nonce(nonce.to_vec());
+        req.set_nonce(nonce);
         req.set_buf_size(session.quote_buffer_size(&sig_rl));
         if sig_rl.len() != 0 {
             req.set_sig_rl(sig_rl);
