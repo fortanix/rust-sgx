@@ -32,6 +32,7 @@ matrix:
         - cargo test --verbose -p sgx-isa --features sgxstd -Z package-features --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
         - cargo test --verbose -p dcap-ql --features link -Z package-features
+        - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
 
     - os: windows
       before_install:
@@ -55,4 +56,3 @@ matrix:
         - cargo test --verbose -p sgxs
         - cargo test --verbose -p sgxs-loaders
         - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
-  

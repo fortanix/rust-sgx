@@ -149,6 +149,7 @@ impl AesmClient {
         return Ok(QuoteResult::new(quote, qe_report));
     }
 
+    #[cfg(feature = "sgxs")]
     pub fn get_launch_token(
         &self,
         sigstruct: &Sigstruct,
