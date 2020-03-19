@@ -130,6 +130,7 @@ impl AesmClient {
             };
             assert_eq!(qe_report.len(), Report::UNPADDED_SIZE);
             assert_eq!(spid.len(), 16);
+            assert_eq!(nonce.len(), 16);
             let error = (&self.library.get_quote)(
                     report.as_ptr() as _,
                     quote_type.into(),
