@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-sgx-tools"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -18,7 +18,7 @@ categories = ["development-tools::build-utils", "command-line-utilities"]
 
 [dependencies]
 # Project dependencies
-aesm-client = { version = "0.3.0", path = "../aesm-client", features = ["sgxs"] }
+aesm-client = { version = "0.4.0", path = "../aesm-client", features = ["sgxs"] }
 sgxs-loaders = { version = "0.2.0", path = "../sgxs-loaders" }
 enclave-runner = { version = "0.3.0", path = "../enclave-runner" }
 sgxs = { version = "0.7.0", path = "../sgxs" }

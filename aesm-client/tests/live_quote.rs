@@ -10,7 +10,7 @@ extern crate sgx_isa;
 extern crate sgxs;
 extern crate sgxs_loaders;
 
-use aesm_client::AesmClient;
+use aesm_client::{AesmClient, QuoteType};
 use sgx_isa::Targetinfo;
 #[cfg(unix)]
 use sgxs_loaders::isgx::Device as IsgxDevice;
@@ -36,6 +36,8 @@ fn live_quote() {
             report.as_ref().to_owned(),
             DUMMY_SPID.to_vec(),
             vec![],
+            QuoteType::Linkable,
+            [0; 16].to_vec(),
         )
         .expect("quote result");
 }

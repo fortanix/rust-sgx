@@ -8,7 +8,7 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aesm-client"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "failure",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aesm-client",
  "clap",
@@ -2032,7 +2032,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "aesm-client",
  "atty",
