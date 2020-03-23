@@ -35,6 +35,7 @@ use std::result::Result as StdResult;
 use protobuf::ProtobufResult;
 #[cfg(feature = "sgxs")]
 use sgxs::einittoken::{Einittoken, EinittokenProvider};
+#[cfg(all(not(target_env = "sgx"),feature = "sgxs"))]
 use sgx_isa::{Attributes, Sigstruct};
 
 include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
@@ -47,11 +48,22 @@ mod imp;
 #[cfg(unix)]
 #[path = "imp/unix.rs"]
 mod imp;
+#[cfg(target_env = "sgx")]
+#[path = "imp/sgx.rs"]
+mod imp;
 #[cfg(unix)]
 pub mod unix {
     use std::path::Path;
     pub trait AesmClientExt {
         fn with_path<P: AsRef<Path>>(path: P) -> Self;
+    }
+}
+
+#[cfg(target_env = "sgx")]
+pub mod sgx {
+    use std::net::TcpStream;
+    pub trait AesmClientExt {
+        fn new(tcp_stream: TcpStream) -> Self;
     }
 }
 
@@ -150,12 +162,15 @@ impl QuoteResult {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[cfg_attr(not(target_env = "sgx"), derive(Default))]
+#[derive(Debug, Clone)]
 pub struct AesmClient {
     inner: imp::AesmClient
 }
 
+
 impl AesmClient {
+    #[cfg(not(target_env = "sgx"))]
     pub fn new() -> Self {
         AesmClient { inner: imp::AesmClient::new() }
     }
@@ -192,6 +207,7 @@ impl AesmClient {
         )
     }
 
+    #[cfg(all(not(target_env = "sgx"), feature = "sgxs"))]
     pub fn get_launch_token(
         &self,
         sigstruct: &Sigstruct,
