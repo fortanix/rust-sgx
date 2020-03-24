@@ -427,6 +427,12 @@ impl<'a> LayoutInfo<'a> {
                 unreachable!();
             }
 
+            // To defend against LVI attacks, the first page of an enclave should not be executable.
+            // https://software.intel.com/security-software-guidance/insights/deep-dive-load-value-injection#adhocLBmitigation
+            if base == 0 && ph.flags().is_execute() {
+                bail!("First page of the enclave should not be executable");
+            }
+
             let mut data: Box<dyn Read>;
             let mut cur_ptr = base;
 
