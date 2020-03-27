@@ -2,6 +2,7 @@ use imp::AesmClient;
 pub use error::{AesmError, Error, Result};
 use protobuf::Message;
 use std::io::{Read, Write};
+use std::mem::size_of;
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use {
     AesmRequest, FromResponse, QuoteInfo, QuoteResult, QuoteType,
@@ -26,11 +27,14 @@ impl AesmClient {
         #[cfg(not(target_env = "sgx"))]
         let _ = sock.set_read_timeout(req.get_timeout().map(|t| Duration::from_micros(t as _)))?;
 
-        let req_bytes = req
-            .into()
-            .write_to_bytes()
+        // impl Write appends to the vector. Reserve space to fill in the
+        // length after serializing.
+        let mut req_bytes = vec![0u8; size_of::<u32>()];
+        req.into()
+            .write_to_writer(&mut req_bytes)
             .expect("Failed to serialize protobuf");
-        sock.write_u32::<NativeEndian>(req_bytes.len() as u32)?;
+        let req_len = (req_bytes.len() - size_of::<u32>()) as u32;
+        (&mut req_bytes[0..size_of::<u32>()]).write_u32::<NativeEndian>(req_len)?;
         sock.write_all(&req_bytes)?;
 
         let res_len = sock.read_u32::<NativeEndian>()?;
