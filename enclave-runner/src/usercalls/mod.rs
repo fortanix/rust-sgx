@@ -560,11 +560,11 @@ impl Work {
         let usercall_send_data = match self.entry {
             CoEntry::Initial(erased_tcs, p1, p2, p3, p4, p5) => {
                 let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf));
-                ((coresult, self.tcs, buf))
+                (coresult, self.tcs, buf)
             }
             CoEntry::Resume(usercall, coresult) => {
                 let coresult = usercall.coreturn(coresult, Some(&buf));
-                ((coresult, self.tcs, buf))
+                (coresult, self.tcs, buf)
             }
         };
         // if there is an error do nothing, as it means that the main thread has exited
@@ -775,15 +775,20 @@ impl EnclaveState {
             unreachable!();
         };
 
+        // Note that:
+        // - io_future will never return, its job is to spawn new futures that handle I/O.
+        // - return_future returns in certain cases (see above) and in such cases we want to
+        //   terminate the syscall loop.
         let select_fut =
-            futures::future::select(return_future.boxed(), io_future.boxed()).map( |either| {
+            futures::future::select(return_future.boxed_local(), io_future.boxed_local()).map( |either| {
                 match either {
                     Either::Left((x, _)) => x,
                     _ => unreachable!(),
                 }
             });
 
-        tokio::runtime::current_thread::block_on_all(select_fut.unit_error().compat()).unwrap()
+        let mut rt = tokio::runtime::current_thread::Runtime::new().expect("failed to create tokio runtime");
+        rt.block_on(select_fut.unit_error().compat()).unwrap()
     }
 
     fn run(
