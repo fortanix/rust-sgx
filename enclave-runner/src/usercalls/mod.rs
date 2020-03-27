@@ -542,6 +542,7 @@ pub(crate) struct EnclaveState {
     exiting: AtomicBool,
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
+    forward_panics: bool,
 }
 
 struct Work {
@@ -592,6 +593,7 @@ impl EnclaveState {
         mut event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         threads_vector: Vec<ErasedTcs>,
+        forward_panics: bool,
     ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
@@ -631,6 +633,7 @@ impl EnclaveState {
             exiting: AtomicBool::new(false),
             usercall_ext,
             threads_queue,
+            forward_panics,
         })
     }
 
@@ -714,9 +717,12 @@ impl EnclaveState {
                                     println!("Attaching debugger");
                                     #[cfg(all(unix, not(target_abi = "musl")))]
                                     trap_attached_debugger(usercall.tcs_address() as _).await;
-                                    Err(EnclaveAbort::Exit {
-                                        panic: EnclavePanic::from(buf.into_inner()),
-                                    })
+                                    let panic = EnclavePanic::from(buf.into_inner());
+                                    if enclave_clone.forward_panics {
+                                        panic!("{}", &panic);
+                                    }
+                                    Err(EnclaveAbort::Exit{ panic })
+
                                 }
                                 Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
                                 Err(EnclaveAbort::IndefiniteWait) => {
@@ -838,6 +844,7 @@ impl EnclaveState {
         main: ErasedTcs,
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        forward_panics: bool,
     ) -> StdResult<(), failure::Error> {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
@@ -861,7 +868,7 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
 
         let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
@@ -905,12 +912,13 @@ impl EnclaveState {
     pub(crate) fn library(
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        forward_panics: bool,
     ) -> Arc<Self> {
         let event_queues = FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
 
         let kind = EnclaveKind::Library(Library {});
 
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
         return enclave;
     }
 
