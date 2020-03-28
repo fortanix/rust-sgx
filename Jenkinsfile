@@ -89,4 +89,12 @@ node( 'rust-sgx-ci' ){
     stage("Run Rust Tests"){
         timestamps { sh runRustTests }
     }
+
+    stage("Update GitHub Status"){
+        if (currentBuild.currentResult == 'SUCCESS') {
+            echo 'The build was successful!'
+        } else {
+            echo 'The build failed :('
+        }
+    }
 }
