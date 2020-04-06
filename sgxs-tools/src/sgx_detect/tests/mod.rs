@@ -746,7 +746,7 @@ impl RunEnclaveProdWl {
         let mut builder = EnclaveBuilder::new_from_memory(enclave);
         builder.attributes(sig.attributes).sigstruct(sig);
 
-        let mut lib = builder.build_library(enclave_loader)?;
+        let lib = builder.build_library(enclave_loader)?;
 
         unsafe {
             match lib.call(!0, 0, 0, 0, 0) {

@@ -49,9 +49,8 @@ impl Library {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
     ) -> Library {
-        let enclave = EnclaveState::library(tcss, usercall_ext, forward_panics);
         Library {
-            enclave,
+            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics),
             address,
             size,
         }

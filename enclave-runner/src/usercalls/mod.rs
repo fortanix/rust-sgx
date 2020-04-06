@@ -13,7 +13,6 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
-use std::net::ToSocketAddrs;
 use std::result::Result as StdResult;
 use std::str;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -172,7 +171,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
     {
         let mut v: Vec<u8> = vec![0; 8192];
         self.poll_read(cx, v.as_mut_slice()).map(move |size| {
-            size.map(|size| { v.resize(size, 0); v })
+            size.map(|size| { v.truncate(size); v })
         })
     }
 }
@@ -180,7 +179,7 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
 impl<S: AsyncRead + AsyncWrite + Sync + Send + 'static> AsyncStream for S {}
 
 /// AsyncListener lets an implementation implement a slightly modified form of `std::net::TcpListener::accept`.
-pub trait AsyncListener: Send {
+pub trait AsyncListener: 'static + Send {
     /// The enclave may optionally request the local or peer addresses
     /// be returned in `local_addr` or `peer_addr`, respectively.
     /// If `local_addr` and/or `peer_addr` are not `None`, they will point to an empty `String`.
@@ -372,9 +371,13 @@ impl AsyncListenerContainer {
     async fn async_accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Option<Box<dyn AsyncStream>>> {
         let mut local_addr_owned: Option<String> = if local_addr.is_some() { Some(String::new()) } else { None };
         let mut peer_addr_owned: Option<String> = if peer_addr.is_some() { Some(String::new()) } else { None };
-        let lock = &mut self.inner.lock().await;
         let res = poll_fn(|cx| {
-           lock.as_mut().poll_accept(cx, local_addr_owned.as_mut(), peer_addr_owned.as_mut())
+            let inner_ref = &mut self.inner.lock();
+            let mut inner = Pin::new(inner_ref);
+            match inner.as_mut().poll(cx) {
+                Poll::Ready(mut adapter) => adapter.as_mut().poll_accept(cx, local_addr_owned.as_mut(), peer_addr_owned.as_mut()),
+                Poll::Pending => Poll::Pending,
+            }
         }).await;
 
         if let Some(local_addr) = local_addr {
@@ -679,8 +682,8 @@ impl EnclaveState {
         let io_future = async move {
             let mut recv_queue = io_queue_receive.into_future();
             while let (Some(work), stream) = recv_queue.await {
-                let work_sender_clone = work_sender.clone();
-                let tx_clone = tx_return_channel.clone();
+                let work_sender = work_sender.clone();
+                let tx_return_channel = tx_return_channel.clone();
                 let enclave_clone = enclave_clone.clone();
                 recv_queue = stream.into_future();
                 let (coresult, mut state, buf) = work;
@@ -690,7 +693,7 @@ impl EnclaveState {
                             let mut input = IOHandlerInput {
                                 enclave: enclave_clone.clone(),
                                 tcs: &mut state,
-                                work_sender: &work_sender_clone,
+                                work_sender: &work_sender,
                             };
                             let handler = Handler(&mut input);
                             let (_handler, result) = {
@@ -699,7 +702,7 @@ impl EnclaveState {
                             };
                             let ret = match result {
                                 Ok(ret) => {
-                                    work_sender_clone
+                                    work_sender
                                         .send(Work {
                                             tcs: state,
                                             entry: CoEntry::Resume(usercall, ret),
@@ -728,7 +731,7 @@ impl EnclaveState {
                                 Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
                                 Err(EnclaveAbort::Secondary) => Err(EnclaveAbort::Secondary),
                             };
-                            let _ = tx_clone.send((ret, state.mode));
+                            let _ = tx_return_channel.send((ret, state.mode));
                         };
                         tokio::task::spawn_local(fut);
                     }
@@ -760,7 +763,7 @@ impl EnclaveState {
                                     Ok((0, 0))
                                 }
                             };
-                            let _ = tx_clone.send((ret, state.mode));
+                            let _ = tx_return_channel.send((ret, state.mode));
                         };
                         tokio::task::spawn_local(fut);
                     }
@@ -1156,7 +1159,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(stream_ext) = self
             .enclave
             .usercall_ext
-            .bind_stream(&addr, local_addr_str.as_mut())?
+            .bind_stream(addr, local_addr_str.as_mut())?
         {
             if let Some(local_addr) = local_addr {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
@@ -1164,8 +1167,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             return Ok(self.alloc_fd(AsyncFileDesc::listener(stream_ext)).await);
         }
 
-        // !!! see if there's a better way
-        let socket = tokio::net::TcpListener::bind(&addr.to_socket_addrs()?.as_mut_slice()[0]).await?;
+        let socket = tokio::net::TcpListener::bind(addr).await?;
         if let Some(local_addr) = local_addr {
             local_addr.set(socket.local_addr()?.to_string().into_bytes());
         }
@@ -1205,7 +1207,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         let mut local_addr_str = local_addr.as_ref().map(|_| String::new());
         let mut peer_addr_str = peer_addr.as_ref().map(|_| String::new());
         if let Some(stream_ext) = self.enclave.usercall_ext.connect_stream(
-            &addr,
+            addr,
             local_addr_str.as_mut(),
             peer_addr_str.as_mut(),
         ).await? {
@@ -1218,18 +1220,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             return Ok(self.alloc_fd(AsyncFileDesc::stream(stream_ext)).await);
         }
 
-        // try to connect to all socket addresses one by one
-        let mut stream = None;
-        for socket_addr in addr.to_socket_addrs()? {
-            stream = Some(tokio::net::TcpStream::connect(&socket_addr).await);
-            if stream.as_ref().unwrap().is_ok() {
-                break;
-            }
-        }
-        let stream = match stream {
-            None => return Err(IoErrorKind::InvalidInput.into()),
-            Some(s) => s?
-        };
+        let stream = tokio::net::TcpStream::connect(addr).await?;
 
         if let Some(local_addr) = local_addr {
             match stream.local_addr() {
