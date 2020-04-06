@@ -581,7 +581,7 @@ impl EnclaveState {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         threads_vector: Vec<ErasedTcs>,
         forward_panics: bool,
-    ) -> (tokio::runtime::Runtime, Arc<Self>) {
+    ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
         fds.insert(
@@ -612,8 +612,7 @@ impl EnclaveState {
             threads_queue.push(Self::event_queue_add_tcs(&mut event_queues, thread));
         }
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        (rt, Arc::new(EnclaveState {
+        Arc::new(EnclaveState {
             kind,
             event_queues,
             fds: Mutex::new(fds),
@@ -622,17 +621,21 @@ impl EnclaveState {
             usercall_ext,
             threads_queue,
             forward_panics,
-        }))
+        })
     }
 
     fn syscall_loop(
-        rt: &mut tokio::runtime::Runtime,
         enclave: Arc<EnclaveState>,
         io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
     ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
+        let mut rt = tokio::runtime::Builder::new()
+            .basic_scheduler()
+            .enable_all()
+            .build()
+            .expect("failed to create tokio Runtime");
         let local_set = tokio::task::LocalSet::new();
 
         let return_future = async move {
@@ -778,11 +781,10 @@ impl EnclaveState {
                 }
             });
 
-        local_set.block_on(rt, select_fut.unit_error()).unwrap()
+        local_set.block_on(&mut rt, select_fut.unit_error()).unwrap()
     }
 
     fn run(
-        rt: &mut tokio::runtime::Runtime,
         enclave: Arc<EnclaveState>,
         num_of_worker_threads: usize,
         start_work: Work,
@@ -817,7 +819,7 @@ impl EnclaveState {
             create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send);
         // main syscall polling loop
         let main_result =
-            EnclaveState::syscall_loop(rt, enclave.clone(), io_queue_receive, work_sender);
+            EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, work_sender);
 
         for handler in join_handlers {
             let _ = handler.join();
@@ -853,9 +855,9 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let (mut rt, enclave) = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
 
-        let main_result = EnclaveState::run(&mut rt, enclave.clone(), num_of_worker_threads, main_work);
+        let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
         let main_panicking = match main_result {
             Err(EnclaveAbort::MainReturned)
@@ -863,6 +865,13 @@ impl EnclaveState {
             | Err(EnclaveAbort::Exit { .. }) => true,
             Err(EnclaveAbort::IndefiniteWait) | Err(EnclaveAbort::Secondary) | Ok(_) => false,
         };
+
+        let mut rt = tokio::runtime::Builder::new()
+            .basic_scheduler()
+            .enable_all()
+            .build()
+            .expect("failed to create tokio Runtime");
+
         rt.block_on(async move {
             enclave.abort_all_threads();
             //clear the threads_queue
@@ -897,7 +906,7 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
-    ) -> (tokio::runtime::Runtime, Arc<Self>) {
+    ) -> Arc<Self> {
         let event_queues = FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
 
         let kind = EnclaveKind::Library(Library {});
@@ -907,7 +916,6 @@ impl EnclaveState {
     }
 
     pub(crate) fn library_entry(
-        rt: &mut tokio::runtime::Runtime,
         enclave: &Arc<Self>,
         p1: u64,
         p2: u64,
@@ -929,7 +937,7 @@ impl EnclaveState {
         // one for usercall handling the other for actually running
         let num_of_worker_threads = 1;
 
-        let library_result = EnclaveState::run(rt, enclave.clone(), num_of_worker_threads, work);
+        let library_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, work);
 
         match library_result {
             Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
