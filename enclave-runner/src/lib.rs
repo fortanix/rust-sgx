@@ -16,7 +16,6 @@ extern crate openssl;
 extern crate sgx_isa;
 extern crate sgxs;
 extern crate tokio;
-extern crate tokio_io;
 #[macro_use]
 extern crate failure;
 #[macro_use]
