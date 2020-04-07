@@ -27,10 +27,10 @@ use std::task::{Poll, Context, Waker};
 use failure;
 use fnv::FnvHashMap;
 
-use crate::futures::StreamExt;
+use futures::StreamExt;
+use futures::lock::Mutex;
 use futures::future::{Either, FutureExt, Future, poll_fn};
 use tokio::prelude::{AsyncRead, AsyncWrite};
-use tokio::sync::Mutex;
 use tokio::sync::mpsc as async_mpsc;
 use tokio::stream::Stream as TokioStream;
 
@@ -124,7 +124,7 @@ impl AsyncRead for Stdin {
         }
 
         lazy_static::lazy_static! {
-            static ref STDIN: futures::lock::Mutex<AsyncStdin> = {
+            static ref STDIN: Mutex<AsyncStdin> = {
                 let (mut tx, rx) = async_mpsc::channel(8);
                 thread::spawn(move || {
                     let mut buf = [0u8; BUF_SIZE];
@@ -138,7 +138,7 @@ impl AsyncRead for Stdin {
                         };
                     }
                 });
-                futures::lock::Mutex::new(AsyncStdin { rx, buf: VecDeque::new() })
+                Mutex::new(AsyncStdin { rx, buf: VecDeque::new() })
             };
         }
 
@@ -170,8 +170,8 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
     fn poll_read_alloc(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<Vec<u8>>>
     {
         let mut v: Vec<u8> = vec![0; 8192];
-        self.poll_read(cx, v.as_mut_slice()).map(move |size| {
-            size.map(|size| { v.truncate(size); v })
+        self.poll_read(cx, v.as_mut_slice()).map(move |res| {
+            res.map(|size| { v.truncate(size); v })
         })
     }
 }
@@ -268,13 +268,13 @@ impl AsyncStreamAdapter {
 }
 
 struct AsyncStreamContainer {
-    inner: futures::lock::Mutex<Pin<Box<AsyncStreamAdapter>>>,
+    inner: Mutex<Pin<Box<AsyncStreamAdapter>>>,
 }
 
 impl AsyncStreamContainer {
     fn new(s: Box<dyn AsyncStream>) -> Self {
         AsyncStreamContainer {
-            inner: futures::lock::Mutex::new(Box::pin(AsyncStreamAdapter {
+            inner: Mutex::new(Box::pin(AsyncStreamAdapter {
                 stream: s.into(),
                 read_queue: VecDeque::new(),
                 write_queue: VecDeque::new(),
@@ -355,13 +355,13 @@ impl AsyncListenerAdapter {
 }
 
 struct AsyncListenerContainer {
-    inner: futures::lock::Mutex<Pin<Box<AsyncListenerAdapter>>>,
+    inner: Mutex<Pin<Box<AsyncListenerAdapter>>>,
 }
 
 impl AsyncListenerContainer {
     fn new(l: Box<dyn AsyncListener>) -> Self {
         AsyncListenerContainer {
-            inner: futures::lock::Mutex::new(Pin::new(Box::new(AsyncListenerAdapter {
+            inner: Mutex::new(Pin::new(Box::new(AsyncListenerAdapter {
                 listener: l.into(),
                 accept_queue: VecDeque::new(),
             }))),
