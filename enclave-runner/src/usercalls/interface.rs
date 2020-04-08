@@ -13,7 +13,7 @@ use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, IOHandlerInput};
-use crate::futures::FutureExt;
+use futures::FutureExt;
 use futures::future::Future;
 
 pub(super) struct Handler<'ioinput, 'tcs>(pub &'ioinput mut IOHandlerInput<'tcs>);
