@@ -1042,7 +1042,6 @@ async fn trap_attached_debugger(tcs: usize) {
 /// Provides a mechanism for the enclave code to interface with an external service via a modified runner.
 ///
 /// An implementation of `UsercallExtension` can be registered while [building](../struct.EnclaveBuilder.html#method.usercall_extension) the enclave.
-
 pub trait UsercallExtension: 'static + Send + Sync + std::fmt::Debug {
     /// Override the connection target for connect calls by the enclave. The runner should determine the service that the enclave is trying to connect to by looking at addr.
     /// If `connect_stream` returns None, the default implementation of [`connect_stream`](../../fortanix_sgx_abi/struct.Usercalls.html#method.connect_stream) is used.
@@ -1073,12 +1072,14 @@ pub trait UsercallExtension: 'static + Send + Sync + std::fmt::Debug {
     ///
     /// The enclave must not make any security decisions based on the local address received.
     #[allow(unused)]
-    fn bind_stream(
-        &self,
-        addr: &str,
-        local_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn AsyncListener>>> {
-        Ok(None)
+    fn bind_stream<'future>(
+        &'future self,
+        addr: &'future str,
+        local_addr: Option<&'future mut String>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Option<Box<dyn AsyncListener>>>> + 'future>> {
+        async {
+            Ok(None)
+        }.boxed_local()
     }
 }
 
@@ -1159,7 +1160,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(stream_ext) = self
             .enclave
             .usercall_ext
-            .bind_stream(addr, local_addr_str.as_mut())?
+            .bind_stream(addr, local_addr_str.as_mut()).await?
         {
             if let Some(local_addr) = local_addr {
                 local_addr.set(local_addr_str.unwrap().into_bytes());
