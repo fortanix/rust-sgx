@@ -646,17 +646,17 @@ impl EnclaveState {
                 rx_return_channel = stream;
                 let (my_result, mode) = work;
                 let res = match (my_result, mode) {
-                    (e, EnclaveEntry::Library)
-                    | (e, EnclaveEntry::ExecutableMain)
-                    | (e @ Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) => e,
+                    (e, EnclaveEntry::Library) |
+                    (e, EnclaveEntry::ExecutableMain)
+                        => e,
+
+                    (Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) |
                     (Ok(_), EnclaveEntry::ExecutableNonMain) => {
                         continue;
                     }
-                    (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain)
-                    | (
-                        Err(e @ EnclaveAbort::InvalidUsercall(_)),
-                        EnclaveEntry::ExecutableNonMain,
-                    ) => {
+
+                    (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain) |
+                    (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
 
@@ -667,6 +667,7 @@ impl EnclaveState {
                         }
                         Err(EnclaveAbort::Secondary)
                     }
+
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
@@ -719,9 +720,14 @@ impl EnclaveState {
                                         panic!("{}", &panic);
                                     }
                                     Err(EnclaveAbort::Exit{ panic })
-
                                 }
-                                Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
+                                Err(EnclaveAbort::Exit { panic: false }) => match state.mode {
+                                    EnclaveEntry::ExecutableMain => Ok((0, 0)),
+                                    EnclaveEntry::Library |
+                                    EnclaveEntry::ExecutableNonMain => Err(EnclaveAbort::Exit{
+                                        panic: EnclavePanic::DebugStr("Execution aborted by a thread".to_owned()),
+                                    }),
+                                }
                                 Err(EnclaveAbort::IndefiniteWait) => {
                                     Err(EnclaveAbort::IndefiniteWait)
                                 }
@@ -1285,7 +1291,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
-        self.enclave.abort_all_threads();
         EnclaveAbort::Exit { panic }
     }
 
