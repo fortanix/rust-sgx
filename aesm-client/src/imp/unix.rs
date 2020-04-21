@@ -11,19 +11,6 @@ pub use error::{AesmError, Error, Result};
 
 mod aesm_protobuf;
 
-
-/// This timeout is an argument in AESM request protobufs.
-///
-/// This value should be used for requests that can be completed locally, i.e.
-/// without network interaction.
-const LOCAL_AESM_TIMEOUT_US: u32 = 1_000_000;
-/// This timeout is an argument in AESM request protobufs.
-///
-/// This value should be used for requests that might need interaction with
-/// remote servers, such as provisioning EPID.
-const REMOTE_AESM_TIMEOUT_US: u32 = 30_000_000;
-
-
 #[cfg(feature = "sgxs")]
 use Request_GetLaunchTokenRequest;
 
@@ -64,8 +51,8 @@ impl AesmClient {
             &**AESM_SOCKET_ABSTRACT_PATH
         };
 
-        let sock = UnixStream::connect_timeout(path, Duration::from_micros(LOCAL_AESM_TIMEOUT_US as _))?;
-        let _ = sock.set_write_timeout(Some(Duration::from_micros(LOCAL_AESM_TIMEOUT_US as _)))?;
+        let sock = UnixStream::connect_timeout(path, Duration::from_micros(aesm_protobuf::LOCAL_AESM_TIMEOUT_US as _))?;
+        let _ = sock.set_write_timeout(Some(Duration::from_micros(aesm_protobuf::LOCAL_AESM_TIMEOUT_US as _)))?;
         Ok(sock)
     }
 
@@ -81,7 +68,7 @@ impl AesmClient {
         // The field in the request protobuf is called mr_signer, but it wants the modulus.
         req.set_mr_signer(sigstruct.modulus.to_vec());
         req.set_se_attributes(attributes.as_ref().to_vec());
-        req.set_timeout(REMOTE_AESM_TIMEOUT_US);
+        req.set_timeout(aesm_protobuf::REMOTE_AESM_TIMEOUT_US);
 
         let mut res = self.transact(req)?;
 

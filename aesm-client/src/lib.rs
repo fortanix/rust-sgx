@@ -14,7 +14,7 @@
 #![deny(warnings)]
 
 extern crate byteorder;
-extern crate failure;
+pub extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 #[macro_use]
