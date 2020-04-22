@@ -48,9 +48,9 @@ struct Symbols<'a> {
     EH_FRM_HDR_SIZE: Option<&'a DynSymEntry>,
     TEXT_BASE: &'a DynSymEntry,
     TEXT_SIZE: &'a DynSymEntry,
-    EH_FRM_ADDR: Option<&'a DynSymEntry>,
+    EH_FRM_OFFSET: Option<&'a DynSymEntry>,
     EH_FRM_LEN: Option<&'a DynSymEntry>,
-    EH_FRM_HDR_ADDR: Option<&'a DynSymEntry>,
+    EH_FRM_HDR_OFFSET: Option<&'a DynSymEntry>,
     EH_FRM_HDR_LEN: Option<&'a DynSymEntry>,
 }
 struct SectionRange {
@@ -233,10 +233,12 @@ impl<'a> LayoutInfo<'a> {
                 bail!(".dynsym section is not a dynamic symbol table!");
             };
 
-        // Optional symbols used for compatibility. Old versions use 'EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE', new versions use 'EH_FRM_ADDR, EH_FRM_LEN, EH_FRM_HDR_ADDR, EH_FRM_HDR_LEN.
+        // Optional symbols used for compatibility. Old versions use 'EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE', new versions use 'EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN.
         // Tool must support both variants for backwards compatibility at least until 'https://github.com/fortanix/rust-sgx/issues/174' is merged into rust-lang.
+        //
+        // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
         let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE
-                              optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_ADDR, EH_FRM_LEN, EH_FRM_HDR_ADDR, EH_FRM_HDR_LEN
+                              optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
                               in syms : elf);
 
 
@@ -260,14 +262,14 @@ impl<'a> LayoutInfo<'a> {
             check_size!(EH_FRM_HDR_BASE == 8);
             check_size!(EH_FRM_HDR_SIZE == 8);
         }
-        else if let (Some(EH_FRM_ADDR), Some(EH_FRM_LEN), Some(EH_FRM_HDR_ADDR), Some(EH_FRM_HDR_LEN)) = (syms.EH_FRM_ADDR, syms.EH_FRM_LEN, syms.EH_FRM_HDR_ADDR, syms.EH_FRM_HDR_LEN) {
-            check_size!(EH_FRM_ADDR == 8);
+        else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (syms.EH_FRM_OFFSET, syms.EH_FRM_LEN, syms.EH_FRM_HDR_OFFSET, syms.EH_FRM_HDR_LEN) {
+            check_size!(EH_FRM_OFFSET == 8);
             check_size!(EH_FRM_LEN == 8);
-            check_size!(EH_FRM_HDR_ADDR == 8);
+            check_size!(EH_FRM_HDR_OFFSET == 8);
             check_size!(EH_FRM_HDR_LEN == 8);
         }
         else {
-            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_ADDR, EH_FRM_LEN, EH_FRM_HDR_ADDR, EH_FRM_HDR_LEN");
+            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
         
         Ok(syms)
@@ -459,14 +461,14 @@ impl<'a> LayoutInfo<'a> {
             splices.push(Splice::for_sym_u64(EH_FRM_HDR_BASE, self.ehfrm_hdr.offset));
             splices.push(Splice::for_sym_u64(EH_FRM_HDR_SIZE, self.ehfrm_hdr.size));
         }
-        else if let (Some(EH_FRM_ADDR), Some(EH_FRM_LEN), Some(EH_FRM_HDR_ADDR), Some(EH_FRM_HDR_LEN)) = (self.sym.EH_FRM_ADDR, self.sym.EH_FRM_LEN, self.sym.EH_FRM_HDR_ADDR, self.sym.EH_FRM_HDR_LEN) {
-            splices.push(Splice::for_sym_u64(EH_FRM_ADDR, self.ehfrm.offset));
+        else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (self.sym.EH_FRM_OFFSET, self.sym.EH_FRM_LEN, self.sym.EH_FRM_HDR_OFFSET, self.sym.EH_FRM_HDR_LEN) {
+            splices.push(Splice::for_sym_u64(EH_FRM_OFFSET, self.ehfrm.offset));
             splices.push(Splice::for_sym_u64(EH_FRM_LEN, self.ehfrm.size));
-            splices.push(Splice::for_sym_u64(EH_FRM_HDR_ADDR, self.ehfrm_hdr.offset));
+            splices.push(Splice::for_sym_u64(EH_FRM_HDR_OFFSET, self.ehfrm_hdr.offset));
             splices.push(Splice::for_sym_u64(EH_FRM_HDR_LEN, self.ehfrm_hdr.size));
         }
         else {
-            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_ADDR, EH_FRM_LEN, EH_FRM_HDR_ADDR, EH_FRM_HDR_LEN");
+            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
 
         if let Some(enclave_size) = enclave_size {
