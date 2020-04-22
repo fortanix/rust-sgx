@@ -498,8 +498,8 @@ enum EnclaveKind {
 }
 
 struct PanicReason {
-    primary_panic_reason: Option<EnclaveAbort<EnclavePanic>>,
-    other_reasons: Vec<EnclaveAbort<EnclavePanic>>,
+    primary_panic_reason: Option<EnclaveAbort<Option<EnclavePanic>>>,
+    other_reasons: Vec<EnclaveAbort<Option<EnclavePanic>>>,
 }
 
 struct Command {
@@ -631,7 +631,7 @@ impl EnclaveState {
         enclave: Arc<EnclaveState>,
         io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
-    ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
+    ) -> StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>> {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
         let mut rt = tokio::runtime::Builder::new()
@@ -719,15 +719,9 @@ impl EnclaveState {
                                     if enclave_clone.forward_panics {
                                         panic!("{}", &panic);
                                     }
-                                    Err(EnclaveAbort::Exit{ panic })
+                                    Err(EnclaveAbort::Exit{ panic: Some(panic) })
                                 }
-                                Err(EnclaveAbort::Exit { panic: false }) => match state.mode {
-                                    EnclaveEntry::ExecutableMain => Ok((0, 0)),
-                                    EnclaveEntry::Library |
-                                    EnclaveEntry::ExecutableNonMain => Err(EnclaveAbort::Exit{
-                                        panic: EnclavePanic::DebugStr("Execution aborted by a thread".to_owned()),
-                                    }),
-                                }
+                                Err(EnclaveAbort::Exit { panic: false }) => Err(EnclaveAbort::Exit{ panic: None }),
                                 Err(EnclaveAbort::IndefiniteWait) => {
                                     Err(EnclaveAbort::IndefiniteWait)
                                 }
@@ -797,7 +791,7 @@ impl EnclaveState {
         enclave: Arc<EnclaveState>,
         num_of_worker_threads: usize,
         start_work: Work,
-    ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
+    ) -> StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>> {
         fn create_worker_threads(
             num_of_worker_threads: usize,
             work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
@@ -894,7 +888,8 @@ impl EnclaveState {
                 _ => main_result,
             };
             match main_result {
-                Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+                Err(EnclaveAbort::Exit { panic: None }) => Ok(()),
+                Err(EnclaveAbort::Exit { panic: Some(panic) }) => Err(panic.into()),
                 Err(EnclaveAbort::IndefiniteWait) => {
                     bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
                 }
@@ -949,7 +944,8 @@ impl EnclaveState {
         let library_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, work);
 
         match library_result {
-            Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+            Err(EnclaveAbort::Exit { panic: None }) => bail!("This thread aborted execution"),
+            Err(EnclaveAbort::Exit { panic: Some(panic) }) => Err(panic.into()),
             Err(EnclaveAbort::IndefiniteWait) => {
                 bail!("This thread is waiting indefinitely without possibility of wakeup")
             }
