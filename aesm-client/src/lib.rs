@@ -21,6 +21,7 @@ extern crate failure_derive;
 #[cfg(unix)]
 extern crate lazy_static;
 extern crate protobuf;
+extern crate sgx_types;
 #[cfg(feature = "sgxs")]
 extern crate sgxs;
 #[cfg(unix)]
@@ -67,6 +68,8 @@ pub mod sgx {
     }
 }
 
+use sgx_types::{sgx_att_key_id_ext_t,sgx_ql_attestation_algorithm_id_t};
+
 // From SDK aesm_error.h
 const AESM_SUCCESS: u32 = 0;
 
@@ -96,6 +99,55 @@ impl QuoteType {
             _ => return Err(Error::InvalidQuoteType(v)),
         })
     }
+}
+
+pub struct AesmKeyId {
+    key: Vec<u8>,
+}
+
+impl AesmKeyId {
+    pub fn key(&self) -> &[u8] {
+        &self.key
+    }
+}
+
+pub struct AesmKeyIds {
+    keys: Vec<u8>,
+}
+
+impl AesmKeyIds {
+    pub fn keys(&self) -> &[u8] {
+        &self.keys
+    }
+
+    pub fn select_algorithm_id(&self, algorithm_id: sgx_ql_attestation_algorithm_id_t) -> Result<Option<Vec<u8>>> {
+        for i in self.keys.chunks_exact(::std::mem::size_of::<sgx_att_key_id_ext_t>()) {
+            let ptr = i.as_ptr() as *const sgx_att_key_id_ext_t;
+
+            unsafe {
+                println!("att_key_type: {:?}; spid: {:?}; base: id {:?}; version: {:?}; mrsigner_length {:?}; mrsigner {:?}; prod_id {:?}; extended_prod_id {:?}; config_id {:?}; family_id {:?}; algorithm_id {:?}",
+                         (*ptr).att_key_type, (*ptr).spid, (*ptr).base.id, (*ptr).base.version, (*ptr).base.mrsigner_length,
+                         (*ptr).base.mrsigner.split_at(16), (*ptr).base.prod_id, (*ptr).base.extended_prod_id, (*ptr).base.config_id.split_at(16), (*ptr).base.family_id, (*ptr).base.algorithm_id);
+            }
+            let algorithm = unsafe { let unaligned_ptr = &(*ptr).base.algorithm_id; std::ptr::read_unaligned(unaligned_ptr) };
+
+            if algorithm == algorithm_id as u32 {
+                return Ok(Some(i.to_vec()));
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[derive(Debug)]
+pub struct QuoteInfoEx {
+    pub att_key_id : Vec<u8>,
+
+    pub target_info: Vec<u8>,
+
+    pub pub_key: Vec<u8>,
+
+    pub pub_key_size: u64,
 }
 
 #[derive(Debug)]
@@ -218,6 +270,21 @@ impl AesmClient {
             attributes,
         )
     }
+
+    #[cfg(not(windows))]
+    pub fn get_supported_att_key_ids(&self) -> Result<AesmKeyIds> {
+        self.inner.get_supported_att_key_ids()
+    }
+
+    #[cfg(not(windows))]
+    pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfoEx> {
+        self.inner.init_quote_ex(att_key_id)
+    }
+
+    #[cfg(not(windows))]
+    pub fn get_quote_ex(&self, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
+        self.inner.get_quote_ex(report, quote_info, nonce)
+    }
 }
 
 #[cfg(feature = "sgxs")]
@@ -251,110 +318,53 @@ trait FromResponse: Sized {
     fn from_response(res: ProtobufResult<Response>) -> Result<Self>;
 }
 
-impl AesmRequest for Request_InitQuoteRequest {
-    type Response = Response_InitQuoteResponse;
+macro_rules! define_aesm_message {
+    ($request:ident, $response:ident, $set:ident, $has:ident, $take:ident) => {
+        impl AesmRequest for $request {
+            type Response = $response;
 
-    fn get_timeout(&self) -> Option<u32> {
-        if self.has_timeout() {
-            Some(Self::get_timeout(self))
-        } else {
-            None
-        }
-    }
-}
-
-impl From<Request_InitQuoteRequest> for Request {
-    fn from(r: Request_InitQuoteRequest) -> Request {
-        let mut req = Request::new();
-        req.set_initQuoteReq(r);
-        req
-    }
-}
-
-impl FromResponse for Response_InitQuoteResponse {
-    fn from_response(mut res: ProtobufResult<Response>) -> Result<Self> {
-        match res {
-            Ok(ref mut res) if res.has_initQuoteRes() => {
-                let body = res.take_initQuoteRes();
-                match body.get_errorCode() {
-                    AESM_SUCCESS => Ok(body),
-                    code => Err(Error::aesm_code(code)),
+            fn get_timeout(&self) -> Option<u32> {
+                if self.has_timeout() {
+                    Some(Self::get_timeout(self))
+                } else {
+                    None
                 }
             }
-            _ => Err(Error::aesm_bad_response("InitQuoteResponse")),
         }
-    }
-}
-
-impl AesmRequest for Request_GetQuoteRequest {
-    type Response = Response_GetQuoteResponse;
-
-    fn get_timeout(&self) -> Option<u32> {
-        if self.has_timeout() {
-            Some(Self::get_timeout(self))
-        } else {
-            None
+        impl From<$request> for Request {
+            fn from(r: $request) -> Request {
+                let mut req = Request::new();
+                req.$set(r);
+                req
+            }
         }
-    }
-}
-
-impl From<Request_GetQuoteRequest> for Request {
-    fn from(r: Request_GetQuoteRequest) -> Request {
-        let mut req = Request::new();
-        req.set_getQuoteReq(r);
-        req
-    }
-}
-
-impl FromResponse for Response_GetQuoteResponse {
-    fn from_response(mut res: ProtobufResult<Response>) -> Result<Self> {
-        match res {
-            Ok(ref mut res) if res.has_getQuoteRes() => {
-                let body = res.take_getQuoteRes();
-                match body.get_errorCode() {
-                    AESM_SUCCESS => Ok(body),
-                    code => Err(Error::aesm_code(code)),
+        impl FromResponse for $response {
+            fn from_response(mut res: ProtobufResult<Response>) -> Result<Self> {
+                match res {
+                    Ok(ref mut res) if res.$has() => {
+                        let body = res.$take();
+                        match body.get_errorCode() {
+                            AESM_SUCCESS => Ok(body),
+                            code => Err(Error::aesm_code(code)),
+                        }
+                    }
+                    _ => Err(Error::aesm_bad_response(stringify!($response))),
                 }
             }
-            _ => Err(Error::aesm_bad_response("GetQuoteResponse")),
         }
     }
 }
 
-impl AesmRequest for Request_GetLaunchTokenRequest {
-    type Response = Response_GetLaunchTokenResponse;
+define_aesm_message!(Request_GetQuoteRequest,    Response_GetQuoteResponse,    set_getQuoteReq,    has_getQuoteRes,    take_getQuoteRes);
+define_aesm_message!(Request_InitQuoteRequest,   Response_InitQuoteResponse,   set_initQuoteReq,   has_initQuoteRes,   take_initQuoteRes);
+define_aesm_message!(Request_GetLaunchTokenRequest, Response_GetLaunchTokenResponse, set_getLicTokenReq, has_getLicTokenRes, take_getLicTokenRes);
 
-    fn get_timeout(&self) -> Option<u32> {
-        if self.has_timeout() {
-            Some(Self::get_timeout(self))
-        } else {
-            None
-        }
-    }
-}
+define_aesm_message!(Request_GetQuoteExRequest,  Response_GetQuoteExResponse,  set_getQuoteExReq,  has_getQuoteExRes,  take_getQuoteExRes);
+define_aesm_message!(Request_InitQuoteExRequest, Response_InitQuoteExResponse, set_initQuoteExReq, has_initQuoteExRes, take_initQuoteExRes);
+define_aesm_message!(Request_GetQuoteSizeExRequest, Response_GetQuoteSizeExResponse,  set_getQuoteSizeExReq, has_getQuoteSizeExRes, take_getQuoteSizeExRes);
+define_aesm_message!(Request_GetSupportedAttKeyIDNumRequest, Response_GetSupportedAttKeyIDNumResponse, set_getSupportedAttKeyIDNumReq, has_getSupportedAttKeyIDNumRes, take_getSupportedAttKeyIDNumRes);
+define_aesm_message!(Request_GetSupportedAttKeyIDsRequest,   Response_GetSupportedAttKeyIDsResponse,   set_getSupportedAttKeyIDsReq,   has_getSupportedAttKeyIDsRes,   take_getSupportedAttKeyIDsRes);
 
-impl From<Request_GetLaunchTokenRequest> for Request {
-    fn from(r: Request_GetLaunchTokenRequest) -> Request {
-        let mut req = Request::new();
-        req.set_getLicTokenReq(r);
-        req
-    }
-}
-
-impl FromResponse for Response_GetLaunchTokenResponse {
-    fn from_response(mut res: ProtobufResult<Response>) -> Result<Self> {
-        match res {
-            Ok(ref mut res) if res.has_getLicTokenRes() => {
-                let body = res.take_getLicTokenRes();
-                match body.get_errorCode() {
-                    AESM_SUCCESS => Ok(body),
-                    code => Err(Error::aesm_code(code)),
-                }
-            }
-            _ => Err(Error::aesm_bad_response("GetLaunchTokenResponse")),
-        }
-    }
-}
 
 #[cfg(all(test, feature = "test-sgx"))]
 mod tests {

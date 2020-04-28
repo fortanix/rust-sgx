@@ -19,6 +19,7 @@ dependencies = [
  "protoc-rust",
  "report-test",
  "sgx-isa",
+ "sgx_types",
  "sgxs",
  "sgxs-loaders",
  "unix_socket2",
@@ -2027,6 +2028,12 @@ dependencies = [
  "mbedtls",
  "serde",
 ]
+
+[[package]]
+name = "sgx_types"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df329127455d6a2964782739218468878770a6dc54cb037b6c9c8846fe09d362"
 
 [[package]]
 name = "sgxs"
