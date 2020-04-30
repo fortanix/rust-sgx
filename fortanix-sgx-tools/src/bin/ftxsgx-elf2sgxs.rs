@@ -33,6 +33,7 @@ use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 use clap::ArgMatches;
+use std::convert::TryInto;
 
 #[allow(non_snake_case)]
 struct Symbols<'a> {
@@ -202,12 +203,12 @@ impl<'a> LayoutInfo<'a> {
                 }
 
                 // According to entry.S in rust-lang 'desc - toolchain version number, 32-bit LE'
-                let version : u32 = ((desc[0] as u32) << 0) + ((desc[1] as u32) << 8) + ((desc[2] as u32) << 16) + ((desc[3] as u32) << 24);
+                let version : u32 = u32::from_le_bytes(desc.try_into().unwrap());
 
-                let MAX_SUPPORTED_VERSION = 1;
+                let max_supported_version = 1;
                 
-                if version > MAX_SUPPORTED_VERSION {
-                    bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, MAX_SUPPORTED_VERSION);
+                if version > max_supported_version {
+                    bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, max_supported_version);
                 }
             },
             Ok(_) => bail!("Section data for .note.x86_64-fortanix-unknown-sgx is not a note."),
@@ -261,14 +262,12 @@ impl<'a> LayoutInfo<'a> {
         if let (Some(EH_FRM_HDR_BASE), Some(EH_FRM_HDR_SIZE)) = (syms.EH_FRM_HDR_BASE, syms.EH_FRM_HDR_SIZE) {
             check_size!(EH_FRM_HDR_BASE == 8);
             check_size!(EH_FRM_HDR_SIZE == 8);
-        }
-        else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (syms.EH_FRM_OFFSET, syms.EH_FRM_LEN, syms.EH_FRM_HDR_OFFSET, syms.EH_FRM_HDR_LEN) {
+        } else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (syms.EH_FRM_OFFSET, syms.EH_FRM_LEN, syms.EH_FRM_HDR_OFFSET, syms.EH_FRM_HDR_LEN) {
             check_size!(EH_FRM_OFFSET == 8);
             check_size!(EH_FRM_LEN == 8);
             check_size!(EH_FRM_HDR_OFFSET == 8);
             check_size!(EH_FRM_HDR_LEN == 8);
-        }
-        else {
+        } else {
             bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
         
@@ -468,7 +467,7 @@ impl<'a> LayoutInfo<'a> {
             splices.push(Splice::for_sym_u64(EH_FRM_HDR_LEN, self.ehfrm_hdr.size));
         }
         else {
-            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
+            bail!("Missing .eh_frame header symbols, application must have symbols exported by rust x86_64_fortanix_unknown_sgx toolchain, either (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
 
         if let Some(enclave_size) = enclave_size {
