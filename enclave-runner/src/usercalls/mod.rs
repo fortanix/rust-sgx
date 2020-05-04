@@ -459,6 +459,18 @@ pub(crate) enum EnclaveAbort<T> {
     MainReturned,
 }
 
+impl<T> EnclaveAbort<T> {
+    fn map_panic<U, F: FnOnce(T) -> U>(self, f: F) -> EnclaveAbort<U> {
+        match self {
+            EnclaveAbort::Exit { panic } => EnclaveAbort::Exit { panic: f(panic) },
+            EnclaveAbort::Secondary => EnclaveAbort::Secondary,
+            EnclaveAbort::IndefiniteWait => EnclaveAbort::IndefiniteWait,
+            EnclaveAbort::InvalidUsercall(n) => EnclaveAbort::InvalidUsercall(n),
+            EnclaveAbort::MainReturned => EnclaveAbort::MainReturned,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 struct TcsAddress(usize);
 
@@ -498,8 +510,8 @@ enum EnclaveKind {
 }
 
 struct PanicReason {
-    primary_panic_reason: Option<EnclaveAbort<Option<EnclavePanic>>>,
-    other_reasons: Vec<EnclaveAbort<Option<EnclavePanic>>>,
+    primary_panic_reason: Option<EnclaveAbort<EnclavePanic>>,
+    other_reasons: Vec<EnclaveAbort<EnclavePanic>>,
 }
 
 struct Command {
@@ -646,17 +658,17 @@ impl EnclaveState {
                 rx_return_channel = stream;
                 let (my_result, mode) = work;
                 let res = match (my_result, mode) {
+                    (Err(EnclaveAbort::Secondary), _) |
+                    (Ok(_), EnclaveEntry::ExecutableNonMain) => continue,
+
                     (e, EnclaveEntry::Library) |
-                    (e, EnclaveEntry::ExecutableMain)
+                    (e, EnclaveEntry::ExecutableMain) |
+                    (e @ Err(EnclaveAbort::Exit { panic: None }), EnclaveEntry::ExecutableNonMain)
                         => e,
 
-                    (Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) |
-                    (Ok(_), EnclaveEntry::ExecutableNonMain) => {
-                        continue;
-                    }
-
-                    (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain) |
+                    (Err(e @ EnclaveAbort::Exit { panic: Some(_) }), EnclaveEntry::ExecutableNonMain) |
                     (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
+                        let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
 
@@ -669,6 +681,7 @@ impl EnclaveState {
                     }
 
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
+                        let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
                         cmddata.other_reasons.push(e);
@@ -883,7 +896,7 @@ impl EnclaveState {
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.panic_reason.lock().await;
             let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
-                (false, Some(reason)) => Err(reason),
+                (false, Some(reason)) => Err(reason.map_panic(Some)),
                 // TODO: interpret other_reasons
                 _ => main_result,
             };
@@ -1287,6 +1300,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     fn exit(&mut self, panic: bool) -> EnclaveAbort<bool> {
+        self.enclave.abort_all_threads();
         EnclaveAbort::Exit { panic }
     }
 
