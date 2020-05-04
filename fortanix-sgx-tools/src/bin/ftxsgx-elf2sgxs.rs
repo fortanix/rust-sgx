@@ -24,7 +24,7 @@ use failure::{err_msg, Error, ResultExt};
 use xmas_elf::dynamic::{Dynamic as DynEntry, Tag as DynTag};
 use xmas_elf::header::Class as HeaderClass;
 use xmas_elf::program::{SegmentData, Type as PhType};
-use xmas_elf::sections::{SectionData, SHN_UNDEF};
+use xmas_elf::sections::{SectionData, SHN_UNDEF, ShType};
 use xmas_elf::symbol_table::{DynEntry64 as DynSymEntry, Entry};
 use xmas_elf::ElfFile;
 
@@ -33,6 +33,7 @@ use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 use clap::ArgMatches;
+use std::convert::TryInto;
 
 #[allow(non_snake_case)]
 struct Symbols<'a> {
@@ -44,10 +45,14 @@ struct Symbols<'a> {
     ENCLAVE_SIZE: &'a DynSymEntry,
     CFGDATA_BASE: &'a DynSymEntry,
     DEBUG: &'a DynSymEntry,
-    EH_FRM_HDR_BASE: &'a DynSymEntry,
-    EH_FRM_HDR_SIZE: &'a DynSymEntry,
+    EH_FRM_HDR_BASE: Option<&'a DynSymEntry>,
+    EH_FRM_HDR_SIZE: Option<&'a DynSymEntry>,
     TEXT_BASE: &'a DynSymEntry,
     TEXT_SIZE: &'a DynSymEntry,
+    EH_FRM_OFFSET: Option<&'a DynSymEntry>,
+    EH_FRM_LEN: Option<&'a DynSymEntry>,
+    EH_FRM_HDR_OFFSET: Option<&'a DynSymEntry>,
+    EH_FRM_HDR_LEN: Option<&'a DynSymEntry>,
 }
 struct SectionRange {
     offset: u64,
@@ -112,30 +117,38 @@ pub struct LayoutInfo<'a> {
     library: bool,
     sized: bool,
     ehfrm: SectionRange,
+    ehfrm_hdr: SectionRange,
     text: SectionRange,
 }
 
 macro_rules! read_syms {
-    ($($name:ident),* in $syms:ident : $elf:ident) => {{
-        $(let mut $name=None;)*
+    (mandatory: $($mandatory_name:ident),* optional: $($optional_name:ident),* in $syms:ident : $elf:ident) => {{
+        $(let mut $mandatory_name=None;)*
+        $(let mut $optional_name=None;)*
         for sym in $syms.iter().skip(1) {
             if sym.shndx()==SHN_UNDEF {
                 bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(err_msg)?);
-            } $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($name) {
-                if replace(&mut $name,Some(sym)).is_some() {
-                    bail!("Found symbol twice: {}", stringify!($name));
+            } $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($mandatory_name) {
+                if replace(&mut $mandatory_name,Some(sym)).is_some() {
+                    bail!("Found symbol twice: {}", stringify!($mandatory_name));
+                }
+            })*
+            $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($optional_name) {
+                if replace(&mut $optional_name,Some(sym)).is_some() {
+                    bail!("Found symbol twice: {}", stringify!($optional_name));
                 }
             })*
         }
-        if let ($(Some($name)),*)=($($name),*) {
-            Symbols{$($name:$name),*}
+        if let ($(Some($mandatory_name)),*)=($($mandatory_name),*) {
+            Symbols{$($mandatory_name:$mandatory_name),*,
+                    $($optional_name:$optional_name),*}
         } else {
             let mut missing = String::new();
-            $(if $name.is_none() {
+            $(if $mandatory_name.is_none() {
                 if !missing.is_empty() {
                     missing += ", ";
                 }
-                missing += stringify!($name);
+                missing += stringify!($mandatory_name);
             })*
             bail!("These dynamic symbols are missing: {}", missing)
         }
@@ -154,11 +167,62 @@ macro_rules! check_size {
             );
         }
     }};
+    ($name:ident == $size:expr) => {{
+        let size = $name.size();
+        if size != $size {
+            bail!(
+                "Dynamic symbol {} doesn't have the right size. Expected size {}, got {}.",
+                stringify!($name),
+                $size,
+                size
+            );
+        }
+    }};
 }
 
 impl<'a> LayoutInfo<'a> {
+
+    // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/src/libstd/sys/sgx/abi/entry.S
+    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
+        let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx").ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
+
+        if note_header.get_type() != Ok(ShType::Note) {
+            bail!("Invalid type {:?} for section: .note.x86_64-fortanix-unknown-sgx", note_header.get_type());
+        }
+
+        match note_header.get_data(&elf) {
+            Ok(SectionData::Note64(header, ptr)) => {
+                if header.name(ptr) != "toolchain-version" {
+                    bail!("Expecting 'toolchain-version' as name for .note.x86_64-fortanix-unknown-sgx");
+                }
+
+                let desc = header.desc(ptr);
+                
+                if desc.len() != 4 {
+                    bail!("Expecting 32 bit 'toolchain-version' in .note.x86_64-fortanix-unknown-sgx");
+                }
+
+                // According to entry.S in rust-lang 'desc - toolchain version number, 32-bit LE'
+                let version : u32 = u32::from_le_bytes(desc.try_into().unwrap());
+
+                let max_supported_version = 1;
+                
+                if version > max_supported_version {
+                    bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, max_supported_version);
+                }
+            },
+            Ok(_) => bail!("Section data for .note.x86_64-fortanix-unknown-sgx is not a note."),
+            Err(_) => bail!("Failed fetching data for section .note.x86_64-fortanix-unknown-sgx.")
+        }
+
+        Ok(())
+    }
+    
     #[allow(non_snake_case)]
     fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, Error> {
+
+        Self::check_toolchain_version(&elf)?;
+
         let dynsym = elf
             .find_section_by_name(".dynsym")
             .ok_or_else(|| format_err!("Could not find dynamic symbol table!"))?;
@@ -170,18 +234,14 @@ impl<'a> LayoutInfo<'a> {
                 bail!(".dynsym section is not a dynamic symbol table!");
             };
 
-        let syms = read_syms!(sgx_entry,
-                              HEAP_BASE,
-                              HEAP_SIZE,
-                              RELA,
-                              RELACOUNT,
-                              ENCLAVE_SIZE,
-                              CFGDATA_BASE,
-                              DEBUG,
-                              EH_FRM_HDR_BASE,
-                              EH_FRM_HDR_SIZE,
-                              TEXT_BASE,
-                              TEXT_SIZE in syms : elf);
+        // Optional symbols used for compatibility. Old versions use 'EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE', new versions use 'EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN.
+        // Tool must support both variants for backwards compatibility at least until 'https://github.com/fortanix/rust-sgx/issues/174' is merged into rust-lang.
+        //
+        // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
+        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE
+                              optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
+                              in syms : elf);
+
 
         check_size!(syms.HEAP_BASE == 8);
         check_size!(syms.HEAP_SIZE == 8);
@@ -190,8 +250,6 @@ impl<'a> LayoutInfo<'a> {
         check_size!(syms.ENCLAVE_SIZE == 8);
         check_size!(syms.CFGDATA_BASE == 8);
         check_size!(syms.DEBUG == 1);
-        check_size!(syms.EH_FRM_HDR_BASE == 8);
-        check_size!(syms.EH_FRM_HDR_SIZE == 8);
         check_size!(syms.TEXT_BASE == 8);
         check_size!(syms.TEXT_SIZE == 8);
 
@@ -201,6 +259,18 @@ impl<'a> LayoutInfo<'a> {
             bail!("ENCLAVE_SIZE symbol is not naturally aligned")
         }
 
+        if let (Some(EH_FRM_HDR_BASE), Some(EH_FRM_HDR_SIZE)) = (syms.EH_FRM_HDR_BASE, syms.EH_FRM_HDR_SIZE) {
+            check_size!(EH_FRM_HDR_BASE == 8);
+            check_size!(EH_FRM_HDR_SIZE == 8);
+        } else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (syms.EH_FRM_OFFSET, syms.EH_FRM_LEN, syms.EH_FRM_HDR_OFFSET, syms.EH_FRM_HDR_LEN) {
+            check_size!(EH_FRM_OFFSET == 8);
+            check_size!(EH_FRM_LEN == 8);
+            check_size!(EH_FRM_HDR_OFFSET == 8);
+            check_size!(EH_FRM_HDR_LEN == 8);
+        } else {
+            bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
+        }
+        
         Ok(syms)
     }
 
@@ -333,7 +403,8 @@ impl<'a> LayoutInfo<'a> {
         let sym = Self::check_symbols(&elf)?;
         let dyn = Self::check_dynamic(&elf)?;
         Self::check_relocs(&elf, dyn.as_ref())?;
-        let ehfrm = Self::check_section(&elf, ".eh_frame_hdr")?;
+        let ehfrm = Self::check_section(&elf, ".eh_frame")?;
+        let ehfrm_hdr = Self::check_section(&elf, ".eh_frame_hdr")?;
         let text = Self::check_section(&elf, ".text")?;
 
         Ok(LayoutInfo {
@@ -347,11 +418,13 @@ impl<'a> LayoutInfo<'a> {
             debug,
             library,
             ehfrm,
+            ehfrm_hdr,
             text,
             sized,
         })
     }
 
+    #[allow(non_snake_case)]
     pub fn write_elf_segments<W: SgxsWrite>(
         &self,
         writer: &mut CanonicalSgxsWriter<W>,
@@ -379,11 +452,24 @@ impl<'a> LayoutInfo<'a> {
             ),
             Splice::for_sym_u64(self.sym.CFGDATA_BASE, memory_size),
             Splice::for_sym_u8(self.sym.DEBUG, self.debug as _),
-            Splice::for_sym_u64(self.sym.EH_FRM_HDR_BASE, self.ehfrm.offset),
-            Splice::for_sym_u64(self.sym.EH_FRM_HDR_SIZE, self.ehfrm.size),
             Splice::for_sym_u64(self.sym.TEXT_BASE, self.text.offset),
             Splice::for_sym_u64(self.sym.TEXT_SIZE, self.text.size),
         ];
+
+        if let (Some(EH_FRM_HDR_BASE), Some(EH_FRM_HDR_SIZE)) = (self.sym.EH_FRM_HDR_BASE, self.sym.EH_FRM_HDR_SIZE) {
+            splices.push(Splice::for_sym_u64(EH_FRM_HDR_BASE, self.ehfrm_hdr.offset));
+            splices.push(Splice::for_sym_u64(EH_FRM_HDR_SIZE, self.ehfrm_hdr.size));
+        }
+        else if let (Some(EH_FRM_OFFSET), Some(EH_FRM_LEN), Some(EH_FRM_HDR_OFFSET), Some(EH_FRM_HDR_LEN)) = (self.sym.EH_FRM_OFFSET, self.sym.EH_FRM_LEN, self.sym.EH_FRM_HDR_OFFSET, self.sym.EH_FRM_HDR_LEN) {
+            splices.push(Splice::for_sym_u64(EH_FRM_OFFSET, self.ehfrm.offset));
+            splices.push(Splice::for_sym_u64(EH_FRM_LEN, self.ehfrm.size));
+            splices.push(Splice::for_sym_u64(EH_FRM_HDR_OFFSET, self.ehfrm_hdr.offset));
+            splices.push(Splice::for_sym_u64(EH_FRM_HDR_LEN, self.ehfrm_hdr.size));
+        }
+        else {
+            bail!("Missing .eh_frame header symbols, application must have symbols exported by rust x86_64_fortanix_unknown_sgx toolchain, either (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
+        }
+
         if let Some(enclave_size) = enclave_size {
             splices.push(Splice::for_sym_u64(self.sym.ENCLAVE_SIZE, enclave_size));
         }
