@@ -98,34 +98,10 @@ impl QuoteType {
     }
 }
 
-/*pub struct AesmKeyId {
-    key: Vec<u8>,
-}
-
-impl AesmKeyId {
-    pub fn key(&self) -> &[u8] {
-        &self.key
-    }
-}
-
-pub struct AesmKeyIds {
-    keys: Vec<u8>,
-}
-
-impl AesmKeyIds {
-    pub fn keys(&self) -> &[u8] {
-        &self.keys
-    }
-
-}
-*/
 #[derive(Debug)]
 pub struct QuoteInfoEx {
     pub target_info: Vec<u8>,
-
     pub pub_key_id: Vec<u8>,
-
-    pub pub_key_id_size: u64,
 }
 
 #[derive(Debug)]

@@ -56,4 +56,3 @@ protoc-rust = "2.8.0" # MIT/Apache-2.0
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 "report-test" = { version = "0.3.0", path = "../report-test" }
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
-sgx_types = "1.1.1"

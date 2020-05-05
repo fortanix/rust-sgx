@@ -106,12 +106,6 @@ impl AesmClient {
 
         Ok(QuoteResult::new(quote, qe_report))
     }
-
-
-    ///
-    /// Purpose of following functions is to stay as close as possible to protobuf interface.
-    /// for more usable API see AesmClient in rust-sgx/aesm-client/src/lib.rs
-    /// 
     
     ///
     /// Returns all keys supported by AESM service. 
@@ -171,27 +165,28 @@ impl AesmClient {
     ///
     /// returns information to use for get_quote_ex
     ///
-    /// note - intentionally skipping p_pub_key_id and buf_size as they are not useful at the moment.
-    ///        a) buf_size must be exactly sizeof(sgx_sha256_hash_t) otherwise fail.
-    ///        b) p_pub_key_id set to false causes response to be empty except 'pub_key_id_size'. But we must already know that and set it via buf_size - otherwise see point a.
-    ///
     pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfoEx> {
-        const SGX_SHA256_SIZE : u64 = 32;
         let mut req = Request_InitQuoteExRequest::new();
 
         // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
         #[cfg(not(target_env = "sgx"))]
         req.set_timeout(REMOTE_AESM_TIMEOUT_US);
 
+        req.set_att_key_id(att_key_id.clone());
+        req.set_b_pub_key_id(false);
+        
+        let res = self.transact(req)?;
+        let buf_size = res.get_pub_key_id_size();
+
+        let mut req = Request_InitQuoteExRequest::new();
+        
         req.set_att_key_id(att_key_id);
         req.set_b_pub_key_id(true);
-        req.set_buf_size(SGX_SHA256_SIZE);
-
+        req.set_buf_size(buf_size);
         let mut res = self.transact(req)?;
 
         Ok(QuoteInfoEx { target_info : res.take_target_info(),
                          pub_key_id : res.take_pub_key_id(),
-                         pub_key_id_size : res.get_pub_key_id_size(),
         })
     }
 
@@ -199,8 +194,9 @@ impl AesmClient {
     /// takes the application enclave REPORT and generates a QUOTE.
     /// Similar functionality to sgx_get_quote_ex in page 173 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
     ///
-    /// report     - Report of the enclave for that the quote is being calculated.
     /// att_key_id - Selected attestation key ID returned by sgx_select_att_key_id (or one selected from output of get_supported_att_key_ids). 
+    /// report     - Report of the enclave for that the quote is being calculated.
+    /// quote_info - Data returned by init_quote_ex.
     /// nonce      - information required to generate a REPORT that can be verified by the application enclave.
     ///
     pub fn get_quote_ex(&self, att_key_id: Vec<u8>, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
