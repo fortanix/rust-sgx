@@ -21,7 +21,6 @@ extern crate failure_derive;
 #[cfg(unix)]
 extern crate lazy_static;
 extern crate protobuf;
-extern crate sgx_types;
 #[cfg(feature = "sgxs")]
 extern crate sgxs;
 #[cfg(unix)]
@@ -68,8 +67,6 @@ pub mod sgx {
     }
 }
 
-use sgx_types::{sgx_att_key_id_ext_t,sgx_ql_attestation_algorithm_id_t};
-
 // From SDK aesm_error.h
 const AESM_SUCCESS: u32 = 0;
 
@@ -101,7 +98,7 @@ impl QuoteType {
     }
 }
 
-pub struct AesmKeyId {
+/*pub struct AesmKeyId {
     key: Vec<u8>,
 }
 
@@ -120,34 +117,15 @@ impl AesmKeyIds {
         &self.keys
     }
 
-    pub fn select_algorithm_id(&self, algorithm_id: sgx_ql_attestation_algorithm_id_t) -> Result<Option<Vec<u8>>> {
-        for i in self.keys.chunks_exact(::std::mem::size_of::<sgx_att_key_id_ext_t>()) {
-            let ptr = i.as_ptr() as *const sgx_att_key_id_ext_t;
-
-            unsafe {
-                println!("att_key_type: {:?}; spid: {:?}; base: id {:?}; version: {:?}; mrsigner_length {:?}; mrsigner {:?}; prod_id {:?}; extended_prod_id {:?}; config_id {:?}; family_id {:?}; algorithm_id {:?}",
-                         (*ptr).att_key_type, (*ptr).spid, (*ptr).base.id, (*ptr).base.version, (*ptr).base.mrsigner_length,
-                         (*ptr).base.mrsigner.split_at(16), (*ptr).base.prod_id, (*ptr).base.extended_prod_id, (*ptr).base.config_id.split_at(16), (*ptr).base.family_id, (*ptr).base.algorithm_id);
-            }
-            let algorithm = unsafe { let unaligned_ptr = &(*ptr).base.algorithm_id; std::ptr::read_unaligned(unaligned_ptr) };
-
-            if algorithm == algorithm_id as u32 {
-                return Ok(Some(i.to_vec()));
-            }
-        }
-        Ok(None)
-    }
 }
-
+*/
 #[derive(Debug)]
 pub struct QuoteInfoEx {
-    pub att_key_id : Vec<u8>,
-
     pub target_info: Vec<u8>,
 
-    pub pub_key: Vec<u8>,
+    pub pub_key_id: Vec<u8>,
 
-    pub pub_key_size: u64,
+    pub pub_key_id_size: u64,
 }
 
 #[derive(Debug)]
@@ -272,7 +250,7 @@ impl AesmClient {
     }
 
     #[cfg(not(windows))]
-    pub fn get_supported_att_key_ids(&self) -> Result<AesmKeyIds> {
+    pub fn get_supported_att_key_ids(&self) -> Result<Vec<Vec<u8>>> {
         self.inner.get_supported_att_key_ids()
     }
 
@@ -282,8 +260,8 @@ impl AesmClient {
     }
 
     #[cfg(not(windows))]
-    pub fn get_quote_ex(&self, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
-        self.inner.get_quote_ex(report, quote_info, nonce)
+    pub fn get_quote_ex(&self, att_key_id: Vec<u8>, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
+        self.inner.get_quote_ex(att_key_id, report, quote_info, nonce)
     }
 }
 

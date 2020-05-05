@@ -35,7 +35,6 @@ lazy_static = "1"          # MIT/Apache-2.0
 protobuf = "2.8.0"         # MIT/Apache-2.0
 failure = "0.1.1"          # MIT/Apache-2.0
 failure_derive = "0.1.1"   # MIT/Apache-2.0
-sgx_types = "1.1.1"        # Unlicense/Apache-2.0 headers.
 
 [target.'cfg(unix)'.dependencies]
 # We require a version of unix-socket with the following change:
@@ -57,3 +56,4 @@ protoc-rust = "2.8.0" # MIT/Apache-2.0
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 "report-test" = { version = "0.3.0", path = "../report-test" }
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
+sgx_types = "1.1.1"
