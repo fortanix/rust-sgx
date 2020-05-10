@@ -64,7 +64,7 @@ serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 pe = { version = "0.1", optional = true }        # GPL
 
 [target.'cfg(unix)'.dependencies]
-"dcap-ql" = { version = "0.2.0", path = "../dcap-ql" }
+"dcap-ql" = { version = "0.3.0", path = "../dcap-ql" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.7", features = ["winbase"] }

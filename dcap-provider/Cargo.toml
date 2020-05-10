@@ -1,6 +1,6 @@
 [package]
 name = "dcap-provider"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Fortanix, Inc."]
 edition = "2018"
 license = "MPL-2.0"
@@ -34,7 +34,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Project dependencies
-"dcap-ql" = { version = "0.2.0", path = "../dcap-ql", features = ["link"] }
+"dcap-ql" = { version = "0.3.0", path = "../dcap-ql", features = ["link"] }
 "report-test" = { version = "0.3.0", path = "../report-test" }
 
 # External dependencies
