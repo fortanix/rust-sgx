@@ -10,10 +10,19 @@ use {
 };
 // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
 #[cfg(not(target_env = "sgx"))]
-use imp::{LOCAL_AESM_TIMEOUT_US, REMOTE_AESM_TIMEOUT_US};
-// FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
-#[cfg(not(target_env = "sgx"))]
 use std::time::Duration;
+
+
+/// This timeout is an argument in AESM request protobufs.
+///
+/// This value should be used for requests that can be completed locally, i.e.
+/// without network interaction.
+pub(super) const LOCAL_AESM_TIMEOUT_US: u32 = 1_000_000;
+/// This timeout is an argument in AESM request protobufs.
+///
+/// This value should be used for requests that might need interaction with
+/// remote servers, such as provisioning EPID.
+pub(super) const REMOTE_AESM_TIMEOUT_US: u32 = 30_000_000;
 
 impl AesmClient {
     pub fn try_connect(&self) -> Result<()> {
@@ -47,10 +56,7 @@ impl AesmClient {
 
     /// Obtain target info from QE.
     pub fn init_quote(&self) -> Result<QuoteInfo> {
-        #[allow(unused_mut)]
         let mut req = Request_InitQuoteRequest::new();
-        // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
-        #[cfg(not(target_env = "sgx"))]
         req.set_timeout(LOCAL_AESM_TIMEOUT_US);
         let mut res = self.transact(req)?;
 
@@ -83,8 +89,6 @@ impl AesmClient {
         }
         req.set_qe_report(true);
 
-        // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
-        #[cfg(not(target_env = "sgx"))]
         req.set_timeout(REMOTE_AESM_TIMEOUT_US);
 
         let mut res = self.transact(req)?;
