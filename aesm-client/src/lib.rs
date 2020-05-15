@@ -99,17 +99,9 @@ impl QuoteType {
 }
 
 #[derive(Debug)]
-pub struct QuoteInfoEx {
-    pub target_info: Vec<u8>,
-    pub pub_key_id: Vec<u8>,
-}
-
-#[derive(Debug)]
 pub struct QuoteInfo {
     target_info: Vec<u8>,
-
-    /// EPID group ID, big-endian byte order
-    gid: Vec<u8>,
+    pub_key_id: Vec<u8>,
 }
 
 impl QuoteInfo {
@@ -117,29 +109,37 @@ impl QuoteInfo {
         &self.target_info
     }
 
-    pub fn gid(&self) -> &[u8] {
-        &self.gid
+    /// EPID only: EPID group ID, big-endian byte order
+    pub fn gid(&self) -> Vec<u8> {
+        // AESM gives it to us little-endian, we want big-endian for writing into IAS URL with to_hex()
+        let mut pk = self.pub_key_id.clone();
+        pk.reverse();
+        pk
     }
 
-    // The value returned here can depend on number of sigrl entries, and
-    // possibly other factors. Although why the client needs to pass a length
-    // in a protobuf API is beyond me.
-    fn quote_buffer_size(&self, sig_rl: &[u8]) -> u32 {
-        // Refer to se_quote_internal.h and sgx_quote.h in the Intel SDK.
-        let quote_length = 436 + 288 + 12 + 4 + 16;
-
-        // Refer to epid/common/types.h in the Intel SDK.
-        // This is the truly correct way to compute sig_length:
-        //let nr_proof_length = 160;
-        //let sig_length = 352 + 4 + 4 + sig_rl_entries * nr_proof_length;
-        // Instead we do something that should be conservative, and doesn't
-        // require interpreting the sig_rl structure to determine the entry
-        // count. An nr_proof is 5 field elements, a sig_rl entry is four.
-        // Add some slop for sig_rl headers.
-        let sig_length = 352 + 4 + 4 + (sig_rl.len() as u32 * 5 / 4) + 128;
-
-        quote_length + sig_length
+    pub fn pub_key_id(&self) -> &[u8] {
+        &self.pub_key_id
     }
+}
+
+// The value returned here can depend on number of sigrl entries, and
+// possibly other factors. Although why the client needs to pass a length
+// in a protobuf API is beyond me.
+fn quote_buffer_size(sig_rl: &[u8]) -> u32 {
+    // Refer to se_quote_internal.h and sgx_quote.h in the Intel SDK.
+    let quote_length = 436 + 288 + 12 + 4 + 16;
+
+    // Refer to epid/common/types.h in the Intel SDK.
+    // This is the truly correct way to compute sig_length:
+    //let nr_proof_length = 160;
+    //let sig_length = 352 + 4 + 4 + sig_rl_entries * nr_proof_length;
+    // Instead we do something that should be conservative, and doesn't
+    // require interpreting the sig_rl structure to determine the entry
+    // count. An nr_proof is 5 field elements, a sig_rl entry is four.
+    // Add some slop for sig_rl headers.
+    let sig_length = 352 + 4 + 4 + (sig_rl.len() as u32 * 5 / 4) + 128;
+
+    quote_length + sig_length
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -190,13 +190,14 @@ impl AesmClient {
         self.inner.try_connect()
     }
 
+    /// Obtain target info from QE.
     pub fn init_quote(&self) -> Result<QuoteInfo> {
         self.inner.init_quote()
     }
 
+    /// Obtain remote attestation quote from QE.
     pub fn get_quote(
         &self,
-        session: &QuoteInfo,
         report: Vec<u8>,
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
@@ -204,7 +205,6 @@ impl AesmClient {
         nonce: Vec<u8>,
     ) -> Result<QuoteResult> {
         self.inner.get_quote(
-            session,
             report,
             spid,
             sig_rl,
@@ -225,19 +225,40 @@ impl AesmClient {
         )
     }
 
+    /// Returns all keys supported by AESM service.
     #[cfg(not(windows))]
     pub fn get_supported_att_key_ids(&self) -> Result<Vec<Vec<u8>>> {
         self.inner.get_supported_att_key_ids()
     }
 
+    /// Obtain target info from QE.
+    ///
+    /// Like `init_quote`, but allows specifying the attestation key id.
     #[cfg(not(windows))]
-    pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfoEx> {
+    pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfo> {
         self.inner.init_quote_ex(att_key_id)
     }
 
+    /// Obtain remote attestation quote from QE.
+    ///
+    /// Like `get_quote`, but allows specifying the attestation key id.
+    ///
+    /// If `target_info` is not supplied, it's determined from `report` so that
+    /// the quote may be verified by the enclave it's for.
     #[cfg(not(windows))]
-    pub fn get_quote_ex(&self, att_key_id: Vec<u8>, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
-        self.inner.get_quote_ex(att_key_id, report, quote_info, nonce)
+    pub fn get_quote_ex(
+        &self,
+        att_key_id: Vec<u8>,
+        report: Vec<u8>,
+        target_info: Option<Vec<u8>>,
+        nonce: Vec<u8>
+    ) -> Result<QuoteResult> {
+        let target_info = target_info.unwrap_or_else( ||
+            sgx_isa::Targetinfo::from(sgx_isa::Report::try_copy_from(&report).unwrap())
+                .as_ref()
+                .to_owned()
+        );
+        self.inner.get_quote_ex(att_key_id, report, target_info, nonce)
     }
 }
 
@@ -348,11 +369,10 @@ mod tests {
         // back. The node attest flow in testsetup.sh exercises the real case.
         let client = AesmClient::new();
 
-        let quote = client.init_quote().unwrap();
+        let _quote_info = client.init_quote().unwrap();
 
         let quote = client
             .get_quote(
-                &quote,
                 vec![0u8; Report::UNPADDED_SIZE],
                 vec![0u8; SPID_SIZE],
                 vec![],

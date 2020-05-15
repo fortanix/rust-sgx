@@ -31,7 +31,7 @@ path = "src/sgx_detect/main.rs"
 # Project dependencies
 "sgxs" = { version = "0.7.0", path = "../sgxs", features = ["crypto-openssl"] }
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
-"aesm-client" = { version = "0.4.0", path = "../aesm-client", features = ["sgxs"] }
+"aesm-client" = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 "report-test" = { version = "0.3.0", path = "../report-test" }
 "enclave-runner" = { version = "0.3.0", path = "../enclave-runner" }

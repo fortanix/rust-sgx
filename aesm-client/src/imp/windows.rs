@@ -6,7 +6,7 @@ use winapi::_core::ffi::c_void;
 use sgx_isa::{Attributes, Sigstruct, Report, Targetinfo};
 
 use error::{Error, Result};
-use {QuoteInfo, QuoteResult, QuoteType};
+use {quote_buffer_size, QuoteInfo, QuoteResult, QuoteType};
 
 extern crate libloading as dl;
 
@@ -105,21 +105,20 @@ impl AesmClient {
                 return Err(Error::AesmCode(error.into()));
             }
         }
-        let quote_info: QuoteInfo = QuoteInfo { target_info, gid };
+        let quote_info: QuoteInfo = QuoteInfo { target_info, pub_key_id: gid };
 
         return Ok(quote_info);
     }
 
     pub fn get_quote(
         &self,
-        session: &QuoteInfo,
         report: Vec<u8>,
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
         quote_type: QuoteType,
         nonce: Vec<u8>,
     ) -> Result<QuoteResult> {
-        let quote_buffer_size = session.quote_buffer_size(&sig_rl);
+        let quote_buffer_size = quote_buffer_size(&sig_rl);
         let mut qe_report: Vec<u8> = vec![0; Report::UNPADDED_SIZE];
         let mut quote: Vec<u8> = vec![0; quote_buffer_size as usize];
 

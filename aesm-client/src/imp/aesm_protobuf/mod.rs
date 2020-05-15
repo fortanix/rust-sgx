@@ -5,7 +5,7 @@ use std::io::{Read, Write};
 use std::mem::size_of;
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use {
-    AesmRequest, FromResponse, QuoteInfo, QuoteInfoEx, QuoteResult, QuoteType, 
+    quote_buffer_size, AesmRequest, FromResponse, QuoteInfo, QuoteResult, QuoteType,
     Request_GetQuoteRequest, Request_InitQuoteRequest, Request_GetSupportedAttKeyIDNumRequest, Request_GetSupportedAttKeyIDsRequest, Request_InitQuoteExRequest, Request_GetQuoteSizeExRequest, Request_GetQuoteExRequest
 };
 // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
@@ -54,24 +54,18 @@ impl AesmClient {
         Ok(res)
     }
 
-    /// Obtain target info from QE.
     pub fn init_quote(&self) -> Result<QuoteInfo> {
         let mut req = Request_InitQuoteRequest::new();
         req.set_timeout(LOCAL_AESM_TIMEOUT_US);
         let mut res = self.transact(req)?;
 
-        let (target_info, mut gid) = (res.take_targetInfo(), res.take_gid());
+        let (target_info, gid) = (res.take_targetInfo(), res.take_gid());
 
-        // AESM gives it to us little-endian, we want big-endian for writing into IAS URL with to_hex()
-        gid.reverse();
-
-        Ok(QuoteInfo { target_info, gid })
+        Ok(QuoteInfo { target_info, pub_key_id: gid })
     }
 
-    /// Obtain remote attestation quote from QE.
     pub fn get_quote(
         &self,
-        session: &QuoteInfo,
         report: Vec<u8>,
         spid: Vec<u8>,
         sig_rl: Vec<u8>,
@@ -83,7 +77,7 @@ impl AesmClient {
         req.set_quote_type(quote_type.into());
         req.set_spid(spid);
         req.set_nonce(nonce);
-        req.set_buf_size(session.quote_buffer_size(&sig_rl));
+        req.set_buf_size(quote_buffer_size(&sig_rl));
         if sig_rl.len() != 0 {
             req.set_sig_rl(sig_rl);
         }
@@ -110,15 +104,9 @@ impl AesmClient {
 
         Ok(QuoteResult::new(quote, qe_report))
     }
-    
-    ///
-    /// Returns all keys supported by AESM service. 
-    /// Similar functionality to sgx_get_supported_att_key_ids in page 177 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
-    ///
-    /// returns structure containing set of keys that can serve as input for init_quote_ex/get_quote_size_ex operations. (see aesm-client/tests/live_quote.rs for examples how to extract a specific key)
-    ///
-    pub fn get_supported_att_key_ids(&self) -> Result<Vec<Vec<u8>>> {
 
+    // Similar functionality to sgx_get_supported_att_key_ids in page 177 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
+    pub fn get_supported_att_key_ids(&self) -> Result<Vec<Vec<u8>>> {
         // expected key id length - size of C structure - sgx_att_key_id_ext_t
         const SGX_KEY_ID_SIZE : u32 = 256;
 
@@ -142,34 +130,20 @@ impl AesmClient {
         let expected_buffer_size : u32 = num_key_ids * SGX_KEY_ID_SIZE;
         req.set_buf_size(expected_buffer_size);
 
-        // fetch requested data
         let mut res = self.transact(req)?;
 
-        // Interpret the byte array as defined in C header at linux-sgx/common/inc/sgx_quote.h, this is converted to sgx_quote.rs via bindgen.
         let key_ids_blob = res.take_att_key_ids();
-
         if key_ids_blob.len() as u32 != expected_buffer_size {
             return Err(Error::aesm_bad_response("wrong buffer size returned by aesm service"));
         }
 
-        let mut key_ids : Vec<Vec<u8>> = Vec::new();
-        
-        for i in key_ids_blob.chunks_exact(SGX_KEY_ID_SIZE as usize) {
-            key_ids.push(i.to_vec());
-        }
+        let key_ids = key_ids_blob.chunks_exact(SGX_KEY_ID_SIZE as usize).map(Vec::from).collect();
         
         Ok(key_ids)
     }
     
-    ///
-    /// Returns information needed by an intel SGX application to get a quote of one of its enclaves.
-    /// Similar functionality to sgx_init_quote_ex in page 165 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
-    ///
-    /// att_key_id - a byte array with hidden type 'sgx_att_key_id_ext_t' returned by AesmClient::select_att_key_id or AesmKeyIds::select_algorithm_id or similar.
-    ///
-    /// returns information to use for get_quote_ex
-    ///
-    pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfoEx> {
+    // Similar functionality to sgx_init_quote_ex in page 165 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf 
+    pub fn init_quote_ex(&self, att_key_id: Vec<u8>) -> Result<QuoteInfo> {
         let mut req = Request_InitQuoteExRequest::new();
 
         // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
@@ -189,22 +163,19 @@ impl AesmClient {
         req.set_buf_size(buf_size);
         let mut res = self.transact(req)?;
 
-        Ok(QuoteInfoEx { target_info : res.take_target_info(),
+        Ok(QuoteInfo { target_info : res.take_target_info(),
                          pub_key_id : res.take_pub_key_id(),
         })
     }
 
-    ///
-    /// takes the application enclave REPORT and generates a QUOTE.
-    /// Similar functionality to sgx_get_quote_ex in page 173 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
-    ///
-    /// att_key_id - Selected attestation key ID returned by sgx_select_att_key_id (or one selected from output of get_supported_att_key_ids). 
-    /// report     - Report of the enclave for that the quote is being calculated.
-    /// quote_info - Data returned by init_quote_ex.
-    /// nonce      - information required to generate a REPORT that can be verified by the application enclave.
-    ///
-    pub fn get_quote_ex(&self, att_key_id: Vec<u8>, report: Vec<u8>, quote_info : QuoteInfoEx, nonce: &[u8; 16]) -> Result<QuoteResult> {
-
+    // Similar functionality to sgx_get_quote_ex in page 173 at https://download.01.org/intel-sgx/sgx-linux/2.9.1/docs/Intel_SGX_Developer_Reference_Linux_2.9.1_Open_Source.pdf
+    pub fn get_quote_ex(
+        &self,
+        att_key_id: Vec<u8>,
+        report: Vec<u8>,
+        target_info: Vec<u8>,
+        nonce: Vec<u8>
+    ) -> Result<QuoteResult> {
         // First request - get the expected quote size for given key id.
         let mut req = Request_GetQuoteSizeExRequest::new();
 
@@ -237,16 +208,17 @@ impl AesmClient {
 
         let mut qe_report_info : Vec<u8> = Vec::new();
         qe_report_info.extend(nonce);
-        qe_report_info.extend(quote_info.target_info);
-        qe_report_info.extend_from_slice(&report);
+        qe_report_info.extend(target_info);
+        let report_start = qe_report_info.len();
+        qe_report_info.resize(report_start + sgx_isa::Report::UNPADDED_SIZE, 0);
         req.set_qe_report_info(qe_report_info);
 
         req.set_report(report);
 
         let mut res = self.transact(req)?;
 
-        let (quote, qe_report) = (res.take_quote(), res.take_qe_report_info());
+        let (quote, qe_report_info) = (res.take_quote(), res.take_qe_report_info());
 
-        Ok(QuoteResult::new(quote, qe_report))
+        Ok(QuoteResult::new(quote, &qe_report_info[report_start..]))
     }
 }
