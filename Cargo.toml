@@ -4,6 +4,7 @@ members = [
     "dcap-provider",
     "dcap-ql-sys",
     "dcap-ql",
+    "dcap-retrieve-pckid",
     "enclave-runner",
     "fortanix-sgx-abi",
     "fortanix-sgx-tools",
