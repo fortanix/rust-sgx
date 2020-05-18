@@ -1,0 +1,22 @@
+[package]
+name = "ipc-queue"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+edition = "2018"
+description = """
+An implementation of FIFO queue described in fortanix-sgx-abi used for asynchronous usercalls.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/api/ipc_queue/"
+homepage = "https://edp.fortanix.com/"
+keywords = ["sgx", "fifo", "queue", "ipc"]
+categories = ["asynchronous"]
+
+[dependencies]
+fortanix-sgx-abi = { version = "0.3.0", path = "../fortanix-sgx-abi" }
+lazy_static = "1.4"
+
+[dev-dependencies]
+futures = { version = "0.3", features = ["compat", "io-compat"] }
+tokio = { version = "0.2", features = ["full"] }

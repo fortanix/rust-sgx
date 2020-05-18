@@ -269,18 +269,23 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         return_queue: *mut FifoDescriptor<Return>,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
-            unsafe {
-                let ret = Ok((|| {
-                    let usercall_queue = usercall_queue
-                        .as_mut()
-                        .ok_or(IoError::from(IoErrorKind::InvalidInput))?;
-                    let return_queue = return_queue
-                        .as_mut()
-                        .ok_or(IoError::from(IoErrorKind::InvalidInput))?;
-                    self.0.async_queues(usercall_queue, return_queue)
-                })()
-                .to_sgx_result());
-                return (self, ret);
+            let queues = (|| -> IoResult<_> {
+                unsafe {
+                    let uq = usercall_queue.as_mut().ok_or(IoError::from(IoErrorKind::InvalidInput))?;
+                    let rq = return_queue.as_mut().ok_or(IoError::from(IoErrorKind::InvalidInput))?;
+                    Ok((uq, rq))
+                }
+            })();
+            let (uq, rq) = match queues {
+                Err(e) => {
+                    let ret: IoResult<()> = Err(e);
+                    return (self, Ok(ret.to_sgx_result()));
+                }
+                Ok((uq, rq)) => (uq, rq),
+            };
+            match self.0.async_queues(uq, rq).await {
+                Ok(()) => (self, Ok(Ok(()).to_sgx_result())),
+                Err(e) => (self, Err(e)),
             }
         }
             .boxed_local()
