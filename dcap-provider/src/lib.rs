@@ -262,9 +262,12 @@ pub extern "C" fn sgx_ql_get_quote_config(
                         // variable, but there is no guarantee that the second
                         // call to this function is going to happen on the same
                         // stack.
+
+                        // If this is a re-entry, return PlatformLibUnavailable so the raw TCB is used to generate
+                        // quotes instead of certification data provided by us.
                         let _guard = ENTERED_ONCE
                             .try_lock()
-                            .map_err(|_| Quote3Error::NoPlatformCertData)?;
+                            .map_err(|_| Quote3Error::PlatformLibUnavailable)?;
 
                         // NB. `CERTDATA_CACHE` must not be locked during this call
                         let quote = get_quote_with_raw_tcb()?;
