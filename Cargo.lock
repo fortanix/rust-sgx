@@ -433,6 +433,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcap-retrieve-pckid"
+version = "0.1.0"
+dependencies = [
+ "aesm-client 0.4.0",
+ "dcap-ql 0.2.1",
+ "report-test 0.3.0",
+ "sgx-isa 0.3.1",
+ "sgxs-loaders 0.2.1",
+]
+
+[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
