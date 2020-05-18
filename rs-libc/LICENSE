@@ -12,9 +12,11 @@ Adapted from musl-libc (license below):
     src/c/intscan.c
     src/c/intscan.h
     src/c/memchr.c
+    src/c/memrchr.c
     src/c/stpcpy.c
     src/c/stpncpy.c
     src/c/strchr.c
+    src/c/strrchr.c
     src/c/strchrnul.c
     src/c/strcmp.c
     src/c/strcpy.c
