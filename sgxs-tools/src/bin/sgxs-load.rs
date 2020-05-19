@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![feature(asm)]
+#![feature(llvm_asm)]
 extern crate aesm_client;
 extern crate clap;
 extern crate sgx_isa;
@@ -29,7 +29,7 @@ use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 fn enclu_eenter(tcs: &mut dyn Tcs) {
     let result: u32;
     unsafe {
-        asm!("
+        llvm_asm!("
         lea aep(%rip),%rcx
         jmp enclu
 aep:
