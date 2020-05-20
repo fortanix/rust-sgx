@@ -459,6 +459,18 @@ pub(crate) enum EnclaveAbort<T> {
     MainReturned,
 }
 
+impl<T> EnclaveAbort<T> {
+    fn map_panic<U, F: FnOnce(T) -> U>(self, f: F) -> EnclaveAbort<U> {
+        match self {
+            EnclaveAbort::Exit { panic } => EnclaveAbort::Exit { panic: f(panic) },
+            EnclaveAbort::Secondary => EnclaveAbort::Secondary,
+            EnclaveAbort::IndefiniteWait => EnclaveAbort::IndefiniteWait,
+            EnclaveAbort::InvalidUsercall(n) => EnclaveAbort::InvalidUsercall(n),
+            EnclaveAbort::MainReturned => EnclaveAbort::MainReturned,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 struct TcsAddress(usize);
 
@@ -631,7 +643,7 @@ impl EnclaveState {
         enclave: Arc<EnclaveState>,
         io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
-    ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
+    ) -> StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>> {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
         let mut rt = tokio::runtime::Builder::new()
@@ -646,17 +658,17 @@ impl EnclaveState {
                 rx_return_channel = stream;
                 let (my_result, mode) = work;
                 let res = match (my_result, mode) {
-                    (e, EnclaveEntry::Library)
-                    | (e, EnclaveEntry::ExecutableMain)
-                    | (e @ Err(EnclaveAbort::Secondary), EnclaveEntry::ExecutableNonMain) => e,
-                    (Ok(_), EnclaveEntry::ExecutableNonMain) => {
-                        continue;
-                    }
-                    (Err(e @ EnclaveAbort::Exit { .. }), EnclaveEntry::ExecutableNonMain)
-                    | (
-                        Err(e @ EnclaveAbort::InvalidUsercall(_)),
-                        EnclaveEntry::ExecutableNonMain,
-                    ) => {
+                    (Err(EnclaveAbort::Secondary), _) |
+                    (Ok(_), EnclaveEntry::ExecutableNonMain) => continue,
+
+                    (e, EnclaveEntry::Library) |
+                    (e, EnclaveEntry::ExecutableMain) |
+                    (e @ Err(EnclaveAbort::Exit { panic: None }), EnclaveEntry::ExecutableNonMain)
+                        => e,
+
+                    (Err(e @ EnclaveAbort::Exit { panic: Some(_) }), EnclaveEntry::ExecutableNonMain) |
+                    (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
+                        let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
 
@@ -667,7 +679,9 @@ impl EnclaveState {
                         }
                         Err(EnclaveAbort::Secondary)
                     }
+
                     (Err(e), EnclaveEntry::ExecutableNonMain) => {
+                        let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
                         cmddata.other_reasons.push(e);
@@ -718,10 +732,9 @@ impl EnclaveState {
                                     if enclave_clone.forward_panics {
                                         panic!("{}", &panic);
                                     }
-                                    Err(EnclaveAbort::Exit{ panic })
-
+                                    Err(EnclaveAbort::Exit{ panic: Some(panic) })
                                 }
-                                Err(EnclaveAbort::Exit { panic: false }) => Ok((0, 0)),
+                                Err(EnclaveAbort::Exit { panic: false }) => Err(EnclaveAbort::Exit{ panic: None }),
                                 Err(EnclaveAbort::IndefiniteWait) => {
                                     Err(EnclaveAbort::IndefiniteWait)
                                 }
@@ -791,7 +804,7 @@ impl EnclaveState {
         enclave: Arc<EnclaveState>,
         num_of_worker_threads: usize,
         start_work: Work,
-    ) -> StdResult<(u64, u64), EnclaveAbort<EnclavePanic>> {
+    ) -> StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>> {
         fn create_worker_threads(
             num_of_worker_threads: usize,
             work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
@@ -883,12 +896,13 @@ impl EnclaveState {
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.panic_reason.lock().await;
             let main_result = match (main_panicking, cmddata.primary_panic_reason.take()) {
-                (false, Some(reason)) => Err(reason),
+                (false, Some(reason)) => Err(reason.map_panic(Some)),
                 // TODO: interpret other_reasons
                 _ => main_result,
             };
             match main_result {
-                Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+                Err(EnclaveAbort::Exit { panic: None }) => Ok(()),
+                Err(EnclaveAbort::Exit { panic: Some(panic) }) => Err(panic.into()),
                 Err(EnclaveAbort::IndefiniteWait) => {
                     bail!("All enclave threads are waiting indefinitely without possibility of wakeup")
                 }
@@ -943,7 +957,8 @@ impl EnclaveState {
         let library_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, work);
 
         match library_result {
-            Err(EnclaveAbort::Exit { panic }) => Err(panic.into()),
+            Err(EnclaveAbort::Exit { panic: None }) => bail!("This thread aborted execution"),
+            Err(EnclaveAbort::Exit { panic: Some(panic) }) => Err(panic.into()),
             Err(EnclaveAbort::IndefiniteWait) => {
                 bail!("This thread is waiting indefinitely without possibility of wakeup")
             }
