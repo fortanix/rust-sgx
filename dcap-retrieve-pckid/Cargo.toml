@@ -15,7 +15,7 @@ categories = ["command-line-utilities"]
 [dependencies]
 # Project dependencies
 "aesm-client" = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }
-"dcap-ql" = { version = "0.2.0", path = "../dcap-ql", default-features = false }
+"dcap-ql" = { version = "0.3.0", path = "../dcap-ql", default-features = false }
 "report-test" = { version = "0.3.0", path = "../report-test" }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }

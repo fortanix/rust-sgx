@@ -103,12 +103,28 @@ impl<'a, T: 'a> TakePrefix for &'a [T] {
     }
 }
 
+impl<'a, T: 'a + Clone> TakePrefix for Cow<'a, [T]> {
+    fn take_prefix(&mut self, mid: usize) -> Result<Self> {
+        if mid <= self.len() {
+            match self {
+                &mut Cow::Borrowed(ref mut slice) => slice.take_prefix(mid).map(Cow::Borrowed),
+                &mut Cow::Owned(ref mut vec) => {
+                    let rest = vec.split_off(mid);
+                    Ok(Cow::Owned(mem::replace(vec, rest)))
+                },
+            }
+        } else {
+            bail!("Unexpected end of quote")
+        }
+    }
+}
+
 pub trait Quote3Signature<'a>: Sized {
-    fn parse(type_: Quote3AttestationKeyType, data: &'a [u8]) -> Result<Self>;
+    fn parse(type_: Quote3AttestationKeyType, data: Cow<'a, [u8]>) -> Result<Self>;
 }
 
 pub trait Qe3CertData<'a>: Sized {
-    fn parse(type_: CertificationDataType, data: &'a [u8]) -> Result<Self>;
+    fn parse(type_: CertificationDataType, data: Cow<'a, [u8]>) -> Result<Self>;
 }
 
 const ECDSA_P256_SIGNATURE_LEN: usize = 64;
@@ -120,23 +136,25 @@ const CPUSVN_LEN: usize = 16;
 const QUOTE_VERSION_3: u16 = 3;
 
 impl<'a> Quote<'a> {
-    pub fn parse(mut quote: &'a [u8]) -> Result<Quote<'a>> {
-        let version = quote.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
+    pub fn parse<T: Into<Cow<'a, [u8]>>>(quote: T) -> Result<Quote<'a>> {
+        let mut quote = quote.into();
+
+        let version = quote.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
         if version != QUOTE_VERSION_3 {
             bail!("Unknown quote version: {}", version);
         }
-        let att_key_type = quote.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
+        let att_key_type = quote.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
         let attestation_key_type = Quote3AttestationKeyType::from_u16(att_key_type)
             .ok_or_else(|| format_err!("Unknown attestation key type: {}", att_key_type))?;
-        let reserved = quote.take_prefix(mem::size_of::<u32>()).map(LE::read_u32)?;
+        let reserved = quote.take_prefix(mem::size_of::<u32>()).map(|v| LE::read_u32(&v))?;
         if reserved != 0 {
             bail!("Data in reserved field: {:08x}", reserved);
         }
-        let qe3_svn = quote.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
-        let pce_svn = quote.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
-        let qe3_vendor_id = quote.take_prefix(QE3_VENDOR_ID_LEN)?.into();
-        let user_data = quote.take_prefix(QE3_USER_DATA_LEN)?.into();
-        let report_body = quote.take_prefix(REPORT_BODY_LEN)?.into();
+        let qe3_svn = quote.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
+        let pce_svn = quote.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
+        let qe3_vendor_id = quote.take_prefix(QE3_VENDOR_ID_LEN)?;
+        let user_data = quote.take_prefix(QE3_USER_DATA_LEN)?;
+        let report_body = quote.take_prefix(REPORT_BODY_LEN)?;
 
         Ok(Quote {
             header: QuoteHeader::V3 {
@@ -147,18 +165,18 @@ impl<'a> Quote<'a> {
                 user_data,
             },
             report_body,
-            signature: quote.into(),
+            signature: quote,
         })
     }
 }
 
 impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
-    fn parse(type_: Quote3AttestationKeyType, mut data: &'a [u8]) -> Result<Self> {
+    fn parse(type_: Quote3AttestationKeyType, mut data: Cow<'a, [u8]>) -> Result<Self> {
         if type_ != Quote3AttestationKeyType::EcdsaP256 {
             bail!("Invalid attestation key type: {:?}", type_)
         }
 
-        let sig_len = data.take_prefix(mem::size_of::<u32>()).map(LE::read_u32)?;
+        let sig_len = data.take_prefix(mem::size_of::<u32>()).map(|v| LE::read_u32(&v))?;
         if sig_len as usize != data.len() {
             bail!(
                 "Invalid signature length. Got {}, expected {}",
@@ -166,16 +184,16 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
                 sig_len
             );
         }
-        let signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?.into();
-        let attestation_public_key = data.take_prefix(ECDSA_P256_PUBLIC_KEY_LEN)?.into();
-        let qe3_report = data.take_prefix(REPORT_BODY_LEN)?.into();
-        let qe3_signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?.into();
-        let authdata_len = data.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
-        let authentication_data = data.take_prefix(authdata_len as _)?.into();
-        let cd_type = data.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
+        let signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?;
+        let attestation_public_key = data.take_prefix(ECDSA_P256_PUBLIC_KEY_LEN)?;
+        let qe3_report = data.take_prefix(REPORT_BODY_LEN)?;
+        let qe3_signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?;
+        let authdata_len = data.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
+        let authentication_data = data.take_prefix(authdata_len as _)?;
+        let cd_type = data.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
         let certification_data_type = CertificationDataType::from_u16(cd_type)
             .ok_or_else(|| format_err!("Unknown certification data type: {}", cd_type))?;
-        let certdata_len = data.take_prefix(mem::size_of::<u32>()).map(LE::read_u32)?;
+        let certdata_len = data.take_prefix(mem::size_of::<u32>()).map(|v| LE::read_u32(&v))?;
         if certdata_len as usize != data.len() {
             bail!(
                 "Invalid certification data length. Got {}, expected {}",
@@ -191,13 +209,13 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
             qe3_signature,
             authentication_data,
             certification_data_type,
-            certification_data: data.into(),
+            certification_data: data,
         })
     }
 }
 
 impl<'a> Qe3CertData<'a> for Qe3CertDataPpid<'a> {
-    fn parse(type_: CertificationDataType, mut data: &'a [u8]) -> Result<Self> {
+    fn parse(type_: CertificationDataType, mut data: Cow<'a, [u8]>) -> Result<Self> {
         let ppid_len = match type_ {
             CertificationDataType::PpidCleartext => bail!(
                 "PPID clear text not implemented. Data length = {}",
@@ -208,10 +226,10 @@ impl<'a> Qe3CertData<'a> for Qe3CertDataPpid<'a> {
             _ => bail!("Invalid certification data type: {:?}", type_),
         };
 
-        let ppid = data.take_prefix(ppid_len)?.into();
-        let cpusvn = data.take_prefix(CPUSVN_LEN)?.into();
-        let pcesvn = data.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
-        let pceid = data.take_prefix(mem::size_of::<u16>()).map(LE::read_u16)?;
+        let ppid = data.take_prefix(ppid_len)?;
+        let cpusvn = data.take_prefix(CPUSVN_LEN)?;
+        let pcesvn = data.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
+        let pceid = data.take_prefix(mem::size_of::<u16>()).map(|v| LE::read_u16(&v))?;
         if !data.is_empty() {
             bail!(
                 "Invalid certification data length for type {:?}: {}",
@@ -242,12 +260,12 @@ impl<'a> Quote<'a> {
         &self.report_body
     }
 
-    pub fn signature<'b, T: Quote3Signature<'b>>(&'b self) -> Result<T> {
+    pub fn signature<T: Quote3Signature<'a>>(&self) -> Result<T> {
         let QuoteHeader::V3 {
             attestation_key_type,
             ..
         } = self.header;
-        T::parse(attestation_key_type, &self.signature)
+        T::parse(attestation_key_type, self.signature.clone())
     }
 
     pub fn clone_owned(&self) -> Quote<'static> {
@@ -304,8 +322,8 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         self.certification_data_type
     }
 
-    pub fn certification_data<'b, T: Qe3CertData<'b>>(&'b self) -> Result<T> {
-        T::parse(self.certification_data_type, &self.certification_data)
+    pub fn certification_data<T: Qe3CertData<'a>>(&self) -> Result<T> {
+        T::parse(self.certification_data_type, self.certification_data.clone())
     }
 
     pub fn clone_owned(&self) -> Quote3SignatureEcdsaP256<'static> {
