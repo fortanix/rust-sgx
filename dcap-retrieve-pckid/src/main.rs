@@ -36,7 +36,6 @@ impl<'a> fmt::Display for PrintHex<'a> {
 }
 
 fn go() -> Result<(), &'static str> {
-    const NONCE: [u8; 16] = [0; 16];
     const SGX_QL_ALG_ECDSA_P256: u32 = 2;
 
     let mut device = IsgxDevice::new()
@@ -59,11 +58,11 @@ fn go() -> Result<(), &'static str> {
         .init_quote_ex(ecdsa_key_id.clone())
         .map_err(|_| "Error during quote initialization")?;
 
-    let ti = Targetinfo::try_copy_from(&quote_info.target_info).unwrap();
+    let ti = Targetinfo::try_copy_from(quote_info.target_info()).unwrap();
     let report = report_test::report(&ti, &mut device).unwrap();
 
     let res = client
-        .get_quote_ex(ecdsa_key_id, report.as_ref().to_owned(), quote_info, &NONCE)
+        .get_quote_ex(ecdsa_key_id, report.as_ref().to_owned(), None, vec![0; 16])
         .map_err(|_| "Error obtaining quote")?;
 
     let quote = Quote::parse(res.quote()).map_err(|_| "Error parsing quote")?;
