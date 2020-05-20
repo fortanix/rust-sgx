@@ -16,10 +16,10 @@ dependencies = [
  "libloading 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "protobuf 2.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "protoc-rust 2.10.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "report-test 0.3.0",
- "sgx-isa 0.3.1",
+ "report-test 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
- "sgxs-loaders 0.2.1",
+ "sgxs-loaders 0.2.2",
  "unix_socket2 0.5.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -405,7 +405,7 @@ dependencies = [
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "report-test 0.3.0",
+ "report-test 0.3.1",
  "reqwest 0.9.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "rustc-serialize 0.3.24 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -423,12 +423,12 @@ dependencies = [
  "num 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-derive 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "report-test 0.3.0",
+ "report-test 0.3.1",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
- "sgxs-loaders 0.2.1",
+ "sgxs-loaders 0.2.2",
  "yasna 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -438,7 +438,7 @@ version = "0.2.0"
 dependencies = [
  "num-derive 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "num-traits 0.2.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
 ]
 
 [[package]]
@@ -447,9 +447,9 @@ version = "0.1.0"
 dependencies = [
  "aesm-client 0.5.0",
  "dcap-ql 0.3.0",
- "report-test 0.3.0",
- "sgx-isa 0.3.1",
- "sgxs-loaders 0.2.1",
+ "report-test 0.3.1",
+ "sgx-isa 0.3.2",
+ "sgxs-loaders 0.2.2",
 ]
 
 [[package]]
@@ -483,7 +483,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "enclave-runner"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "crossbeam 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -496,7 +496,7 @@ dependencies = [
  "nix 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl 0.10.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
  "tokio 0.2.13 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -611,15 +611,15 @@ version = "0.4.0"
 dependencies = [
  "aesm-client 0.5.0",
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "enclave-runner 0.3.0",
+ "enclave-runner 0.4.0",
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_cpus 1.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
- "sgxs-loaders 0.2.1",
+ "sgxs-loaders 0.2.2",
  "toml 0.4.10 (registry+https://github.com/rust-lang/crates.io-index)",
  "xmas-elf 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1661,11 +1661,11 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
- "enclave-runner 0.3.0",
+ "enclave-runner 0.4.0",
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
 ]
 
@@ -1712,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "rs-libc"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "cc 1.0.50 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -1844,7 +1844,7 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "mbedtls 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1862,14 +1862,14 @@ dependencies = [
  "foreign-types 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl 0.10.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "openssl-sys 0.9.54 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sha2 0.8.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "time 0.1.42 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bitflags 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1877,14 +1877,14 @@ dependencies = [
  "libc 0.2.68 (registry+https://github.com/rust-lang/crates.io-index)",
  "libloading 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "nix 0.11.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "aesm-client 0.5.0",
  "atty 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1893,7 +1893,7 @@ dependencies = [
  "clap 2.33.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "crypto-hash 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "dcap-ql 0.3.0",
- "enclave-runner 0.3.0",
+ "enclave-runner 0.4.0",
  "env_logger 0.6.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure_derive 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1908,14 +1908,14 @@ dependencies = [
  "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
  "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "report-test 0.3.0",
+ "report-test 0.3.1",
  "reqwest 0.9.24 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_derive 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml 0.8.11 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.3.1",
+ "sgx-isa 0.3.2",
  "sgxs 0.7.2",
- "sgxs-loaders 0.2.1",
+ "sgxs-loaders 0.2.2",
  "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "yansi 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",

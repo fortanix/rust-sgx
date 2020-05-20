@@ -35,7 +35,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # Project dependencies
 "dcap-ql" = { version = "0.3.0", path = "../dcap-ql", features = ["link"] }
-"report-test" = { version = "0.3.0", path = "../report-test" }
+"report-test" = { version = "0.3.1", path = "../report-test" }
 
 # External dependencies
 byteorder = "1.1.0"        # Unlicense/MIT
