@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-tools"
-version = "0.8.1"
+version = "0.8.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -33,8 +33,8 @@ path = "src/sgx_detect/main.rs"
 "sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders" }
 "aesm-client" = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
-"report-test" = { version = "0.3.0", path = "../report-test" }
-"enclave-runner" = { version = "0.3.0", path = "../enclave-runner" }
+"report-test" = { version = "0.3.1", path = "../report-test" }
+"enclave-runner" = { version = "0.4.0", path = "../enclave-runner" }
 
 # External dependencies
 lazy_static = "1"                                # MIT/Apache-2.0

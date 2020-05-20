@@ -1,14 +1,15 @@
-# Fortanix SGX ABI v0.3.2
+# Fortanix SGX ABI v0.3.3
 
-This document describes the ABI of SGX enclaves built using `libenclave`.
+This document describes the ABI of SGX enclaves for the 
+x86_64-fortanix-unknown-sgx target.
 
 ## ABI version compatibility
 
 | ABI version | Rust std version | enclave-runner version |
 | -----------:| ----------------:| ----------------------:|
-|       0.3.2 |        50f3d6e.. |            0.1.0~0.3.1 |
-|       0.3.1 |        bd47d68.. |            0.1.0~0.3.1 |
-|       0.3.0 |        15a2607.. |            0.1.0~0.3.1 |
+| 0.3.2~0.3.3 |        50f3d6e.. |            0.1.0~0.4.0 |
+|       0.3.1 |        bd47d68.. |            0.1.0~0.4.0 |
+|       0.3.0 |        15a2607.. |            0.1.0~0.4.0 |
 
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
@@ -20,6 +21,11 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 |       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
 
 ### Changelog
+
+#### Version 0.3.3
+
+* *No semantic changes.*
+* Documentation-only release
 
 #### Version 0.3.2
 
