@@ -1,11 +1,10 @@
 use std::io::Result as IoResult;
 
-use libc::{RTLD_GLOBAL, RTLD_NOW};
-
-use dcap_ql_sys::*;
+use super::libc::{RTLD_GLOBAL, RTLD_NOW};
+use super::dcap_ql_sys::*;
 use sgx_isa::{Report, Targetinfo};
-use sgxs_loaders::sgx_enclave_common::dl;
-use sgxs_loaders::sgx_enclave_common::dl::os::unix::Library as Dl;
+use bindings::sgxs_loaders::sgx_enclave_common::dl;
+use bindings::sgxs_loaders::sgx_enclave_common::dl::os::unix::Library as Dl;
 
 struct DcapQl {
     _library: dl::Library,
