@@ -1,4 +1,4 @@
-# Fortanix SGX ABI v0.3.0
+# Fortanix SGX ABI v0.3.2
 
 This document describes the ABI of SGX enclaves built using `libenclave`.
 
@@ -6,8 +6,9 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 
 | ABI version | Rust std version | enclave-runner version |
 | -----------:| ----------------:| ----------------------:|
-|       0.3.1 |              TBD |                  0.1.0 |
-|       0.3.0 |        15a2607.. |                  0.1.0 |
+|       0.3.2 |        50f3d6e.. |            0.1.0~0.3.1 |
+|       0.3.1 |        bd47d68.. |            0.1.0~0.3.1 |
+|       0.3.0 |        15a2607.. |            0.1.0~0.3.1 |
 
 | ABI version | libenclave version | enclave-interface version |
 | -----------:| ------------------:| -------------------------:|
@@ -18,19 +19,19 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 |       0.1.3 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
 |       0.1.0 |        0.1.0-0.1.3 |               0.1.0-0.1.1 |
 
-## Changelog
+### Changelog
 
-### Version 0.3.2
+#### Version 0.3.2
 
 * *No semantic changes.*
 * More changes to allow building as a crates.io dependency of `std`.
 
-### Version 0.3.1
+#### Version 0.3.1
 
 * *No semantic changes.*
 * Changes to allow building as a crates.io dependency of `std`.
 
-### Version 0.3.0
+#### Version 0.3.0
 
 * Return values are now two registers wide instead of one.
 * No longer distinguish between “panic exit” and “usercall exit”. Panic
@@ -38,63 +39,27 @@ This document describes the ABI of SGX enclaves built using `libenclave`.
 * Renamed “libenclave ABI” to “Fortanix SGX ABI”.
 * TLS size and contents updated.
 
-### Version 0.2.3
+#### Version 0.2.3
 
 * TLS size and contents updated.
 
-### Version 0.2.2
+#### Version 0.2.2
 
 * TLS size updated. Debug TLS size is now the same as non-debug size.
 
-### Version 0.2.1
+#### Version 0.2.1
 
 * AEX debug handler removed.
 
-### Version 0.2.0
+#### Version 0.2.0
 
 * Usercall register saving semantics changed. The enclave no longer
   distinguishes between normal enters and usercall enters for purposes of
   saving user register state.
 
-### Version 0.1.3
+#### Version 0.1.3
 
 * TLS size and contents updated.
-
-## Thread settings
-
-This section describes the requirements on the SGX thread control structure 
-(TCS), thread local storage (TLS) and thread stacks.
-
-### TCS
-
-- `NSSA` should be set to 1.
-- `OGSBASGX` should point to a thread-specific memory region (e.g. TLS) of at 
-  least 112 bytes.
-
-### TLS
-
-The memory region pointed to by `OGSBASGX` should be initialized as follows:
-
-- Offset `0x0`: Top-of-Stack offset from image base.
-- Offset `0x8`: `1` if this is an executable and this is a secondary TCS, `0`
-  otherwise.
-- Offsets `0x10`, `0x18`, `0x20`: `0`
-- Other offsets: uninitialized.
-
-## Globals
-
-This section describes the requirements for various global constants in the SGX
-binary.
-
-- `HEAP_BASE`. Size 8 bytes. The base address (relative to enclave start) of
-  the heap area, little-endian.
-- `HEAP_SIZE`. Size 8 bytes. The heap size in bytes, little-endian.
-- `ENCLAVE_SIZE`. Size 8 bytes. The enclave size in bytes, little-endian.
-- `CFGDATA_BASE`. Size 8 bytes. The base address (relative to enclave start) of
-  the enclave configuration area, little-endian.
-- `RELA`. Size 8 bytes. Value of the RELA entry in the dynamic table.
-- `RELACOUNT`. Size 8 bytes. Value of the RELACOUNT entry in the dynamic table.
-- `DEBUG`. Size 1 byte. Non-zero if debugging is enabled, zero otherwise.
 
 ## Enclave calling convention
 
