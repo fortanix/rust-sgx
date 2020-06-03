@@ -508,9 +508,46 @@ struct IOHandlerInput<'tcs> {
     work_sender: &'tcs crossbeam::crossbeam_channel::Sender<Work>,
 }
 
+struct PendingEvents {
+    counts: [u32; Self::MAX_EVENT],
+}
+
+impl PendingEvents {
+    const MAX_EVENT: usize = 8;
+
+    fn new() -> Self {
+        // sanity check to ensure we update MAX_EVENT if new events are added in the future
+        const EV_ALL: u64 = EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK;
+        assert!(EV_ALL < Self::MAX_EVENT as u64);
+        assert!(Self::MAX_EVENT <= 1usize + u8::max_value() as usize);
+
+        Self { counts: Default::default() }
+    }
+
+    fn take(&mut self, event_mask: u8) -> Option<u8> {
+        assert!((event_mask as usize) < Self::MAX_EVENT);
+
+        for i in (1..Self::MAX_EVENT).rev() {
+            let ev = i as u8;
+            if (ev & event_mask) != 0 && self.counts[i] > 0 {
+                self.counts[i] -= 1;
+                return Some(ev);
+            }
+        }
+        None
+    }
+
+    fn push(&mut self, event: u8) {
+        assert!((event as usize) < Self::MAX_EVENT);
+        let i = event as usize;
+        if let Some(val) = self.counts[i].checked_add(1) {
+            self.counts[i] = val;
+        }
+    }
+}
+
 struct RunningTcs {
-    pending_event_set: u8,
-    pending_events: VecDeque<u8>,
+    pending_events: PendingEvents,
     event_queue: futures::channel::mpsc::UnboundedReceiver<u8>,
     mode: EnclaveEntry,
 }
@@ -957,8 +994,7 @@ impl EnclaveState {
         let main_work = Work {
             tcs: RunningTcs {
                 event_queue: main.event_queue,
-                pending_event_set: 0,
-                pending_events: Default::default(),
+                pending_events: PendingEvents::new(),
                 mode: EnclaveEntry::ExecutableMain,
             },
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
@@ -1046,8 +1082,7 @@ impl EnclaveState {
             tcs: RunningTcs {
                 event_queue: thread.event_queue,
                 mode: EnclaveEntry::Library,
-                pending_event_set: 0,
-                pending_events: Default::default(),
+                pending_events: PendingEvents::new(),
             },
             entry: CoEntry::Initial(thread.tcs, p1, p2, p3, p4, p5),
         };
@@ -1370,8 +1405,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
         let ret = self.work_sender.send(Work {
             tcs: RunningTcs {
-                pending_events: Default::default(),
-                pending_event_set: 0,
+                pending_events: PendingEvents::new(),
                 event_queue: new_tcs.event_queue,
                 mode: EnclaveEntry::ExecutableNonMain,
             },
@@ -1435,14 +1469,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         // TODO: the ABI allows for calling wait() asynchronously with specific semantics
         let tcs = self.tcs.as_mut().ok_or(io::Error::from(io::ErrorKind::Other))?;
 
-        let mut ret = None;
-
-        if (tcs.pending_event_set & event_mask) != 0 {
-            if let Some(pos) = tcs.pending_events.iter().position(|ev| (ev & event_mask) != 0) {
-                ret = tcs.pending_events.remove(pos);
-                tcs.pending_event_set = tcs.pending_events.iter().fold(0, |m, ev| m | ev);
-            }
-        }
+        let mut ret = tcs.pending_events.take(event_mask);
 
         if ret.is_none() {
             let start = Instant::now();
@@ -1477,8 +1504,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
                     ret = Some(ev);
                     break;
                 } else {
-                    tcs.pending_events.push_back(ev);
-                    tcs.pending_event_set |= ev;
+                    tcs.pending_events.push(ev);
                 }
             }
         }
