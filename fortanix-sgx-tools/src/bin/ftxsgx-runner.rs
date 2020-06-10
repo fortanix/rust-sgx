@@ -42,6 +42,11 @@ fn main() -> Result<(), Error> {
             .required(false)
             .takes_value(true)
             .possible_values(&Signature::variants()))
+        .arg(Arg::with_name("enclave-args")
+            .long_help("Arguments passed to the enclave. \
+                Note that this is not an appropriate channel for passing \
+                secrets or security configurations to the enclave.")
+            .multiple(true))
         .get_matches();
 
     let file = args.value_of("file").unwrap();
@@ -58,6 +63,12 @@ fn main() -> Result<(), Error> {
         Some(Signature::dummy) => { enclave_builder.dummy_signature(); },
         None => (),
     }
+
+    let mut cmd_args = vec![file.to_owned()];
+    if let Some(enclave_args) = args.values_of("enclave-args") {
+        cmd_args.extend(enclave_args.map(ToOwned::to_owned));
+    }
+    enclave_builder.command_arguments(cmd_args);
 
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
 

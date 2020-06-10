@@ -67,6 +67,7 @@ pub struct EnclaveBuilder<'a> {
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
     forward_panics: bool,
+    cmd_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, Fail)]
@@ -140,6 +141,7 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
+            cmd_args: None,
         };
 
         let _ = ret.coresident_signature();
@@ -260,6 +262,21 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    /// Set arguments passed to the main function in the enclave.
+    /// **NOTE:** This is not an appropriate channel for passing secrets or
+    /// security configurations to the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Setting command arguments and then calling [`build_library`] will cause
+    /// a panic.
+    ///
+    /// [`Command`]: struct.Command.html
+    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
+    pub fn command_arguments(&mut self, cmd_args: Vec<String>) -> &mut Self {
+        self.cmd_args = Some(cmd_args);
+        self
+    }
+
     fn load<T: Load>(
         mut self,
         loader: &mut T,
@@ -286,12 +303,19 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+        let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
     }
 
+    /// Panics if you have previously called [`command_arguments`].
+    ///
+    /// [`command_arguments`]: struct.EnclaveBuilder.html#method.command_arguments
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
+        if self.cmd_args.is_some() {
+            panic!("Command arguments do not apply to Library enclaves.");
+        }
         let c = self.usercall_ext.take();
         self.load(loader)
             .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))

@@ -98,6 +98,10 @@ fn run() -> Result<(), Error> {
 
     let mut ftxsgx_runner_command = Command::new(runner);
     ftxsgx_runner_command.arg(args[1].clone() + ".sgxs");
+    if args.len() > 2 {
+        ftxsgx_runner_command.arg("--");
+        ftxsgx_runner_command.args(&args[2..]);
+    }
 
     run_command(ftxsgx_runner_command)?;
 
