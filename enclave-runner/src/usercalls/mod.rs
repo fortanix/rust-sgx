@@ -20,7 +20,7 @@ use std::pin::Pin;
 
 use std::sync::Arc;
 use std::thread;
-use std::time;
+use std::time::{self, Duration, Instant};
 use std::task::{Poll, Context, Waker};
 
 use failure;
@@ -1316,12 +1316,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     async fn wait(&mut self, event_mask: u64, timeout: u64) -> IoResult<u64> {
-        let wait = match timeout {
-            WAIT_NO => false,
-            WAIT_INDEFINITE => true,
-            _ => return Err(IoErrorKind::InvalidInput.into()),
-        };
-
         let event_mask = Self::check_event_set(event_mask)?;
 
         let mut ret = None;
@@ -1339,17 +1333,29 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
 
         if ret.is_none() {
+            let start = Instant::now();
             loop {
-                let ev = if wait {
-                    Ok(self.tcs.event_queue.next().await.unwrap())
-                } else {
-                    match self.tcs.event_queue.try_next() {
+                let ev = match timeout {
+                    WAIT_INDEFINITE => self.tcs.event_queue.next().await.ok_or(()),
+                    WAIT_NO => match self.tcs.event_queue.try_next() {
                         Ok(Some(ev)) => Ok(ev),
-                        Err(_) => break,
                         Ok(None) => Err(()),
+                        Err(_) => break,
+                    },
+                    timeout => {
+                        let remaining = match Duration::from_nanos(timeout).checked_sub(start.elapsed()) {
+                            None => break,
+                            Some(ref duration) if duration.as_nanos() == 0 => break,
+                            Some(duration) => duration,
+                        };
+                        match tokio::time::timeout(remaining, self.tcs.event_queue.next()).await {
+                            Ok(Some(ev)) => Ok(ev),
+                            Ok(None) => Err(()),
+                            Err(_) => break, // timed out
+                        }
                     }
-                }
-                .expect("TCS event queue disconnected unexpectedly");
+                }.expect("TCS event queue disconnected unexpectedly");
+
                 if (ev & (EV_ABORT as u8)) != 0 {
                     // dispatch will make sure this is not returned to enclave
                     return Err(IoErrorKind::Other.into());
@@ -1368,7 +1374,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         if let Some(ret) = ret {
             Ok(ret.into())
         } else {
-            Err(IoErrorKind::WouldBlock.into())
+            Err(if timeout == WAIT_NO { IoErrorKind::WouldBlock } else { IoErrorKind::TimedOut }.into())
         }
     }
 

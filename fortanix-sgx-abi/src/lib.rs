@@ -503,14 +503,18 @@ impl Usercalls {
 
     /// Wait for an event to occur, or check if an event is currently pending.
     ///
-    /// `timeout` must be [`WAIT_NO`] or [`WAIT_INDEFINITE`]. If it is another
-    /// value, userspace will return an error.
+    /// `timeout` must be [`WAIT_NO`] or [`WAIT_INDEFINITE`] or a positive
+    /// value smaller than u64::MAX specifying number of nanoseconds to wait.
     ///
     /// If `timeout` is [`WAIT_INDEFINITE`], this call will block and return
     /// once a matching event is queued on this TCS. If `timeout` is
     /// [`WAIT_NO`], this call will return immediately, and the return value
     /// will indicate if an event was pending. If it was, it has been dequeued.
-    /// If not, the [`WouldBlock`] error value will be returned.
+    /// If not, the [`WouldBlock`] error value will be returned. If `timeout`
+    /// is a value other than [`WAIT_NO`] and [`WAIT_INDEFINITE`], this call
+    /// will block until either a matching event is queued in which case the
+    /// return value will indicate the event, or the timeout is reached in
+    /// which case the [`TimedOut`] error value will be returned.
     ///
     /// A matching event is one whose bits are equal to or a subset of
     /// `event_mask`. If `event_mask` is `0`, this call will never return due
@@ -534,6 +538,7 @@ impl Usercalls {
     /// [`WAIT_INDEFINITE`]: constant.WAIT_INDEFINITE.html
     /// [`EV_RETURNQ_NOT_EMPTY`]: constant.EV_RETURNQ_NOT_EMPTY.html
     /// [`WouldBlock`]: enum.Error.html#variant.WouldBlock
+    /// [`TimedOut`]: enum.Error.html#variant.TimedOut
     pub fn wait(event_mask: u64, timeout: u64) -> (Result, u64) { unimplemented!() }
 
     /// Send an event to one or all TCSes.
