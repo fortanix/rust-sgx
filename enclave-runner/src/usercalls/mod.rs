@@ -1318,6 +1318,18 @@ impl<'tcs> IOHandlerInput<'tcs> {
     async fn wait(&mut self, event_mask: u64, timeout: u64) -> IoResult<u64> {
         let event_mask = Self::check_event_set(event_mask)?;
 
+        let timeout = match timeout {
+            WAIT_NO | WAIT_INDEFINITE => timeout,
+            _ => {
+                // tokio::time::timeout does not handle large timeout values
+                // well which may or may not be a bug in tokio, but it seems to
+                // work ok with timeout values smaller than 2 ^ 55 nanoseconds.
+                // TODO: figure out if a bug report is in order.
+                // NOTE: 2 ^ 55 nanoseconds is roughly 417 days.
+                cmp::min(1 << 55, timeout)
+            }
+        };
+
         let mut ret = None;
 
         if (self.tcs.pending_event_set & event_mask) != 0 {
