@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "sgx_pkix"
 version = "0.1.0"
@@ -5,6 +7,7 @@ authors = ["Fortanix, Inc."]
 edition = "2018"
 license = "MPL-2.0"
 description = ""
+repository = "https://github.com/fortanix/rust-sgx"
 
 [dependencies]
 byteorder = "1.0"

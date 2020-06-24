@@ -1,3 +1,5 @@
+[workspace]
+
 [package]
 name = "em-app"
 version = "0.1.0"
@@ -5,6 +7,7 @@ authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
 description = "This crate provides a certificate library for Enclave Manager."
+repository = "https://github.com/fortanix/rust-sgx"
 
 [dependencies]
 hyper = { version = "0.10", default-features = false }
