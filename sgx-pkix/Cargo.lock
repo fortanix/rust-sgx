@@ -114,7 +114,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sgx_pkix"
+name = "sgx-pkix"
 version = "0.1.0"
 dependencies = [
  "byteorder",
