@@ -1,0 +1,17 @@
+[workspace]
+
+[package]
+name = "sgx_pkix"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+edition = "2018"
+license = "MPL-2.0"
+description = ""
+repository = "https://github.com/fortanix/rust-sgx"
+
+[dependencies]
+byteorder = "1.0"
+pkix = { git = "https://github.com/fortanix/pkix.git" }
+sgx-isa = { version = "0.3" }
+quick-error = "1.1.0"
+lazy_static = "1"

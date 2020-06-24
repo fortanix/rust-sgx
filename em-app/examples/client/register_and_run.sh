@@ -1,0 +1,1 @@
+../scripts/register_and_run.sh
