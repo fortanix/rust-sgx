@@ -1,0 +1,22 @@
+[workspace]
+
+[package]
+name = "em-app"
+version = "0.1.0"
+authors = ["fortanix.com"]
+license = "MPL-2.0"
+edition = "2018"
+description = "This crate provides a certificate library for Enclave Manager."
+repository = "https://github.com/fortanix/rust-sgx"
+
+[dependencies]
+hyper = { version = "0.10", default-features = false }
+mbedtls = {version="0.5", default-features = false, features = ["sgx"]}
+b64-ct = "0.1.0"
+serde_bytes = "0.10"
+serde_json = "1.0"
+sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
+
+em-node-agent-client = "1.0.0"
+sgx_pkix = { path = "../sgx-pkix" }
+pkix = { git = "https://github.com/fortanix/pkix.git" }
