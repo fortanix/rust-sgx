@@ -419,7 +419,7 @@ impl<'a> LayoutInfo<'a> {
                     let secinfo = SecinfoTruncated {
                         flags: section_to_secinfo_flags(header) | PageType::Reg.into(),
                     };
-                    let mut splice = self.tls_splice(&mut data);
+                    let splice = self.tls_splice(&mut data);
                     self.write_pe_section(
                         &mut writer,
                         &mut splice[..].chain(&mut data),
@@ -572,7 +572,7 @@ impl<'data> PeHeader<'data> {
         })
     }
 
-    fn splice<'a>(&'a mut self) -> Box<Read + 'a> {
+    fn splice<'a>(&'a mut self) -> Box<dyn Read + 'a> {
         let data_ptr = &self.data[0] as *const _ as usize;
         let checksum_offset = (self.checksum as *const _ as usize)
             .checked_sub(data_ptr)
