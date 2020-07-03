@@ -1,11 +1,21 @@
 //! Interpreting raw values returned from the environment
 
 use std::arch::x86_64::CpuidResult;
-use std::io;
+use std::convert::From;
 
-use byteorder::{ReadBytesExt, LE};
-
+use byteorder::{ReadBytesExt, WriteBytesExt, LE};
+use failure::Error;
 use sgx_isa::{AttributesFlags, Miscselect};
+
+#[cfg(windows)]
+extern crate winapi;
+
+#[cfg(windows)]
+#[path = "imp/windows.rs"]
+mod imp;
+#[cfg(unix)]
+#[path = "imp/linux.rs"]
+mod imp;
 
 fn check_bit_32(mut value: u32, bit: u8) -> bool {
     check_bit_erase_32(&mut value, bit)
@@ -22,6 +32,26 @@ fn check_bit_erase_32(value: &mut u32, bit: u8) -> bool {
 
 fn check_bit_64(value: u64, bit: u8) -> bool {
     (value & (1 << bit)) != 0
+}
+
+pub trait EfiVariable where Self: std::marker::Sized {
+
+    // EFI variable attributes value bitmask constants
+    const NON_VOLATILE: u32 = 0x00000001;
+    const BOOTSERVICE_ACCESS: u32 = 0x00000002;
+    const RUNTIME_ACCESS: u32 = 0x00000003;
+    const HARDWARE_ERROR_RECORD: u32 = 0x00000004;
+    const AUTHENTICATED_WRITE_ACCESS: u32 = 0x00000010;
+    const TIME_BASED_AUTHENTICATED_WRITE_ACCESS: u32 = 0x00000020;
+    const APPEND_WRITE: u32 = 0x00000040;
+    // This option is not available in windows
+    const ENHANCED_AUTHENTICATED_ACCESS: u32 = 0x00000080;
+
+    const NAME: &'static str = "INVALID_EFI_VARIABLE";
+    const GUID: &'static str = "00000000-0000-0000-0000-000000000000";
+
+    fn read_from_env(&mut self) -> Result<(), Error>;
+    fn write_to_env(&self) -> Result<(), Error>;
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -212,55 +242,116 @@ impl From<u64> for Msr3ah {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct EfiEpcbios {
+    pub attributes: u32,
     pub prm_bins: u32,
     pub max_epc_size: u32,
     pub current_epc_size: u32,
     pub epc_map: [u32; 32],
 }
 
-impl From<Vec<u8>> for EfiEpcbios {
-    fn from(v: Vec<u8>) -> Self {
-        if v.len() != std::mem::size_of::<Self>() {
-            warn!("Invalid size for EPCBIOS EFI variable: {}", v.len());
+impl Default for EfiEpcbios {
+    fn default() -> Self {
+        EfiEpcbios {
+            attributes: 0,
+            prm_bins: 0,
+            max_epc_size: 0,
+            current_epc_size: 0,
+            epc_map: [0; 32],
         }
-        let mut v = &v[..];
-        (|| -> Result<_, io::Error> {
-            Ok(EfiEpcbios {
-                prm_bins: v.read_u32::<LE>()?,
-                max_epc_size: v.read_u32::<LE>()?,
-                current_epc_size: v.read_u32::<LE>()?,
-                epc_map: {
-                    let mut map = [0u32; 32];
-                    for elem in &mut map {
-                        *elem = v.read_u32::<LE>()?;
-                    }
-                    map
-                },
-            })
-        })()
-        .unwrap_or_default()
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+impl EfiVariable for EfiEpcbios {
+    const NAME: &'static str = "EPCBIOS";
+    const GUID: &'static str = "c60aa7f6-e8d6-4956-8ba1-fe26298f5e87";
+
+    fn read_from_env(&mut self) -> Result<(), Error> {
+        let (v, attr) = imp::read_efi_var(EfiEpcbios::NAME, EfiEpcbios::GUID)?;
+        if v.len() != std::mem::size_of::<Self>() - 4 { // Subtracting size of attributes
+            warn!("Invalid size for EPCBIOS EFI variable: {}", v.len());
+        }
+        let mut v = &v[..];
+
+        self.attributes = attr;
+        self.prm_bins = v.read_u32::<LE>()?;
+        self.max_epc_size = v.read_u32::<LE>()?;
+        self.current_epc_size = v.read_u32::<LE>()?;
+        self.epc_map = {
+            let mut map = [0u32; 32];
+            for elem in &mut map {
+                *elem = v.read_u32::<LE>()?;
+            }
+            map
+        };
+
+        Ok(())
+    }
+
+    fn write_to_env(&self) -> Result<(), Error> {
+        if self.attributes == 0 {
+            // Set the correct attributes here
+        }
+
+        let mut v = Vec::new();
+        v.write_u32::<LE>(self.prm_bins)?;
+        v.write_u32::<LE>(self.max_epc_size)?;
+        v.write_u32::<LE>(self.current_epc_size)?;
+        for elem in self.epc_map.iter() {
+            v.write_u32::<LE>(*elem)?;
+        }
+
+        imp::write_efi_var(EfiEpcbios::NAME, EfiEpcbios::GUID, v, self.attributes)?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct EfiEpcsw {
+    pub attributes: u32,
     pub epc_size: u32,
 }
 
-impl From<Vec<u8>> for EfiEpcsw {
-    fn from(v: Vec<u8>) -> Self {
-        if v.len() != std::mem::size_of::<Self>() {
+impl Default for EfiEpcsw {
+    fn default() -> Self {
+        EfiEpcsw {
+            attributes: 0,
+            epc_size: 0,
+        }
+    }
+}
+
+
+impl EfiVariable for EfiEpcsw {
+    const NAME: &'static str = "EPCSW";
+    const GUID: &'static str = "d69a279b-58eb-45d1-a148-771bb9eb5251";
+
+    fn read_from_env(&mut self) -> Result<(), Error> {
+        let (v, attr) = imp::read_efi_var(EfiEpcsw::NAME, EfiEpcsw::GUID)?;
+        if v.len() != std::mem::size_of::<Self>() - 4 { // Subtracting size of attributes
             warn!("Invalid size for EPCSW EFI variable: {}", v.len());
         }
         let mut v = &v[..];
-        (|| -> Result<_, io::Error> {
-            Ok(EfiEpcsw {
-                epc_size: v.read_u32::<LE>()?,
-            })
-        })()
-        .unwrap_or_default()
+
+        self.attributes = attr;
+        self.epc_size = v.read_u32::<LE>()?;
+
+        Ok(())
+    }
+
+    fn write_to_env(&self) -> Result<(), Error> {
+        if self.attributes == 0 {
+            // Set the correct attributes here
+        }
+
+        let mut v = Vec::new();
+
+        v.write_u32::<LE>(self.epc_size)?;
+
+        imp::write_efi_var(EfiEpcsw::NAME, EfiEpcsw::GUID, v, self.attributes)?;
+        Ok(())
     }
 }
 
@@ -274,12 +365,26 @@ pub enum SgxEnableStatus {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EfiSoftwareguardstatus {
+    pub attributes: u32,
     pub status: SgxEnableStatus,
 }
 
-impl From<Vec<u8>> for EfiSoftwareguardstatus {
-    fn from(v: Vec<u8>) -> Self {
-        if v.len() != std::mem::size_of::<Self>() {
+impl Default for EfiSoftwareguardstatus {
+    fn default() -> Self {
+        EfiSoftwareguardstatus{
+            attributes: 0,
+            status: SgxEnableStatus::Unknown,
+        }
+    }
+}
+
+impl EfiVariable for EfiSoftwareguardstatus {
+    const NAME: &'static str = "SOFTWAREGUARDSTATUS";
+    const GUID: &'static str = "9cb2e73f-7325-40f4-a484-659bb344c3cd";
+
+    fn read_from_env(&mut self) -> Result<(), Error> {
+        let (v, attr) = imp::read_efi_var(EfiSoftwareguardstatus::NAME, EfiSoftwareguardstatus::GUID)?;
+        if v.len() != std::mem::size_of::<Self>() - 4 { // Subtracting size of attributes
             warn!(
                 "Invalid size for SOFTWAREGUARDSTATUS EFI variable: {}",
                 v.len()
@@ -287,18 +392,19 @@ impl From<Vec<u8>> for EfiSoftwareguardstatus {
         }
         let status = v.get(0).map(|v| v & 0b11);
         let reserved = v.get(0).map(|v| v & !0b11);
-        let ret = EfiSoftwareguardstatus {
-            status: match status {
-                Some(0) => SgxEnableStatus::Disabled,
-                Some(1) => SgxEnableStatus::Enabled,
-                Some(2) => SgxEnableStatus::SoftwareControlled,
-                Some(v) => {
-                    warn!("EFI variable SOFTWAREGUARDSTATUS: invalid status {:x}", v);
-                    SgxEnableStatus::Unknown
-                }
-                None => SgxEnableStatus::Unknown,
-            },
+
+        self.attributes = attr;
+        self.status = match status {
+            Some(0) => SgxEnableStatus::Disabled,
+            Some(1) => SgxEnableStatus::Enabled,
+            Some(2) => SgxEnableStatus::SoftwareControlled,
+            Some(v) => {
+                warn!("EFI variable SOFTWAREGUARDSTATUS: invalid status {:x}", v);
+                SgxEnableStatus::Unknown
+            }
+            None => SgxEnableStatus::Unknown,
         };
+
         match reserved {
             None | Some(0) => {}
             Some(v) => warn!(
@@ -306,7 +412,22 @@ impl From<Vec<u8>> for EfiSoftwareguardstatus {
                 v
             ),
         }
-        ret
+
+        Ok(())
+    }
+
+    fn write_to_env(&self) -> Result<(), Error> {
+        if self.attributes == 0 {
+            // Set the correct attributes here
+        }
+
+        let mut v = Vec::new();
+
+        v.write_u32::<LE>(self.status as u32)?;
+
+        imp::write_efi_var(EfiSoftwareguardstatus::NAME, EfiSoftwareguardstatus::GUID, v, self.attributes)?;
+
+        Ok(())
     }
 }
 

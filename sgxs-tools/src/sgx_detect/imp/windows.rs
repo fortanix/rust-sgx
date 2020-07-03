@@ -10,24 +10,48 @@ pub fn rdmsr(_address: u64) -> Result<u64, Error> {
     bail!("RDMSR not implemented on Windows")
 }
 
-pub fn read_efi_var(name: &str, guid: &str) -> Result<Vec<u8>, Error> {
+pub fn read_efi_var(name: &str, guid: &str) -> Result<(Vec<u8>, u32), Error> {
     let mut env: Vec<u8> = vec![0; 1024];
     let name = CString::new(name)?;
     let guid = CString::new(guid)?;
+    let attr = 0 as DWORD;
     let ret: DWORD = unsafe {
-        GetFirmwareEnvironmentVariableA(
+        GetFirmwareEnvironmentVariableExA(
             name.as_ptr(),
             guid.as_ptr(),
             env.as_mut_ptr() as _,
-            env.len() as _
+            env.len() as _,
+            attr.as_mut_ptr() as _,
         )
     };
     if ret == 0 {
-        return Err(DetectError::EfiVariableError(std::io::Error::last_os_error()).into())
+        return Err(DetectError::EfiVariableError(std::io::Error::last_os_error()).into());
     }
     else {
         env.truncate(ret as usize);
-        return Ok(env);
+        return Ok((env, attr));
+    }
+}
+
+pub fn write_efi_var(name: &str, guid: &str, value: Vec<u8>, attributes: u32) -> Result<(), Error> {
+    let name = CString::new(name)?;
+    let guid = CString::new(guid)?;
+
+    let ret: DWORD = unsafe {
+        SetFirmwareEnvironmentVariableExA(
+            name.as_ptr(),
+            guid.as_ptr(),
+            value.as_mut_ptr() as _,
+            value.len() as _,
+            attributes as _,
+        )
+    };
+
+    if ret == 0 {
+        return Err(DetectError::EfiVariableError(std::io::Error::last_or_error()).into());
+    }
+    else {
+        return Ok(());
     }
 }
 

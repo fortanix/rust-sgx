@@ -235,15 +235,12 @@ impl SgxSupport {
             })
             .collect();
         let msr_3ah = imp::rdmsr(0x3a).map(Msr3ah::from);
-        let efi_epcbios = imp::read_efi_var("EPCBIOS", "c60aa7f6-e8d6-4956-8ba1-fe26298f5e87")
-            .map(EfiEpcbios::from);
-        let efi_epcsw = imp::read_efi_var("EPCSW", "d69a279b-58eb-45d1-a148-771bb9eb5251")
-            .map(EfiEpcsw::from);
-        let efi_softwareguardstatus = imp::read_efi_var(
-            "SOFTWAREGUARDSTATUS",
-            "9cb2e73f-7325-40f4-a484-659bb344c3cd",
-        )
-        .map(EfiSoftwareguardstatus::from);
+        let mut efi_epcbios = EfiEpcbios::default();
+        let efi_epcbios = efi_epcbios.read_from_env().map(|_| efi_epcbios);
+        let mut efi_epcsw = EfiEpcsw::default();
+        let efi_epcsw = efi_epcsw.read_from_env().map(|_| efi_epcsw);
+        let mut efi_softwareguardstatus = EfiSoftwareguardstatus::default();
+        let efi_softwareguardstatus = efi_softwareguardstatus.read_from_env().map(|_| efi_softwareguardstatus);
         let aesm_service = (|| {
             let client = AesmClient::new();
             client.try_connect()?;

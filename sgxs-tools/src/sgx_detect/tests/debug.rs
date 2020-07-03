@@ -49,26 +49,22 @@ impl DebugSupport for SgxCpuConfiguration {
             if !Paint::is_enabled() {
                 swcontrol_msg = swcontrol_msg.replace('“', r#"""#).replace('”', r#"""#).into();
             }
-            const SGX_DISABLED: EfiSoftwareguardstatus = EfiSoftwareguardstatus { status: SgxEnableStatus::Disabled };
-            const SGX_ENABLED: EfiSoftwareguardstatus = EfiSoftwareguardstatus { status: SgxEnableStatus::Enabled };
-            const SGX_SWCONTROL: EfiSoftwareguardstatus = EfiSoftwareguardstatus { status: SgxEnableStatus::SoftwareControlled };
-            const SGX_UNKNOWN: EfiSoftwareguardstatus = EfiSoftwareguardstatus { status: SgxEnableStatus::Unknown };
 
             writeln!(out, "Your hardware supports SGX, but it's not enabled.\n")?;
 
             match (&inner.efi_status, &inner.efi_epcbios) {
-                (&Ok(SGX_DISABLED), _) => {
+                (&Ok(EfiSoftwareguardstatus { status: SgxEnableStatus::Disabled, .. }), _) => {
                     writeln!(out, "Your BIOS supports SGX, but it's disabled. Reboot your machine and enable SGX in your BIOS.")?;
                     debug_msr = false;
                 },
-                (&Ok(SGX_ENABLED), _) => {
+                (&Ok(EfiSoftwareguardstatus { status: SgxEnableStatus::Enabled, .. }), _) => {
                     writeln!(out, "Your BIOS says it supports SGX and SGX is enabled, but it's not. Try updating your BIOS to the latest version or contact your BIOS vendor.")?;
                 },
-                (&Ok(SGX_SWCONTROL), Err(e)) if is_efi_perm_error(&e) => {
+                (&Ok(EfiSoftwareguardstatus { status: SgxEnableStatus::SoftwareControlled, .. }), Err(e)) if is_efi_perm_error(&e) => {
                     writeln!(out, "Your BIOS says it supports SGX reconfiguration, but the control mechanism could not be accessed due to a permission issue.")?;
                     writeln!(out, "\nWould you like to re-run this program with sudo to try again?\n{}", Paint::red("(not supported yet)"))?; //TODO
                 }
-                (&Ok(SGX_SWCONTROL), Err(_)) => {
+                (&Ok(EfiSoftwareguardstatus { status: SgxEnableStatus::SoftwareControlled, .. }), Err(_)) => {
                     write!(out, "Your BIOS says it supports SGX reconfiguration, but there is a problem with the control mechanism.")?;
                     writeln!(out, "{}", swcontrol_msg)?;
                 },
@@ -78,7 +74,7 @@ impl DebugSupport for SgxCpuConfiguration {
                         writeln!(out, "{}", swcontrol_msg)?;
                     } else if epcbios.max_epc_size > 0 {
                         match inner.efi_epcsw {
-                            Ok(EfiEpcsw { epc_size: 0 }) | Err(_) => {
+                            Ok(EfiEpcsw { epc_size: 0, ..}) | Err(_) => {
                                 writeln!(out, "Your BIOS supports SGX but it's currently disabled.\n\nWould you like to enable SGX automatically after the next reboot?\n{}", Paint::red("(not supported yet)"))?; //TODO
                             },
                             Ok(_) => {
@@ -95,7 +91,7 @@ impl DebugSupport for SgxCpuConfiguration {
                     writeln!(out, "BIOS support for SGX could not be determined due to a permission issue.")?;
                     writeln!(out, "\nWould you like to re-run this program with sudo to try again?\n{}", Paint::red("TODO"))?;
                 }
-                (&Ok(SGX_UNKNOWN), Err(_)) | (Err(_), Err(_)) => {
+                (&Ok(EfiSoftwareguardstatus { status: SgxEnableStatus::Unknown, .. }), Err(_)) | (Err(_), Err(_)) => {
                     writeln!(out, "BIOS support for SGX could not be determined. Reboot your machine and try to enable SGX in your BIOS. Alternatively, try updating your BIOS to the latest version or contact your BIOS vendor.")?;
                 }
             }
