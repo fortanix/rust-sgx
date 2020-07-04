@@ -24,6 +24,7 @@ msr_3ah:
     sgx_lc: false
 efi_epcbios:
   Ok:
+    attributes: 0
     prm_bins: 0xe0
     max_epc_size: 0x5d40000
     current_epc_size: 0
@@ -64,6 +65,7 @@ efi_epcsw:
   Err: "Failed to read EFI variable: No such file or directory (os error 2)"
 efi_softwareguardstatus:
   Ok:
+    attributes: 0
     status: SoftwareControlled
 enclaveos_dev:
   Err: No such file or directory (os error 2)

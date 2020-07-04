@@ -28,6 +28,7 @@ efi_epcsw:
   Err: "Failed to read EFI variable: No such file or directory (os error 2)"
 efi_softwareguardstatus:
   Ok:
+    attributes: 0
     status: Disabled
 enclaveos_dev:
   Err: No such file or directory (os error 2)
