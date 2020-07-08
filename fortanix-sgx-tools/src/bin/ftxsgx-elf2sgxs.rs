@@ -181,10 +181,10 @@ macro_rules! check_size {
 }
 
 impl<'a> LayoutInfo<'a> {
-
     // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/src/libstd/sys/sgx/abi/entry.S
     fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
-        let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx").ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
+        let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
+            .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
 
         if note_header.get_type() != Ok(ShType::Note) {
             bail!("Invalid type {:?} for section: .note.x86_64-fortanix-unknown-sgx", note_header.get_type());
@@ -198,17 +198,14 @@ impl<'a> LayoutInfo<'a> {
 
                 let desc = header.desc(ptr);
                 
-                if desc.len() != 4 {
-                    bail!("Expecting 32 bit 'toolchain-version' in .note.x86_64-fortanix-unknown-sgx");
-                }
-
                 // According to entry.S in rust-lang 'desc - toolchain version number, 32-bit LE'
-                let version : u32 = u32::from_le_bytes(desc.try_into().unwrap());
+                let version = u32::from_le_bytes(desc.try_into()
+                    .map_err(|_| format_err!("Expecting 32 bit 'toolchain-version' in .note.x86_64-fortanix-unknown-sgx"))?);
 
-                let max_supported_version = 1;
+                const MAX_SUPPORTED_VERSION: u32 = 1;
                 
-                if version > max_supported_version {
-                    bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, max_supported_version);
+                if version > MAX_SUPPORTED_VERSION {
+                    bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, MAX_SUPPORTED_VERSION);
                 }
             },
             Ok(_) => bail!("Section data for .note.x86_64-fortanix-unknown-sgx is not a note."),
@@ -220,9 +217,6 @@ impl<'a> LayoutInfo<'a> {
     
     #[allow(non_snake_case)]
     fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, Error> {
-
-        Self::check_toolchain_version(&elf)?;
-
         let dynsym = elf
             .find_section_by_name(".dynsym")
             .ok_or_else(|| format_err!("Could not find dynamic symbol table!"))?;
@@ -400,6 +394,7 @@ impl<'a> LayoutInfo<'a> {
         } else {
             bail!("Only 64-bit ELF supported!");
         }
+        Self::check_toolchain_version(&elf)?;
         let sym = Self::check_symbols(&elf)?;
         let dyn = Self::check_dynamic(&elf)?;
         Self::check_relocs(&elf, dyn.as_ref())?;
