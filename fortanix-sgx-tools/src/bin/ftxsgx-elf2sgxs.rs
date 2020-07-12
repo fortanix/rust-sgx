@@ -108,7 +108,7 @@ impl Splice {
 pub struct LayoutInfo<'a> {
     elf: ElfFile<'a>,
     sym: Symbols<'a>,
-    dyn: Option<Dynamic<'a>>,
+    dynamic: Option<Dynamic<'a>>,
     ssaframesize: u32,
     heap_size: u64,
     stack_size: u64,
@@ -299,8 +299,8 @@ impl<'a> LayoutInfo<'a> {
         let mut rela = None;
         let mut relacount = None;
 
-        for dyn in dyns {
-            match dyn.get_tag().map_err(err_msg)? {
+        for dynamic in dyns {
+            match dynamic.get_tag().map_err(err_msg)? {
                 // Some entries for PLT/GOT checking are currently
                 // commented out. I *think* that if there were an actual
                 // PLT/GOT problem, that would be caught by the remaining
@@ -313,10 +313,10 @@ impl<'a> LayoutInfo<'a> {
                     bail!("Unsupported dynamic entry: .fini functions"),
                 Rel | RelSize | RelEnt | DT_RELCOUNT =>
                     bail!("Unsupported dynamic entry: relocations with implicit addend"),
-                Rela => if replace(&mut rela, Some(dyn)).is_some() {
+                Rela => if replace(&mut rela, Some(dynamic)).is_some() {
                     bail!("Found dynamic entry twice: DT_RELA")
                 },
-                DT_RELACOUNT => if replace(&mut relacount, Some(dyn)).is_some() {
+                DT_RELACOUNT => if replace(&mut relacount, Some(dynamic)).is_some() {
                     bail!("Found dynamic entry twice: DT_RELACOUNT")
                 },
                 _ => {}
@@ -396,8 +396,8 @@ impl<'a> LayoutInfo<'a> {
         }
         Self::check_toolchain_version(&elf)?;
         let sym = Self::check_symbols(&elf)?;
-        let dyn = Self::check_dynamic(&elf)?;
-        Self::check_relocs(&elf, dyn.as_ref())?;
+        let dynamic = Self::check_dynamic(&elf)?;
+        Self::check_relocs(&elf, dynamic.as_ref())?;
         let ehfrm = Self::check_section(&elf, ".eh_frame")?;
         let ehfrm_hdr = Self::check_section(&elf, ".eh_frame_hdr")?;
         let text = Self::check_section(&elf, ".text")?;
@@ -405,7 +405,7 @@ impl<'a> LayoutInfo<'a> {
         Ok(LayoutInfo {
             elf,
             sym,
-            dyn,
+            dynamic,
             ssaframesize,
             heap_size,
             stack_size,
@@ -432,7 +432,7 @@ impl<'a> LayoutInfo<'a> {
             Splice::for_sym_u64(self.sym.HEAP_SIZE, self.heap_size),
             Splice::for_sym_u64(
                 self.sym.RELA,               
-                self.dyn
+                self.dynamic
                     .as_ref()
                     .and_then(|d| d.rela.get_ptr().ok())
                     .unwrap_or(0),
@@ -440,7 +440,7 @@ impl<'a> LayoutInfo<'a> {
             ),
             Splice::for_sym_u64(
                 self.sym.RELACOUNT,
-                self.dyn
+                self.dynamic
                     .as_ref()
                     .and_then(|d| d.relacount.get_val().ok())
                     .unwrap_or(0),

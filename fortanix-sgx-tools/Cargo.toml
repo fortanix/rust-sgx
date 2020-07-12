@@ -15,6 +15,7 @@ documentation = "https://edp.fortanix.com/docs/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "ftxsgx-runner"]
 categories = ["development-tools::build-utils", "command-line-utilities"]
+edition = "2018"
 
 [dependencies]
 # Project dependencies
