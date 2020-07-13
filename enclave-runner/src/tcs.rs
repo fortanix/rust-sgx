@@ -68,7 +68,7 @@ pub(crate) fn coenter<T: Tcs>(
                 uninit_debug_buf.as_mut_ptr() as *mut _
             }
         };
-        llvm_asm!("
+        asm!("
         lea 1f(%rip),%rcx
 1:
         enclu

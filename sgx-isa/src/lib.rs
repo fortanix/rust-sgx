@@ -10,7 +10,7 @@
 //! convenient.
 //!
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
-#![cfg_attr(feature = "nightly", feature(llvm_asm))]
+#![cfg_attr(feature = "nightly", feature(asm))]
 
 #![no_std]
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
