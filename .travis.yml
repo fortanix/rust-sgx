@@ -21,12 +21,13 @@ matrix:
             - protobuf-compiler
             - libsgx-dcap-ql-dev
             - libclang-3.8-dev
+            - musl-tools
       rust:
         - nightly
       env:
         - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
       before_script:
-        - rustup target add x86_64-fortanix-unknown-sgx
+        - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
       script:
         - cargo test --verbose --all
         - cargo test --verbose -p sgx-isa --features sgxstd -Z package-features --target x86_64-fortanix-unknown-sgx --no-run
@@ -34,3 +35,6 @@ matrix:
         - cargo test --verbose -p dcap-ql --features link -Z package-features
         - cargo test --verbose -p dcap-ql --features verify -Z package-features
         - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
+        # NOTE: linking glibc version of OpenSSL with musl binary.
+        # Unlikely to produce a working binary, but at least the build succeeds.
+        - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude cargo build -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
