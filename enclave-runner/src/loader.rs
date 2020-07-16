@@ -330,9 +330,10 @@ impl<'a> EnclaveBuilder<'a> {
             .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
     }
 
-    /// Panics if you have previously called [`command_arguments`].
+    /// Panics if you have previously called [`arg`] or [`args`].
     ///
-    /// [`command_arguments`]: struct.EnclaveBuilder.html#method.command_arguments
+    /// [`arg`]: struct.EnclaveBuilder.html#method.arg
+    /// [`args`]: struct.EnclaveBuilder.html#method.args
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
         if self.cmd_args.is_some() {
             panic!("Command arguments do not apply to Library enclaves.");
