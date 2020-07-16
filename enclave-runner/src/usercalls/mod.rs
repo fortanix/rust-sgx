@@ -848,7 +848,7 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
-        cmd_args: Vec<String>,
+        cmd_args: Vec<Vec<u8>>,
     ) -> StdResult<(), failure::Error> {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
@@ -858,7 +858,7 @@ impl EnclaveState {
         for a in cmd_args {
             args.push(ByteBuffer {
                 len: a.len(),
-                data: Box::into_raw(a.into_bytes().into_boxed_slice()) as *const u8,
+                data: Box::into_raw(a.into_boxed_slice()) as *const u8,
             });
         }
         let argc = args.len();

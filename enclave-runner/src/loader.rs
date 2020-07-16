@@ -67,7 +67,7 @@ pub struct EnclaveBuilder<'a> {
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
     forward_panics: bool,
-    cmd_args: Option<Vec<String>>,
+    cmd_args: Option<Vec<Vec<u8>>>,
 }
 
 #[derive(Debug, Fail)]
@@ -262,18 +262,39 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    /// Set arguments passed to the main function in the enclave.
+    /// Adds multiple arguments to pass to enclave's `fn main`.
     /// **NOTE:** This is not an appropriate channel for passing secrets or
     /// security configurations to the enclave.
     ///
     /// **NOTE:** This is only applicable to [`Command`] enclaves.
-    /// Setting command arguments and then calling [`build_library`] will cause
+    /// Adding command arguments and then calling [`build_library`] will cause
     /// a panic.
     ///
     /// [`Command`]: struct.Command.html
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
-    pub fn command_arguments(&mut self, cmd_args: Vec<String>) -> &mut Self {
-        self.cmd_args = Some(cmd_args);
+    pub fn args(&mut self, mut args: Vec<Vec<u8>>) -> &mut Self {
+        match self.cmd_args {
+            None => self.cmd_args = Some(args),
+            Some(ref mut cmd_args) => cmd_args.append(&mut args),
+        }
+        self
+    }
+
+    /// Adds an argument to pass to enclave's `fn main`.
+    /// **NOTE:** This is not an appropriate channel for passing secrets or
+    /// security configurations to the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Adding command arguments and then calling [`build_library`] will cause
+    /// a panic.
+    ///
+    /// [`Command`]: struct.Command.html
+    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
+    pub fn arg(&mut self, arg: Vec<u8>) -> &mut Self {
+        match self.cmd_args {
+            None => self.cmd_args = Some(vec![arg]),
+            Some(ref mut cmd_args) => cmd_args.push(arg),
+        }
         self
     }
 

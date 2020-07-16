@@ -22,7 +22,7 @@ pub struct Command {
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     forward_panics: bool,
-    cmd_args: Vec<String>,
+    cmd_args: Vec<Vec<u8>>,
 }
 
 impl MappingInfo for Command {
@@ -44,7 +44,7 @@ impl Command {
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
-        cmd_args: Vec<String>,
+        cmd_args: Vec<Vec<u8>>,
     ) -> Command {
         let main = tcss.remove(0);
         Command {
