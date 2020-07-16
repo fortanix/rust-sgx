@@ -272,10 +272,15 @@ impl<'a> EnclaveBuilder<'a> {
     ///
     /// [`Command`]: struct.Command.html
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
-    pub fn args(&mut self, mut args: Vec<Vec<u8>>) -> &mut Self {
+    pub fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<[u8]>,
+    {
+        let args = args.into_iter().map(|a| a.as_ref().to_owned());
         match self.cmd_args {
-            None => self.cmd_args = Some(args),
-            Some(ref mut cmd_args) => cmd_args.append(&mut args),
+            None => self.cmd_args = Some(args.collect()),
+            Some(ref mut cmd_args) => cmd_args.extend(args),
         }
         self
     }
@@ -290,7 +295,8 @@ impl<'a> EnclaveBuilder<'a> {
     ///
     /// [`Command`]: struct.Command.html
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
-    pub fn arg(&mut self, arg: Vec<u8>) -> &mut Self {
+    pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
+        let arg = arg.as_ref().to_owned();
         match self.cmd_args {
             None => self.cmd_args = Some(vec![arg]),
             Some(ref mut cmd_args) => cmd_args.push(arg),

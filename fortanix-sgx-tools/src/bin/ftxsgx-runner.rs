@@ -64,11 +64,12 @@ fn main() -> Result<(), Error> {
         None => (),
     }
 
-    let mut cmd_args = vec![file.as_bytes().to_owned()];
+    enclave_builder.arg(file);
     if let Some(enclave_args) = args.values_of("enclave-args") {
-        cmd_args.extend(enclave_args.map(|a| a.as_bytes().to_owned()));
+        for a in enclave_args {
+            enclave_builder.arg(a);
+        }
     }
-    enclave_builder.args(cmd_args);
 
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
 
