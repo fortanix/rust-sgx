@@ -464,9 +464,10 @@ pub const WAIT_INDEFINITE: u64 = !0;
 /// ## TCS event queues
 ///
 /// Userspace will maintain a queue for each running TCS with events to be
-/// delivered. Each event is characterized by a bitset. Userspace or the
-/// enclave (using the `send` usercall) can put events on this queue. If the
-/// enclave isn't waiting for an event when an event is queued, the event
+/// delivered. Each event is characterized by a bitset with at least one bit
+/// set. Userspace or the enclave (using the `send` usercall) can put events on
+/// this queue.
+/// If the enclave isn't waiting for an event when an event is queued, the event
 /// remains on the queue until it delivered to the enclave in a later `wait`
 /// usercall. If an enclave is waiting for an event, and the queue contains an
 /// event that is a subset of the waited-for event mask, that event is removed
