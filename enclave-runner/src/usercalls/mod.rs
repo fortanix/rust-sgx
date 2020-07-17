@@ -1324,8 +1324,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 // tokio::time::timeout does not handle large timeout values
                 // well which may or may not be a bug in tokio, but it seems to
                 // work ok with timeout values smaller than 2 ^ 55 nanoseconds.
-                // TODO: figure out if a bug report is in order.
                 // NOTE: 2 ^ 55 nanoseconds is roughly 417 days.
+                // TODO: revisit when https://github.com/tokio-rs/tokio/issues/2667 is resolved.
                 cmp::min(1 << 55, timeout)
             }
         };
