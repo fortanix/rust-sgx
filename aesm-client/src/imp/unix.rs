@@ -12,7 +12,7 @@ pub use error::{AesmError, Error, Result};
 mod aesm_protobuf;
 
 #[cfg(feature = "sgxs")]
-use Request_GetLaunchTokenRequest;
+use aesm_proto::Request_GetLaunchTokenRequest;
 
 #[derive(Clone, Debug, Default)]
 pub struct AesmClient {
