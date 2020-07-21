@@ -847,10 +847,21 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        cmd_args: Vec<Vec<u8>>,
     ) -> StdResult<(), failure::Error> {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
+
+        let mut args = Vec::with_capacity(cmd_args.len());
+        for a in cmd_args {
+            args.push(ByteBuffer {
+                len: a.len(),
+                data: Box::into_raw(a.into_boxed_slice()) as *const u8,
+            });
+        }
+        let argc = args.len();
+        let argv = Box::into_raw(args.into_boxed_slice()) as *const u8;
 
         let main_work = Work {
             tcs: RunningTcs {
@@ -859,7 +870,7 @@ impl EnclaveState {
                 pending_events: Default::default(),
                 mode: EnclaveEntry::ExecutableMain,
             },
-            entry: CoEntry::Initial(main.tcs, 0, 0, 0, 0, 0),
+            entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
 
         let num_of_worker_threads = num_cpus::get();

@@ -59,6 +59,11 @@ fn main() -> Result<(), Error> {
             .required(false)
             .takes_value(true)
             .possible_values(&Signature::variants()))
+        .arg(Arg::with_name("enclave-args")
+            .long_help("Arguments passed to the enclave. \
+                Note that this is not an appropriate channel for passing \
+                secrets or security configurations to the enclave.")
+            .multiple(true))
         .get_matches();
 
     let file = args.value_of("file").unwrap();
@@ -74,6 +79,11 @@ fn main() -> Result<(), Error> {
         Some(Signature::coresident) => { enclave_builder.coresident_signature().context("While loading coresident signature")?; }
         Some(Signature::dummy) => { enclave_builder.dummy_signature(); },
         None => (),
+    }
+
+    enclave_builder.arg(file);
+    if let Some(enclave_args) = args.values_of("enclave-args") {
+        enclave_builder.args(enclave_args);
     }
 
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;

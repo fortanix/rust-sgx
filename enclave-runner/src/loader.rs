@@ -67,6 +67,7 @@ pub struct EnclaveBuilder<'a> {
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
     forward_panics: bool,
+    cmd_args: Option<Vec<Vec<u8>>>,
 }
 
 #[derive(Debug, Fail)]
@@ -140,6 +141,7 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
+            cmd_args: None,
         };
 
         let _ = ret.coresident_signature();
@@ -260,6 +262,48 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    /// Adds multiple arguments to pass to enclave's `fn main`.
+    /// **NOTE:** This is not an appropriate channel for passing secrets or
+    /// security configurations to the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Adding command arguments and then calling [`build_library`] will cause
+    /// a panic.
+    ///
+    /// [`Command`]: struct.Command.html
+    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
+    pub fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<[u8]>,
+    {
+        let args = args.into_iter().map(|a| a.as_ref().to_owned());
+        match self.cmd_args {
+            None => self.cmd_args = Some(args.collect()),
+            Some(ref mut cmd_args) => cmd_args.extend(args),
+        }
+        self
+    }
+
+    /// Adds an argument to pass to enclave's `fn main`.
+    /// **NOTE:** This is not an appropriate channel for passing secrets or
+    /// security configurations to the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Adding command arguments and then calling [`build_library`] will cause
+    /// a panic.
+    ///
+    /// [`Command`]: struct.Command.html
+    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
+    pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
+        let arg = arg.as_ref().to_owned();
+        match self.cmd_args {
+            None => self.cmd_args = Some(vec![arg]),
+            Some(ref mut cmd_args) => cmd_args.push(arg),
+        }
+        self
+    }
+
     fn load<T: Load>(
         mut self,
         loader: &mut T,
@@ -286,12 +330,20 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+        let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
     }
 
+    /// Panics if you have previously called [`arg`] or [`args`].
+    ///
+    /// [`arg`]: struct.EnclaveBuilder.html#method.arg
+    /// [`args`]: struct.EnclaveBuilder.html#method.args
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
+        if self.cmd_args.is_some() {
+            panic!("Command arguments do not apply to Library enclaves.");
+        }
         let c = self.usercall_ext.take();
         self.load(loader)
             .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
