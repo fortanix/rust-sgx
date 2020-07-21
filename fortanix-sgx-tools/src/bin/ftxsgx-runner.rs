@@ -66,9 +66,7 @@ fn main() -> Result<(), Error> {
 
     enclave_builder.arg(file);
     if let Some(enclave_args) = args.values_of("enclave-args") {
-        for a in enclave_args {
-            enclave_builder.arg(a);
-        }
+        enclave_builder.args(enclave_args);
     }
 
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
