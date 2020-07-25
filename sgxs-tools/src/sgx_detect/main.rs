@@ -354,6 +354,7 @@ fn main() {
         (@arg EXPORT:   --export                                                "Export detected support information as YAML")
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
+        (@arg NON_INTERACTIVE: --("non-interactive")                            "Disable interactive debug")
         (@group environment_type =>
             (@arg ENCLAVE_OS: --("enclave-os")                                   "Run extra diagnostics tests for EnclaveOS")
             (@arg ENCLAVE_MANAGER: --("enclave-manager")                        "Run extra diagnostics tests for Enclave Manager")
@@ -391,6 +392,6 @@ fn main() {
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
-        tests.print(args.is_present("VERBOSE"), env_config);
+        tests.print(args.is_present("VERBOSE"), !args.is_present("NON_INTERACTIVE"), env_config);
     }
 }

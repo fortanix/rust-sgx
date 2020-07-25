@@ -62,6 +62,7 @@ serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
 serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 pe = { version = "0.1", optional = true }        # GPL
+dialoguer = "0.6.2"                              # MIT
 
 [target.'cfg(unix)'.dependencies]
 "dcap-ql" = { version = "0.3.0", path = "../dcap-ql" }

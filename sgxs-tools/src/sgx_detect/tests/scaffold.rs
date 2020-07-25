@@ -59,7 +59,7 @@ pub trait Print: Name {
 pub trait DebugSupport {
     /// # Panics
     /// May panic if `supported` returns `Status::Supported`.
-    fn debug(&self, _out: debug::Output, _items: &DetectItemMap) -> fmt::Result { Ok(()) }
+    fn debug(&self, _out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result { Ok(()) }
 }
 
 impl<T: Print + DebugSupport + Update + Default + 'static> DetectItem for T {
