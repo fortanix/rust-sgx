@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
-use std::fs::{File, read_dir};
+use std::fs::{File, OpenOptions, read_dir};
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write, Seek, SeekFrom};
 use std::os::unix::ffi::OsStringExt;
 use std::path::PathBuf;
@@ -91,7 +91,7 @@ pub fn write_efi_var(name: &str, guid: &str, value: Vec<u8>, attributes: u32) ->
     .map_err(|e| Error::from(DetectError::EfiFsError(e)))?;
 
     (|| {
-        let mut file = File::open(fspath.join(&format!("{}-{}", name, guid)))?;
+        let mut file = OpenOptions::new().write(true).create(true).open(fspath.join(&format!("{}-{}", name, guid)))?;
         if file.write(&attributes.to_le_bytes())? < 4 {
             return Err(std::io::Error::last_os_error());
         }
@@ -100,7 +100,7 @@ pub fn write_efi_var(name: &str, guid: &str, value: Vec<u8>, attributes: u32) ->
         }
         Ok(())
     })()
-    .map_err(|e| DetectError::EfiVariableError(e).into())
+    .map_err(|e| e.into())
 
 }
 
