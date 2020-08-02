@@ -2,6 +2,7 @@ use super::*;
 
 use std::borrow::Cow;
 use std::fmt::{self, Write as FmtWrite};
+
 use std::io::{self, stdout, Write};
 
 use dialoguer::Confirm;
@@ -10,7 +11,7 @@ use yansi::{Color, Paint};
 use crate::{FailTrace, paintalt};
 
 impl DebugSupport for SgxCpuSupport {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         writeln!(out, "It appears your hardware does not have SGX support.")?;
         out.verbose();
         if let Some(SgxCpuSupportInner { sgx: Err(ref e) }) = self.inner {
@@ -23,11 +24,11 @@ impl DebugSupport for SgxCpuSupport {
 }
 
 impl DebugSupport for SgxCpuConfiguration {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, interactive: bool) -> fmt::Result {
         let mut debug_msr = true;
         let help_link;
         
-        let inner = self.inner.as_ref().unwrap();
+        let inner = self.inner.as_mut().unwrap();
 
         if inner.sgx1 && !inner.enclave_size_ok {
             help_link = "invalid-cpuid";
@@ -84,9 +85,31 @@ impl DebugSupport for SgxCpuConfiguration {
                             Ok(EfiEpcsw { epc_size: 0, ..}) | Err(_) => {
                                 writeln!(out, "Your BIOS supports SGX but it's currently disabled.\n")?;
                                 if interactive && Confirm::new().with_prompt("Would you like to enable SGX automatically after the next reboot?").interact().unwrap() {
-                                    writeln!(out, "\n{}", Paint::red("Not supported yet"))?; //TODO
+
+                                    // Read max epc size
+                                    if let Ok(EfiEpcbios{ max_epc_size, attributes, .. }) = inner.efi_epcbios {
+                                        // update epcsw variable and write out
+                                        let updated_efi_epcsw = match inner.efi_epcsw {
+                                           Ok(efi_epcsw) => {
+                                                EfiEpcsw{epc_size: max_epc_size, attributes, ..efi_epcsw}
+                                            },
+                                            Err(_) => {
+                                                EfiEpcsw{epc_size: max_epc_size, attributes, ..EfiEpcsw::default()}
+                                            }
+                                        };
+                                        match updated_efi_epcsw.write_to_env() {
+                                            Ok(()) => {
+                                                inner.efi_epcsw = Ok(updated_efi_epcsw);
+                                                println!("{:?}", inner.efi_epcsw);
+                                                writeln!(out, "\n{}\nPlease reboot your system for the changes to take effect.", Paint::green("SGX enabled via software."))?;
+                                            },
+                                            Err(e) => {
+                                                writeln!(out, "{}\n{}\nPlease rerun as sudo.", e, Paint::red("Failed to write EFI variable."))?;
+                                            }
+                                        }
+                                    }
                                 } else {
-                                    writeln!(out, "Please enable SGX in BIOS settings and try again")?;
+                                    writeln!(out, "Please enable SGX in BIOS settings and try again.")?;
                                 }
                             },
                             Ok(_) => {
@@ -153,7 +176,7 @@ impl DebugSupport for SgxCpuConfiguration {
 }
 
 impl DebugSupport for EnclaveAttributes {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         writeln!(out, "Your hardware supports SGX, but the supported SGX attributes are misconfigured. This could indicate a CPU or hypervisor bug.")?;
         out.verbose();
         match self.inner {
@@ -169,7 +192,7 @@ impl DebugSupport for EnclaveAttributes {
 }
 
 impl DebugSupport for EnclavePageCache {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         let inner = self.inner.as_ref().unwrap();
         if !inner.any_unknown && inner.cpuid_12h_epc.is_ok() {
             writeln!(out, "Your hardware supports SGX, but no Enclave Page Cache (EPC) is configured. This could indicate a BIOS or hypervisor bug.")?;
@@ -195,15 +218,15 @@ impl DebugSupport for EnclavePageCache {
 }
 
 impl DebugSupport for FlcCpuConfiguration {
-    fn debug(&self, mut out: debug::Output, items: &DetectItemMap, interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, items: &HashMap<SupportItem, Status>, interactive: bool) -> fmt::Result {
         // don't print any guidance for FLC unless SGX itself is enabled
-        if items.lookup::<Isa>().supported() != Status::Supported {
+        if *items.get(&SupportItem::Isa).unwrap() != Status::Supported {
             return Ok(());
         }
 
         if let Some(Err(err)) = &self.msr_3ah {
             // don't print any guidance if it appears to work
-            if items.lookup::<RunEnclaveProdWrap>().supported() == Status::Supported {
+            if *items.get(&SupportItem::RunEnclaveProdWrap).unwrap() == Status::Supported {
                 return Ok(());
             }
 
@@ -226,7 +249,7 @@ impl DebugSupport for FlcCpuConfiguration {
 }
 
 impl DebugSupport for DeviceLoader {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, interactive: bool) -> fmt::Result {
         fn len_to_mod_str(v: &[String]) -> (&str, &str) {
             match v.len() {
                 1 => ("", "is"),
@@ -292,7 +315,7 @@ impl DebugSupport for DeviceLoader {
 }
 
 impl DebugSupport for AesmService {
-    fn debug(&self, mut out: debug::Output, items: &DetectItemMap, interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, items: &HashMap<SupportItem, Status>, interactive: bool) -> fmt::Result {
         let inner = self.inner.as_ref().unwrap();
 
         if let Err(ref e) = inner.service {
@@ -301,7 +324,7 @@ impl DebugSupport for AesmService {
             }
         }
 
-        let reason = if items.lookup::<RunEnclave>().supported() == Status::Supported {
+        let reason = if *items.get(&SupportItem::RunEnclave).unwrap() == Status::Supported {
             "AESM is needed for generating EPID attestations."
         } else {
             "AESM is needed for launching enclaves and generating attestations."
@@ -329,7 +352,7 @@ impl DebugSupport for AesmService {
 }
 
 impl DebugSupport for RunEnclaveDebug {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         writeln!(out, "The enclave could not be launched.")?;
 
         out.verbose();
@@ -342,7 +365,7 @@ impl DebugSupport for RunEnclaveDebug {
 }
 
 impl DebugSupport for RunEnclaveProd {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         writeln!(out, "The enclave could not be launched. This might indicate a problem with FLC.")?;
 
         out.verbose();
@@ -355,7 +378,7 @@ impl DebugSupport for RunEnclaveProd {
 }
 
 impl DebugSupport for RunEnclaveProdWl {
-    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result {
+    fn debug(&mut self, mut out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result {
         writeln!(out, "The enclave could not be launched. This might indicate a problem with AESM or your internet connection.")?;
 
         out.verbose();

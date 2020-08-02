@@ -1,6 +1,7 @@
 use std::any::TypeId;
 use std::cell::Cell;
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::{Index, IndexMut};
 
@@ -9,6 +10,7 @@ use petgraph::graph::DiGraph;
 use yansi::Paint;
 
 use crate::{paintalt, SgxSupport};
+use crate::tests::SupportItem;
 use super::debug;
 
 pub trait DetectItem: Print + DebugSupport + Update + mopa::Any {
@@ -59,7 +61,7 @@ pub trait Print: Name {
 pub trait DebugSupport {
     /// # Panics
     /// May panic if `supported` returns `Status::Supported`.
-    fn debug(&self, _out: debug::Output, _items: &DetectItemMap, _interactive: bool) -> fmt::Result { Ok(()) }
+    fn debug(&mut self, _out: debug::Output, _items: &HashMap<SupportItem, Status>, _interactive: bool) -> fmt::Result { Ok(()) }
 }
 
 impl<T: Print + DebugSupport + Update + Default + 'static> DetectItem for T {

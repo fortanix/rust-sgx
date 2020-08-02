@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 #[cfg(windows)]
@@ -23,6 +24,13 @@ pub use self::scaffold::*;
 use crate::interpret::*;
 use crate::{DetectError, SgxSupport};
 use sgxs_tools::*;
+
+#[derive(Hash, PartialEq, Eq)]
+enum SupportItem {
+    Isa,
+    RunEnclaveProdWrap,
+    RunEnclave,
+}
 
 #[derive(Default, DebugSupport, Print, Update)]
 struct Root;
@@ -951,14 +959,18 @@ impl Tests {
         }
     }
 
-    pub fn print(&self, verbose: bool, interactive: bool, env_config: EnvConfig) {
+    pub fn print(&mut self, verbose: bool, interactive: bool, env_config: EnvConfig) {
         let mut debug = vec![];
         self.print_recurse(self.ui_root, 0, &mut vec![], &mut debug);
         for path in debug {
             let test = *path.last().unwrap();
             let path = path.into_iter().map(|test| self.functions[test].name()).collect();
             let out = debug::Output::new(path, verbose);
-            let _ = self.functions[test].debug(out, &self.functions, interactive);
+            let mut support_items = HashMap::new();
+            support_items.insert(SupportItem::Isa, self.functions.lookup::<Isa>().supported());
+            support_items.insert(SupportItem::RunEnclaveProdWrap, self.functions.lookup::<RunEnclaveProdWrap>().supported());
+            support_items.insert(SupportItem::RunEnclave, self.functions.lookup::<RunEnclave>().supported());
+            let _ = self.functions[test].debug(out, &support_items, interactive);
         }
 
         if self.functions.lookup::<Isa>().supported() &
