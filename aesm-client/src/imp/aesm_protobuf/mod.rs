@@ -4,15 +4,14 @@ use protobuf::Message;
 use std::io::{Read, Write};
 use std::mem::size_of;
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
-use {
-    quote_buffer_size, AesmRequest, FromResponse, QuoteInfo, QuoteResult, QuoteType,
-    Request_GetQuoteRequest, Request_InitQuoteRequest, Request_GetSupportedAttKeyIDNumRequest, Request_GetSupportedAttKeyIDsRequest, Request_InitQuoteExRequest, Request_GetQuoteSizeExRequest, Request_GetQuoteExRequest
-};
+use {quote_buffer_size, QuoteInfo, QuoteResult, QuoteType};
+use aesm_proto::{Request_GetQuoteRequest, Request_InitQuoteRequest, Request_GetSupportedAttKeyIDNumRequest, Request_GetSupportedAttKeyIDsRequest, Request_InitQuoteExRequest, Request_GetQuoteSizeExRequest, Request_GetQuoteExRequest};
 // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
 #[cfg(not(target_env = "sgx"))]
 use std::time::Duration;
+mod aesm_message;
 
-
+use self::aesm_message::{AesmRequest, FromResponse};
 /// This timeout is an argument in AESM request protobufs.
 ///
 /// This value should be used for requests that can be completed locally, i.e.
