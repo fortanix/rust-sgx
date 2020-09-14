@@ -15,13 +15,13 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::Arc;
 
-use abi::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct};
-use sgxs_crate::einittoken::EinittokenProvider;
-use sgxs_crate::loader;
-use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct};
+use sgxs::einittoken::EinittokenProvider;
+use sgxs::loader;
+use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
-use generic::{self, EinittokenError, EnclaveLoad, Mapping};
+use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
 
 #[derive(Fail, Debug)]
 pub enum SgxIoctlError {

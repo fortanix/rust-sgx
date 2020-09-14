@@ -3,12 +3,14 @@ name = "sgxs-loaders"
 version = "0.2.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
+edition = "2018"
 description = """
 Platform-specific loaders for SGX enclaves.
 
 The following loaders are supported:
-* isgx device (Linux)
-* libsgx_enclave_common (Linux)
+* SGX device (Linux)
+* Enclave API (Windows)
+* libsgx_enclave_common (Linux & Windows)
 """
 repository = "https://github.com/fortanix/rust-sgx"
 documentation = "https://edp.fortanix.com/docs/api/sgxs_loaders/"

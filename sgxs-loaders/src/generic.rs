@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use failure::{Fail, ResultExt};
 
-use abi::{Attributes, Einittoken, Miscselect, PageType, Sigstruct};
-use sgxs_crate::einittoken::EinittokenProvider;
-use sgxs_crate::loader;
-use sgxs_crate::sgxs::{
+use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, Sigstruct};
+use sgxs::einittoken::EinittokenProvider;
+use sgxs::loader;
+use sgxs::sgxs::{
     CreateInfo, Error as SgxsError, MeasEAdd, MeasECreate, PageChunks, PageReader, SgxsRead,
 };
 

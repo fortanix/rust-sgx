@@ -9,17 +9,11 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 #[cfg(unix)] #[macro_use]
-extern crate nix as ioctl_crate;
-extern crate failure;
-#[cfg(unix)]
-extern crate libc;
-extern crate sgx_isa as abi;
-extern crate sgxs as sgxs_crate;
+extern crate nix;
 #[macro_use]
 extern crate failure_derive;
 #[macro_use]
 extern crate bitflags;
-#[cfg(windows)] extern crate winapi;
 
 mod generic;
 #[cfg(unix)] pub mod isgx;
@@ -30,7 +24,7 @@ use std::fmt::Debug;
 use std::os::raw::c_void;
 use std::sync::Arc;
 
-use sgxs_crate::loader;
+use sgxs::loader;
 
 #[derive(Debug)]
 pub struct Tcs {

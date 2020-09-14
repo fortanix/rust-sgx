@@ -14,13 +14,13 @@ use std::{fmt, mem, ptr};
 #[cfg(unix)]
 use libc;
 
-use abi::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
-use sgxs_crate::einittoken::EinittokenProvider;
-use sgxs_crate::loader;
-use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
+use sgxs::einittoken::EinittokenProvider;
+use sgxs::loader;
+use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
-use generic::{self, EinittokenError, EnclaveLoad, Mapping};
+use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
 
 mod defs;
 
