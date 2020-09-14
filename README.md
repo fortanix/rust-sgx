@@ -24,7 +24,7 @@ cargo run --target x86_64-fortanix-unknown-sgx
 [Documentation](https://edp.fortanix.com/docs/)
 
 Looking for the in-enclave source code? Check out the [rust-lang/rust
-repository](https://github.com/rust-lang/rust/tree/master/src/libstd/sys/sgx).
+repository](https://github.com/rust-lang/rust/tree/master/library/std/src/sys/sgx).
 
 # Contributing
 
