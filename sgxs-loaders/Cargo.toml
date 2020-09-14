@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-loaders"
-version = "0.2.2"
+version = "0.3.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -18,6 +18,11 @@ homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "sgxs", "isgx"]
 categories = ["os", "hardware-support", "api-bindings"]
 
+[features]
+# This feature isn't used in the public API of this crate. It's used only to
+# disable testing the sgx_enclave_common loader
+no_sgx_enclave_common = []
+
 [dependencies]
 # Project dependencies
 "sgxs" = { version = "0.7.0", path = "../sgxs" }
@@ -33,3 +38,8 @@ libloading = "0.5"       # ISC
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.7", features = ["enclaveapi","memoryapi","processthreadsapi"] }
+
+[dev-dependencies]
+# Project dependencies
+"report-test" = { version = "0.3.0", path = "../report-test" }
+"aesm-client" = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }

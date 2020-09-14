@@ -2086,14 +2086,16 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
+ "aesm-client",
  "bitflags 1.2.1",
  "failure",
  "failure_derive",
  "libc",
  "libloading",
  "nix 0.11.1",
+ "report-test",
  "sgx-isa",
  "sgxs",
  "winapi 0.3.8",
