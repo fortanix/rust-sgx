@@ -456,6 +456,10 @@ pub const EV_RETURNQ_NOT_EMPTY: u64 = 0b0000_0000_0000_0010;
 /// An event that enclaves can use for synchronization.
 #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const EV_UNPARK: u64 = 0b0000_0000_0000_0100;
+/// An event that will be triggered by userspace when the cancel queue is not
+/// or no longer full.
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+pub const EV_CANCELQ_NOT_FULL: u64 = 0b0000_0000_0000_1000;
 
 #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub const WAIT_NO: u64 = 0;
@@ -598,7 +602,7 @@ impl Usercalls {
 /// Asynchronous usercall specification.
 ///
 /// An asynchronous usercall allows an enclave to submit a usercall without
-/// exiting the enclave. This is necessary since enclave entries and exists are
+/// exiting the enclave. This is necessary since enclave entries and exits are
 /// slow (see academic work on [SCONE], [HotCalls]). In addition, the enclave
 /// can perform other tasks while it waits for the usercall to complete. Those
 /// tasks may include issuing other usercalls, either synchronously or
@@ -614,18 +618,36 @@ impl Usercalls {
 /// concurrent usercalls with the same `id`, but it may reuse an `id` once the
 /// original usercall with that `id` has returned.
 ///
+/// An optional third queue can be used to cancel usercalls. To cancel an async
+/// usercall, the enclave should send the usercall's id and number on this
+/// queue. If the usercall has already been processed, the enclave may still
+/// receive a successful result for the usercall. Otherwise, the userspace will
+/// cancel the usercall's execution and return an [`Interrupted`] error on the
+/// return queue to notify the enclave of the cancellation. Note that usercalls
+/// that do not return [`Result`] cannot be cancelled and if the enclave sends
+/// a cancellation for such a usercall, the userspace should simply ignore it.
+/// Additionally, userspace may choose to ignore cancellations for non-blocking
+/// usercalls. Userspace should be able to cancel a usercall that has been sent
+/// by the enclave but not yet received by the userspace, i.e. if cancellation
+/// is received before the usercall itself. However, userspace should not keep
+/// cancellations forever since that would prevent the enclave from re-using
+/// usercall ids.
+///
 /// *TODO*: Add diagram.
 ///
 /// [MPSC queues]: struct.FifoDescriptor.html
 /// [allocated per enclave]: ../struct.Usercalls.html#method.async_queues
 /// [SCONE]: https://www.usenix.org/conference/osdi16/technical-sessions/presentation/arnautov
 /// [HotCalls]: http://www.ofirweisse.com/ISCA17_Ofir_Weisse.pdf
+/// [`Interrupted`]: enum.Error.html#variant.Interrupted
+/// [`Result`]: type.Result.html
 ///
 /// # Enclave/userspace synchronization
 ///
 /// When the enclave needs to wait on a queue, it executes the [`wait()`]
 /// usercall synchronously, specifying [`EV_USERCALLQ_NOT_FULL`],
-/// [`EV_RETURNQ_NOT_EMPTY`], or both in the `event_mask`. Userspace will wake
+/// [`EV_RETURNQ_NOT_EMPTY`], [`EV_CANCELQ_NOT_FULL`], or any combination
+/// thereof in the `event_mask`. Userspace will wake
 /// any or all threads waiting on the appropriate event when it is triggered.
 ///
 /// When userspace needs to wait on a queue, it will park the current thread
@@ -636,6 +658,7 @@ impl Usercalls {
 /// [`wait()`]: ../struct.Usercalls.html#method.wait
 /// [`EV_USERCALLQ_NOT_FULL`]: ../constant.EV_USERCALLQ_NOT_FULL.html
 /// [`EV_RETURNQ_NOT_EMPTY`]: ../constant.EV_RETURNQ_NOT_EMPTY.html
+/// [`EV_CANCELQ_NOT_FULL`]: ../constant.EV_CANCELQ_NOT_FULL.html
 pub mod async {
     use super::*;
     use core::sync::atomic::{AtomicU64, AtomicUsize};
@@ -691,6 +714,15 @@ pub mod async {
         fn from(r: (u64, u64)) -> Self {
             Return(r.0, r.1)
         }
+    }
+
+    /// Cancel a usercall peviously sent to userspace.
+    #[repr(C)]
+    #[derive(Copy, Clone, Default)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    pub struct Cancel {
+        /// This must be the same value as `Usercall.0`.
+        pub usercall_nr: u64,
     }
 
     /// A circular buffer used as a FIFO queue with atomic reads and writes.
@@ -774,11 +806,13 @@ pub mod async {
     impl Usercalls {
         /// Request FIFO queues for asynchronous usercalls. `usercall_queue`
         /// and `return_queue` must point to valid user memory with the correct
-        /// size and alignment for their types. On return, userspace will have
-        /// filled these structures with information about the queues. A single
-        /// set of queues will be allocated per enclave. Once this usercall has
-        /// returned succesfully, calling this usercall again is equivalent to
-        /// calling `exit(true)`.
+        /// size and alignment for their types. `cancel_queue` is optional, but
+        /// if specified (not null) it must point to valid user memory with
+        /// correct size and alignment.
+        /// On return, userspace will have filled these structures with
+        /// information about the queues. A single set of queues will be
+        /// allocated per enclave. Once this usercall has returned succesfully,
+        /// calling this usercall again is equivalent to calling `exit(true)`.
         ///
         /// May fail if the platform does not support asynchronous usercalls.
         ///
@@ -786,7 +820,11 @@ pub mod async {
         /// [`FifoDescriptor`] is outside the enclave.
         ///
         /// [`FifoDescriptor`]: async/struct.FifoDescriptor.html
-        pub fn async_queues(usercall_queue: *mut FifoDescriptor<Usercall>, return_queue: *mut FifoDescriptor<Return>) -> Result { unimplemented!() }
+        pub fn async_queues(
+            usercall_queue: *mut FifoDescriptor<Usercall>,
+            return_queue: *mut FifoDescriptor<Return>,
+            cancel_queue: *mut FifoDescriptor<Cancel>
+        ) -> Result { unimplemented!() }
     }
 }
 
