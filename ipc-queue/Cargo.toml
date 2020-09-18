@@ -15,8 +15,12 @@ categories = ["asynchronous"]
 
 [dependencies]
 fortanix-sgx-abi = { version = "0.3.0", path = "../fortanix-sgx-abi" }
-lazy_static = "1.4"
+static_assertions = "1.1.0"
 
-[dev-dependencies]
+[target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
 futures = { version = "0.3", features = ["compat", "io-compat"] }
 tokio = { version = "0.2", features = ["full"] }
+
+[package.metadata.fortanix-sgx]
+# set number of threads so tests can run properly
+threads=120

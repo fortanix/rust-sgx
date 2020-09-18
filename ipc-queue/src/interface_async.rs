@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use crate::fifo::*;
 use fortanix_sgx_abi::FifoDescriptor;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
@@ -14,57 +13,49 @@ unsafe impl<T: Send, S: Sync> Sync for AsyncSender<T, S> {}
 impl<T, S: Clone> Clone for AsyncSender<T, S> {
     fn clone(&self) -> Self {
         Self {
-            descriptor: self.descriptor.clone(),
+            inner: self.inner.clone(),
             synchronizer: self.synchronizer.clone(),
         }
     }
 }
 
-impl<T: WithAtomicId, S: AsyncSynchronizer> AsyncSender<T, S> {
-    pub fn new(descriptor: FifoDescriptor<T>, synchronizer: S) -> Self {
-        Self {
-            descriptor,
-            synchronizer,
-        }
-    }
-
-    pub async fn send(&self, val: &T) -> Result<(), SendError> {
+impl<T: Identified, S: AsyncSynchronizer> AsyncSender<T, S> {
+    pub async fn send(&self, mut val: T) -> Result<(), SendError> {
         loop {
-            match try_send_impl(&self.descriptor, val) {
+            val = match self.inner.try_send_impl(val) {
                 Ok(wake_receiver) => {
                     if wake_receiver {
-                        self.synchronizer.notify(QueueEvent::NotEmpty).await;
+                        self.synchronizer.notify(QueueEvent::NotEmpty);
                     }
                     return Ok(());
                 }
-                Err(TrySendError::QueueFull) => {
+                Err((TrySendError::QueueFull, val)) => {
                     self.synchronizer
                         .wait(QueueEvent::NotFull).await
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
+                    val
                 }
-            }
+            };
         }
+    }
+
+    /// Consumes `self` and returns a FifoDescriptor.
+    /// **NOTE:** this function leaks the internal storage to ensure that the
+    /// pointers in the resulting descriptor remain valid.
+    pub fn into_descriptor(self) -> FifoDescriptor<T> {
+        self.inner.into_descriptor()
     }
 }
 
 unsafe impl<T: Send, S: Send> Send for AsyncReceiver<T, S> {}
 
-impl<T: WithAtomicId, S: AsyncSynchronizer> AsyncReceiver<T, S> {
-    /// Panics if there is an existing (sync or async) receiver for the same queue.
-    pub fn new(descriptor: FifoDescriptor<T>, synchronizer: S) -> Self {
-        RECEIVER_TRACKER.new_receiver(descriptor.data as usize);
-        Self {
-            descriptor,
-            synchronizer,
-        }
-    }
-
+impl<T: Identified, S: AsyncSynchronizer> AsyncReceiver<T, S> {
     pub async fn recv(&self) -> Result<T, RecvError> {
         loop {
-            match try_recv_impl(&self.descriptor) {
+            match self.inner.try_recv_impl() {
                 Ok((val, wake_sender)) => {
                     if wake_sender {
-                        self.synchronizer.notify(QueueEvent::NotFull).await;
+                        self.synchronizer.notify(QueueEvent::NotFull);
                     }
                     return Ok(val);
                 }
@@ -76,17 +67,19 @@ impl<T: WithAtomicId, S: AsyncSynchronizer> AsyncReceiver<T, S> {
             }
         }
     }
-}
 
-impl<T, S> Drop for AsyncReceiver<T, S> {
-    fn drop(&mut self) {
-        RECEIVER_TRACKER.drop_receiver(self.descriptor.data as usize);
+    /// Consumes `self` and returns a FifoDescriptor.
+    /// **NOTE:** this function leaks the internal storage to ensure that the
+    /// pointers in the resulting descriptor remain valid.
+    pub fn into_descriptor(self) -> FifoDescriptor<T> {
+        self.inner.into_descriptor()
     }
 }
 
+#[cfg(not(target_env = "sgx"))]
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use crate::test_support::*;
     use futures::future::FutureExt;
     use futures::lock::Mutex;
@@ -94,29 +87,26 @@ mod tests {
 
     async fn do_single_sender(len: usize, n: u64) {
         let s = TestAsyncSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(len);
-        let tx = fifo.async_sender(s.clone());
-        let rx = fifo.async_receiver(s);
+        let (tx, rx) = bounded_async(len, s);
         let local = tokio::task::LocalSet::new();
 
         let h1 = local.spawn_local(async move {
             for i in 0..n {
-                tx.send(&TestValue::new(i + 1, i)).await.unwrap();
+                tx.send(TestValue { id: i + 1, val: i }).await.unwrap();
             }
         });
 
         let h2 = local.spawn_local(async move {
             for i in 0..n {
                 let v = rx.recv().await.unwrap();
-                assert_eq!(v.get_id(), i + 1);
-                assert_eq!(v.get_val(), i);
+                assert_eq!(v.id, i + 1);
+                assert_eq!(v.val, i);
             }
         });
 
         local.await;
         h1.await.unwrap();
         h2.await.unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[tokio::test]
@@ -129,17 +119,16 @@ mod tests {
 
     async fn do_multi_sender(len: usize, n: u64, senders: u64) {
         let s = TestAsyncSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(len);
-        let rx = fifo.async_receiver(s.clone());
+        let (tx, rx) = bounded_async(len, s);
         let mut handles = Vec::with_capacity(senders as _);
         let local = tokio::task::LocalSet::new();
 
         for t in 0..senders {
-            let tx = fifo.async_sender(s.clone());
+            let tx = tx.clone();
             handles.push(local.spawn_local(async move {
                 for i in 0..n {
                     let id = t * n + i + 1;
-                    tx.send(&TestValue::new(id, i)).await.unwrap();
+                    tx.send(TestValue { id, val: i }).await.unwrap();
                 }
             }));
         }
@@ -154,7 +143,6 @@ mod tests {
         for h in handles {
             h.await.unwrap();
         }
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[tokio::test]
@@ -223,13 +211,11 @@ mod tests {
             }.boxed()
         }
 
-        fn notify(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = ()> + '_>> {
-            async move {
-                let _ = match event {
-                    QueueEvent::NotEmpty => self.not_empty.send(()),
-                    QueueEvent::NotFull => self.not_full.send(()),
-                };
-            }.boxed()
+        fn notify(&self, event: QueueEvent) {
+            let _ = match event {
+                QueueEvent::NotEmpty => self.not_empty.send(()),
+                QueueEvent::NotFull => self.not_full.send(()),
+            };
         }
     }
 }

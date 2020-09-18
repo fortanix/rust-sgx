@@ -38,8 +38,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn read_alloc(
@@ -63,8 +62,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 }
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn write(
@@ -82,8 +80,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn flush(
@@ -93,8 +90,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.flush(fd).await.to_sgx_result());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn close(
@@ -104,8 +100,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.close(fd).await);
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn bind_stream(
@@ -124,8 +119,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn accept_stream(
@@ -146,8 +140,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                     .to_sgx_result());
                 return (self, ret);
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn connect_stream(
@@ -173,8 +166,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn launch_thread(
@@ -183,8 +175,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.launch_thread().to_sgx_result());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn exit(
@@ -194,8 +185,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = self.0.exit(panic);
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn wait(
@@ -211,8 +201,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
 
             let ret = Ok(self.0.wait(event_mask, timeout).await.to_sgx_result());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn send(
@@ -223,8 +212,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.send(event_set, tcs).to_sgx_result());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn insecure_time(
@@ -233,8 +221,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.insecure_time());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn alloc(
@@ -246,8 +233,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.alloc(size, alignment).to_sgx_result());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn free(
@@ -259,8 +245,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.free(ptr, size, alignment).unwrap());
             return (self, ret);
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 
     fn async_queues(
@@ -269,26 +254,18 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         return_queue: *mut FifoDescriptor<Return>,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
-            let queues = (|| -> IoResult<_> {
-                unsafe {
-                    let uq = usercall_queue.as_mut().ok_or(IoError::from(IoErrorKind::InvalidInput))?;
-                    let rq = return_queue.as_mut().ok_or(IoError::from(IoErrorKind::InvalidInput))?;
-                    Ok((uq, rq))
-                }
-            })();
-            let (uq, rq) = match queues {
-                Err(e) => {
-                    let ret: IoResult<()> = Err(e);
-                    return (self, Ok(ret.to_sgx_result()));
-                }
-                Ok((uq, rq)) => (uq, rq),
-            };
-            match self.0.async_queues(uq, rq).await {
-                Ok(()) => (self, Ok(Ok(()).to_sgx_result())),
-                Err(e) => (self, Err(e)),
+            unsafe {
+                let ret = match (usercall_queue.as_mut(), return_queue.as_mut()) {
+                    (Some(usercall_queue), Some(return_queue)) => {
+                        self.0.async_queues(usercall_queue, return_queue).await.map(Ok)
+                    },
+                    _ => {
+                        Ok(Err(IoErrorKind::InvalidInput.into()))
+                    },
+                };
+                return (self, ret.map(|v| v.to_sgx_result()));
             }
-        }
-            .boxed_local()
+        }.boxed_local()
     }
 }
 

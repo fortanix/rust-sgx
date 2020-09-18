@@ -20,7 +20,7 @@ use fortanix_sgx_abi::*;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
 use futures::StreamExt;
-use ipc_queue::{self, Fifo, QueueEvent};
+use ipc_queue::{self, QueueEvent};
 use sgxs::loader::Tcs as SgxsTcs;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
@@ -64,7 +64,7 @@ enum UsercallSendData {
 
 enum UsercallHandleData {
     Sync(tcs::Usercall<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Usercall, FifoDescriptor<Return>, async_pubsub::Sender<()>),
+    Async(Usercall),
 }
 
 type EnclaveResult = StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>>;
@@ -598,9 +598,8 @@ pub(crate) struct EnclaveState {
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
-    usercall_queue: Mutex<Fifo<Usercall>>,
-    return_queue: Mutex<Fifo<Return>>,
     fifo_descriptors: Mutex<Option<FifoDescriptors>>,
+    return_queue_tx: Mutex<Option<ipc_queue::AsyncSender<Return, QueueSynchronizer>>>,
 }
 
 struct Work {
@@ -683,13 +682,6 @@ impl EnclaveState {
             threads_queue.push(Self::event_queue_add_tcs(&mut event_queues, thread));
         }
 
-        let mut usercall_queue = Fifo::new(USERCALL_QUEUE_SIZE);
-        let mut return_queue = Fifo::new(RETURN_QUEUE_SIZE);
-        let fifo_descriptors = FifoDescriptors {
-            usercall_queue: usercall_queue.descriptor(),
-            return_queue: return_queue.descriptor(),
-        };
-
         Arc::new(EnclaveState {
             kind,
             event_queues,
@@ -699,9 +691,8 @@ impl EnclaveState {
             usercall_ext,
             threads_queue,
             forward_panics,
-            usercall_queue: Mutex::new(usercall_queue),
-            return_queue: Mutex::new(return_queue),
-            fifo_descriptors: Mutex::new(Some(fifo_descriptors)),
+            fifo_descriptors: Mutex::new(None),
+            return_queue_tx: Mutex::new(None),
         })
     }
 
@@ -713,7 +704,7 @@ impl EnclaveState {
     ) {
         let (parameters, mode, tcs) = match handle_data {
             UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode, Some(tcs)),
-            UsercallHandleData::Async(ref usercall, _, _)          => (usercall.args, EnclaveEntry::ExecutableNonMain, None),
+            UsercallHandleData::Async(ref usercall)                => (usercall.args, EnclaveEntry::ExecutableNonMain, None),
         };
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
@@ -730,18 +721,13 @@ impl EnclaveState {
                             entry: CoEntry::Resume(usercall, ret),
                         }).expect("Work sender couldn't send data to receiver");
                     }
-                    UsercallHandleData::Async(usercall, return_queue_descriptor, sync_usercall_tx) => {
-                        let synchronizer = QueueSynchronizer {
-                            queue: Queue::Return,
-                            enclave,
-                            subscription: Mutex::new(sync_usercall_tx.subscribe()),
-                        };
-                        let return_queue_tx = ipc_queue::AsyncSender::new(return_queue_descriptor, synchronizer);
+                    UsercallHandleData::Async(usercall) => {
+                        let return_queue_tx = enclave.return_queue_tx.lock().await.clone().expect("return_queue_tx not initialized");
                         let ret = Return {
                             id: usercall.id,
                             value: ret,
                         };
-                        return_queue_tx.send(&ret).await.unwrap();
+                        return_queue_tx.send(ret).await.unwrap();
                     }
                 }
                 return;
@@ -754,7 +740,7 @@ impl EnclaveState {
                         trap_attached_debugger(usercall.tcs_address() as _).await;
                         EnclavePanic::from(debug_buf.into_inner())
                     }
-                    UsercallHandleData::Async(_, _, _) => {
+                    UsercallHandleData::Async(_) => {
                         // FIXME: find a better panic message
                         EnclavePanic::DebugStr("async exit with a panic".to_owned())
                     }
@@ -829,34 +815,24 @@ impl EnclaveState {
         };
         let enclave_clone = enclave.clone();
         let io_future = async move {
-            // This broadcast channel is used to notify enclave-runner of any
-            // synchronous usercalls made by the enclave for the purpose of
-            // synchronizing access to usercall and return queues.
-            // The size of this channel should not matter since recv() can
-            // return RecvError::Lagged.
-            let (sync_usercall_tx, sync_usercall_rx) = async_pubsub::channel(128);
+            let (usercall_queue_synchronizer, return_queue_synchronizer, sync_usercall_tx) = QueueSynchronizer::new(enclave_clone.clone());
 
-            let enclave = enclave_clone.clone();
-            let async_usercall_receiver = async move {
-                let usercall_queue_rx = {
-                    let synchronizer = QueueSynchronizer {
-                        queue: Queue::Usercall,
-                        enclave: enclave.clone(),
-                        subscription: Mutex::new(sync_usercall_rx),
-                    };
-                    let mut usercall_queue = enclave.usercall_queue.lock().await;
-                    usercall_queue.async_receiver(synchronizer)
-                };
+            let (usercall_queue_tx, usercall_queue_rx) = ipc_queue::bounded_async(USERCALL_QUEUE_SIZE, usercall_queue_synchronizer);
+            let (return_queue_tx, return_queue_rx) = ipc_queue::bounded_async(RETURN_QUEUE_SIZE, return_queue_synchronizer);
+
+            let fifo_descriptors = FifoDescriptors {
+                usercall_queue: usercall_queue_tx.into_descriptor(),
+                return_queue: return_queue_rx.into_descriptor(),
+            };
+
+            *enclave_clone.fifo_descriptors.lock().await = Some(fifo_descriptors);
+            *enclave_clone.return_queue_tx.lock().await = Some(return_queue_tx);
+
+            tokio::task::spawn_local(async move {
                 while let Ok(usercall) = usercall_queue_rx.recv().await {
                     let _ = io_queue_send.send(UsercallSendData::Async(usercall));
                 }
-            };
-            tokio::task::spawn_local(async_usercall_receiver);
-
-            let return_queue_descriptor = {
-                let mut return_queue = enclave_clone.return_queue.lock().await;
-                return_queue.descriptor()
-            };
+            });
 
             let mut recv_queue = io_queue_receive.into_future();
             while let (Some(work), stream) = recv_queue.await {
@@ -865,7 +841,7 @@ impl EnclaveState {
                 let tx_return_channel = tx_return_channel.clone();
                 match work {
                     UsercallSendData::Async(usercall) => {
-                        let uchd = UsercallHandleData::Async(usercall, return_queue_descriptor, sync_usercall_tx.clone());
+                        let uchd = UsercallHandleData::Async(usercall);
                         let fut = Self::handle_usercall(enclave_clone, work_sender.clone(), tx_return_channel, uchd);
                         tokio::task::spawn_local(fut);
                     }
@@ -1609,6 +1585,43 @@ struct QueueSynchronizer {
     enclave: Arc<EnclaveState>,
     // the Mutex is uncontested and is used for providing interior mutability.
     subscription: Mutex<async_pubsub::Receiver<()>>,
+    // this is only used to create a new Receiver in the Clone implementation
+    subscription_maker: async_pubsub::Sender<()>,
+}
+
+impl QueueSynchronizer {
+    fn new(enclave: Arc<EnclaveState>) -> (Self, Self, async_pubsub::Sender<()>) {
+        // This broadcast channel is used to notify enclave-runner of any
+        // synchronous usercalls made by the enclave for the purpose of
+        // synchronizing access to usercall and return queues.
+        // The size of this channel should not matter since recv() can
+        // return RecvError::Lagged.
+        let (tx, rx) = async_pubsub::channel(128);
+        let usercall_queue_synchronizer = QueueSynchronizer {
+            queue: Queue::Usercall,
+            enclave: enclave.clone(),
+            subscription: Mutex::new(rx),
+            subscription_maker: tx.clone(),
+        };
+        let return_queue_synchronizer = QueueSynchronizer {
+            queue: Queue::Return,
+            enclave,
+            subscription: Mutex::new(tx.subscribe()),
+            subscription_maker: tx.clone(),
+        };
+        (usercall_queue_synchronizer, return_queue_synchronizer, tx)
+    }
+}
+
+impl Clone for QueueSynchronizer {
+    fn clone(&self) -> Self {
+        Self {
+            queue: self.queue,
+            enclave: self.enclave.clone(),
+            subscription: Mutex::new(self.subscription_maker.subscribe()),
+            subscription_maker: self.subscription_maker.clone(),
+        }
+    }
 }
 
 impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
@@ -1630,7 +1643,7 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
         }.boxed_local()
     }
 
-    fn notify(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = ()> + '_>> {
+    fn notify(&self, event: QueueEvent) {
         let ev = match (self.queue, event) {
             (Queue::Usercall, QueueEvent::NotEmpty) => panic!("enclave runner should not send on the usercall queue"),
             (Queue::Return, QueueEvent::NotFull)    => panic!("enclave runner should not receive on the return queue"),
@@ -1640,10 +1653,8 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
         // When the enclave needs to wait on a queue, it executes the wait() usercall synchronously,
         // specifying EV_USERCALLQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, or both in the event_mask.
         // Userspace will wake any or all threads waiting on the appropriate event when it is triggered.
-        async move {
-            for queue in self.enclave.event_queues.values() {
-                let _ = queue.unbounded_send(ev as _);
-            }
-        }.boxed_local()
+        for queue in self.enclave.event_queues.values() {
+            let _ = queue.unbounded_send(ev as _);
+        }
     }
 }

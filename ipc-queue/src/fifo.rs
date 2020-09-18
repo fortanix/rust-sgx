@@ -5,17 +5,48 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use fortanix_sgx_abi::{FifoDescriptor, Return, Usercall};
-use lazy_static::lazy_static;
-use std::collections::HashSet;
+use fortanix_sgx_abi::FifoDescriptor;
+use std::cell::UnsafeCell;
 use std::mem;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-impl<T: WithAtomicId> Fifo<T> {
-    /// panics if len is not a power of two.
-    pub fn new(len: usize) -> Self {
-        assert!(len.is_power_of_two(), "Fifo len should be a power of two");
+pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
+where
+    T: Identified,
+    S: Synchronizer,
+{
+    let arc = Arc::new(Fifo::new(len));
+    let inner = FifoInner::from_arc(arc);
+    let tx = Sender { inner: inner.clone(), synchronizer: s.clone() };
+    let rx = Receiver { inner, synchronizer: s };
+    (tx, rx)
+}
+
+pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
+where
+    T: Identified,
+    S: AsyncSynchronizer,
+{
+    let arc = Arc::new(Fifo::new(len));
+    let inner = FifoInner::from_arc(arc);
+    let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
+    let rx = AsyncReceiver { inner, synchronizer: s };
+    (tx, rx)
+}
+
+struct Fifo<T> {
+    data: Box<[T]>,
+    offsets: Box<AtomicUsize>,
+}
+
+impl<T: Identified> Fifo<T> {
+    fn new(len: usize) -> Self {
+        assert!(
+            len.is_power_of_two(),
+            "Fifo len should be a power of two"
+        );
         let mut data = Vec::with_capacity(len);
         data.resize_with(len, T::empty);
         Self {
@@ -23,188 +54,166 @@ impl<T: WithAtomicId> Fifo<T> {
             offsets: Box::new(AtomicUsize::new(0)),
         }
     }
+}
 
-    pub fn descriptor(&mut self) -> FifoDescriptor<T> {
+enum Storage<T> {
+    Shared(Arc<Fifo<T>>),
+    Static,
+}
+
+impl<T> Clone for Storage<T> {
+    fn clone(&self) -> Self {
+        match self {
+            Storage::Shared(arc) => Storage::Shared(arc.clone()),
+            Storage::Static => Storage::Static,
+        }
+    }
+}
+
+pub(crate) struct FifoInner<T> {
+    data: NonNull<UnsafeCell<[T]>>,
+    offsets: NonNull<AtomicUsize>,
+    storage: Storage<T>,
+}
+
+impl<T> Clone for FifoInner<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            offsets: self.offsets.clone(),
+            storage: self.storage.clone(),
+        }
+    }
+}
+
+impl<T: Identified> FifoInner<T> {
+    pub(crate) unsafe fn from_descriptor(descriptor: FifoDescriptor<T>) -> Self {
+        assert!(
+            descriptor.len.is_power_of_two(),
+            "Fifo len should be a power of two"
+        );
+        let data_slice = std::slice::from_raw_parts_mut(descriptor.data, descriptor.len);
+        Self {
+            data: NonNull::new_unchecked(data_slice as *mut [T] as *mut UnsafeCell<[T]>),
+            offsets: NonNull::new_unchecked(descriptor.offsets as *mut AtomicUsize),
+            storage: Storage::Static,
+        }
+    }
+
+    fn from_arc(fifo: Arc<Fifo<T>>) -> Self {
+        unsafe {
+            Self {
+                data: NonNull::new_unchecked(
+                    fifo.data.as_ref() as *const [T] as *mut [T] as *mut UnsafeCell<[T]>
+                ),
+                offsets: NonNull::new_unchecked(
+                    fifo.offsets.as_ref() as *const AtomicUsize as *mut AtomicUsize
+                ),
+                storage: Storage::Shared(fifo),
+            }
+        }
+    }
+
+    /// Consumes `self` and returns a FifoDescriptor. If `self` was created
+    /// using `from_arc`, it leaks the internal `Arc` copy to ensure the
+    /// resulting descriptor is valid for `'static` lifetime.
+    pub(crate) fn into_descriptor(self) -> FifoDescriptor<T> {
+        match self.storage {
+            Storage::Shared(arc) => mem::forget(arc),
+            Storage::Static => {}
+        }
+        let data_mut = unsafe { &mut *self.data.as_ref().get() };
         FifoDescriptor {
-            data: self.data.as_mut().as_mut_ptr(),
-            len: self.data.len(),
-            offsets: self.offsets.as_ref() as _,
+            data: data_mut.as_mut_ptr(),
+            len: data_mut.len(),
+            offsets: self.offsets.as_ptr(),
         }
     }
 
-    pub fn sender<S: Synchronizer>(&mut self, synchronizer: S) -> Sender<T, S> {
-        Sender::new(self.descriptor(), synchronizer)
+    fn slot(&self, index: usize) -> &mut T {
+        let data_mut = unsafe { &mut *self.data.as_ref().get() };
+        &mut data_mut[index]
     }
 
-    /// Panics if there is an existing (sync or async) receiver for the same queue.
-    pub fn receiver<S: Synchronizer>(&mut self, synchronizer: S) -> Receiver<T, S> {
-        Receiver::new(self.descriptor(), synchronizer)
+    fn data_len(&self) -> usize {
+        let data = unsafe { &*self.data.as_ref().get() };
+        data.len()
     }
 
-    pub fn async_sender<S: AsyncSynchronizer>(&mut self, synchronizer: S) -> AsyncSender<T, S> {
-        AsyncSender::new(self.descriptor(), synchronizer)
+    fn offsets(&self) -> &AtomicUsize {
+        unsafe { self.offsets.as_ref() }
     }
 
-    /// Panics if there is an existing (sync or async) receiver for the same queue.
-    pub fn async_receiver<S: AsyncSynchronizer>(&mut self, synchronizer: S) -> AsyncReceiver<T, S> {
-        AsyncReceiver::new(self.descriptor(), synchronizer)
-    }
-}
+    pub(crate) fn try_send_impl(&self, val: T) -> Result</*wake up reader:*/ bool, (TrySendError, T)> {
+        let (new, was_empty) = loop {
+            // 1. Load the current offsets.
+            let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
+            let was_empty = current.is_empty();
 
-pub(crate) fn try_send_impl<T: WithAtomicId>(descriptor: &FifoDescriptor<T>, val: &T) -> Result</*wake up reader:*/ bool, TrySendError> {
-    let (new, was_empty) = loop {
+            // 2. If the queue is full, wait, then go to step 1.
+            if current.is_full() {
+                return Err((TrySendError::QueueFull, val));
+            }
+
+            // 3. Add 1 to the write offset and do an atomic compare-and-swap (CAS)
+            //    with the current offsets. If the CAS was not succesful, go to step 1.
+            let new = current.increment_write_offset();
+            let current = current.as_usize();
+            let prev = self.offsets().compare_and_swap(current, new.as_usize(), Ordering::SeqCst);
+            if prev == current {
+                break (new, was_empty);
+            }
+        };
+
+        // 4. Write the data, then the `id`.
+        let slot = self.slot(new.write_offset());
+        slot.copy_except_id(&val);
+        slot.set_id(val.get_id_non_atomic());
+
+        // 5. If the queue was empty in step 1, signal the reader to wake up.
+        Ok(was_empty)
+    }
+
+    pub(crate) fn try_recv_impl(&self) -> Result<(T, /*wake up writer:*/ bool), TryRecvError> {
         // 1. Load the current offsets.
-        let current = unsafe {
-            let offsets = (*descriptor.offsets).load(Ordering::SeqCst);
-            Offsets::new(offsets, descriptor.len as u32)
+        let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
+        let was_full = current.is_full();
+
+        // 2. If the queue is empty, wait, then go to step 1.
+        if current.is_empty() {
+            return Err(TryRecvError::QueueEmpty);
+        }
+
+        // 3. Add 1 to the read offset.
+        let new = current.increment_read_offset();
+
+        let slot = loop {
+            // 4. Read the `id` at the new read offset.
+            let slot = self.slot(new.read_offset());
+            let id = slot.get_id();
+
+            // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
+            //    expected to be written imminently.
+            if id != 0 {
+                break slot;
+            }
         };
-        let was_empty = current.is_empty();
 
-        // 2. If the queue is full, wait, then go to step 1.
-        if current.is_full() {
-            return Err(TrySendError::QueueFull);
-        }
+        // 6. Read the data, then store `0` in the `id`.
+        let val = *slot;
+        slot.set_id(0);
 
-        // 3. Add 1 to the write offset and do an atomic compare-and-swap (CAS)
-        //    with the current offsets. If the CAS was not succesful, go to step 1.
-        let new = current.increment_write_offset();
-        let current = current.as_usize();
-        let prev = unsafe {
-            (*descriptor.offsets).compare_and_swap(current, new.as_usize(), Ordering::SeqCst)
-        };
-        if prev == current {
-            break (new, was_empty);
-        }
-    };
-
-    // 4. Write the data, then the `id`.
-    let slot = unsafe { &mut *descriptor.data.add(new.write_offset()) };
-    slot.copy_except_id(&val);
-    slot.set_id(val.get_id());
-
-    // 5. If the queue was empty in step 1, signal the reader to wake up.
-    Ok(was_empty)
-}
-
-pub(crate) fn try_recv_impl<T: WithAtomicId>(descriptor: &FifoDescriptor<T>) -> Result<(T, /*wake up writer:*/ bool), TryRecvError> {
-    // 1. Load the current offsets.
-    let current = unsafe {
-        let offsets = (*descriptor.offsets).load(Ordering::SeqCst);
-        Offsets::new(offsets, descriptor.len as u32)
-    };
-    let was_full = current.is_full();
-
-    // 2. If the queue is empty, wait, then go to step 1.
-    if current.is_empty() {
-        return Err(TryRecvError::QueueEmpty);
-    }
-
-    // 3. Add 1 to the read offset.
-    let new = current.increment_read_offset();
-
-    let slot = loop {
-        // 4. Read the `id` at the new read offset.
-        let slot = unsafe { &mut *descriptor.data.add(new.read_offset()) };
-        let id = slot.get_id();
-
-        // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
-        //    expected to be written imminently.
-        if id != 0 {
-            break slot;
-        }
-    };
-
-    // 6. Read the data, then store `0` in the `id`.
-    let mut val = T::empty();
-    val.copy_except_id(slot);
-    val.set_id(slot.get_id());
-    slot.set_id(0);
-
-    // 7. Store the new read offset.
-    let after = unsafe {
-        fetch_adjust(
-            &*descriptor.offsets,
+        // 7. Store the new read offset.
+        let after = fetch_adjust(
+            self.offsets(),
             new.read as isize - current.read as isize,
             Ordering::SeqCst,
-        )
-    };
+        );
 
-    // 8. If the queue was full in step 1, signal the writer to wake up.
-    //    ... or became full during read
-    let became_full = Offsets::new(after, descriptor.len as u32).is_full();
-    Ok((val, was_full || became_full))
-}
-
-lazy_static! {
-    pub(crate) static ref RECEIVER_TRACKER: ReceiverTracker = ReceiverTracker::new();
-}
-
-pub(crate) struct ReceiverTracker(Mutex<HashSet<usize>>);
-
-impl ReceiverTracker {
-    fn new() -> Self {
-        Self(Mutex::new(HashSet::new()))
-    }
-
-    pub(crate) fn new_receiver(&self, data_ptr: usize) {
-        let already_exists = {
-            let mut receivers = self.0.lock().unwrap();
-            !receivers.insert(data_ptr)
-        };
-        if already_exists {
-            panic!("Multiple receivers for the same Fifo is not allowed.");
-        }
-    }
-
-    pub(crate) fn drop_receiver(&self, data_ptr: usize) {
-        let mut receivers = self.0.lock().unwrap();
-        receivers.remove(&data_ptr);
-    }
-}
-
-// Note: we cannot have an AtomicU64 id in Usercall/Return types since they
-// need to be Copy due to requirements of `UserSafeSized` (see definition of
-// this trait in rust/src/libstd/sys/sgx/abi/usercalls/alloc.rs). Therefore
-// all the transmutes in the implementation below.
-impl WithAtomicId for Usercall {
-    fn empty() -> Self {
-        Self {
-            id: 0,
-            args: (0, 0, 0, 0, 0),
-        }
-    }
-    fn get_id(&self) -> u64 {
-        let id: &AtomicU64 = unsafe { mem::transmute(&self.id) };
-        id.load(Ordering::SeqCst)
-    }
-    fn set_id(&mut self, new_id: u64) {
-        let id: &AtomicU64 = unsafe { mem::transmute(&self.id) };
-        id.store(new_id, Ordering::SeqCst);
-    }
-    fn copy_except_id(&mut self, from: &Self) {
-        let Self { id: _, args } = from;
-        self.args = *args;
-    }
-}
-
-impl WithAtomicId for Return {
-    fn empty() -> Self {
-        Self {
-            id: 0,
-            value: (0, 0),
-        }
-    }
-    fn get_id(&self) -> u64 {
-        let id: &AtomicU64 = unsafe { mem::transmute(&self.id) };
-        id.load(Ordering::SeqCst)
-    }
-    fn set_id(&mut self, new_id: u64) {
-        let id: &AtomicU64 = unsafe { mem::transmute(&self.id) };
-        id.store(new_id, Ordering::SeqCst);
-    }
-    fn copy_except_id(&mut self, from: &Self) {
-        let Self { id: _, value } = from;
-        self.value = *value;
+        // 8. If the queue was full in step 1, signal the writer to wake up.
+        //    ... or became full during read
+        let became_full = Offsets::new(after, self.data_len() as u32).is_full();
+        Ok((val, was_full || became_full))
     }
 }
 
@@ -223,10 +232,16 @@ pub(crate) struct Offsets {
 }
 
 impl Offsets {
+    // This implementation only works on 64-bit platforms.
+    fn _assert_usize_is_eight_bytes() -> [u8; 8] {
+        [0u8; mem::size_of::<usize>()]
+    }
+
     pub(crate) fn new(offsets: usize, len: u32) -> Self {
+        debug_assert!(len.is_power_of_two());
         Self {
             write: (offsets >> 32) as u32,
-            read: (offsets & ((1 << 32) - 1)) as u32,
+            read: offsets as u32,
             len,
         }
     }
@@ -236,31 +251,31 @@ impl Offsets {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.read_offset() == self.write_offset() && self.read == self.write
+        self.read == self.write
     }
 
     pub(crate) fn is_full(&self) -> bool {
-        self.read_offset() == self.write_offset() && self.read != self.write
+        self.read != self.write && self.read_offset() == self.write_offset()
     }
 
     pub(crate) fn read_offset(&self) -> usize {
-        (self.read % self.len) as _
+        (self.read & (self.len - 1)) as _
     }
 
     pub(crate) fn write_offset(&self) -> usize {
-        (self.write % self.len) as _
+        (self.write & (self.len - 1)) as _
     }
 
     pub(crate) fn increment_read_offset(&self) -> Self {
         Self {
-            read: (self.read + 1) % (self.len * 2),
+            read: (self.read + 1) & (self.len * 2 - 1),
             ..*self
         }
     }
 
     pub(crate) fn increment_write_offset(&self) -> Self {
         Self {
-            write: (self.write + 1) % (self.len * 2),
+            write: (self.write + 1) & (self.len * 2 - 1),
             ..*self
         }
     }
@@ -274,54 +289,53 @@ mod tests {
     use std::sync::mpsc;
     use std::thread;
 
+    fn inner<T, S>(tx: Sender<T, S>) -> FifoInner<T> {
+        tx.inner
+    }
+
     #[test]
     fn basic1() {
-        let mut fifo = Fifo::<TestValue>::new(32);
-        let desc = fifo.descriptor();
-        assert!(try_recv_impl(&desc).is_err());
+        let (tx, _rx) = bounded(32, NoopSynchronizer);
+        let inner = inner(tx);
+        assert!(inner.try_recv_impl().is_err());
 
         for i in 1..=7 {
-            let wake = try_send_impl(&desc, &TestValue::new(i, i)).unwrap();
+            let wake = inner.try_send_impl(TestValue { id: i, val: i }).unwrap();
             assert!(if i == 1 { wake } else { !wake });
         }
 
         for i in 1..=7 {
-            let (v, wake) = try_recv_impl(&desc).unwrap();
+            let (v, wake) = inner.try_recv_impl().unwrap();
             assert!(!wake);
-            assert_eq!(v.get_id(), i);
-            assert_eq!(v.get_val(), i);
+            assert_eq!(v.id, i);
+            assert_eq!(v.val, i);
         }
-        assert!(try_recv_impl(&desc).is_err());
-        drop(fifo); // ensure the Fifo lives long enough
+        assert!(inner.try_recv_impl().is_err());
     }
 
     #[test]
     fn basic2() {
-        let mut fifo = Fifo::<TestValue>::new(8);
-        let desc = fifo.descriptor();
+        let (tx, _rx) = bounded(8, NoopSynchronizer);
+        let inner = inner(tx);
         for _ in 0..3 {
             for i in 1..=8 {
-                try_send_impl(&desc, &TestValue::new(i, i)).unwrap();
+                inner.try_send_impl(TestValue { id: i, val: i }).unwrap();
             }
-            assert!(try_send_impl(&desc, &TestValue::new(9, 9)).is_err());
+            assert!(inner.try_send_impl(TestValue { id: 9, val: 9 }).is_err());
 
             for i in 1..=8 {
-                let (v, wake) = try_recv_impl(&desc).unwrap();
+                let (v, wake) = inner.try_recv_impl().unwrap();
                 assert!(if i == 1 { wake } else { !wake });
-                assert_eq!(v.get_id(), i);
-                assert_eq!(v.get_val(), i);
+                assert_eq!(v.id, i);
+                assert_eq!(v.val, i);
             }
-            assert!(try_recv_impl(&desc).is_err());
+            assert!(inner.try_recv_impl().is_err());
         }
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
     fn multi_threaded() {
-        let s = NoopSynchronizer;
-        let mut fifo = Fifo::<TestValue>::new(32);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s.clone());
+        let (tx, rx) = bounded(32, NoopSynchronizer);
         assert!(rx.try_recv().is_err());
 
         let (signal_tx, signal_rx) = mpsc::channel();
@@ -329,7 +343,7 @@ mod tests {
         let h = thread::spawn(move || {
             for _ in 0..4 {
                 for i in 0..7 {
-                    tx.try_send(&TestValue::new(i + 1, i)).unwrap();
+                    tx.try_send(TestValue { id: i + 1, val: i }).unwrap();
                 }
                 signal_tx.send(()).unwrap();
             }
@@ -339,13 +353,12 @@ mod tests {
             signal_rx.recv().unwrap();
             for i in 0..7 {
                 let v = rx.try_recv().unwrap();
-                assert_eq!(v.get_id(), i + 1);
-                assert_eq!(v.get_val(), i);
+                assert_eq!(v.id, i + 1);
+                assert_eq!(v.val, i);
             }
         }
         assert!(rx.try_recv().is_err());
         h.join().unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
@@ -355,18 +368,6 @@ mod tests {
         assert_eq!(x.load(Ordering::SeqCst), 5);
         fetch_adjust(&x, -3, Ordering::SeqCst);
         assert_eq!(x.load(Ordering::SeqCst), 2);
-    }
-
-    #[test]
-    #[should_panic]
-    fn multiple_receivers_not_allowed() {
-        let s = NoopSynchronizer;
-        let mut fifo = Fifo::<TestValue>::new(4);
-        let r1 = fifo.receiver(s.clone());
-        let r2 = fifo.receiver(s.clone());
-        drop(r1);
-        drop(r2);
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]

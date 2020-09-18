@@ -1006,7 +1006,7 @@ version = "0.1.0"
 dependencies = [
  "fortanix-sgx-abi",
  "futures 0.3.4",
- "lazy_static 1.4.0",
+ "static_assertions",
  "tokio 0.2.13",
 ]
 
@@ -2203,6 +2203,12 @@ dependencies = [
  "redox_syscall",
  "winapi 0.3.8",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string"
