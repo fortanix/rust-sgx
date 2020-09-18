@@ -4,46 +4,39 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use fortanix_sgx_abi::FifoDescriptor;
+#![cfg_attr(target_env = "sgx", feature(sgx_platform))]
+
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::AtomicUsize;
 
 mod fifo;
 mod interface_sync;
 mod interface_async;
+mod sealed;
 #[cfg(test)]
 mod test_support;
 
-/// A FIFO queue implemented according to [fortanix_sgx_abi specifications].
-///
-/// **NOTE:** Sender and reciever types use FifoDescriptor internally which
-/// does not hold a reference to the Fifo instance, therefore users of these
-/// types must ensure that the Fifo instance lives at least as long as all
-/// senders and receivers for that queue.
-///
-/// **NOTE:** sync and async sender/receiver types should not be used together.
-/// i.e. either use sync senders/receivers or the async ones, but don't mix
-/// sync and async. The interfaces are designed for use in SGX enclaves (sync)
-/// and enclave runner (async).
-///
-/// [fortanix_sgx_abi specifications]: https://edp.fortanix.com/docs/api/fortanix_sgx_abi/async/struct.FifoDescriptor.html
-pub struct Fifo<T> {
-    data: Box<[T]>,
-    offsets: Box<AtomicUsize>,
+use self::fifo::FifoInner;
+
+pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
+where
+    T: Identified,
+    S: Synchronizer,
+{
+    self::fifo::bounded(len, s)
 }
 
-/// This is used as a bound on `T` in `Fifo<T>` and related types.
-/// Types that implement this trait must have an `id: AtomicU64` field and use
-/// `Ordering::SeqCst` in `get_id()` and `set_id()`.
-pub trait WithAtomicId {
-    /// Must set the `id` field to 0.
-    fn empty() -> Self;
-    fn get_id(&self) -> u64;
-    fn set_id(&mut self, id: u64);
-    /// Copy everything except the `id` field from another instance to self.
-    fn copy_except_id(&mut self, from: &Self);
+pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
+where
+    T: Identified,
+    S: AsyncSynchronizer,
+{
+    self::fifo::bounded_async(len, s)
 }
+
+/// This trait is used as a bound on types that can be sent and received in
+/// channels defined in this crate.
+pub trait Identified: sealed::Identified {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum QueueEvent {
@@ -76,7 +69,7 @@ pub enum SynchronizationError {
     ChannelClosed,
 }
 
-pub trait Synchronizer {
+pub trait Synchronizer: Clone {
     /// block execution until the specified event happens.
     fn wait(&self, event: QueueEvent) -> Result<(), SynchronizationError>;
 
@@ -85,29 +78,29 @@ pub trait Synchronizer {
 }
 
 pub struct Sender<T, S> {
-    descriptor: FifoDescriptor<T>,
+    inner: FifoInner<T>,
     synchronizer: S,
 }
 
 pub struct Receiver<T, S> {
-    descriptor: FifoDescriptor<T>,
+    inner: FifoInner<T>,
     synchronizer: S,
 }
 
-pub trait AsyncSynchronizer {
+pub trait AsyncSynchronizer: Clone {
     /// block execution until the specified event happens.
     fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = Result<(), SynchronizationError>> + '_>>;
 
     /// notify all waiters blocked on the specified event for the same Fifo.
-    fn notify(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = ()> + '_>>;
+    fn notify(&self, event: QueueEvent);
 }
 
 pub struct AsyncSender<T, S> {
-    descriptor: FifoDescriptor<T>,
+    inner: FifoInner<T>,
     synchronizer: S,
 }
 
 pub struct AsyncReceiver<T, S> {
-    descriptor: FifoDescriptor<T>,
+    inner: FifoInner<T>,
     synchronizer: S,
 }

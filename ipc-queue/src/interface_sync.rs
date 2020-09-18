@@ -14,61 +14,82 @@ unsafe impl<T: Send, S: Sync> Sync for Sender<T, S> {}
 impl<T, S: Clone> Clone for Sender<T, S> {
     fn clone(&self) -> Self {
         Self {
-            descriptor: self.descriptor.clone(),
+            inner: self.inner.clone(),
             synchronizer: self.synchronizer.clone(),
         }
     }
 }
 
-impl<T: WithAtomicId, S: Synchronizer> Sender<T, S> {
-    pub fn new(descriptor: FifoDescriptor<T>, synchronizer: S) -> Self {
+impl<T: Identified, S: Synchronizer> Sender<T, S> {
+    /// Create a `Sender` from a `FifoDescriptor` and `Synchronizer`.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the following:
+    ///
+    /// * The `data` and `len` fields in `FifoDescriptor` must adhere to all
+    ///   safety requirements described in `std::slice::from_raw_parts_mut()`
+    ///
+    /// * The `offsets` field in `FifoDescriptor` must be non-null and point
+    ///   to a valid memory location holding an `AtomicUsize`.
+    ///
+    /// * The synchronizer must somehow know how to correctly synchronize with
+    ///   the other end of the channel.
+    pub unsafe fn from_descriptor(d: FifoDescriptor<T>, synchronizer: S) -> Self {
         Self {
-            descriptor,
+            inner: FifoInner::from_descriptor(d),
             synchronizer,
         }
     }
 
-    pub fn try_send(&self, val: &T) -> Result<(), TrySendError> {
-        try_send_impl(&self.descriptor, val).map(|wake_receiver| {
+    pub fn try_send(&self, val: T) -> Result<(), (TrySendError, T)> {
+        self.inner.try_send_impl(val).map(|wake_receiver| {
             if wake_receiver {
                 self.synchronizer.notify(QueueEvent::NotEmpty);
             }
         })
     }
 
-    pub fn send(&self, val: &T) -> Result<(), SendError> {
+    pub fn send(&self, mut val: T) -> Result<(), SendError> {
         loop {
-            match try_send_impl(&self.descriptor, val) {
+            val = match self.inner.try_send_impl(val) {
                 Ok(wake_receiver) => {
                     if wake_receiver {
                         self.synchronizer.notify(QueueEvent::NotEmpty);
                     }
                     return Ok(());
                 }
-                Err(TrySendError::QueueFull) => {
+                Err((TrySendError::QueueFull, val)) => {
                     self.synchronizer
                         .wait(QueueEvent::NotFull)
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
+                    val
                 }
-            }
+            };
         }
     }
 }
 
 unsafe impl<T: Send, S: Send> Send for Receiver<T, S> {}
 
-impl<T: WithAtomicId, S: Synchronizer> Receiver<T, S> {
-    /// Panics if there is an existing (sync or async) receiver for the same queue.
-    pub fn new(descriptor: FifoDescriptor<T>, synchronizer: S) -> Self {
-        RECEIVER_TRACKER.new_receiver(descriptor.data as usize);
+impl<T: Identified, S: Synchronizer> Receiver<T, S> {
+    /// Create a `Receiver` from a `FifoDescriptor` and `Synchronizer`.
+    ///
+    /// # Safety
+    ///
+    /// In addition to all requirements laid out in `Sender::from_descriptor`,
+    /// the caller must ensure the following additional requirements:
+    ///
+    /// * The caller must ensure that there is at most one `Receiver` for the queue.
+    pub unsafe fn from_descriptor(d: FifoDescriptor<T>, synchronizer: S) -> Self {
         Self {
-            descriptor,
+            inner: FifoInner::from_descriptor(d),
             synchronizer,
         }
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        try_recv_impl(&self.descriptor).map(|(val, wake_sender)| {
+        self.inner.try_recv_impl().map(|(val, wake_sender)| {
             if wake_sender {
                 self.synchronizer.notify(QueueEvent::NotFull);
             }
@@ -82,7 +103,7 @@ impl<T: WithAtomicId, S: Synchronizer> Receiver<T, S> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         loop {
-            match try_recv_impl(&self.descriptor) {
+            match self.inner.try_recv_impl() {
                 Ok((val, wake_sender)) => {
                     if wake_sender {
                         self.synchronizer.notify(QueueEvent::NotFull);
@@ -99,15 +120,9 @@ impl<T: WithAtomicId, S: Synchronizer> Receiver<T, S> {
     }
 }
 
-impl<T, S> Drop for Receiver<T, S> {
-    fn drop(&mut self) {
-        RECEIVER_TRACKER.drop_receiver(self.descriptor.data as usize);
-    }
-}
-
 pub struct TryIter<'r, T, S>(&'r Receiver<T, S>);
 
-impl<'r, T: WithAtomicId, S: Synchronizer> Iterator for TryIter<'r, T, S> {
+impl<'r, T: Identified, S: Synchronizer> Iterator for TryIter<'r, T, S> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -117,31 +132,28 @@ impl<'r, T: WithAtomicId, S: Synchronizer> Iterator for TryIter<'r, T, S> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::*;
     use crate::test_support::pubsub::{Channel, Subscription};
     use crate::test_support::*;
     use std::thread;
 
     fn do_single_sender(len: usize, n: u64) {
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(len);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(len, s);
 
         let h = thread::spawn(move || {
             for i in 0..n {
-                tx.send(&TestValue::new(i + 1, i)).unwrap();
+                tx.send(TestValue { id: i + 1, val: i }).unwrap();
             }
         });
 
         for i in 0..n {
             let v = rx.recv().unwrap();
-            assert_eq!(v.get_id(), i + 1);
-            assert_eq!(v.get_val(), i);
+            assert_eq!(v.id, i + 1);
+            assert_eq!(v.val, i);
         }
 
         h.join().unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
@@ -154,16 +166,15 @@ mod tests {
 
     fn do_multi_sender(len: usize, n: u64, senders: u64) {
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(len);
-        let rx = fifo.receiver(s.clone());
+        let (tx, rx) = bounded(len, s);
         let mut handles = Vec::with_capacity(senders as _);
 
         for t in 0..senders {
-            let tx = fifo.sender(s.clone());
+            let tx = tx.clone();
             handles.push(thread::spawn(move || {
                 for i in 0..n {
                     let id = t * n + i + 1;
-                    tx.send(&TestValue::new(id, i)).unwrap();
+                    tx.send(TestValue { id, val: i }).unwrap();
                 }
             }));
         }
@@ -175,7 +186,6 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
@@ -190,60 +200,50 @@ mod tests {
     fn try_error() {
         const N: u64 = 8;
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(N as _);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(N as _, s);
 
         for i in 0..N {
-            tx.send(&TestValue::new(i + 1, i)).unwrap();
+            tx.send(TestValue { id: i + 1, val: i }).unwrap();
         }
-        assert!(tx.try_send(&TestValue::new(N + 1, N)).is_err());
+        assert!(tx.try_send(TestValue { id: N + 1, val: N }).is_err());
 
         for i in 0..N {
             let v = rx.recv().unwrap();
-            assert_eq!(v.get_id(), i + 1);
-            assert_eq!(v.get_val(), i);
+            assert_eq!(v.id, i + 1);
+            assert_eq!(v.val, i);
         }
         assert!(rx.try_recv().is_err());
-
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
     fn very_optimistic() {
         const N: u64 = 8;
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(N as _);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(N as _, s);
 
         for i in 0..N {
-            tx.try_send(&TestValue::new(i + 1, i)).unwrap();
+            tx.try_send(TestValue { id: i + 1, val: i }).unwrap();
         }
 
         for i in 0..N {
             let v = rx.try_recv().unwrap();
-            assert_eq!(v.get_id(), i + 1);
-            assert_eq!(v.get_val(), i);
+            assert_eq!(v.id, i + 1);
+            assert_eq!(v.val, i);
         }
-
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
     fn mixed_try_send() {
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(8);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(8, s);
 
         let h = thread::spawn(move || {
             let mut sent_without_wait = 0;
             for _ in 0..7 {
                 for i in 0..11 {
-                    let v = TestValue::new(i + 1, i);
-                    if tx.try_send(&v).is_err() {
-                        tx.send(&v).unwrap();
+                    let v = TestValue { id: i + 1, val: i };
+                    if let Err((_, v)) = tx.try_send(v) {
+                        tx.send(v).unwrap();
                     } else {
                         sent_without_wait += 1;
                     }
@@ -255,26 +255,23 @@ mod tests {
         for _ in 0..7 {
             for i in 0..11 {
                 let v = rx.recv().unwrap();
-                assert_eq!(v.get_id(), i + 1);
-                assert_eq!(v.get_val(), i);
+                assert_eq!(v.id, i + 1);
+                assert_eq!(v.val, i);
             }
         }
 
         h.join().unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
     fn mixed_try_recv() {
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(8);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(8, s);
 
         let h = thread::spawn(move || {
             for _ in 0..11 {
                 for i in 0..13 {
-                    tx.send(&TestValue::new(i + 1, i)).unwrap();
+                    tx.send(TestValue { id: i + 1, val: i }).unwrap();
                 }
             }
         });
@@ -285,40 +282,36 @@ mod tests {
                     Ok(v) => v,
                     Err(_) => rx.recv().unwrap(),
                 };
-                assert_eq!(v.get_id(), i + 1);
-                assert_eq!(v.get_val(), i);
+                assert_eq!(v.id, i + 1);
+                assert_eq!(v.val, i);
             }
         }
 
         h.join().unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[test]
     fn try_iter() {
         let s = TestSynchronizer::new();
-        let mut fifo = Fifo::<TestValue>::new(8);
-        let tx = fifo.sender(s.clone());
-        let rx = fifo.receiver(s);
+        let (tx, rx) = bounded(8, s);
         const N: u64 = 2048;
 
         let h = thread::spawn(move || {
             for i in 0..N {
-                tx.send(&TestValue::new(i + 1, i)).unwrap();
+                tx.send(TestValue { id: i + 1, val: i }).unwrap();
             }
         });
 
         let mut total = 0;
         while total < N {
             for v in rx.recv().ok().into_iter().chain(rx.try_iter()) {
-                assert_eq!(v.get_id(), total + 1);
-                assert_eq!(v.get_val(), total);
+                assert_eq!(v.id, total + 1);
+                assert_eq!(v.val, total);
                 total += 1;
             }
         }
 
         h.join().unwrap();
-        drop(fifo); // ensure the Fifo lives long enough
     }
 
     #[derive(Clone)]

@@ -5,40 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use std::sync::atomic::{AtomicU64, Ordering};
 
+#[derive(Clone, Copy, Debug)]
 pub struct TestValue {
-    id: AtomicU64,
-    val: u64,
-}
-
-impl TestValue {
-    pub fn new(id: u64, val: u64) -> Self {
-        Self {
-            id: AtomicU64::new(id),
-            val,
-        }
-    }
-
-    pub fn get_val(&self) -> u64 {
-        self.val
-    }
-}
-
-impl WithAtomicId for TestValue {
-    fn empty() -> Self {
-        Self::new(0, 0)
-    }
-    fn get_id(&self) -> u64 {
-        self.id.load(Ordering::SeqCst)
-    }
-    fn set_id(&mut self, id: u64) {
-        self.id.store(id, Ordering::SeqCst);
-    }
-    fn copy_except_id(&mut self, from: &Self) {
-        let Self { id: _, val } = from;
-        self.val = *val;
-    }
+    pub id: u64,
+    pub val: u64,
 }
 
 #[derive(Clone)]
@@ -48,6 +19,15 @@ impl Synchronizer for NoopSynchronizer {
     fn wait(&self, _event: QueueEvent) -> Result<(), SynchronizationError> { Ok(()) }
     fn notify(&self, _event: QueueEvent) { }
 }
+
+static_assertions::assert_impl_all!(crate::Sender<TestValue, NoopSynchronizer>: Send, Sync, Clone);
+static_assertions::assert_impl_all!(crate::AsyncSender<TestValue, NoopSynchronizer>: Send, Sync, Clone);
+
+static_assertions::assert_impl_all!(crate::Receiver<TestValue, NoopSynchronizer>: Send);
+static_assertions::assert_impl_all!(crate::AsyncReceiver<TestValue, NoopSynchronizer>: Send);
+
+static_assertions::assert_not_impl_any!(crate::Receiver<TestValue, NoopSynchronizer>: Sync, Clone);
+static_assertions::assert_not_impl_any!(crate::AsyncReceiver<TestValue, NoopSynchronizer>: Sync, Clone);
 
 // A publisher/subscriber channel implementation
 pub mod pubsub {
