@@ -65,6 +65,7 @@ impl<T: Identified, S: Synchronizer> Sender<T, S> {
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
                     val
                 }
+                Err((TrySendError::Closed, _)) => return Err(SendError::Closed),
             };
         }
     }
@@ -115,6 +116,7 @@ impl<T: Identified, S: Synchronizer> Receiver<T, S> {
                         .wait(QueueEvent::NotEmpty)
                         .map_err(|SynchronizationError::ChannelClosed| RecvError::Closed)?;
                 }
+                Err(TryRecvError::Closed) => return Err(RecvError::Closed),
             }
         }
     }

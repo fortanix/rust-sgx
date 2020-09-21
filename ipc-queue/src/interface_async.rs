@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use fortanix_sgx_abi::FifoDescriptor;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for AsyncSender<T, S> {}
@@ -35,15 +34,16 @@ impl<T: Identified, S: AsyncSynchronizer> AsyncSender<T, S> {
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
                     val
                 }
+                Err((TrySendError::Closed, _)) => return Err(SendError::Closed),
             };
         }
     }
 
-    /// Consumes `self` and returns a FifoDescriptor.
-    /// **NOTE:** this function leaks the internal storage to ensure that the
-    /// pointers in the resulting descriptor remain valid.
-    pub fn into_descriptor(self) -> FifoDescriptor<T> {
-        self.inner.into_descriptor()
+    /// Consumes `self` and returns a DescriptorGuard.
+    /// The returned guard can be used to make `FifoDescriptor`s that remain
+    /// valid as long as the guard is not dropped.
+    pub fn into_descriptor_guard(self) -> DescriptorGuard<T> {
+        self.inner.into_descriptor_guard()
     }
 }
 
@@ -64,15 +64,16 @@ impl<T: Identified, S: AsyncSynchronizer> AsyncReceiver<T, S> {
                         .wait(QueueEvent::NotEmpty).await
                         .map_err(|SynchronizationError::ChannelClosed| RecvError::Closed)?;
                 }
+                Err(TryRecvError::Closed) => return Err(RecvError::Closed),
             }
         }
     }
 
-    /// Consumes `self` and returns a FifoDescriptor.
-    /// **NOTE:** this function leaks the internal storage to ensure that the
-    /// pointers in the resulting descriptor remain valid.
-    pub fn into_descriptor(self) -> FifoDescriptor<T> {
-        self.inner.into_descriptor()
+    /// Consumes `self` and returns a DescriptorGuard.
+    /// The returned guard can be used to make `FifoDescriptor`s that remain
+    /// valid as long as the guard is not dropped.
+    pub fn into_descriptor_guard(self) -> DescriptorGuard<T> {
+        self.inner.into_descriptor_guard()
     }
 }
 

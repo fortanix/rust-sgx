@@ -20,7 +20,7 @@ use fortanix_sgx_abi::*;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
 use futures::StreamExt;
-use ipc_queue::{self, QueueEvent};
+use ipc_queue::{self, DescriptorGuard, QueueEvent};
 use sgxs::loader::Tcs as SgxsTcs;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
@@ -584,9 +584,10 @@ impl EnclaveKind {
     }
 }
 
-struct FifoDescriptors {
-    usercall_queue: FifoDescriptor<Usercall>,
-    return_queue: FifoDescriptor<Return>,
+struct FifoGuards {
+    usercall_queue: DescriptorGuard<Usercall>,
+    return_queue: DescriptorGuard<Return>,
+    async_queues_called: bool,
 }
 
 pub(crate) struct EnclaveState {
@@ -598,7 +599,8 @@ pub(crate) struct EnclaveState {
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
-    fifo_descriptors: Mutex<Option<FifoDescriptors>>,
+    // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
+    fifo_guards: Mutex<Option<FifoGuards>>,
     return_queue_tx: Mutex<Option<ipc_queue::AsyncSender<Return, QueueSynchronizer>>>,
 }
 
@@ -691,7 +693,7 @@ impl EnclaveState {
             usercall_ext,
             threads_queue,
             forward_panics,
-            fifo_descriptors: Mutex::new(None),
+            fifo_guards: Mutex::new(None),
             return_queue_tx: Mutex::new(None),
         })
     }
@@ -820,12 +822,13 @@ impl EnclaveState {
             let (usercall_queue_tx, usercall_queue_rx) = ipc_queue::bounded_async(USERCALL_QUEUE_SIZE, usercall_queue_synchronizer);
             let (return_queue_tx, return_queue_rx) = ipc_queue::bounded_async(RETURN_QUEUE_SIZE, return_queue_synchronizer);
 
-            let fifo_descriptors = FifoDescriptors {
-                usercall_queue: usercall_queue_tx.into_descriptor(),
-                return_queue: return_queue_rx.into_descriptor(),
+            let fifo_guards = FifoGuards {
+                usercall_queue: usercall_queue_tx.into_descriptor_guard(),
+                return_queue: return_queue_rx.into_descriptor_guard(),
+                async_queues_called: false,
             };
 
-            *enclave_clone.fifo_descriptors.lock().await = Some(fifo_descriptors);
+            *enclave_clone.fifo_guards.lock().await = Some(fifo_guards);
             *enclave_clone.return_queue_tx.lock().await = Some(return_queue_tx);
 
             tokio::task::spawn_local(async move {
@@ -1562,14 +1565,21 @@ impl<'tcs> IOHandlerInput<'tcs> {
         usercall_queue: &mut FifoDescriptor<Usercall>,
         return_queue: &mut FifoDescriptor<Return>,
     ) -> StdResult<(), EnclaveAbort<bool>> {
-        let fifo_descriptors = self.enclave.fifo_descriptors.lock().await.take();
-        match fifo_descriptors {
-            Some(fifo_descriptors) => {
-                *usercall_queue = fifo_descriptors.usercall_queue;
-                *return_queue = fifo_descriptors.return_queue;
+        let mut fifo_guards = self.enclave.fifo_guards.lock().await;
+        match &mut *fifo_guards {
+            Some(ref mut fifo_guards) if !fifo_guards.async_queues_called => {
+                *usercall_queue = fifo_guards.usercall_queue.fifo_descriptor();
+                *return_queue = fifo_guards.return_queue.fifo_descriptor();
+                fifo_guards.async_queues_called = true;
                 Ok(())
             }
-            None => Err(self.exit(true)),
+            Some(_) => {
+                drop(fifo_guards);
+                Err(self.exit(true))
+            },
+            // Enclave would not be able to call `async_queues()` before the
+            // fifo_guards is set to Some in `fn syscall_loop`.
+            None => unreachable!(),
         }
     }
 }

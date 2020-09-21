@@ -6,8 +6,10 @@
 
 #![cfg_attr(target_env = "sgx", feature(sgx_platform))]
 
+use fortanix_sgx_abi::FifoDescriptor;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 mod fifo;
 mod interface_sync;
@@ -16,7 +18,7 @@ mod sealed;
 #[cfg(test)]
 mod test_support;
 
-use self::fifo::FifoInner;
+use self::fifo::{Fifo, FifoInner};
 
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where
@@ -47,11 +49,13 @@ pub enum QueueEvent {
 #[derive(Debug, PartialEq, Eq)]
 pub enum TrySendError {
     QueueFull,
+    Closed,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TryRecvError {
     QueueEmpty,
+    Closed,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -103,4 +107,17 @@ pub struct AsyncSender<T, S> {
 pub struct AsyncReceiver<T, S> {
     inner: FifoInner<T>,
     synchronizer: S,
+}
+
+/// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
+/// to remain valid as long as the DescriptorGuard is not dropped.
+pub struct DescriptorGuard<T> {
+    descriptor: FifoDescriptor<T>,
+    _fifo: Arc<Fifo<T>>,
+}
+
+impl<T> DescriptorGuard<T> {
+    pub fn fifo_descriptor(&self) -> FifoDescriptor<T> {
+        self.descriptor
+    }
 }

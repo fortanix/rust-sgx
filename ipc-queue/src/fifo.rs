@@ -36,7 +36,7 @@ where
     (tx, rx)
 }
 
-struct Fifo<T> {
+pub(crate) struct Fifo<T> {
     data: Box<[T]>,
     offsets: Box<AtomicUsize>,
 }
@@ -71,7 +71,7 @@ impl<T> Clone for Storage<T> {
 }
 
 pub(crate) struct FifoInner<T> {
-    data: NonNull<UnsafeCell<[T]>>,
+    data: NonNull<[UnsafeCell<T>]>,
     offsets: NonNull<AtomicUsize>,
     storage: Storage<T>,
 }
@@ -92,9 +92,15 @@ impl<T: Identified> FifoInner<T> {
             descriptor.len.is_power_of_two(),
             "Fifo len should be a power of two"
         );
+        #[cfg(target_env = "sgx")] {
+            // check pointers are outside enclave range, etc.
+            use std::os::fortanix_sgx::usercalls::alloc::User;
+            let data = User::<[T]>::from_raw_parts(descriptor.data, descriptor.len);
+            mem::forget(data);
+        }
         let data_slice = std::slice::from_raw_parts_mut(descriptor.data, descriptor.len);
         Self {
-            data: NonNull::new_unchecked(data_slice as *mut [T] as *mut UnsafeCell<[T]>),
+            data: NonNull::new_unchecked(data_slice as *mut [T] as *mut [UnsafeCell<T>]),
             offsets: NonNull::new_unchecked(descriptor.offsets as *mut AtomicUsize),
             storage: Storage::Static,
         }
@@ -103,41 +109,35 @@ impl<T: Identified> FifoInner<T> {
     fn from_arc(fifo: Arc<Fifo<T>>) -> Self {
         unsafe {
             Self {
-                data: NonNull::new_unchecked(
-                    fifo.data.as_ref() as *const [T] as *mut [T] as *mut UnsafeCell<[T]>
-                ),
-                offsets: NonNull::new_unchecked(
-                    fifo.offsets.as_ref() as *const AtomicUsize as *mut AtomicUsize
-                ),
+                data: NonNull::new_unchecked(fifo.data.as_ref() as *const [T] as *mut [T] as *mut [UnsafeCell<T>]),
+                offsets: NonNull::new_unchecked(fifo.offsets.as_ref() as *const AtomicUsize as *mut AtomicUsize),
                 storage: Storage::Shared(fifo),
             }
         }
     }
 
-    /// Consumes `self` and returns a FifoDescriptor. If `self` was created
-    /// using `from_arc`, it leaks the internal `Arc` copy to ensure the
-    /// resulting descriptor is valid for `'static` lifetime.
-    pub(crate) fn into_descriptor(self) -> FifoDescriptor<T> {
-        match self.storage {
-            Storage::Shared(arc) => mem::forget(arc),
-            Storage::Static => {}
-        }
-        let data_mut = unsafe { &mut *self.data.as_ref().get() };
-        FifoDescriptor {
-            data: data_mut.as_mut_ptr(),
-            len: data_mut.len(),
+    /// Consumes `self` and returns a DescriptorGuard.
+    /// Panics if `self` was created using `from_descriptor`.
+    pub(crate) fn into_descriptor_guard(self) -> DescriptorGuard<T> {
+        let arc = match self.storage {
+            Storage::Shared(arc) => arc,
+            Storage::Static => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
+        };
+        let data = unsafe { self.data.as_ref() };
+        let descriptor = FifoDescriptor {
+            data: data.as_ptr() as _,
+            len: data.len(),
             offsets: self.offsets.as_ptr(),
-        }
+        };
+        DescriptorGuard { descriptor, _fifo: arc }
     }
 
     fn slot(&self, index: usize) -> &mut T {
-        let data_mut = unsafe { &mut *self.data.as_ref().get() };
-        &mut data_mut[index]
+        unsafe { &mut *self.data.as_ref()[index].get() }
     }
 
     fn data_len(&self) -> usize {
-        let data = unsafe { &*self.data.as_ref().get() };
-        data.len()
+        unsafe { self.data.as_ref().len() }
     }
 
     fn offsets(&self) -> &AtomicUsize {
@@ -177,7 +177,6 @@ impl<T: Identified> FifoInner<T> {
     pub(crate) fn try_recv_impl(&self) -> Result<(T, /*wake up writer:*/ bool), TryRecvError> {
         // 1. Load the current offsets.
         let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
-        let was_full = current.is_full();
 
         // 2. If the queue is empty, wait, then go to step 1.
         if current.is_empty() {
@@ -204,16 +203,15 @@ impl<T: Identified> FifoInner<T> {
         slot.set_id(0);
 
         // 7. Store the new read offset.
-        let after = fetch_adjust(
+        let before = fetch_adjust(
             self.offsets(),
             new.read as isize - current.read as isize,
             Ordering::SeqCst,
         );
 
-        // 8. If the queue was full in step 1, signal the writer to wake up.
-        //    ... or became full during read
-        let became_full = Offsets::new(after, self.data_len() as u32).is_full();
-        Ok((val, was_full || became_full))
+        // 8. If the queue was full before step 7, signal the writer to wake up.
+        let was_full = Offsets::new(before, self.data_len() as u32).is_full();
+        Ok((val, was_full))
     }
 }
 
