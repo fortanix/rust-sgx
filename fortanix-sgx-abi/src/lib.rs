@@ -702,7 +702,7 @@ pub mod async {
     ///    expected to be written imminently.
     /// 6. Read the data, then store `0` in the `id`.
     /// 7. Store the new read offset.
-    /// 8. If the queue was full in step 1, signal the writer to wake up.
+    /// 8. If the queue was full before step 7, signal the writer to wake up.
     #[repr(C)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct FifoDescriptor<T> {
