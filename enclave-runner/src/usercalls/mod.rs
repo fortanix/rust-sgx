@@ -20,7 +20,7 @@ use fortanix_sgx_abi::*;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
 use futures::StreamExt;
-use ipc_queue::{self, DescriptorGuard, QueueEvent};
+use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
 use sgxs::loader::Tcs as SgxsTcs;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
@@ -59,12 +59,12 @@ const RETURN_QUEUE_SIZE: usize = 1024;
 
 enum UsercallSendData {
     Sync(ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Usercall),
+    Async(Identified<Usercall>),
 }
 
 enum UsercallHandleData {
     Sync(tcs::Usercall<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Usercall),
+    Async(Identified<Usercall>),
 }
 
 type EnclaveResult = StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>>;
@@ -706,7 +706,7 @@ impl EnclaveState {
     ) {
         let (parameters, mode, tcs) = match handle_data {
             UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode, Some(tcs)),
-            UsercallHandleData::Async(ref usercall)                => (usercall.args, EnclaveEntry::ExecutableNonMain, None),
+            UsercallHandleData::Async(ref usercall)                => (usercall.data.parameters(), EnclaveEntry::ExecutableNonMain, None),
         };
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
@@ -725,9 +725,9 @@ impl EnclaveState {
                     }
                     UsercallHandleData::Async(usercall) => {
                         let return_queue_tx = enclave.return_queue_tx.lock().await.clone().expect("return_queue_tx not initialized");
-                        let ret = Return {
+                        let ret = Identified {
                             id: usercall.id,
-                            value: ret,
+                            data: Return(ret.0, ret.1),
                         };
                         return_queue_tx.send(ret).await.unwrap();
                     }

@@ -18,23 +18,22 @@ impl<T, S: Clone> Clone for AsyncSender<T, S> {
     }
 }
 
-impl<T: Identified, S: AsyncSynchronizer> AsyncSender<T, S> {
-    pub async fn send(&self, mut val: T) -> Result<(), SendError> {
+impl<T: Transmittable, S: AsyncSynchronizer> AsyncSender<T, S> {
+    pub async fn send(&self, val: Identified<T>) -> Result<(), SendError> {
         loop {
-            val = match self.inner.try_send_impl(val) {
+            match self.inner.try_send_impl(val) {
                 Ok(wake_receiver) => {
                     if wake_receiver {
                         self.synchronizer.notify(QueueEvent::NotEmpty);
                     }
                     return Ok(());
                 }
-                Err((TrySendError::QueueFull, val)) => {
+                Err(TrySendError::QueueFull) => {
                     self.synchronizer
                         .wait(QueueEvent::NotFull).await
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
-                    val
                 }
-                Err((TrySendError::Closed, _)) => return Err(SendError::Closed),
+                Err(TrySendError::Closed) => return Err(SendError::Closed),
             };
         }
     }
@@ -49,8 +48,8 @@ impl<T: Identified, S: AsyncSynchronizer> AsyncSender<T, S> {
 
 unsafe impl<T: Send, S: Send> Send for AsyncReceiver<T, S> {}
 
-impl<T: Identified, S: AsyncSynchronizer> AsyncReceiver<T, S> {
-    pub async fn recv(&self) -> Result<T, RecvError> {
+impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
+    pub async fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
                 Ok((val, wake_sender)) => {
@@ -81,7 +80,7 @@ impl<T: Identified, S: AsyncSynchronizer> AsyncReceiver<T, S> {
 #[cfg(test)]
 mod tests {
     use crate::*;
-    use crate::test_support::*;
+    use crate::test_support::TestValue;
     use futures::future::FutureExt;
     use futures::lock::Mutex;
     use tokio::sync::broadcast as async_pubsub;
@@ -93,7 +92,7 @@ mod tests {
 
         let h1 = local.spawn_local(async move {
             for i in 0..n {
-                tx.send(TestValue { id: i + 1, val: i }).await.unwrap();
+                tx.send(Identified { id: i + 1, data: TestValue(i) }).await.unwrap();
             }
         });
 
@@ -101,7 +100,7 @@ mod tests {
             for i in 0..n {
                 let v = rx.recv().await.unwrap();
                 assert_eq!(v.id, i + 1);
-                assert_eq!(v.val, i);
+                assert_eq!(v.data.0, i);
             }
         });
 
@@ -129,7 +128,7 @@ mod tests {
             handles.push(local.spawn_local(async move {
                 for i in 0..n {
                     let id = t * n + i + 1;
-                    tx.send(TestValue { id, val: i }).await.unwrap();
+                    tx.send(Identified { id, data: TestValue(i) }).await.unwrap();
                 }
             }));
         }

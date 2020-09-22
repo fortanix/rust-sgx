@@ -6,12 +6,6 @@
 
 use super::*;
 
-#[derive(Clone, Copy, Debug)]
-pub struct TestValue {
-    pub id: u64,
-    pub val: u64,
-}
-
 #[derive(Clone)]
 pub struct NoopSynchronizer;
 
@@ -19,6 +13,12 @@ impl Synchronizer for NoopSynchronizer {
     fn wait(&self, _event: QueueEvent) -> Result<(), SynchronizationError> { Ok(()) }
     fn notify(&self, _event: QueueEvent) { }
 }
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct TestValue(pub u64);
+
+#[cfg(target_env = "sgx")]
+unsafe impl UserSafeSized for TestValue {}
 
 static_assertions::assert_impl_all!(crate::Sender<TestValue, NoopSynchronizer>: Send, Sync, Clone);
 static_assertions::assert_impl_all!(crate::AsyncSender<TestValue, NoopSynchronizer>: Send, Sync, Clone);

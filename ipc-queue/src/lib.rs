@@ -14,15 +14,29 @@ use std::sync::Arc;
 mod fifo;
 mod interface_sync;
 mod interface_async;
-mod sealed;
 #[cfg(test)]
 mod test_support;
 
 use self::fifo::{Fifo, FifoInner};
 
+#[cfg(target_env = "sgx")]
+use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
+
+#[cfg(target_env = "sgx")]
+pub trait Transmittable: UserSafeSized + Default {}
+
+#[cfg(target_env = "sgx")]
+impl<T> Transmittable for T where T: UserSafeSized + Default {}
+
+#[cfg(not(target_env = "sgx"))]
+pub trait Transmittable: Copy + Sized + Default {}
+
+#[cfg(not(target_env = "sgx"))]
+impl<T> Transmittable for T where T: Copy + Sized + Default {}
+
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where
-    T: Identified,
+    T: Transmittable,
     S: Synchronizer,
 {
     self::fifo::bounded(len, s)
@@ -30,15 +44,17 @@ where
 
 pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
 where
-    T: Identified,
+    T: Transmittable,
     S: AsyncSynchronizer,
 {
     self::fifo::bounded_async(len, s)
 }
 
-/// This trait is used as a bound on types that can be sent and received in
-/// channels defined in this crate.
-pub trait Identified: sealed::Identified {}
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Identified<T> {
+    pub id: u64,
+    pub data: T,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum QueueEvent {
