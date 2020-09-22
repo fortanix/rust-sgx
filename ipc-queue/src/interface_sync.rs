@@ -20,7 +20,7 @@ impl<T, S: Clone> Clone for Sender<T, S> {
     }
 }
 
-impl<T: Identified, S: Synchronizer> Sender<T, S> {
+impl<T: Transmittable, S: Synchronizer> Sender<T, S> {
     /// Create a `Sender` from a `FifoDescriptor` and `Synchronizer`.
     ///
     /// # Safety
@@ -42,7 +42,7 @@ impl<T: Identified, S: Synchronizer> Sender<T, S> {
         }
     }
 
-    pub fn try_send(&self, val: T) -> Result<(), (TrySendError, T)> {
+    pub fn try_send(&self, val: Identified<T>) -> Result<(), TrySendError> {
         self.inner.try_send_impl(val).map(|wake_receiver| {
             if wake_receiver {
                 self.synchronizer.notify(QueueEvent::NotEmpty);
@@ -50,22 +50,21 @@ impl<T: Identified, S: Synchronizer> Sender<T, S> {
         })
     }
 
-    pub fn send(&self, mut val: T) -> Result<(), SendError> {
+    pub fn send(&self, val: Identified<T>) -> Result<(), SendError> {
         loop {
-            val = match self.inner.try_send_impl(val) {
+            match self.inner.try_send_impl(val) {
                 Ok(wake_receiver) => {
                     if wake_receiver {
                         self.synchronizer.notify(QueueEvent::NotEmpty);
                     }
                     return Ok(());
                 }
-                Err((TrySendError::QueueFull, val)) => {
+                Err(TrySendError::QueueFull) => {
                     self.synchronizer
                         .wait(QueueEvent::NotFull)
                         .map_err(|SynchronizationError::ChannelClosed| SendError::Closed)?;
-                    val
                 }
-                Err((TrySendError::Closed, _)) => return Err(SendError::Closed),
+                Err(TrySendError::Closed) => return Err(SendError::Closed),
             };
         }
     }
@@ -73,7 +72,7 @@ impl<T: Identified, S: Synchronizer> Sender<T, S> {
 
 unsafe impl<T: Send, S: Send> Send for Receiver<T, S> {}
 
-impl<T: Identified, S: Synchronizer> Receiver<T, S> {
+impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     /// Create a `Receiver` from a `FifoDescriptor` and `Synchronizer`.
     ///
     /// # Safety
@@ -89,7 +88,7 @@ impl<T: Identified, S: Synchronizer> Receiver<T, S> {
         }
     }
 
-    pub fn try_recv(&self) -> Result<T, TryRecvError> {
+    pub fn try_recv(&self) -> Result<Identified<T>, TryRecvError> {
         self.inner.try_recv_impl().map(|(val, wake_sender)| {
             if wake_sender {
                 self.synchronizer.notify(QueueEvent::NotFull);
@@ -102,7 +101,7 @@ impl<T: Identified, S: Synchronizer> Receiver<T, S> {
         TryIter(self)
     }
 
-    pub fn recv(&self) -> Result<T, RecvError> {
+    pub fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
                 Ok((val, wake_sender)) => {
@@ -124,8 +123,8 @@ impl<T: Identified, S: Synchronizer> Receiver<T, S> {
 
 pub struct TryIter<'r, T, S>(&'r Receiver<T, S>);
 
-impl<'r, T: Identified, S: Synchronizer> Iterator for TryIter<'r, T, S> {
-    type Item = T;
+impl<'r, T: Transmittable, S: Synchronizer> Iterator for TryIter<'r, T, S> {
+    type Item = Identified<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.try_recv().ok()
@@ -135,8 +134,8 @@ impl<'r, T: Identified, S: Synchronizer> Iterator for TryIter<'r, T, S> {
 #[cfg(test)]
 mod tests {
     use crate::*;
+    use crate::test_support::TestValue;
     use crate::test_support::pubsub::{Channel, Subscription};
-    use crate::test_support::*;
     use std::thread;
 
     fn do_single_sender(len: usize, n: u64) {
@@ -145,14 +144,14 @@ mod tests {
 
         let h = thread::spawn(move || {
             for i in 0..n {
-                tx.send(TestValue { id: i + 1, val: i }).unwrap();
+                tx.send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
             }
         });
 
         for i in 0..n {
             let v = rx.recv().unwrap();
             assert_eq!(v.id, i + 1);
-            assert_eq!(v.val, i);
+            assert_eq!(v.data.0, i);
         }
 
         h.join().unwrap();
@@ -176,7 +175,7 @@ mod tests {
             handles.push(thread::spawn(move || {
                 for i in 0..n {
                     let id = t * n + i + 1;
-                    tx.send(TestValue { id, val: i }).unwrap();
+                    tx.send(Identified { id, data: TestValue(i) }).unwrap();
                 }
             }));
         }
@@ -205,14 +204,14 @@ mod tests {
         let (tx, rx) = bounded(N as _, s);
 
         for i in 0..N {
-            tx.send(TestValue { id: i + 1, val: i }).unwrap();
+            tx.send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
         }
-        assert!(tx.try_send(TestValue { id: N + 1, val: N }).is_err());
+        assert!(tx.try_send(Identified { id: N + 1, data: TestValue(N) }).is_err());
 
         for i in 0..N {
             let v = rx.recv().unwrap();
             assert_eq!(v.id, i + 1);
-            assert_eq!(v.val, i);
+            assert_eq!(v.data.0, i);
         }
         assert!(rx.try_recv().is_err());
     }
@@ -224,13 +223,13 @@ mod tests {
         let (tx, rx) = bounded(N as _, s);
 
         for i in 0..N {
-            tx.try_send(TestValue { id: i + 1, val: i }).unwrap();
+            tx.try_send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
         }
 
         for i in 0..N {
             let v = rx.try_recv().unwrap();
             assert_eq!(v.id, i + 1);
-            assert_eq!(v.val, i);
+            assert_eq!(v.data.0, i);
         }
     }
 
@@ -243,8 +242,8 @@ mod tests {
             let mut sent_without_wait = 0;
             for _ in 0..7 {
                 for i in 0..11 {
-                    let v = TestValue { id: i + 1, val: i };
-                    if let Err((_, v)) = tx.try_send(v) {
+                    let v = Identified { id: i + 1, data: TestValue(i) };
+                    if let Err(_) = tx.try_send(v) {
                         tx.send(v).unwrap();
                     } else {
                         sent_without_wait += 1;
@@ -258,7 +257,7 @@ mod tests {
             for i in 0..11 {
                 let v = rx.recv().unwrap();
                 assert_eq!(v.id, i + 1);
-                assert_eq!(v.val, i);
+                assert_eq!(v.data.0, i);
             }
         }
 
@@ -273,7 +272,7 @@ mod tests {
         let h = thread::spawn(move || {
             for _ in 0..11 {
                 for i in 0..13 {
-                    tx.send(TestValue { id: i + 1, val: i }).unwrap();
+                    tx.send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
                 }
             }
         });
@@ -285,7 +284,7 @@ mod tests {
                     Err(_) => rx.recv().unwrap(),
                 };
                 assert_eq!(v.id, i + 1);
-                assert_eq!(v.val, i);
+                assert_eq!(v.data.0, i);
             }
         }
 
@@ -300,7 +299,7 @@ mod tests {
 
         let h = thread::spawn(move || {
             for i in 0..N {
-                tx.send(TestValue { id: i + 1, val: i }).unwrap();
+                tx.send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
             }
         });
 
@@ -308,7 +307,7 @@ mod tests {
         while total < N {
             for v in rx.recv().ok().into_iter().chain(rx.try_iter()) {
                 assert_eq!(v.id, total + 1);
-                assert_eq!(v.val, total);
+                assert_eq!(v.data.0, total);
                 total += 1;
             }
         }

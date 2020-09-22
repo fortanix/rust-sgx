@@ -5,16 +5,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
-use fortanix_sgx_abi::FifoDescriptor;
+use fortanix_sgx_abi::{FifoDescriptor, WithId};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where
-    T: Identified,
+    T: Transmittable,
     S: Synchronizer,
 {
     let arc = Arc::new(Fifo::new(len));
@@ -26,7 +26,7 @@ where
 
 pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
 where
-    T: Identified,
+    T: Transmittable,
     S: AsyncSynchronizer,
 {
     let arc = Arc::new(Fifo::new(len));
@@ -37,18 +37,18 @@ where
 }
 
 pub(crate) struct Fifo<T> {
-    data: Box<[T]>,
+    data: Box<[WithId<T>]>,
     offsets: Box<AtomicUsize>,
 }
 
-impl<T: Identified> Fifo<T> {
+impl<T: Transmittable> Fifo<T> {
     fn new(len: usize) -> Self {
         assert!(
             len.is_power_of_two(),
             "Fifo len should be a power of two"
         );
         let mut data = Vec::with_capacity(len);
-        data.resize_with(len, T::empty);
+        data.resize_with(len, || WithId { id: AtomicU64::new(0), data: T::default() });
         Self {
             data: data.into_boxed_slice(),
             offsets: Box::new(AtomicUsize::new(0)),
@@ -71,7 +71,7 @@ impl<T> Clone for Storage<T> {
 }
 
 pub(crate) struct FifoInner<T> {
-    data: NonNull<[UnsafeCell<T>]>,
+    data: NonNull<[UnsafeCell<WithId<T>>]>,
     offsets: NonNull<AtomicUsize>,
     storage: Storage<T>,
 }
@@ -86,21 +86,38 @@ impl<T> Clone for FifoInner<T> {
     }
 }
 
-impl<T: Identified> FifoInner<T> {
+impl<T: Transmittable> FifoInner<T> {
     pub(crate) unsafe fn from_descriptor(descriptor: FifoDescriptor<T>) -> Self {
         assert!(
             descriptor.len.is_power_of_two(),
             "Fifo len should be a power of two"
         );
         #[cfg(target_env = "sgx")] {
-            // check pointers are outside enclave range, etc.
             use std::os::fortanix_sgx::usercalls::alloc::User;
-            let data = User::<[T]>::from_raw_parts(descriptor.data, descriptor.len);
+
+            // `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
+            // This type has the same memory layout but is `Copy` and can be marked as
+            // `UserSafeSized` which is needed for the `User::from_raw_parts()` below.
+            #[repr(C)]
+            #[derive(Clone, Copy)]
+            pub struct WithId<T> {
+                pub id: u64,
+                pub data: T,
+            }
+            unsafe impl<T: UserSafeSized> UserSafeSized for WithId<T> {}
+
+            unsafe fn _sanity_check_with_id() {
+                use std::mem::size_of;
+                let _: [u8; size_of::<fortanix_sgx_abi::WithId<()>>()] = [0u8; size_of::<WithId<()>>()];
+            }
+
+            // check pointers are outside enclave range, etc.
+            let data = User::<[WithId<T>]>::from_raw_parts(descriptor.data as _, descriptor.len);
             mem::forget(data);
         }
         let data_slice = std::slice::from_raw_parts_mut(descriptor.data, descriptor.len);
         Self {
-            data: NonNull::new_unchecked(data_slice as *mut [T] as *mut [UnsafeCell<T>]),
+            data: NonNull::new_unchecked(data_slice as *mut [WithId<T>] as *mut [UnsafeCell<WithId<T>>]),
             offsets: NonNull::new_unchecked(descriptor.offsets as *mut AtomicUsize),
             storage: Storage::Static,
         }
@@ -109,7 +126,7 @@ impl<T: Identified> FifoInner<T> {
     fn from_arc(fifo: Arc<Fifo<T>>) -> Self {
         unsafe {
             Self {
-                data: NonNull::new_unchecked(fifo.data.as_ref() as *const [T] as *mut [T] as *mut [UnsafeCell<T>]),
+                data: NonNull::new_unchecked(fifo.data.as_ref() as *const [WithId<T>] as *mut [WithId<T>] as *mut [UnsafeCell<WithId<T>>]),
                 offsets: NonNull::new_unchecked(fifo.offsets.as_ref() as *const AtomicUsize as *mut AtomicUsize),
                 storage: Storage::Shared(fifo),
             }
@@ -132,7 +149,7 @@ impl<T: Identified> FifoInner<T> {
         DescriptorGuard { descriptor, _fifo: arc }
     }
 
-    fn slot(&self, index: usize) -> &mut T {
+    fn slot(&self, index: usize) -> &mut WithId<T> {
         unsafe { &mut *self.data.as_ref()[index].get() }
     }
 
@@ -144,7 +161,7 @@ impl<T: Identified> FifoInner<T> {
         unsafe { self.offsets.as_ref() }
     }
 
-    pub(crate) fn try_send_impl(&self, val: T) -> Result</*wake up reader:*/ bool, (TrySendError, T)> {
+    pub(crate) fn try_send_impl(&self, val: Identified<T>) -> Result</*wake up reader:*/ bool, TrySendError> {
         let (new, was_empty) = loop {
             // 1. Load the current offsets.
             let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
@@ -152,7 +169,7 @@ impl<T: Identified> FifoInner<T> {
 
             // 2. If the queue is full, wait, then go to step 1.
             if current.is_full() {
-                return Err((TrySendError::QueueFull, val));
+                return Err(TrySendError::QueueFull);
             }
 
             // 3. Add 1 to the write offset and do an atomic compare-and-swap (CAS)
@@ -167,14 +184,14 @@ impl<T: Identified> FifoInner<T> {
 
         // 4. Write the data, then the `id`.
         let slot = self.slot(new.write_offset());
-        slot.copy_except_id(&val);
-        slot.set_id(val.get_id_non_atomic());
+        slot.data = val.data;
+        slot.id.store(val.id, Ordering::SeqCst);
 
         // 5. If the queue was empty in step 1, signal the reader to wake up.
         Ok(was_empty)
     }
 
-    pub(crate) fn try_recv_impl(&self) -> Result<(T, /*wake up writer:*/ bool), TryRecvError> {
+    pub(crate) fn try_recv_impl(&self) -> Result<(Identified<T>, /*wake up writer:*/ bool), TryRecvError> {
         // 1. Load the current offsets.
         let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
 
@@ -186,21 +203,21 @@ impl<T: Identified> FifoInner<T> {
         // 3. Add 1 to the read offset.
         let new = current.increment_read_offset();
 
-        let slot = loop {
+        let (slot, id) = loop {
             // 4. Read the `id` at the new read offset.
             let slot = self.slot(new.read_offset());
-            let id = slot.get_id();
+            let id = slot.id.load(Ordering::SeqCst);
 
             // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
             //    expected to be written imminently.
             if id != 0 {
-                break slot;
+                break (slot, id);
             }
         };
 
         // 6. Read the data, then store `0` in the `id`.
-        let val = *slot;
-        slot.set_id(0);
+        let val = Identified { id, data: slot.data };
+        slot.id.store(0, Ordering::SeqCst);
 
         // 7. Store the new read offset.
         let before = fetch_adjust(
@@ -298,7 +315,7 @@ mod tests {
         assert!(inner.try_recv_impl().is_err());
 
         for i in 1..=7 {
-            let wake = inner.try_send_impl(TestValue { id: i, val: i }).unwrap();
+            let wake = inner.try_send_impl(Identified { id: i, data: TestValue(i) }).unwrap();
             assert!(if i == 1 { wake } else { !wake });
         }
 
@@ -306,7 +323,7 @@ mod tests {
             let (v, wake) = inner.try_recv_impl().unwrap();
             assert!(!wake);
             assert_eq!(v.id, i);
-            assert_eq!(v.val, i);
+            assert_eq!(v.data.0, i);
         }
         assert!(inner.try_recv_impl().is_err());
     }
@@ -317,15 +334,15 @@ mod tests {
         let inner = inner(tx);
         for _ in 0..3 {
             for i in 1..=8 {
-                inner.try_send_impl(TestValue { id: i, val: i }).unwrap();
+                inner.try_send_impl(Identified { id: i, data: TestValue(i) }).unwrap();
             }
-            assert!(inner.try_send_impl(TestValue { id: 9, val: 9 }).is_err());
+            assert!(inner.try_send_impl(Identified { id: 9, data: TestValue(9) }).is_err());
 
             for i in 1..=8 {
                 let (v, wake) = inner.try_recv_impl().unwrap();
                 assert!(if i == 1 { wake } else { !wake });
                 assert_eq!(v.id, i);
-                assert_eq!(v.val, i);
+                assert_eq!(v.data.0, i);
             }
             assert!(inner.try_recv_impl().is_err());
         }
@@ -341,7 +358,7 @@ mod tests {
         let h = thread::spawn(move || {
             for _ in 0..4 {
                 for i in 0..7 {
-                    tx.try_send(TestValue { id: i + 1, val: i }).unwrap();
+                    tx.try_send(Identified { id: i + 1, data: TestValue(i) }).unwrap();
                 }
                 signal_tx.send(()).unwrap();
             }
@@ -352,7 +369,7 @@ mod tests {
             for i in 0..7 {
                 let v = rx.try_recv().unwrap();
                 assert_eq!(v.id, i + 1);
-                assert_eq!(v.val, i);
+                assert_eq!(v.data.0, i);
             }
         }
         assert!(rx.try_recv().is_err());
