@@ -14,19 +14,20 @@ use std::{fmt, mem, ptr};
 #[cfg(unix)]
 use libc;
 
-use abi::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
-use sgxs_crate::einittoken::EinittokenProvider;
-use sgxs_crate::loader;
-use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
+use sgxs::einittoken::EinittokenProvider;
+use sgxs::loader;
+use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
-use generic::{self, EinittokenError, EnclaveLoad, Mapping};
+use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
 
 mod defs;
 
 use self::defs::*;
 
 #[derive(Fail, Debug)]
+#[non_exhaustive]
 pub enum LibraryError {
     #[fail(
         display = "Enclave type not supported, Intel SGX not supported, or Intel SGX device not present"
@@ -68,6 +69,8 @@ pub enum LibraryError {
     InvalidSize,
     #[fail(display = "Enclave is not initialized - the operation requires an initialized enclave")]
     NotInitialized,
+    #[fail(display = "Unexpected error in the API")]
+    Unexpected,
     #[fail(display = "Unknown error ({}) in SGX device interface", _0)]
     Other(u32),
     #[fail(display = "Failed to adjust the page table permissions: {}", _0)]
@@ -94,6 +97,7 @@ impl From<u32> for LibraryError {
             ENCLAVE_RETRY => Retry,
             ENCLAVE_INVALID_SIZE => InvalidSize,
             ENCLAVE_NOT_INITIALIZED => NotInitialized,
+            ENCLAVE_UNEXPECTED => Unexpected,
             _ => Other(error),
         }
     }

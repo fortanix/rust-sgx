@@ -21,7 +21,7 @@ use sgxs::loader::{Load, Tcs};
 use sgxs::sigstruct::read as read_sigstruct;
 
 #[cfg(unix)]
-use sgxs_loaders::isgx::Device as SgxDevice;
+use sgxs_loaders::isgx::{Device as SgxDevice, DriverFamily};
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 
@@ -87,7 +87,7 @@ fn main() {
 
     #[cfg(unix)]
     let device = match matches.value_of("device") {
-        Some(dev) => SgxDevice::open(dev),
+        Some(dev) => SgxDevice::open(dev, DriverFamily::Montgomery),
         None => SgxDevice::new(),
     };
     #[cfg(windows)]

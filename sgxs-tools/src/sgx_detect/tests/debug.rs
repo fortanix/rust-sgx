@@ -231,7 +231,7 @@ impl DebugSupport for DeviceLoader {
         if let Some(ioe) = err.downcast_ref::<io::Error>() {
             if ioe.kind() == io::ErrorKind::NotFound {
                 known_error = true;
-                writeln!(out, "The SGX device (/dev/sgx or /dev/isgx) is not present.\n")?;
+                writeln!(out, "The SGX device (/dev/sgx/enclave, /dev/sgx or /dev/isgx) is not present.\n")?;
 
                 match inner.modstatus {
                     Ok(KmodStatus { ref loaded, .. }) if !loaded.is_empty() => {
@@ -251,12 +251,12 @@ impl DebugSupport for DeviceLoader {
                 }
             } else if ioe.kind() == io::ErrorKind::PermissionDenied {
                 known_error = true;
-                writeln!(out, "Permission denied while opening the SGX device (/dev/sgx or /dev/isgx). Make sure you have the necessary permissions to create SGX enclaves. If you are running in a container, make sure the device permissions are correctly set on the container.")?;
+                writeln!(out, "Permission denied while opening the SGX device (/dev/sgx/enclave, /dev/sgx or /dev/isgx). Make sure you have the necessary permissions to create SGX enclaves. If you are running in a container, make sure the device permissions are correctly set on the container.")?;
             }
         }
 
         if !known_error {
-            writeln!(out, "The SGX device (/dev/sgx or /dev/isgx) could not be opened: {}.", err)?;
+            writeln!(out, "The SGX device (/dev/sgx/enclave, /dev/sgx or /dev/isgx) could not be opened: {}.", err)?;
         }
 
         out.verbose();

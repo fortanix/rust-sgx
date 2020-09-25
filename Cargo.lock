@@ -1290,9 +1290,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.11.1"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "becb657d662f1cd2ef38c7ad480ec6b8cf9e96b27adb543e594f9cf0f2e6065c"
+checksum = "4dbdc256eaac2e3bd236d93ad999d3479ef775c863dbda3068c4006a92eec51b"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -1303,9 +1303,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.13.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dbdc256eaac2e3bd236d93ad999d3479ef775c863dbda3068c4006a92eec51b"
+checksum = "3b2e0b4f3320ed72aaedb9a5ac838690a8047c7b275da22711fddff4f8a14229"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -2086,14 +2086,16 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.2.2"
+version = "0.3.0"
 dependencies = [
+ "aesm-client",
  "bitflags 1.2.1",
  "failure",
  "failure_derive",
  "libc",
  "libloading",
- "nix 0.11.1",
+ "nix 0.15.0",
+ "report-test",
  "sgx-isa",
  "sgxs",
  "winapi 0.3.8",

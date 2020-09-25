@@ -37,7 +37,7 @@ verify = ["mbedtls", "num", "yasna"]
 [dependencies]
 # Project dependencies
 "dcap-ql-sys" = { version = "0.2.0", path = "../dcap-ql-sys", optional = true }
-"sgxs-loaders" = { version = "0.2.0", path = "../sgxs-loaders", optional = true }
+"sgxs-loaders" = { version = "0.3.0", path = "../sgxs-loaders", optional = true }
 "sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies

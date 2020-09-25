@@ -15,13 +15,47 @@ use std::path::{Path, PathBuf};
 use std::ptr;
 use std::sync::Arc;
 
-use abi::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct};
-use sgxs_crate::einittoken::EinittokenProvider;
-use sgxs_crate::loader;
-use sgxs_crate::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use nix::sys::mman::{mmap, munmap, ProtFlags as Prot, MapFlags as Map};
+
+use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct, PageType, SecinfoFlags};
+use sgxs::einittoken::EinittokenProvider;
+use sgxs::loader;
+use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
-use generic::{self, EinittokenError, EnclaveLoad, Mapping};
+use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
+
+/// A Linux SGX driver API family.
+///
+/// Unfortunately, there are many different driver versions that all have a
+/// slightly different API and may also have slightly different functionality.
+/// There is no common versioning or naming scheme for referring to these
+/// drivers. These are grouped here into different families of APIs, each
+/// family represents a set of interfaces that are very similar, and as such
+/// can be called by similar logic.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DriverFamily {
+    /// These APIs are commonly exposed via device nodes at
+    /// * `/dev/isgx`
+    /// * `/dev/sgx`
+    /// * `/dev/sgx_prv`
+    ///
+    /// # Compatibility notes
+    ///
+    /// Implementations may require a launch token, may not support providing a
+    /// launch token, or may provide both as an option.
+    Montgomery,
+    /// This API is commonly exposed via a device node at
+    /// * `/dev/sgx/enclave`
+    ///
+    /// # Compatibility notes
+    ///
+    /// Currently, no implementations of this API family support
+    /// partially-measured pages or providing a launch token.
+    Augusta,
+}
+
+use self::DriverFamily::*;
 
 #[derive(Fail, Debug)]
 pub enum SgxIoctlError {
@@ -45,6 +79,12 @@ pub enum Error {
     Add(#[cause] SgxIoctlError),
     #[fail(display = "Failed to call EINIT.")]
     Init(#[cause] SgxIoctlError),
+}
+
+impl Error {
+    fn map(error: nix::Error) -> Self {
+        Error::Map(error.as_errno().unwrap().into())
+    }
 }
 
 impl EinittokenError for Error {
@@ -82,24 +122,59 @@ impl EnclaveLoad for InnerDevice {
     type Error = Error;
 
     fn new(
-        device: Arc<InnerDevice>,
+        mut device: Arc<InnerDevice>,
         ecreate: MeasECreate,
         attributes: Attributes,
         miscselect: Miscselect,
     ) -> Result<Mapping<Self>, Self::Error> {
+        let esize = ecreate.size as usize;
         let ptr = unsafe {
-            libc::mmap(
-                ptr::null_mut(),
-                ecreate.size as usize,
-                libc::PROT_READ | libc::PROT_WRITE | libc::PROT_EXEC,
-                libc::MAP_SHARED,
-                device.fd.as_raw_fd(),
-                0,
-            )
+            match device.driver {
+                Montgomery => {
+                    mmap(
+                        ptr::null_mut(),
+                        esize,
+                        Prot::PROT_READ | Prot::PROT_WRITE | Prot::PROT_EXEC,
+                        Map::MAP_SHARED,
+                        device.fd.as_raw_fd(),
+                        0,
+                    ).map_err(Error::map)?
+                },
+                Augusta => {
+                    unsafe fn maybe_unmap(addr: *mut std::ffi::c_void, len: usize) {
+                        if len == 0 {
+                            return;
+                        }
+                        if let Err(e) = munmap(addr, len) {
+                            eprintln!("SGX enclave create: munmap failed: {:?}", e);
+                        }
+                    }
+
+                    // re-open device by cloning, if necessary
+                    Arc::make_mut(&mut device);
+
+                    let ptr = mmap(
+                        ptr::null_mut(),
+                        esize * 2,
+                        Prot::PROT_NONE,
+                        Map::MAP_SHARED | Map::MAP_ANONYMOUS,
+                        0,
+                        0,
+                    ).map_err(Error::map)?;
+
+                    let align_offset = ptr.align_offset(esize);
+                    if align_offset > esize {
+                        unreachable!()
+                    }
+                    let newptr = ptr.add(align_offset);
+                    maybe_unmap(ptr, align_offset);
+                    maybe_unmap(newptr.add(esize), esize - align_offset);
+
+                    newptr
+                },
+            }
         };
-        if ptr.is_null() || ptr == libc::MAP_FAILED {
-            return Err(Error::Map(IoError::last_os_error()));
-        }
+
         let mapping = Mapping {
             device,
             base: ptr as u64,
@@ -132,13 +207,74 @@ impl EnclaveLoad for InnerDevice {
             flags: eadd.secinfo.flags,
             ..Default::default()
         };
-        let adddata = ioctl::AddData {
-            dstpage: mapping.base + eadd.offset,
-            srcpage: &data,
-            secinfo: &secinfo,
-            chunks: chunks.0,
-        };
-        ioctl_unsafe!(Add, ioctl::add(mapping.device.fd.as_raw_fd(), &adddata))
+        let dstpage = mapping.base + eadd.offset;
+        match mapping.device.driver {
+            Montgomery => {
+                let adddata = ioctl::montgomery::AddData {
+                    dstpage,
+                    srcpage: &data,
+                    secinfo: &secinfo,
+                    chunks: chunks.0,
+                };
+                ioctl_unsafe!(Add, ioctl::montgomery::add(mapping.device.fd.as_raw_fd(), &adddata))
+            },
+            Augusta => {
+                let flags = match chunks.0 {
+                    0 => ioctl::augusta::SgxPageFlags::empty(),
+                    0xffff => ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE,
+                    _ => {
+                        return Err(Error::Add(SgxIoctlError::Io(IoError::new(
+                            io::ErrorKind::Other,
+                            "Partially-measured pages not supported in this driver",
+                        ))))
+                    }
+                };
+
+                let data = ioctl::augusta::Align4096(data);
+                let mut adddata = ioctl::augusta::AddData {
+                    src: &data,
+                    offset: eadd.offset,
+                    length: data.0.len() as _,
+                    secinfo: &secinfo,
+                    flags,
+                    count: 0,
+                };
+                ioctl_unsafe!(Add, ioctl::augusta::add(mapping.device.fd.as_raw_fd(), &mut adddata))?;
+                assert_eq!(adddata.length, adddata.count);
+
+                let prot = match PageType::try_from(secinfo.flags.page_type()) {
+                    Ok(PageType::Reg) => {
+                        let mut prot = Prot::empty();
+                        if secinfo.flags.intersects(SecinfoFlags::R) {
+                            prot |= Prot::PROT_READ
+                        }
+                        if secinfo.flags.intersects(SecinfoFlags::W) {
+                            prot |= Prot::PROT_WRITE
+                        }
+                        if secinfo.flags.intersects(SecinfoFlags::X) {
+                            prot |= Prot::PROT_EXEC
+                        }
+                        prot
+                    }
+                    Ok(PageType::Tcs) => {
+                        Prot::PROT_READ | Prot::PROT_WRITE
+                    },
+                    _ => unreachable!(),
+                };
+                unsafe {
+                    mmap(
+                        dstpage as _,
+                        4096,
+                        prot,
+                        Map::MAP_SHARED | Map::MAP_FIXED,
+                        mapping.device.fd.as_raw_fd(),
+                        0,
+                    ).map_err(Error::map)?;
+                }
+
+                Ok(())
+            }
+        }
     }
 
     fn init(
@@ -158,11 +294,21 @@ impl EnclaveLoad for InnerDevice {
         }
 
         fn ioctl_init(mapping: &Mapping<InnerDevice>, sigstruct: &Sigstruct) -> Result<(), Error> {
-            let initdata = ioctl::InitData {
-                base: mapping.base,
-                sigstruct,
-            };
-            ioctl_unsafe!(Init, ioctl::init(mapping.device.fd.as_raw_fd(), &initdata))
+            match mapping.device.driver {
+                Montgomery => {
+                    let initdata = ioctl::montgomery::InitData {
+                        base: mapping.base,
+                        sigstruct,
+                    };
+                    ioctl_unsafe!(Init, ioctl::montgomery::init(mapping.device.fd.as_raw_fd(), &initdata))
+                },
+                Augusta => {
+                    let initdata = ioctl::augusta::InitData {
+                        sigstruct,
+                    };
+                    ioctl_unsafe!(Init, ioctl::augusta::init(mapping.device.fd.as_raw_fd(), &initdata))
+                }
+            }
         }
 
         fn ioctl_init_with_token(
@@ -170,15 +316,22 @@ impl EnclaveLoad for InnerDevice {
             sigstruct: &Sigstruct,
             einittoken: &Einittoken,
         ) -> Result<(), Error> {
-            let initdata = ioctl::InitDataWithToken {
-                base: mapping.base,
-                sigstruct,
-                einittoken,
-            };
-            ioctl_unsafe!(
-                Init,
-                ioctl::init_with_token(mapping.device.fd.as_raw_fd(), &initdata)
-            )
+            match mapping.device.driver {
+                Montgomery => {
+                    let initdata = ioctl::montgomery::InitDataWithToken {
+                        base: mapping.base,
+                        sigstruct,
+                        einittoken,
+                    };
+                    ioctl_unsafe!(
+                        Init,
+                        ioctl::montgomery::init_with_token(mapping.device.fd.as_raw_fd(), &initdata)
+                    )
+                },
+                Augusta => {
+                    Err(Error::Init(SgxIoctlError::Io(IoError::from_raw_os_error(libc::ENOTTY))))
+                }
+            }
         }
 
         // Try either EINIT ioctl(), in the order that makes most sense given
@@ -210,7 +363,18 @@ impl EnclaveLoad for InnerDevice {
 #[derive(Debug)]
 struct InnerDevice {
     fd: File,
-    path: PathBuf,
+    path: Arc<PathBuf>,
+    driver: DriverFamily,
+}
+
+impl Clone for InnerDevice {
+    fn clone(&self) -> Self {
+        InnerDevice {
+            fd: OpenOptions::new().read(true).write(true).open(&**self.path).unwrap(),
+            path: self.path.clone(),
+            driver: self.driver,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -223,18 +387,26 @@ pub struct DeviceBuilder {
 }
 
 impl Device {
-    /// Open `/dev/isgx`, or if that doesn't exist, `/dev/sgx`.
+    /// Try to open an SGX device from a list of default paths
     pub fn new() -> IoResult<DeviceBuilder> {
-        const DEFAULT_DEVICE_PATH1: &'static str = "/dev/isgx";
-        const DEFAULT_DEVICE_PATH2: &'static str = "/dev/sgx";
+        const DEFAULT_DEVICE_PATHS: &[(&str, DriverFamily)] = &[
+            ("/dev/sgx/enclave", Augusta),
+            ("/dev/isgx", Montgomery),
+            ("/dev/sgx", Montgomery),
+        ];
 
-        match Self::open(DEFAULT_DEVICE_PATH1) {
-            Err(ref e) if e.kind() == io::ErrorKind::NotFound => Self::open(DEFAULT_DEVICE_PATH2),
-            v => v,
+        for &(path, family) in DEFAULT_DEVICE_PATHS {
+            match Self::open(path, family) {
+                Err(ref e) if e.kind() == io::ErrorKind::NotFound => continue,
+                Err(ref e) if e.raw_os_error() == Some(libc::ENOTDIR as _) => continue,
+                result => return result,
+            }
         }
+
+        Err(IoError::new(io::ErrorKind::NotFound, "None of the default SGX device paths were found"))
     }
 
-    pub fn open<T: AsRef<Path>>(path: T) -> IoResult<DeviceBuilder> {
+    pub fn open<T: AsRef<Path>>(path: T, driver: DriverFamily) -> IoResult<DeviceBuilder> {
         let path = path.as_ref();
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         Ok(DeviceBuilder {
@@ -242,7 +414,8 @@ impl Device {
                 device: generic::Device {
                     inner: Arc::new(InnerDevice {
                         fd: file,
-                        path: path.to_owned(),
+                        path: Arc::new(path.to_owned()),
+                        driver,
                     }),
                     einittoken_provider: None,
                 },

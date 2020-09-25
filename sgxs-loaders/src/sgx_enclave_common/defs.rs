@@ -6,7 +6,7 @@
 
 #![allow(unused)]
 
-use abi::{Secs, Sigstruct};
+use sgx_isa::{Secs, Sigstruct};
 use std::os::raw::c_void;
 
 pub const ENCLAVE_ERROR_SUCCESS: u32 = 0;
