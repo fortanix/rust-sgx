@@ -638,6 +638,7 @@ pub mod async {
     use core::sync::atomic::{AtomicU64, AtomicUsize};
 
     #[repr(C)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct WithId<T> {
         pub id: AtomicU64,
         pub data: T,
@@ -651,10 +652,18 @@ pub mod async {
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct Usercall(pub u64, pub u64, pub u64, pub u64, pub u64);
 
-    impl Usercall {
-        pub fn parameters(&self) -> (u64, u64, u64, u64, u64) {
-            let Usercall(p1, p2, p3, p4, p5) = *self;
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<Usercall> for (u64, u64, u64, u64, u64) {
+        fn from(u: Usercall) -> Self {
+            let Usercall(p1, p2, p3, p4, p5) = u;
             (p1, p2, p3, p4, p5)
+        }
+    }
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<(u64, u64, u64, u64, u64)> for Usercall {
+        fn from(p: (u64, u64, u64, u64, u64)) -> Self {
+            Usercall(p.0, p.1, p.2, p.3, p.4)
         }
     }
 
@@ -665,6 +674,21 @@ pub mod async {
     #[derive(Copy, Clone, Default)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct Return(pub u64, pub u64);
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<Return> for (u64, u64) {
+        fn from(r: Return) -> Self {
+            let Return(r1, r2) = r;
+            (r1, r2)
+        }
+    }
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<(u64, u64)> for Return {
+        fn from(r: (u64, u64)) -> Self {
+            Return(r.0, r.1)
+        }
+    }
 
     /// A circular buffer used as a FIFO queue with atomic reads and writes.
     ///
@@ -706,7 +730,7 @@ pub mod async {
     /// 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
     ///    expected to be written imminently.
     /// 6. Read the data, then store `0` in the `id`.
-    /// 7. Store the new read offset.
+    /// 7. Store the new read offset, retrieving the old offsets.
     /// 8. If the queue was full before step 7, signal the writer to wake up.
     #[repr(C)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
