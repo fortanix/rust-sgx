@@ -37,7 +37,7 @@ impl<T: Transmittable, S: Synchronizer> Sender<T, S> {
     ///   the other end of the channel.
     pub unsafe fn from_descriptor(d: FifoDescriptor<T>, synchronizer: S) -> Self {
         Self {
-            inner: FifoInner::from_descriptor(d),
+            inner: Fifo::from_descriptor(d),
             synchronizer,
         }
     }
@@ -83,7 +83,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     /// * The caller must ensure that there is at most one `Receiver` for the queue.
     pub unsafe fn from_descriptor(d: FifoDescriptor<T>, synchronizer: S) -> Self {
         Self {
-            inner: FifoInner::from_descriptor(d),
+            inner: Fifo::from_descriptor(d),
             synchronizer,
         }
     }
@@ -121,7 +121,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     }
 }
 
-pub struct TryIter<'r, T, S>(&'r Receiver<T, S>);
+pub struct TryIter<'r, T: 'static, S>(&'r Receiver<T, S>);
 
 impl<'r, T: Transmittable, S: Synchronizer> Iterator for TryIter<'r, T, S> {
     type Item = Identified<T>;

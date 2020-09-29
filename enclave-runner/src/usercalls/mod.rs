@@ -62,6 +62,7 @@ enum UsercallSendData {
     Async(Identified<Usercall>),
 }
 
+// This is the same as UsercallSendData except that it can't be Sync(CoResult::Return(...), ...)
 enum UsercallHandleData {
     Sync(tcs::Usercall<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
     Async(Identified<Usercall>),
@@ -509,25 +510,27 @@ struct IOHandlerInput<'tcs> {
 }
 
 struct PendingEvents {
-    counts: [u32; Self::MAX_EVENT],
+    counts: [u32; Self::EV_MAX],
 }
 
 impl PendingEvents {
-    const MAX_EVENT: usize = 8;
+    // Will error if it doesn't fit in a `u64`
+    const EV_MAX_U64: u64 = (EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK) + 1;
+    const EV_MAX: usize = Self::EV_MAX_U64 as _;
+    // Will error if it doesn't fit in a `usize`
+    const _ERROR_IF_USIZE_TOO_SMALL: u64 = u64::MAX + (Self::EV_MAX_U64 - (Self::EV_MAX as u64));
+    const _EV_MAX_U16: u16 = Self::EV_MAX_U64 as u16;
+    // Will error if it doesn't fit in a `u16`. We should consider a different approach if we reach this limit.
+    const _ERROR_IF_TOO_BIG: u64 = u64::MAX + (Self::EV_MAX_U64 - (Self::_EV_MAX_U16 as u64));
 
     fn new() -> Self {
-        // sanity check to ensure we update MAX_EVENT if new events are added in the future
-        const EV_ALL: u64 = EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK;
-        assert!(EV_ALL < Self::MAX_EVENT as u64);
-        assert!(Self::MAX_EVENT <= 1usize + u8::max_value() as usize);
-
         Self { counts: Default::default() }
     }
 
     fn take(&mut self, event_mask: u8) -> Option<u8> {
-        assert!((event_mask as usize) < Self::MAX_EVENT);
+        assert!((event_mask as usize) < Self::EV_MAX);
 
-        for i in (1..Self::MAX_EVENT).rev() {
+        for i in (1..Self::EV_MAX).rev() {
             let ev = i as u8;
             if (ev & event_mask) != 0 && self.counts[i] > 0 {
                 self.counts[i] -= 1;
@@ -538,7 +541,7 @@ impl PendingEvents {
     }
 
     fn push(&mut self, event: u8) {
-        assert!((event as usize) < Self::MAX_EVENT);
+        assert!((event as usize) < Self::EV_MAX);
         let i = event as usize;
         if let Some(val) = self.counts[i].checked_add(1) {
             self.counts[i] = val;
@@ -701,12 +704,12 @@ impl EnclaveState {
     async fn handle_usercall(
         enclave: Arc<EnclaveState>,
         work_sender: crossbeam::crossbeam_channel::Sender<Work>,
-        tx_return_channel: tokio::sync::mpsc::UnboundedSender<(EnclaveResult, EnclaveEntry)>,
+        tx_return_channel: tokio::sync::mpsc::UnboundedSender<(EnclaveResult, ReturnSource)>,
         mut handle_data: UsercallHandleData,
     ) {
         let (parameters, mode, tcs) = match handle_data {
-            UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode, Some(tcs)),
-            UsercallHandleData::Async(ref usercall)                => (usercall.data.parameters(), EnclaveEntry::ExecutableNonMain, None),
+            UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode.into(), Some(tcs)),
+            UsercallHandleData::Async(ref usercall)                => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
         };
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
@@ -743,7 +746,7 @@ impl EnclaveState {
                         EnclavePanic::from(debug_buf.into_inner())
                     }
                     UsercallHandleData::Async(_) => {
-                        // FIXME: find a better panic message
+                        // TODO: https://github.com/fortanix/rust-sgx/issues/235#issuecomment-641811437
                         EnclavePanic::DebugStr("async exit with a panic".to_owned())
                     }
                 };
@@ -782,15 +785,18 @@ impl EnclaveState {
                 let (my_result, mode) = work;
                 let res = match (my_result, mode) {
                     (Err(EnclaveAbort::Secondary), _) |
-                    (Ok(_), EnclaveEntry::ExecutableNonMain) => continue,
+                    (Ok(_), ReturnSource::ExecutableNonMain) => continue,
 
-                    (e, EnclaveEntry::Library) |
-                    (e, EnclaveEntry::ExecutableMain) |
-                    (e @ Err(EnclaveAbort::Exit { panic: None }), EnclaveEntry::ExecutableNonMain)
+                    (e, ReturnSource::Library) |
+                    (e, ReturnSource::ExecutableMain) |
+                    (e @ Err(EnclaveAbort::Exit { panic: None }), _)
                         => e,
 
-                    (Err(e @ EnclaveAbort::Exit { panic: Some(_) }), EnclaveEntry::ExecutableNonMain) |
-                    (Err(e @ EnclaveAbort::InvalidUsercall(_)), EnclaveEntry::ExecutableNonMain) => {
+                    (Ok(_), ReturnSource::AsyncUsercall) |
+                    (Err(EnclaveAbort::MainReturned), ReturnSource::AsyncUsercall) => unreachable!(),
+
+                    (Err(e @ EnclaveAbort::Exit { panic: Some(_) }), _) |
+                    (Err(e @ EnclaveAbort::InvalidUsercall(_)), _) => {
                         let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
@@ -803,7 +809,7 @@ impl EnclaveState {
                         Err(EnclaveAbort::Secondary)
                     }
 
-                    (Err(e), EnclaveEntry::ExecutableNonMain) => {
+                    (Err(e), _) => {
                         let e = e.map_panic(|opt| opt.unwrap());
                         let cmd = enclave_clone.kind.as_command().unwrap();
                         let mut cmddata = cmd.panic_reason.lock().await;
@@ -882,7 +888,7 @@ impl EnclaveState {
                                     Ok((0, 0))
                                 }
                             };
-                            let _ = tx_return_channel.send((ret, state.mode));
+                            let _ = tx_return_channel.send((ret, state.mode.into()));
                         };
                         tokio::task::spawn_local(fut);
                     }
@@ -1102,6 +1108,24 @@ enum EnclaveEntry {
     ExecutableMain,
     ExecutableNonMain,
     Library,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReturnSource {
+    ExecutableMain,
+    ExecutableNonMain,
+    Library,
+    AsyncUsercall,
+}
+
+impl From<EnclaveEntry> for ReturnSource {
+    fn from(e: EnclaveEntry) -> Self {
+        match e {
+            EnclaveEntry::ExecutableMain => ReturnSource::ExecutableMain,
+            EnclaveEntry::ExecutableNonMain => ReturnSource::ExecutableNonMain,
+            EnclaveEntry::Library => ReturnSource::Library,
+        }
+    }
 }
 
 #[repr(C)]
@@ -1445,7 +1469,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             }
         };
 
-        // TODO: the ABI allows for calling wait() asynchronously with specific semantics
+        // TODO: https://github.com/fortanix/rust-sgx/issues/290
         let tcs = self.tcs.as_mut().ok_or(io::Error::from(io::ErrorKind::Other))?;
 
         let mut ret = tcs.pending_events.take(event_mask);

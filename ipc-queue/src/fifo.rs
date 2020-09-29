@@ -8,7 +8,6 @@ use super::*;
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
 use std::cell::UnsafeCell;
 use std::mem;
-use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -17,8 +16,8 @@ where
     T: Transmittable,
     S: Synchronizer,
 {
-    let arc = Arc::new(Fifo::new(len));
-    let inner = FifoInner::from_arc(arc);
+    let arc = Arc::new(FifoBuffer::new(len));
+    let inner = Fifo::from_arc(arc);
     let tx = Sender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = Receiver { inner, synchronizer: s };
     (tx, rx)
@@ -29,19 +28,19 @@ where
     T: Transmittable,
     S: AsyncSynchronizer,
 {
-    let arc = Arc::new(Fifo::new(len));
-    let inner = FifoInner::from_arc(arc);
+    let arc = Arc::new(FifoBuffer::new(len));
+    let inner = Fifo::from_arc(arc);
     let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = AsyncReceiver { inner, synchronizer: s };
     (tx, rx)
 }
 
-pub(crate) struct Fifo<T> {
+pub(crate) struct FifoBuffer<T> {
     data: Box<[WithId<T>]>,
     offsets: Box<AtomicUsize>,
 }
 
-impl<T: Transmittable> Fifo<T> {
+impl<T: Transmittable> FifoBuffer<T> {
     fn new(len: usize) -> Self {
         assert!(
             len.is_power_of_two(),
@@ -57,7 +56,7 @@ impl<T: Transmittable> Fifo<T> {
 }
 
 enum Storage<T> {
-    Shared(Arc<Fifo<T>>),
+    Shared(Arc<FifoBuffer<T>>),
     Static,
 }
 
@@ -70,23 +69,23 @@ impl<T> Clone for Storage<T> {
     }
 }
 
-pub(crate) struct FifoInner<T> {
-    data: NonNull<[UnsafeCell<WithId<T>>]>,
-    offsets: NonNull<AtomicUsize>,
+pub(crate) struct Fifo<T: 'static> {
+    data: &'static [UnsafeCell<WithId<T>>],
+    offsets: &'static AtomicUsize,
     storage: Storage<T>,
 }
 
-impl<T> Clone for FifoInner<T> {
+impl<T> Clone for Fifo<T> {
     fn clone(&self) -> Self {
         Self {
-            data: self.data.clone(),
-            offsets: self.offsets.clone(),
+            data: self.data,
+            offsets: self.offsets,
             storage: self.storage.clone(),
         }
     }
 }
 
-impl<T: Transmittable> FifoInner<T> {
+impl<T: Transmittable> Fifo<T> {
     pub(crate) unsafe fn from_descriptor(descriptor: FifoDescriptor<T>) -> Self {
         assert!(
             descriptor.len.is_power_of_two(),
@@ -115,19 +114,19 @@ impl<T: Transmittable> FifoInner<T> {
             let data = User::<[WithId<T>]>::from_raw_parts(descriptor.data as _, descriptor.len);
             mem::forget(data);
         }
-        let data_slice = std::slice::from_raw_parts_mut(descriptor.data, descriptor.len);
+        let data_slice = std::slice::from_raw_parts(descriptor.data, descriptor.len);
         Self {
-            data: NonNull::new_unchecked(data_slice as *mut [WithId<T>] as *mut [UnsafeCell<WithId<T>>]),
-            offsets: NonNull::new_unchecked(descriptor.offsets as *mut AtomicUsize),
+            data: &*(data_slice as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+            offsets: &*descriptor.offsets,
             storage: Storage::Static,
         }
     }
 
-    fn from_arc(fifo: Arc<Fifo<T>>) -> Self {
+    fn from_arc(fifo: Arc<FifoBuffer<T>>) -> Self {
         unsafe {
             Self {
-                data: NonNull::new_unchecked(fifo.data.as_ref() as *const [WithId<T>] as *mut [WithId<T>] as *mut [UnsafeCell<WithId<T>>]),
-                offsets: NonNull::new_unchecked(fifo.offsets.as_ref() as *const AtomicUsize as *mut AtomicUsize),
+                data: &*(fifo.data.as_ref() as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+                offsets: &*(fifo.offsets.as_ref() as *const AtomicUsize),
                 storage: Storage::Shared(fifo),
             }
         }
@@ -140,31 +139,18 @@ impl<T: Transmittable> FifoInner<T> {
             Storage::Shared(arc) => arc,
             Storage::Static => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
         };
-        let data = unsafe { self.data.as_ref() };
         let descriptor = FifoDescriptor {
-            data: data.as_ptr() as _,
-            len: data.len(),
-            offsets: self.offsets.as_ptr(),
+            data: self.data.as_ptr() as _,
+            len: self.data.len(),
+            offsets: self.offsets,
         };
         DescriptorGuard { descriptor, _fifo: arc }
-    }
-
-    fn slot(&self, index: usize) -> &mut WithId<T> {
-        unsafe { &mut *self.data.as_ref()[index].get() }
-    }
-
-    fn data_len(&self) -> usize {
-        unsafe { self.data.as_ref().len() }
-    }
-
-    fn offsets(&self) -> &AtomicUsize {
-        unsafe { self.offsets.as_ref() }
     }
 
     pub(crate) fn try_send_impl(&self, val: Identified<T>) -> Result</*wake up reader:*/ bool, TrySendError> {
         let (new, was_empty) = loop {
             // 1. Load the current offsets.
-            let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
+            let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
             let was_empty = current.is_empty();
 
             // 2. If the queue is full, wait, then go to step 1.
@@ -176,14 +162,14 @@ impl<T: Transmittable> FifoInner<T> {
             //    with the current offsets. If the CAS was not succesful, go to step 1.
             let new = current.increment_write_offset();
             let current = current.as_usize();
-            let prev = self.offsets().compare_and_swap(current, new.as_usize(), Ordering::SeqCst);
+            let prev = self.offsets.compare_and_swap(current, new.as_usize(), Ordering::SeqCst);
             if prev == current {
                 break (new, was_empty);
             }
         };
 
         // 4. Write the data, then the `id`.
-        let slot = self.slot(new.write_offset());
+        let slot = unsafe { &mut *self.data[new.write_offset()].get() };
         slot.data = val.data;
         slot.id.store(val.id, Ordering::SeqCst);
 
@@ -193,7 +179,7 @@ impl<T: Transmittable> FifoInner<T> {
 
     pub(crate) fn try_recv_impl(&self) -> Result<(Identified<T>, /*wake up writer:*/ bool), TryRecvError> {
         // 1. Load the current offsets.
-        let current = Offsets::new(self.offsets().load(Ordering::SeqCst), self.data_len() as u32);
+        let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
 
         // 2. If the queue is empty, wait, then go to step 1.
         if current.is_empty() {
@@ -205,7 +191,7 @@ impl<T: Transmittable> FifoInner<T> {
 
         let (slot, id) = loop {
             // 4. Read the `id` at the new read offset.
-            let slot = self.slot(new.read_offset());
+            let slot = unsafe { &mut *self.data[new.read_offset()].get() };
             let id = slot.id.load(Ordering::SeqCst);
 
             // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
@@ -219,15 +205,15 @@ impl<T: Transmittable> FifoInner<T> {
         let val = Identified { id, data: slot.data };
         slot.id.store(0, Ordering::SeqCst);
 
-        // 7. Store the new read offset.
+        // 7. Store the new read offset, retrieving the old offsets.
         let before = fetch_adjust(
-            self.offsets(),
+            self.offsets,
             new.read as isize - current.read as isize,
             Ordering::SeqCst,
         );
 
         // 8. If the queue was full before step 7, signal the writer to wake up.
-        let was_full = Offsets::new(before, self.data_len() as u32).is_full();
+        let was_full = Offsets::new(before, self.data.len() as u32).is_full();
         Ok((val, was_full))
     }
 }
@@ -304,7 +290,7 @@ mod tests {
     use std::sync::mpsc;
     use std::thread;
 
-    fn inner<T, S>(tx: Sender<T, S>) -> FifoInner<T> {
+    fn inner<T, S>(tx: Sender<T, S>) -> Fifo<T> {
         tx.inner
     }
 

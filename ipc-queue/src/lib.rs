@@ -17,7 +17,7 @@ mod interface_async;
 #[cfg(test)]
 mod test_support;
 
-use self::fifo::{Fifo, FifoInner};
+use self::fifo::{FifoBuffer, Fifo};
 
 #[cfg(target_env = "sgx")]
 use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
@@ -97,13 +97,13 @@ pub trait Synchronizer: Clone {
     fn notify(&self, event: QueueEvent);
 }
 
-pub struct Sender<T, S> {
-    inner: FifoInner<T>,
+pub struct Sender<T: 'static, S> {
+    inner: Fifo<T>,
     synchronizer: S,
 }
 
-pub struct Receiver<T, S> {
-    inner: FifoInner<T>,
+pub struct Receiver<T: 'static, S> {
+    inner: Fifo<T>,
     synchronizer: S,
 }
 
@@ -115,13 +115,13 @@ pub trait AsyncSynchronizer: Clone {
     fn notify(&self, event: QueueEvent);
 }
 
-pub struct AsyncSender<T, S> {
-    inner: FifoInner<T>,
+pub struct AsyncSender<T: 'static, S> {
+    inner: Fifo<T>,
     synchronizer: S,
 }
 
-pub struct AsyncReceiver<T, S> {
-    inner: FifoInner<T>,
+pub struct AsyncReceiver<T: 'static, S> {
+    inner: Fifo<T>,
     synchronizer: S,
 }
 
@@ -129,7 +129,7 @@ pub struct AsyncReceiver<T, S> {
 /// to remain valid as long as the DescriptorGuard is not dropped.
 pub struct DescriptorGuard<T> {
     descriptor: FifoDescriptor<T>,
-    _fifo: Arc<Fifo<T>>,
+    _fifo: Arc<FifoBuffer<T>>,
 }
 
 impl<T> DescriptorGuard<T> {
