@@ -394,6 +394,8 @@ bitflags! {
         const MODE64BIT     = 0b0000_0100;
         const PROVISIONKEY  = 0b0001_0000;
         const EINITTOKENKEY = 0b0010_0000;
+        const CET           = 0b0100_0000;
+        const KSS           = 0b1000_0000;
     }
 }
 
