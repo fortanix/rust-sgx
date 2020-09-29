@@ -2061,7 +2061,7 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "bitflags 1.2.1",
  "mbedtls 0.5.3",

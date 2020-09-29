@@ -154,6 +154,7 @@ impl Print for SgxCpuConfiguration {
 #[derive(Clone, Update)]
 struct EnclaveAttributes {
     standard_attributes: bool,
+    kss: bool,
     cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>
 }
 
@@ -170,10 +171,12 @@ impl Dependency<SgxCpuSupport> for EnclaveAttributes {
                         | AttributesFlags::PROVISIONKEY
                         | AttributesFlags::EINITTOKENKEY,
                 ) && (c.attributes_xfrm_valid & 0x3) == 0x3,
+                kss: c.attributes_flags_valid.contains(AttributesFlags::KSS),
                 cpuid_12h_1: Ok(*c),
             }),
             (Some(_), c) => Some(EnclaveAttributesInner {
                 standard_attributes: false,
+                kss: false,
                 cpuid_12h_1: c.clone(),
             }),
             (None, _) => None,
@@ -264,6 +267,7 @@ struct SgxFeaturesCat;
 #[derive(Default, DebugSupport, Update)]
 struct SgxFeatures {
     cpu_cfg: Option<SgxCpuConfigurationInner>,
+    encl_attr: Option<EnclaveAttributesInner>,
 }
 
 #[dependency]
@@ -277,8 +281,8 @@ impl Dependency<SgxCpuConfiguration> for SgxFeatures {
 
 #[dependency]
 impl Dependency<EnclaveAttributes> for SgxFeatures {
-    fn update_dependency(&mut self, _dependency: &EnclaveAttributes, _support: &SgxSupport) {
-        // TODO: KSS support from attributes
+    fn update_dependency(&mut self, dependency: &EnclaveAttributes, _support: &SgxSupport) {
+        self.encl_attr = dependency.inner.clone()
     }
 }
 
@@ -300,11 +304,14 @@ impl Print for SgxFeatures {
             self.cpu_cfg.as_ref().map(|c| c.exinfo).as_opt().paint()
         );
         print!("{}ENCLV  ", self.cpu_cfg.as_ref().map(|c| c.enclv).as_opt().paint());
-        println!(
+        print!(
             "{}OVERSUB  ",
             self.cpu_cfg.as_ref().map(|c| c.oversub).as_opt().paint()
         );
-        //println!("{}KSS", ...);
+        println!(
+            "{}KSS  ",
+            self.encl_attr.as_ref().map(|a| a.kss).as_opt().paint()
+        );
     }
 }
 
