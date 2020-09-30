@@ -77,6 +77,7 @@ mod tests;
 
 use crate::interpret::*;
 use crate::tests::Tests;
+use proc_mounts::MountIter;
 
 #[derive(Debug, Fail)]
 enum DetectError {
@@ -260,7 +261,21 @@ impl SgxSupport {
             if let Ok(ref aesm) = aesm_service {
                 dev = dev.einittoken_provider(aesm.clone());
             }
-            Ok(Rc::new(RefCell::new(dev.build())))
+            let device = dev.build();
+            let mut path = device.path();
+            let mut mount_paths = vec![];
+            while let Some(p) = path.parent() {
+                mount_paths.push(p.to_str());
+                path = p;
+            }
+            for mi in MountIter::new().unwrap() {
+                if let Ok(m) = mi {
+                    if mount_paths.contains(&m.dest.to_str()) && m.options.contains(&"noexec".to_string()) {
+                        return Err(failure::format_err!("{:?} mounted with `noexec` option", m.dest));
+                    }
+                }
+            }
+            Ok(Rc::new(RefCell::new(device)))
         })();
         let sgxdev_status = imp::kmod_status();
         let loader_encllib = (|| {
