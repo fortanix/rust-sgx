@@ -62,6 +62,7 @@ use sgxs_loaders::isgx::Device as SgxDevice;
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 use sgxs_loaders::sgx_enclave_common::Library as EnclCommonLib;
+use proc_mounts::MountList;
 
 mod interpret;
 #[cfg(windows)]
@@ -77,7 +78,6 @@ mod tests;
 
 use crate::interpret::*;
 use crate::tests::Tests;
-use proc_mounts::MountIter;
 
 #[derive(Debug, Fail)]
 enum DetectError {
@@ -168,7 +168,7 @@ struct FailTrace<'a>(pub &'a Error);
 impl<'a> fmt::Display for FailTrace<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.0)?;
-        for cause in self.0.causes() {
+        for cause in self.0.iter_chain() {
             write!(fmt, "\ncause: {}", cause)?;
         }
         Ok(())
@@ -262,17 +262,15 @@ impl SgxSupport {
                 dev = dev.einittoken_provider(aesm.clone());
             }
             let device = dev.build();
-            let mut path = device.path();
-            let mut mount_paths = vec![];
-            while let Some(p) = path.parent() {
-                mount_paths.push(p.to_str());
-                path = p;
-            }
-            for mi in MountIter::new().unwrap() {
-                if let Ok(m) = mi {
-                    if mount_paths.contains(&m.dest.to_str()) && m.options.contains(&"noexec".to_string()) {
-                        return Err(failure::format_err!("{:?} mounted with `noexec` option", m.dest));
+            if let Ok(mount_list) = MountList::new() {
+                let mut path = device.path();
+                while let Some(p) = path.parent() {
+                    if let Some(mount_info) = mount_list.0.iter().find(|&x| x.dest == p) {
+                        if mount_info.options.contains(&"noexec".to_string()) {
+                            return Err(failure::format_err!("{:?} mounted with `noexec` option", mount_info.dest));
+                        }
                     }
+                    path = p;
                 }
             }
             Ok(Rc::new(RefCell::new(device)))
@@ -385,7 +383,7 @@ fn main() {
         tests::EnvConfig::EnclaveManager
     } else if args.is_present("DATA_SHIELD") {
         tests::EnvConfig::DataShield
-    } else{
+    } else {
         tests::EnvConfig::Generic
     };
 
@@ -394,18 +392,18 @@ fn main() {
     }
     env_logger::init();
 
-    let mut support = None;
-
-    if let Some(f) = args.value_of_os("TESTFILE") {
-        support = Some(serde_yaml::from_reader(File::open(f).unwrap()).unwrap());
-    }
+    let support = if let Some(f) = args.value_of_os("TESTFILE") {
+        Some(serde_yaml::from_reader(File::open(f).unwrap()).unwrap())
+    } else {
+        None
+    };
 
     println!("Detecting SGX, this may take a minute...");
     let support = support.unwrap_or_else(|| SgxSupport::detect(env_config));
 
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();
-        println!("");
+        println!();
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
