@@ -11,13 +11,6 @@
     html_root_url = "https://edp.fortanix.com/docs/api/"
 )]
 
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-#[macro_use]
-extern crate lazy_static;
-
 mod command;
 mod library;
 mod loader;
