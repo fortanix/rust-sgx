@@ -4,12 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::*;
-use fortanix_sgx_abi::{FifoDescriptor, WithId};
 use std::cell::UnsafeCell;
 use std::mem;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use fortanix_sgx_abi::{FifoDescriptor, WithId};
+
+use super::*;
 
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where

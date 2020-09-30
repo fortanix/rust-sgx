@@ -4,24 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-extern crate libc;
-#[cfg(unix)]
-extern crate nix;
-
-#[cfg(unix)]
-use self::libc::*;
-#[cfg(unix)]
-use self::nix::sys::signal;
-use crate::loader::{EnclavePanic, ErasedTcs};
-use crate::tcs::{self, CoResult, ThreadResult};
-use failure;
-use fnv::FnvHashMap;
-use fortanix_sgx_abi::*;
-use futures::future::{poll_fn, Either, Future, FutureExt};
-use futures::lock::Mutex;
-use futures::StreamExt;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
-use sgxs::loader::Tcs as SgxsTcs;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -34,20 +16,37 @@ use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration, Instant};
 use std::{cmp, fmt, str};
-use tokio::prelude::{AsyncRead, AsyncWrite};
+
+use failure::{self, bail};
+use fnv::FnvHashMap;
+use futures::future::{poll_fn, Either, Future, FutureExt};
+use futures::lock::Mutex;
+use futures::StreamExt;
+use lazy_static::lazy_static;
+#[cfg(unix)]
+use libc::*;
+#[cfg(unix)]
+use nix::sys::signal;
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
 use tokio::sync::broadcast as async_pubsub;
 use tokio::sync::mpsc as async_mpsc;
 
-lazy_static! {
-    static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
-}
+use fortanix_sgx_abi::*;
+use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use sgxs::loader::Tcs as SgxsTcs;
+
+use crate::loader::{EnclavePanic, ErasedTcs};
+use crate::tcs::{self, CoResult, ThreadResult};
+use self::abi::dispatch;
+use self::interface::{Handler, OutputBuffer};
 
 pub(crate) mod abi;
 mod interface;
 
-use self::abi::dispatch;
-use self::interface::{Handler, OutputBuffer};
+lazy_static! {
+    static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
+}
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 

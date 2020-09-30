@@ -6,21 +6,21 @@
 
 #![cfg_attr(target_env = "sgx", feature(sgx_platform))]
 
-use fortanix_sgx_abi::FifoDescriptor;
 use std::future::Future;
+#[cfg(target_env = "sgx")]
+use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
 use std::pin::Pin;
 use std::sync::Arc;
+
+use fortanix_sgx_abi::FifoDescriptor;
+
+use self::fifo::{Fifo, FifoBuffer};
 
 mod fifo;
 mod interface_sync;
 mod interface_async;
 #[cfg(test)]
 mod test_support;
-
-use self::fifo::{FifoBuffer, Fifo};
-
-#[cfg(target_env = "sgx")]
-use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
 
 #[cfg(target_env = "sgx")]
 pub trait Transmittable: UserSafeSized + Default {}
