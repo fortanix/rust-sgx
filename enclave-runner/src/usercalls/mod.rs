@@ -29,7 +29,7 @@ use libc::*;
 use nix::sys::signal;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
-use tokio::sync::broadcast as async_pubsub;
+use tokio::sync::broadcast;
 use tokio::sync::mpsc as async_mpsc;
 
 use fortanix_sgx_abi::*;
@@ -50,9 +50,6 @@ lazy_static! {
 
 const EV_ABORT: u64 = 0b0000_0000_0000_1000;
 
-// Experiments show that tha actual size of these queues is less important than
-// the ratio between them. It appears that a much larger return queue performs
-// much better when multiple enclave threads send usercalls.
 const USERCALL_QUEUE_SIZE: usize = 16;
 const RETURN_QUEUE_SIZE: usize = 1024;
 
@@ -540,7 +537,7 @@ impl PendingEvents {
     }
 
     fn push(&mut self, event: u8) {
-        assert!((event as usize) < Self::EV_MAX);
+        debug_assert!(event != 0 && (event as usize) < Self::EV_MAX);
         let i = event as usize;
         if let Some(val) = self.counts[i].checked_add(1) {
             self.counts[i] = val;
@@ -1617,29 +1614,30 @@ struct QueueSynchronizer {
     queue: Queue,
     enclave: Arc<EnclaveState>,
     // the Mutex is uncontested and is used for providing interior mutability.
-    subscription: Mutex<async_pubsub::Receiver<()>>,
+    subscription: Mutex<broadcast::Receiver<()>>,
     // this is only used to create a new Receiver in the Clone implementation
-    subscription_maker: async_pubsub::Sender<()>,
+    subscription_maker: broadcast::Sender<()>,
 }
 
 impl QueueSynchronizer {
-    fn new(enclave: Arc<EnclaveState>) -> (Self, Self, async_pubsub::Sender<()>) {
+    fn new(enclave: Arc<EnclaveState>) -> (Self, Self, broadcast::Sender<()>) {
         // This broadcast channel is used to notify enclave-runner of any
         // synchronous usercalls made by the enclave for the purpose of
         // synchronizing access to usercall and return queues.
         // The size of this channel should not matter since recv() can
         // return RecvError::Lagged.
-        let (tx, rx) = async_pubsub::channel(128);
+        let (tx, rx1) = broadcast::channel(1);
+        let rx2 = tx.subscribe();
         let usercall_queue_synchronizer = QueueSynchronizer {
             queue: Queue::Usercall,
             enclave: enclave.clone(),
-            subscription: Mutex::new(rx),
+            subscription: Mutex::new(rx1),
             subscription_maker: tx.clone(),
         };
         let return_queue_synchronizer = QueueSynchronizer {
             queue: Queue::Return,
             enclave,
-            subscription: Mutex::new(tx.subscribe()),
+            subscription: Mutex::new(rx2),
             subscription_maker: tx.clone(),
         };
         (usercall_queue_synchronizer, return_queue_synchronizer, tx)
@@ -1670,8 +1668,8 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
         async move {
             let mut subscription = self.subscription.lock().await;
             match subscription.recv().await {
-                Ok(()) | Err(async_pubsub::RecvError::Lagged(_)) => Ok(()),
-                Err(async_pubsub::RecvError::Closed) => Err(ipc_queue::SynchronizationError::ChannelClosed),
+                Ok(()) | Err(broadcast::RecvError::Lagged(_)) => Ok(()),
+                Err(broadcast::RecvError::Closed) => Err(ipc_queue::SynchronizationError::ChannelClosed),
             }
         }.boxed_local()
     }

@@ -83,7 +83,7 @@ mod tests {
     use crate::test_support::TestValue;
     use futures::future::FutureExt;
     use futures::lock::Mutex;
-    use tokio::sync::broadcast as async_pubsub;
+    use tokio::sync::broadcast;
 
     async fn do_single_sender(len: usize, n: u64) {
         let s = TestAsyncSynchronizer::new();
@@ -154,24 +154,24 @@ mod tests {
     }
 
     struct Subscription<T> {
-        tx: async_pubsub::Sender<T>,
-        rx: Mutex<async_pubsub::Receiver<T>>,
+        tx: broadcast::Sender<T>,
+        rx: Mutex<broadcast::Receiver<T>>,
     }
 
     impl<T: Clone> Subscription<T> {
         fn new(capacity: usize) -> Self {
-            let (tx, rx) = async_pubsub::channel(capacity);
+            let (tx, rx) = broadcast::channel(capacity);
             Self {
                 tx,
                 rx: Mutex::new(rx),
             }
         }
 
-        fn send(&self, val: T) -> Result<(), async_pubsub::SendError<T>> {
+        fn send(&self, val: T) -> Result<(), broadcast::SendError<T>> {
             self.tx.send(val).map(|_| ())
         }
 
-        async fn recv(&self) -> Result<T, async_pubsub::RecvError> {
+        async fn recv(&self) -> Result<T, broadcast::RecvError> {
             let mut rx = self.rx.lock().await;
             rx.recv().await
         }
