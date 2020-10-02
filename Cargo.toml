@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "aesm-client",
+    "async-usercalls",
     "dcap-provider",
     "dcap-ql-sys",
     "dcap-ql",
