@@ -650,7 +650,7 @@ pub(crate) struct EnclaveState {
     last_fd: AtomicUsize,
     exiting: AtomicBool,
     usercall_ext: Box<dyn UsercallExtension>,
-    _enclave_controller: Box<dyn MappingInfoDynController>,
+    enclave_controller: Box<dyn MappingInfoDynController>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
@@ -743,7 +743,7 @@ impl EnclaveState {
             fds: Mutex::new(fds),
             last_fd,
             exiting: AtomicBool::new(false),
-            _enclave_controller: enclave_controller,
+            enclave_controller,
             usercall_ext,
             threads_queue,
             forward_panics,
@@ -1584,6 +1584,17 @@ impl<'tcs> IOHandlerInput<'tcs> {
                 return Ok(());
             }
             Ok(System.dealloc(ptr, layout))
+        }
+    }
+
+    fn trim(&self, region: *const u8, size: usize) -> IoResult<()> {
+        match &(*self.enclave).enclave_controller.dyn_controller() {
+            Some(ctr) => {
+                ctr.trim(region as _, size).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
+            },
+            None => {
+                Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))
+            }
         }
     }
 

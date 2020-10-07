@@ -37,6 +37,9 @@ impl fmt::Debug for Library {
 pub enum NoEnclaveControl{}
 
 impl EnclaveControl for NoEnclaveControl {
+    fn trim(&self, _: *mut u8, _: usize) -> std::result::Result<(), failure::Error> {
+        match *self{}
+    }
 }
 
 impl MappingInfo for Library {

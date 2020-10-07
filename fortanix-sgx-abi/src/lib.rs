@@ -595,6 +595,15 @@ impl Usercalls {
     pub fn free(ptr: *mut u8, size: usize, alignment: usize) { unimplemented!() }
 }
 
+/// # SGXv2
+///
+/// SGXv2 add support to dynamically add enclaves pages, TCS structures, ... These features work
+/// closely together with the operating system and thus requires usercalls
+/// See https://caslab.csl.yale.edu/workshops/hasp2016/HASP16-17.pdf
+impl Usercalls {
+    pub fn trim(region: *const u8, size: usize) -> Result { unimplemented!() }
+}
+
 /// Asynchronous usercall specification.
 ///
 /// An asynchronous usercall allows an enclave to submit a usercall without

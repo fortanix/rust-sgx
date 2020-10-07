@@ -248,6 +248,18 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         }.boxed_local()
     }
 
+    fn trim(
+        self,
+        region: *const u8,
+        size: usize
+    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
+        async move {
+            let ret = Ok(self.0.trim(region, size).to_sgx_result());
+            return (self, ret);
+        }
+            .boxed_local()
+    }
+
     fn async_queues(
         self,
         usercall_queue: *mut FifoDescriptor<Usercall>,
