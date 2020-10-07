@@ -53,6 +53,7 @@ pub mod montgomery {
         pub nr_pages: c_uint,
     }
     ioctl_write_ptr!(trim, SGX_IOCTL, 0x0b, SgxRange);
+    ioctl_write_ptr!(notify_accept, SGX_IOCTL, 0x0c, SgxRange);
 }
 
 pub mod augusta {

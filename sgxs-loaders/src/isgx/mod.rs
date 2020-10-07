@@ -85,6 +85,8 @@ pub enum Error {
     Init(#[cause] SgxIoctlError),
     #[fail(display = "Failed to trim region.")]
     Trim(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to remove trimmed region.")]
+    RemoveTrimmed(#[cause] SgxIoctlError),
 }
 
 impl Error {
@@ -516,6 +518,21 @@ impl EnclaveControl for EnclaveController {
                 };
                 let res = ioctl_unsafe!{Trim, ioctl::montgomery::trim(fd.as_raw_fd(), &range)};
                 res.map_err(|e| e.into())
+            },
+        }
+    }
+
+    fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), ::failure::Error> {
+        match self.family {
+            DriverFamily::Augusta => Err(format_err!("Driver doesn't support trimming enclave pages")),
+            DriverFamily::Montgomery => {
+                let fd = OpenOptions::new().read(true).write(true).open(&**self.path).unwrap();
+                let range = SgxRange {
+                    start_addr: addr as _,
+                    nr_pages: (size / 0x1000) as _,
+                };
+                let result = ioctl_unsafe!{RemoveTrimmed, ioctl::montgomery::notify_accept(fd.as_raw_fd(), &range)};
+                result.map_err(|e| e.into())
             },
         }
     }
