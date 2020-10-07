@@ -40,6 +40,8 @@ pub struct Mapping<T: Load + ?Sized> {
 
 pub trait EnclaveControl: 'static + Send + Sync + Debug {
     fn trim(&self, addr: *mut u8, size: usize) -> Result<(), Error>;
+
+    fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), Error>;
 }
 
 /// An interface that is able to load an enclave into memory.

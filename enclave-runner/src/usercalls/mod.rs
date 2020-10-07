@@ -1597,6 +1597,18 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
     }
 
+    pub fn remove_trimmed(&self, region: *const u8, size: usize) -> IoResult<()> {
+        println!("Calling driver to remove trimmed enclave region {:?}:{:x}", region, size);
+        match &(*self.enclave).enclave_controller.dyn_controller() {
+            Some(ctr) => {
+                ctr.remove_trimmed(region as _, size).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
+            },
+            None => {
+                Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))
+            }
+        }
+    }
+
     #[inline(always)]
     async fn async_queues(
         &mut self,
