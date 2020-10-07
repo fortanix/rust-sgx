@@ -82,7 +82,7 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 use core::ptr::NonNull;
-use core::sync::atomic::AtomicUsize;
+use core::sync::atomic::{AtomicU64, AtomicUsize};
 
 macro_rules! invoke_with_abi_spec [
     ( $m:ident ) => [ $m![
@@ -635,30 +635,59 @@ impl Usercalls {
 /// [`EV_RETURNQ_NOT_EMPTY`]: ../constant.EV_RETURNQ_NOT_EMPTY.html
 pub mod async {
     use super::*;
-    use core::sync::atomic::AtomicUsize;
+    use core::sync::atomic::{AtomicU64, AtomicUsize};
 
-    /// An identified usercall.
     #[repr(C)]
-    #[derive(Copy, Clone)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
-    pub struct Usercall {
-        /// `0` indicates this slot is empty.
-        pub id: u64,
-        /// The elements correspond to the RDI, RSI, RDX, R8, and R9 registers
-        /// in the synchronous calling convention.
-        pub args: (u64, u64, u64, u64, u64)
+    pub struct WithId<T> {
+        pub id: AtomicU64,
+        pub data: T,
     }
 
-    /// The return value of an identified usercall.
+    /// A usercall.
+    /// The elements correspond to the RDI, RSI, RDX, R8, and R9 registers
+    /// in the synchronous calling convention.
     #[repr(C)]
-    #[derive(Copy, Clone)]
+    #[derive(Copy, Clone, Default)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
-    pub struct Return {
-        /// `0` indicates this slot is empty.
-        pub id: u64,
-        /// The elements correspond to the RSI and RDX registers in the
-        /// synchronous calling convention.
-        pub value: (u64, u64)
+    pub struct Usercall(pub u64, pub u64, pub u64, pub u64, pub u64);
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<Usercall> for (u64, u64, u64, u64, u64) {
+        fn from(u: Usercall) -> Self {
+            let Usercall(p1, p2, p3, p4, p5) = u;
+            (p1, p2, p3, p4, p5)
+        }
+    }
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<(u64, u64, u64, u64, u64)> for Usercall {
+        fn from(p: (u64, u64, u64, u64, u64)) -> Self {
+            Usercall(p.0, p.1, p.2, p.3, p.4)
+        }
+    }
+
+    /// The return value of a usercall.
+    /// The elements correspond to the RSI and RDX registers in the
+    /// synchronous calling convention.
+    #[repr(C)]
+    #[derive(Copy, Clone, Default)]
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    pub struct Return(pub u64, pub u64);
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<Return> for (u64, u64) {
+        fn from(r: Return) -> Self {
+            let Return(r1, r2) = r;
+            (r1, r2)
+        }
+    }
+
+    #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+    impl From<(u64, u64)> for Return {
+        fn from(r: (u64, u64)) -> Self {
+            Return(r.0, r.1)
+        }
     }
 
     /// A circular buffer used as a FIFO queue with atomic reads and writes.
@@ -701,14 +730,15 @@ pub mod async {
     /// 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
     ///    expected to be written imminently.
     /// 6. Read the data, then store `0` in the `id`.
-    /// 7. Store the new read offset.
-    /// 8. If the queue was full in step 1, signal the writer to wake up.
+    /// 7. Store the new read offset, retrieving the old offsets.
+    /// 8. If the queue was full before step 7, signal the writer to wake up.
     #[repr(C)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct FifoDescriptor<T> {
         /// Pointer to the queue memory. Must have a size of
-        /// `len * size_of::<T>()` bytes and have alignment `align_of::<T>`.
-        pub data: *mut T,
+        /// `len * size_of::<WithId<T>>()` bytes and have alignment
+        /// `align_of::<WithId<T>>`.
+        pub data: *mut WithId<T>,
         /// The number of elements pointed to by `data`. Must be a power of two
         /// less than or equal to 2³¹.
         pub len: usize,

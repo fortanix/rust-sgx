@@ -8,6 +8,7 @@ members = [
     "enclave-runner",
     "fortanix-sgx-abi",
     "fortanix-sgx-tools",
+    "ipc-queue",
     "report-test",
     "rs-libc",
     "sgxs",

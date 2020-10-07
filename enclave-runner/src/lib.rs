@@ -11,21 +11,6 @@
     html_root_url = "https://edp.fortanix.com/docs/api/"
 )]
 
-#[cfg(feature = "crypto-openssl")]
-extern crate openssl;
-extern crate sgx_isa;
-extern crate sgxs;
-extern crate tokio;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-extern crate fnv;
-extern crate fortanix_sgx_abi;
-#[macro_use]
-extern crate lazy_static;
-extern crate futures;
-
 mod command;
 mod library;
 mod loader;

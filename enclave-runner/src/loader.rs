@@ -10,7 +10,8 @@ use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
 
-use failure::{Error, ResultExt};
+use failure::{format_err, Error, ResultExt};
+use failure_derive::Fail;
 
 #[cfg(feature = "crypto-openssl")]
 use openssl::{
