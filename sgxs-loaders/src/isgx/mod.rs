@@ -21,6 +21,7 @@ use nix::sys::mman::{mmap, munmap, ProtFlags as Prot, MapFlags as Map};
 use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct, PageType, SecinfoFlags};
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
+use sgxs::loader::EnclaveControl;
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
@@ -121,6 +122,7 @@ macro_rules! ioctl_unsafe {
 }
 
 impl EnclaveLoad for InnerDevice {
+    type EnclaveController = EnclaveController;
     type Error = Error;
     type MapData = MapData;
 
@@ -384,6 +386,10 @@ impl EnclaveLoad for InnerDevice {
     fn destroy(mapping: &mut Mapping<Self>) {
         unsafe { libc::munmap(mapping.base as usize as *mut _, mapping.size as usize) };
     }
+
+    fn create_controller(mapping: &Mapping<Self>) -> Option<Self::EnclaveController> {
+        Some(EnclaveController::new(mapping.device.path.clone(), mapping.device.driver))
+    }
 }
 
 #[derive(Debug)]
@@ -480,8 +486,26 @@ impl Device {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct EnclaveController{
+    path: Arc<PathBuf>,
+    family: DriverFamily,
+}
+
+impl EnclaveController {
+    pub fn new(path: Arc<PathBuf>, family: DriverFamily) -> Self {
+        EnclaveController{
+            path,
+            family,
+        }
+    }
+}
+
+impl EnclaveControl for EnclaveController {
+}
+
 impl loader::Load for Device {
-    type MappingInfo = MappingInfo;
+    type MappingInfo = MappingInfo<EnclaveController>;
     type Tcs = Tcs;
 
     fn load<R: SgxsRead>(

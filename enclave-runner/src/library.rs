@@ -10,11 +10,13 @@ use std::sync::Arc;
 use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
+use crate::MappingInfoDynController;
 use crate::loader::{EnclaveBuilder, ErasedTcs};
 use crate::usercalls::EnclaveState;
 use crate::usercalls::UsercallExtension;
 use std::fmt;
 use std::os::raw::c_void;
+use sgxs::loader::EnclaveControl;
 
 pub struct Library {
     enclave: Arc<EnclaveState>,
@@ -31,7 +33,15 @@ impl fmt::Debug for Library {
     }
 }
 
+#[derive(Debug)]
+pub enum NoEnclaveControl{}
+
+impl EnclaveControl for NoEnclaveControl {
+}
+
 impl MappingInfo for Library {
+    type EnclaveControl = NoEnclaveControl;
+
     fn address(&self) -> *mut c_void {
         self.address
     }
@@ -39,24 +49,31 @@ impl MappingInfo for Library {
     fn size(&self) -> usize {
         self.size
     }
+
+    fn enclave_controller(&self) -> Option<&NoEnclaveControl> {
+        None
+    }
 }
 
 impl Library {
-    pub(crate) fn internal_new(
+    pub(crate) fn internal_new<T: MappingInfo>(
         tcss: Vec<ErasedTcs>,
-        address: *mut c_void,
-        size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        info: T,
         forward_panics: bool,
-    ) -> Library {
+    ) -> Library where <T as MappingInfo>::EnclaveControl: Sized {
+        let address = info.address();
+        let size = info.size();
+        let enclave_controller: Box<dyn MappingInfoDynController> = Box::new(info);
         Library {
-            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics),
+            enclave: EnclaveState::library(tcss, enclave_controller, usercall_ext, forward_panics),
             address,
             size,
         }
     }
 
-    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Library, Error> {
+    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Library, Error> 
+        where <<L as Load>::MappingInfo as MappingInfo>::EnclaveControl: Sized {
         EnclaveBuilder::new(enclave_path.as_ref()).build_library(loader)
     }
 
