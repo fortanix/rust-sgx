@@ -20,6 +20,7 @@ use crate::{MappingInfo, Tcs};
 
 pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
     type Error: Fail + EinittokenError;
+    type MapData: Debug + Send + Sync;
     fn new(
         device: Arc<Self>,
         ecreate: MeasECreate,
@@ -31,7 +32,7 @@ pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
         page: (MeasEAdd, PageChunks, [u8; 4096]),
     ) -> Result<(), Self::Error>;
     fn init(
-        mapping: &Mapping<Self>,
+        mapping: &mut Mapping<Self>,
         sigstruct: &Sigstruct,
         einittoken: Option<&Einittoken>,
     ) -> Result<(), Self::Error>;
@@ -45,6 +46,7 @@ pub(crate) trait EinittokenError {
 #[derive(Debug)]
 pub(crate) struct Mapping<D: EnclaveLoad> {
     pub device: Arc<D>,
+    pub mapdata: D::MapData,
     pub tcss: Vec<u64>,
     pub base: u64,
     pub size: u64,
@@ -126,7 +128,7 @@ impl<D: EnclaveLoad> Device<D> {
         }
 
         match (
-            D::init(&mapping, sigstruct, einittoken.as_ref()),
+            D::init(&mut mapping, sigstruct, einittoken.as_ref()),
             tokprov_err,
         ) {
             (Err(ref e), ref mut tokprov_err @ Some(_)) if e.is_einittoken_error() => {
@@ -141,7 +143,7 @@ impl<D: EnclaveLoad> Device<D> {
                     .unwrap()
                     .token(sigstruct, attributes, true)
                     .context("The EINITTOKEN provider didn't provide a token")?;
-                D::init(&mapping, sigstruct, Some(&einittoken))?
+                D::init(&mut mapping, sigstruct, Some(&einittoken))?
             }
             (v, _) => v?,
         }
