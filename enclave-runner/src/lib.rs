@@ -11,6 +11,8 @@
     html_root_url = "https://edp.fortanix.com/docs/api/"
 )]
 
+use std::fmt::Debug;
+
 mod command;
 mod library;
 mod loader;
@@ -20,3 +22,16 @@ pub mod usercalls;
 pub use crate::command::Command;
 pub use crate::library::Library;
 pub use crate::loader::{EnclaveBuilder, EnclavePanic};
+
+use sgxs::loader::{MappingInfo, EnclaveControl};
+
+trait MappingInfoDynController: Debug {
+    fn dyn_controller(&self) -> Option<&dyn EnclaveControl>;
+}
+
+impl<T> MappingInfoDynController for T where T: MappingInfo, T::EnclaveControl: Sized {
+    fn dyn_controller(&self) -> Option<&dyn EnclaveControl> {
+        self.enclave_controller().map(|c| c as _)
+    }
+}
+

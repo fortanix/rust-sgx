@@ -16,7 +16,7 @@ use libc;
 
 use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
 use sgxs::einittoken::EinittokenProvider;
-use sgxs::loader;
+use sgxs::loader::{self, EnclaveControl};
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
@@ -126,6 +126,7 @@ impl EinittokenError for Error {
 }
 
 impl EnclaveLoad for InnerLibrary {
+    type EnclaveController = NoEnclaveControl;
     type Error = Error;
 
     fn new(
@@ -272,6 +273,10 @@ impl EnclaveLoad for InnerLibrary {
             (mapping.device.enclave_delete)(mapping.base as _, None);
         }
     }
+
+    fn create_controller(_mapping: &Mapping<Self>) -> Option<Self::EnclaveController> {
+        None
+    }
 }
 
 struct InnerLibrary {
@@ -343,8 +348,14 @@ impl Library {
     }
 }
 
+#[derive(Debug)]
+pub enum NoEnclaveControl{}
+
+impl EnclaveControl for NoEnclaveControl {
+}
+
 impl loader::Load for Library {
-    type MappingInfo = MappingInfo;
+    type MappingInfo = MappingInfo<NoEnclaveControl>;
     type Tcs = Tcs;
 
     fn load<R: SgxsRead>(

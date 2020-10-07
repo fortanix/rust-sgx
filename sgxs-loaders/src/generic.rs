@@ -11,7 +11,7 @@ use failure::{Fail, ResultExt};
 
 use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, Sigstruct};
 use sgxs::einittoken::EinittokenProvider;
-use sgxs::loader;
+use sgxs::loader::{self, EnclaveControl};
 use sgxs::sgxs::{
     CreateInfo, Error as SgxsError, MeasEAdd, MeasECreate, PageChunks, PageReader, SgxsRead,
 };
@@ -19,6 +19,7 @@ use sgxs::sgxs::{
 use crate::{MappingInfo, Tcs};
 
 pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
+    type EnclaveController;
     type Error: Fail + EinittokenError;
     fn new(
         device: Arc<Self>,
@@ -36,6 +37,7 @@ pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
         einittoken: Option<&Einittoken>,
     ) -> Result<(), Self::Error>;
     fn destroy(mapping: &mut Mapping<Self>);
+    fn create_controller(mapping: &Mapping<Self>) -> Option<Self::EnclaveController>;
 }
 
 pub(crate) trait EinittokenError {
@@ -62,13 +64,13 @@ pub(crate) struct Device<D> {
     pub einittoken_provider: Option<Box<dyn EinittokenProvider>>,
 }
 
-pub(crate) struct LoadResult {
-    pub info: MappingInfo,
+pub(crate) struct LoadResult<C> {
+    pub info: MappingInfo<C>,
     pub tcss: Vec<Tcs>,
 }
 
-impl<T: loader::Load<MappingInfo = MappingInfo, Tcs = Tcs> + ?Sized> Into<loader::Mapping<T>>
-    for LoadResult
+impl<C: EnclaveControl, T: loader::Load<MappingInfo = MappingInfo<C>, Tcs = Tcs> + ?Sized> Into<loader::Mapping<T>>
+    for LoadResult<C>
 {
     fn into(self) -> loader::Mapping<T> {
         let LoadResult { info, tcss } = self;
@@ -83,7 +85,7 @@ impl<D: EnclaveLoad> Device<D> {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> ::std::result::Result<LoadResult, ::failure::Error> {
+    ) -> ::std::result::Result<LoadResult<D::EnclaveController>, ::failure::Error> {
         let mut tokprov = self.einittoken_provider.as_mut();
         let mut tokprov_err = None;
         let einittoken = if let Some(ref mut p) = tokprov {
@@ -146,8 +148,8 @@ impl<D: EnclaveLoad> Device<D> {
             (v, _) => v?,
         }
 
+        let enclave_controller = D::create_controller(&mapping);
         let mapping = Arc::new(mapping);
-
         Ok(LoadResult {
             tcss: mapping
                 .tcss
@@ -160,6 +162,7 @@ impl<D: EnclaveLoad> Device<D> {
             info: MappingInfo {
                 base: mapping.base,
                 size: mapping.size,
+                enclave_controller,
                 _mapping: mapping,
             },
         })
