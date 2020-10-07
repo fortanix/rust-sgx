@@ -18,6 +18,7 @@ sgx-isa = { version = "0.3.1", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.0"                                     # Unlicense/MIT
+cty = "0.2.1"                                         # MIT/Apache-2.0
 time = "0.1"                                          # MIT/Apache-2.0
 failure = "0.1.1"                                     # MIT/Apache-2.0
 failure_derive = "0.1.1"                              # MIT/Apache-2.0

@@ -8,8 +8,12 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
+extern crate cty;
+
 #[cfg(unix)] #[macro_use]
 extern crate nix;
+#[macro_use]
+extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 #[macro_use]

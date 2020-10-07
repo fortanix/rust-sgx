@@ -445,6 +445,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cty"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
+
+[[package]]
 name = "dcap-provider"
 version = "0.3.1"
 dependencies = [
@@ -2089,6 +2095,7 @@ version = "0.7.2"
 dependencies = [
  "byteorder",
  "crypto-hash",
+ "cty",
  "failure",
  "failure_derive",
  "foreign-types",
@@ -2105,6 +2112,7 @@ version = "0.3.0"
 dependencies = [
  "aesm-client",
  "bitflags 1.2.1",
+ "cty",
  "failure",
  "failure_derive",
  "libc",
