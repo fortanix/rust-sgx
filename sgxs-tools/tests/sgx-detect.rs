@@ -49,12 +49,14 @@ fn debug_help() {
         assert!(entry.set_extension("test"));
         let tests = parse_tests(&entry);
 
-        if let Some((re, invres)) = tests.into_iter().find(|&(ref re, invres)| re.is_match(&output) == invres) {
+        for (re, invres) in tests.into_iter().filter(|&(ref re, invres)| re.is_match(&output) == invres) {
             failures += 1;
-            assert!(entry.set_extension(""));
-            println!("test `{}` failed.\nOutput:", entry.file_name().unwrap().to_string_lossy());
-            for line in output.lines() {
-                println!("    {}", line);
+            if failures == 1 {
+                assert!(entry.set_extension(""));
+                println!("test `{}` failed.\nOutput:", entry.file_name().unwrap().to_string_lossy());
+                for line in output.lines() {
+                    println!("    {}", line);
+                }
             }
             if invres {
                 println!("Regular expression matched unexpectedly:\n    {}", re);
