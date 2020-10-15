@@ -536,6 +536,15 @@ impl From<PageType> for SecinfoFlags {
     }
 }
 
+impl From<SecinfoFlags> for Secinfo {
+    fn from(flags: SecinfoFlags) -> Secinfo {
+        Secinfo {
+            flags,
+            _reserved1: [0; 56],
+        }
+    }
+}
+
 struct_def! {
 #[repr(C, align(128))]
 #[cfg_attr(

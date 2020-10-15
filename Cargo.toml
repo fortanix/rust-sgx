@@ -17,3 +17,6 @@ members = [
     "sgxs-tools"
 ]
 exclude = ["examples"]
+
+[patch.crates-io]
+bitflags = { path = "../bitflags" }

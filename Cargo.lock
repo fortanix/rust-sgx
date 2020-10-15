@@ -8,7 +8,7 @@ checksum = "5d2e7343e7fc9de883d1b0341e0b13970f764c14101234857d2ddafa1cb1cac2"
 
 [[package]]
 name = "aesm-client"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "byteorder",
  "failure",
@@ -155,8 +155,10 @@ checksum = "aad18937a628ec6abcd26d1489012cc0e18c21798210f491af69ded9b881106d"
 [[package]]
 name = "bitflags"
 version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "block-buffer"
@@ -458,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "byteorder",
  "dcap-ql-sys",
@@ -489,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aesm-client",
  "dcap-ql",
@@ -670,7 +672,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "aesm-client",
  "clap",
@@ -2075,7 +2077,9 @@ name = "sgx-isa"
 version = "0.3.3"
 dependencies = [
  "bitflags 1.2.1",
+ "compiler_builtins",
  "mbedtls 0.5.3",
+ "rustc-std-workspace-core",
  "serde",
 ]
 
@@ -2114,7 +2118,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "aesm-client",
  "atty",
