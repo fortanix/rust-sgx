@@ -6,11 +6,9 @@
 use crossbeam_channel as mpmc;
 use ipc_queue::Identified;
 use std::collections::HashMap;
-use std::os::fortanix_sgx::usercalls::raw::UsercallNrs;
 use std::panic;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::thread::{self, JoinHandle};
+use std::sync::Mutex;
+use std::time::Duration;
 
 mod alloc;
 mod batch_drop;
@@ -51,36 +49,34 @@ impl<'p> CancelHandle<'p> {
 
 /// This type provides a mechanism for submitting usercalls asynchronously.
 /// Usercalls are sent to the enclave runner through a queue. The results are
-/// retrieved on a dedicated thread. Users are notified of the results through
-/// callback functions.
+/// retrieved when `fn poll` is called. Users are notified of the results
+/// through callback functions.
 ///
 /// Users of this type should take care not to block execution in callbacks.
-/// Ceratin usercalls can be cancelled through a handle, but note that it is
+/// Certain usercalls can be cancelled through a handle, but note that it is
 /// still possible to receive successful results for cancelled usercalls.
 pub struct AsyncUsercallProvider {
     core: ProviderCore,
+    return_rx: mpmc::Receiver<Identified<Return>>,
+    callbacks: Mutex<HashMap<u64, Callback>>,
+    // This mpmc channel is an optimization so that threads sending usercalls
+    // don't have to take the lock.
     callback_tx: mpmc::Sender<(u64, Callback)>,
-    shutdown: Arc<AtomicBool>,
-    join_handle: Option<JoinHandle<()>>,
+    callback_rx: mpmc::Receiver<(u64, Callback)>,
 }
 
 impl AsyncUsercallProvider {
     pub fn new() -> Self {
         let (return_tx, return_rx) = mpmc::unbounded();
         let core = ProviderCore::new(Some(return_tx));
+        let callbacks = Mutex::new(HashMap::new());
         let (callback_tx, callback_rx) = mpmc::unbounded();
-        let shutdown = Arc::new(AtomicBool::new(false));
-        let callback_handler = CallbackHandler {
-            return_rx,
-            callback_rx,
-            shutdown: Arc::clone(&shutdown),
-        };
-        let join_handle = thread::spawn(move || callback_handler.run());
         Self {
             core,
+            return_rx,
+            callbacks,
             callback_tx,
-            shutdown,
-            join_handle: Some(join_handle),
+            callback_rx,
         }
     }
 
@@ -98,68 +94,73 @@ impl AsyncUsercallProvider {
         }
         self.core.send_usercall(usercall)
     }
-}
 
-impl Drop for AsyncUsercallProvider {
-    fn drop(&mut self) {
-        self.shutdown.store(true, Ordering::Release);
-        // send a usercall to ensure CallbackHandler wakes up and breaks its loop.
-        let u = Usercall(UsercallNrs::insecure_time as _, 0, 0, 0, 0);
-        self.send_usercall(u, None);
-        let join_handle = self.join_handle.take().unwrap();
-        join_handle.join().unwrap();
-    }
-}
-
-struct CallbackHandler {
-    return_rx: mpmc::Receiver<Identified<Return>>,
-    callback_rx: mpmc::Receiver<(u64, Callback)>,
-    shutdown: Arc<AtomicBool>,
-}
-
-impl CallbackHandler {
-    const BATCH: usize = 1024;
-
-    fn recv_returns(&self) -> ([Identified<Return>; Self::BATCH], usize) {
-        let first = self.return_rx.recv().expect("channel closed unexpectedly");
-        let mut returns = [Identified {
-            id: 0,
-            data: Return(0, 0),
-        }; Self::BATCH];
+    fn recv_returns(&self, timeout: Option<Duration>, returns: &mut [Identified<Return>]) -> usize {
+        let first = match timeout {
+            None => self.return_rx.recv().ok(),
+            Some(timeout) => match self.return_rx.recv_timeout(timeout) {
+                Ok(val) => Some(val),
+                Err(mpmc::RecvTimeoutError::Disconnected) => None,
+                Err(mpmc::RecvTimeoutError::Timeout) => return 0,
+            },
+        }
+        .expect("return channel closed unexpectedly");
         let mut count = 0;
-        for ret in std::iter::once(first).chain(self.return_rx.try_iter().take(Self::BATCH - 1)) {
+        for ret in std::iter::once(first).chain(self.return_rx.try_iter().take(returns.len() - 1)) {
             returns[count] = ret;
             count += 1;
         }
-        (returns, count)
+        count
     }
 
-    fn run(self) {
-        let mut callbacks = HashMap::with_capacity(256);
-        loop {
-            // block until there are some returns
-            let (returns, count) = self.recv_returns();
-            // receive pending callbacks
-            for (id, callback) in self.callback_rx.try_iter() {
-                callbacks.insert(id, callback);
-            }
-            for ret in &returns[..count] {
-                if let Some(cb) = callbacks.remove(&ret.id) {
-                    let _r = panic::catch_unwind(panic::AssertUnwindSafe(move || {
-                        cb.call(ret.data);
-                    }));
-                    // if let Err(e) = _r {
-                    //     let msg = e
-                    //         .downcast_ref::<String>()
-                    //         .map(String::as_str)
-                    //         .or_else(|| e.downcast_ref::<&str>().map(|&s| s));
-                    //     println!("callback paniced: {:?}", msg);
-                    // }
+    /// Poll for returned usercalls and execute their respective callback
+    /// functions. If `timeout` is `None`, it will block execution until at
+    /// least one return is received, otherwise it will block until there is a
+    /// return or timeout is elapsed. Returns the number of executed callbacks.
+    pub fn poll(&self, timeout: Option<Duration>) -> usize {
+        // 1. wait for returns
+        let mut returns = [Identified {
+            id: 0,
+            data: Return(0, 0),
+        }; 1024];
+        let returns = match self.recv_returns(timeout, &mut returns) {
+            0 => return 0,
+            n => &returns[..n],
+        };
+        // 2. try to lock the mutex, if successful, receive all pending callbacks and put them in the hash map
+        let mut guard = match self.callbacks.try_lock() {
+            Ok(mut callbacks) => {
+                for (id, cb) in self.callback_rx.try_iter() {
+                    callbacks.insert(id, cb);
                 }
+                callbacks
             }
-            if self.shutdown.load(Ordering::Acquire) {
-                break;
+            _ => self.callbacks.lock().unwrap(),
+        };
+        // 3. remove callbacks for returns received in step 1 from the hash map
+        let mut ret_callbacks = Vec::with_capacity(returns.len());
+        for ret in returns {
+            let cb = guard.remove(&ret.id);
+            ret_callbacks.push((ret, cb));
+        }
+        drop(guard);
+        // 4. execute the callbacks without hugging the mutex
+        let mut count = 0;
+        for (ret, cb) in ret_callbacks {
+            if let Some(cb) = cb {
+                let _r = panic::catch_unwind(panic::AssertUnwindSafe(move || {
+                    cb.call(ret.data);
+                }));
+                count += 1;
+                // if let Err(e) = _r {
+                //     let msg = e
+                //         .downcast_ref::<String>()
+                //         .map(String::as_str)
+                //         .or_else(|| e.downcast_ref::<&str>().map(|&s| s));
+                //     println!("callback paniced: {:?}", msg);
+                // }
             }
         }
+        count
     }
 }

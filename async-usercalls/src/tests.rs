@@ -3,16 +3,60 @@ use crate::hacks::MakeSend;
 use crossbeam_channel as mpmc;
 use std::io;
 use std::net::{TcpListener, TcpStream};
+use std::ops::Deref;
 use std::os::fortanix_sgx::io::AsRawFd;
 use std::os::fortanix_sgx::usercalls::alloc::User as StdUser;
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
 
+struct AutoPollingProvider {
+    provider: Arc<AsyncUsercallProvider>,
+    shutdown: Arc<AtomicBool>,
+    join_handle: Option<thread::JoinHandle<()>>,
+}
+
+impl AutoPollingProvider {
+    fn new() -> Self {
+        let provider = Arc::new(AsyncUsercallProvider::new());
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown1 = shutdown.clone();
+        let provider1 = provider.clone();
+        let join_handle = Some(thread::spawn(move || loop {
+            provider1.poll(None);
+            if shutdown1.load(Ordering::Relaxed) {
+                break;
+            }
+        }));
+        Self {
+            provider,
+            shutdown,
+            join_handle,
+        }
+    }
+}
+
+impl Deref for AutoPollingProvider {
+    type Target = AsyncUsercallProvider;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.provider
+    }
+}
+
+impl Drop for AutoPollingProvider {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        // send a usercall to ensure thread wakes up
+        self.provider.insecure_time(|_| {});
+        self.join_handle.take().unwrap().join().unwrap();
+    }
+}
+
 #[test]
 fn get_time_async_raw() {
-    fn run(tid: u32, provider: AsyncUsercallProvider) -> (u32, u32, Duration) {
+    fn run(tid: u32, provider: AutoPollingProvider) -> (u32, u32, Duration) {
         let pid = provider.provider_id();
         const N: usize = 500;
         let (tx, rx) = mpmc::bounded(N);
@@ -44,7 +88,7 @@ fn get_time_async_raw() {
     const THREADS: usize = 4;
     let mut providers = Vec::with_capacity(THREADS);
     for _ in 0..THREADS {
-        providers.push(AsyncUsercallProvider::new());
+        providers.push(AutoPollingProvider::new());
     }
     let mut handles = Vec::with_capacity(THREADS);
     for (i, provider) in providers.into_iter().enumerate() {
@@ -58,7 +102,7 @@ fn get_time_async_raw() {
 
 #[test]
 fn raw_alloc_free() {
-    let provider = AsyncUsercallProvider::new();
+    let provider = AutoPollingProvider::new();
     let ptr: Arc<AtomicPtr<u8>> = Arc::new(AtomicPtr::new(0 as _));
     let ptr2 = Arc::clone(&ptr);
     const SIZE: usize = 1024;
@@ -89,7 +133,7 @@ fn raw_alloc_free() {
 
 #[test]
 fn cancel_accept() {
-    let provider = Arc::new(AsyncUsercallProvider::new());
+    let provider = AutoPollingProvider::new();
     let port = 6688;
     let addr = format!("0.0.0.0:{}", port);
     let (tx, rx) = mpmc::bounded(1);
@@ -119,7 +163,7 @@ fn cancel_accept() {
 fn connect() {
     let listener = TcpListener::bind("0.0.0.0:0").unwrap();
     let addr = listener.local_addr().unwrap().to_string();
-    let provider = AsyncUsercallProvider::new();
+    let provider = AutoPollingProvider::new();
     let (tx, rx) = mpmc::bounded(1);
     provider.connect_stream(&addr, move |res| {
         tx.send(res).unwrap();
@@ -130,7 +174,7 @@ fn connect() {
 
 #[test]
 fn safe_alloc_free() {
-    let provider = AsyncUsercallProvider::new();
+    let provider = AutoPollingProvider::new();
 
     const LEN: usize = 64 * 1024;
     let (tx, rx) = mpmc::bounded(1);
@@ -155,7 +199,7 @@ unsafe impl Send for MakeSend<StdUser<[u8]>> {}
 #[ignore]
 fn echo() {
     println!();
-    let provider = Arc::new(AsyncUsercallProvider::new());
+    let provider = Arc::new(AutoPollingProvider::new());
     const ADDR: &'static str = "0.0.0.0:7799";
     let (tx, rx) = mpmc::bounded(1);
     provider.bind_stream(ADDR, move |res| {
@@ -175,7 +219,7 @@ fn echo() {
 
 struct KeepAccepting {
     listener: TcpListener,
-    provider: Arc<AsyncUsercallProvider>,
+    provider: Arc<AutoPollingProvider>,
 }
 
 impl FnOnce<(io::Result<TcpStream>,)> for KeepAccepting {
@@ -201,7 +245,7 @@ impl FnOnce<(io::Result<TcpStream>,)> for KeepAccepting {
 struct Echo {
     stream: TcpStream,
     read: bool,
-    provider: Arc<AsyncUsercallProvider>,
+    provider: Arc<AutoPollingProvider>,
 }
 
 impl Echo {
