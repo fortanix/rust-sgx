@@ -127,6 +127,7 @@ impl EinittokenError for Error {
 
 impl EnclaveLoad for InnerLibrary {
     type Error = Error;
+    type MapData = ();
 
     fn new(
         device: Arc<InnerLibrary>,
@@ -161,6 +162,7 @@ impl EnclaveLoad for InnerLibrary {
         } else {
             Ok(Mapping {
                 device,
+                mapdata: (),
                 tcss: vec![],
                 base: base as _,
                 size: ecreate.size,
@@ -220,7 +222,7 @@ impl EnclaveLoad for InnerLibrary {
     }
 
     fn init(
-        mapping: &Mapping<Self>,
+        mapping: &mut Mapping<Self>,
         sigstruct: &Sigstruct,
         einittoken: Option<&Einittoken>,
     ) -> Result<(), Self::Error> {
