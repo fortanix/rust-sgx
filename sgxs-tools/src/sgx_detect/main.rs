@@ -168,7 +168,7 @@ struct FailTrace<'a>(pub &'a Error);
 impl<'a> fmt::Display for FailTrace<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.0)?;
-        for cause in self.0.iter_chain() {
+        for cause in self.0.causes() {
             write!(fmt, "\ncause: {}", cause)?;
         }
         Ok(())
@@ -266,7 +266,7 @@ impl SgxSupport {
                 let mut path = device.path();
                 while let Some(p) = path.parent() {
                     if let Some(mount_info) = mount_list.0.iter().find(|&x| x.dest == p) {
-                        if mount_info.options.contains(&"noexec".to_string()) {
+                        if mount_info.options.iter().any(|o| o == "noexec") {
                             return Err(failure::format_err!("{:?} mounted with `noexec` option", mount_info.dest));
                         }
                     }
@@ -392,11 +392,11 @@ fn main() {
     }
     env_logger::init();
 
-    let support = if let Some(f) = args.value_of_os("TESTFILE") {
-        Some(serde_yaml::from_reader(File::open(f).unwrap()).unwrap())
-    } else {
-        None
-    };
+    let mut support = None;
+
+    if let Some(f) = args.value_of_os("TESTFILE") {
+        support = Some(serde_yaml::from_reader(File::open(f).unwrap()).unwrap());
+    }
 
     println!("Detecting SGX, this may take a minute...");
     let support = support.unwrap_or_else(|| SgxSupport::detect(env_config));
