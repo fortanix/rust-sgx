@@ -2097,7 +2097,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aesm-client",
  "bitflags 1.2.1",
