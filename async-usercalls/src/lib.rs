@@ -32,18 +32,18 @@ use self::hacks::{Cancel, Return, Usercall};
 use self::provider_core::ProviderCore;
 use self::queues::*;
 
-pub struct CancelHandle<'p> {
-    c: Identified<Cancel>,
-    tx: &'p Sender<Cancel>,
-}
+pub struct CancelHandle(Identified<Cancel>);
 
-impl<'p> CancelHandle<'p> {
+impl CancelHandle {
     pub fn cancel(self) {
-        self.tx.send(self.c).expect("failed to send cancellation");
+        PROVIDERS
+            .cancel_sender()
+            .send(self.0)
+            .expect("failed to send cancellation");
     }
 
-    pub(crate) fn new(c: Identified<Cancel>, tx: &'p Sender<Cancel>) -> Self {
-        CancelHandle { c, tx }
+    pub(crate) fn new(c: Identified<Cancel>) -> Self {
+        CancelHandle(c)
     }
 }
 

@@ -17,19 +17,21 @@ pub(crate) struct Providers {
 }
 
 impl Providers {
-    pub(crate) fn new_provider(
-        &self,
-        return_tx: Option<mpmc::Sender<Identified<Return>>>,
-    ) -> (Sender<Usercall>, Sender<Cancel>, u32) {
-        let id = self.provider_map.lock().unwrap().insert(return_tx);
-        let usercall_queue_tx = self.usercall_queue_tx.clone();
-        let cancel_queue_tx = self.cancel_queue_tx.clone();
-        (usercall_queue_tx, cancel_queue_tx, id)
+    pub(crate) fn new_provider(&self, return_tx: Option<mpmc::Sender<Identified<Return>>>) -> u32 {
+        self.provider_map.lock().unwrap().insert(return_tx)
     }
 
     pub(crate) fn remove_provider(&self, id: u32) {
         let entry = self.provider_map.lock().unwrap().remove(id);
         assert!(entry.is_some());
+    }
+
+    pub(crate) fn usercall_sender(&self) -> &Sender<Usercall> {
+        &self.usercall_queue_tx
+    }
+
+    pub(crate) fn cancel_sender(&self) -> &Sender<Cancel> {
+        &self.cancel_queue_tx
     }
 }
 

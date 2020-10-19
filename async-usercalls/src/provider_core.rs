@@ -6,18 +6,14 @@ use ipc_queue::Identified;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub(crate) struct ProviderCore {
-    usercall_tx: Sender<Usercall>,
-    cancel_tx: Sender<Cancel>,
     provider_id: u32,
     next_id: AtomicU32,
 }
 
 impl ProviderCore {
     pub fn new(return_tx: Option<mpmc::Sender<Identified<Return>>>) -> ProviderCore {
-        let (usercall_tx, cancel_tx, provider_id) = PROVIDERS.new_provider(return_tx);
+        let provider_id = PROVIDERS.new_provider(return_tx);
         ProviderCore {
-            usercall_tx,
-            cancel_tx,
             provider_id,
             next_id: AtomicU32::new(1),
         }
@@ -52,13 +48,16 @@ impl ProviderCore {
                 reserved: 0,
             },
         };
-        self.usercall_tx.send(usercall).expect("failed to send async usercall");
-        CancelHandle::new(cancel, &self.cancel_tx)
+        PROVIDERS
+            .usercall_sender()
+            .send(usercall)
+            .expect("failed to send async usercall");
+        CancelHandle::new(cancel)
     }
 
     // returns the number of usercalls successfully sent.
     pub fn try_send_multiple_usercalls(&self, usercalls: &[Identified<Usercall>]) -> usize {
-        self.usercall_tx.try_send_multiple(usercalls).unwrap_or(0)
+        PROVIDERS.usercall_sender().try_send_multiple(usercalls).unwrap_or(0)
     }
 }
 
