@@ -12,19 +12,18 @@ use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
 
 struct AutoPollingProvider {
-    provider: Arc<AsyncUsercallProvider>,
+    provider: AsyncUsercallProvider,
     shutdown: Arc<AtomicBool>,
     join_handle: Option<thread::JoinHandle<()>>,
 }
 
 impl AutoPollingProvider {
     fn new() -> Self {
-        let provider = Arc::new(AsyncUsercallProvider::new());
+        let (provider, handler) = AsyncUsercallProvider::new();
         let shutdown = Arc::new(AtomicBool::new(false));
         let shutdown1 = shutdown.clone();
-        let provider1 = provider.clone();
         let join_handle = Some(thread::spawn(move || loop {
-            provider1.poll(None);
+            handler.poll(None);
             if shutdown1.load(Ordering::Relaxed) {
                 break;
             }
@@ -41,7 +40,7 @@ impl Deref for AutoPollingProvider {
     type Target = AsyncUsercallProvider;
 
     fn deref(&self) -> &Self::Target {
-        &*self.provider
+        &self.provider
     }
 }
 

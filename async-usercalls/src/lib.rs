@@ -49,35 +49,30 @@ impl<'p> CancelHandle<'p> {
 
 /// This type provides a mechanism for submitting usercalls asynchronously.
 /// Usercalls are sent to the enclave runner through a queue. The results are
-/// retrieved when `fn poll` is called. Users are notified of the results
-/// through callback functions.
+/// retrieved when `CallbackHandler::poll` is called. Users are notified of the
+/// results through callback functions.
 ///
 /// Users of this type should take care not to block execution in callbacks.
 /// Certain usercalls can be cancelled through a handle, but note that it is
 /// still possible to receive successful results for cancelled usercalls.
 pub struct AsyncUsercallProvider {
     core: ProviderCore,
-    return_rx: mpmc::Receiver<Identified<Return>>,
-    callbacks: Mutex<HashMap<u64, Callback>>,
-    // This mpmc channel is an optimization so that threads sending usercalls
-    // don't have to take the lock.
     callback_tx: mpmc::Sender<(u64, Callback)>,
-    callback_rx: mpmc::Receiver<(u64, Callback)>,
 }
 
 impl AsyncUsercallProvider {
-    pub fn new() -> Self {
+    pub fn new() -> (Self, CallbackHandler) {
         let (return_tx, return_rx) = mpmc::unbounded();
         let core = ProviderCore::new(Some(return_tx));
         let callbacks = Mutex::new(HashMap::new());
         let (callback_tx, callback_rx) = mpmc::unbounded();
-        Self {
-            core,
+        let provider = Self { core, callback_tx };
+        let handler = CallbackHandler {
             return_rx,
             callbacks,
-            callback_tx,
             callback_rx,
-        }
+        };
+        (provider, handler)
     }
 
     #[cfg(test)]
@@ -94,7 +89,17 @@ impl AsyncUsercallProvider {
         }
         self.core.send_usercall(usercall)
     }
+}
 
+pub struct CallbackHandler {
+    return_rx: mpmc::Receiver<Identified<Return>>,
+    callbacks: Mutex<HashMap<u64, Callback>>,
+    // This is used so that threads sending usercalls don't have to take the lock.
+    callback_rx: mpmc::Receiver<(u64, Callback)>,
+}
+
+impl CallbackHandler {
+    #[inline]
     fn recv_returns(&self, timeout: Option<Duration>, returns: &mut [Identified<Return>]) -> usize {
         let first = match timeout {
             None => self.return_rx.recv().ok(),
