@@ -1,4 +1,3 @@
-use crate::alloc::{alloc_buf, alloc_byte_buffer, User};
 use crate::batch_drop;
 use crate::hacks::{new_std_listener, new_std_stream, MakeSend};
 use crate::io_bufs::UserBuf;
@@ -8,7 +7,7 @@ use fortanix_sgx_abi::Fd;
 use std::io;
 use std::mem::{self, ManuallyDrop};
 use std::net::{TcpListener, TcpStream};
-use std::os::fortanix_sgx::usercalls::alloc::{User as StdUser, UserRef, UserSafe};
+use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef, UserSafe};
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -24,11 +23,11 @@ impl AsyncUsercallProvider {
     where
         F: FnOnce(io::Result<usize>, User<[u8]>) + Send + 'static,
     {
-        let mut read_buf = ManuallyDrop::new(read_buf);
+        let mut read_buf = ManuallyDrop::new(MakeSend::new(read_buf));
         let ptr = read_buf.as_mut_ptr();
         let len = read_buf.len();
         let cb = move |res: io::Result<usize>| {
-            let read_buf = ManuallyDrop::into_inner(read_buf);
+            let read_buf = ManuallyDrop::into_inner(read_buf).into_inner();
             callback(res, read_buf);
         };
         unsafe { self.raw_read(fd, ptr, len, Some(cb.into())) }
@@ -93,8 +92,8 @@ impl AsyncUsercallProvider {
     where
         F: FnOnce(io::Result<TcpListener>) + Send + 'static,
     {
-        let mut addr_buf = ManuallyDrop::new(alloc_buf(addr.len()));
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(alloc_byte_buffer()));
+        let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
+        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
         addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
         let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
@@ -121,8 +120,8 @@ impl AsyncUsercallProvider {
     where
         F: FnOnce(io::Result<TcpStream>) + Send + 'static,
     {
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(alloc_byte_buffer()));
-        let mut peer_addr = ManuallyDrop::new(MakeSend::new(alloc_byte_buffer()));
+        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut peer_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
         let local_addr_ptr = local_addr.as_raw_mut_ptr();
         let peer_addr_ptr = peer_addr.as_raw_mut_ptr();
@@ -149,9 +148,9 @@ impl AsyncUsercallProvider {
     where
         F: FnOnce(io::Result<TcpStream>) + Send + 'static,
     {
-        let mut addr_buf = ManuallyDrop::new(alloc_buf(addr.len()));
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(alloc_byte_buffer()));
-        let mut peer_addr = ManuallyDrop::new(MakeSend::new(alloc_byte_buffer()));
+        let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
+        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut peer_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
         addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
         let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
@@ -180,10 +179,10 @@ impl AsyncUsercallProvider {
     pub fn alloc<T, F>(&self, callback: F)
     where
         T: UserSafe,
-        F: FnOnce(io::Result<StdUser<T>>) + Send + 'static,
+        F: FnOnce(io::Result<User<T>>) + Send + 'static,
     {
         let cb = move |res: io::Result<*mut u8>| {
-            let res = res.map(|ptr| unsafe { StdUser::<T>::from_raw(ptr as _) });
+            let res = res.map(|ptr| unsafe { User::<T>::from_raw(ptr as _) });
             callback(res);
         };
         unsafe {
@@ -200,10 +199,10 @@ impl AsyncUsercallProvider {
     pub fn alloc_slice<T, F>(&self, len: usize, callback: F)
     where
         [T]: UserSafe,
-        F: FnOnce(io::Result<StdUser<[T]>>) + Send + 'static,
+        F: FnOnce(io::Result<User<[T]>>) + Send + 'static,
     {
         let cb = move |res: io::Result<*mut u8>| {
-            let res = res.map(|ptr| unsafe { StdUser::<[T]>::from_raw_parts(ptr as _, len) });
+            let res = res.map(|ptr| unsafe { User::<[T]>::from_raw_parts(ptr as _, len) });
             callback(res);
         };
         unsafe {
@@ -217,7 +216,7 @@ impl AsyncUsercallProvider {
     ///
     /// Please refer to the type-level documentation for general notes about
     /// callbacks.
-    pub fn free<T, F>(&self, mut buf: StdUser<T>, callback: Option<F>)
+    pub fn free<T, F>(&self, mut buf: User<T>, callback: Option<F>)
     where
         T: ?Sized + UserSafe,
         F: FnOnce() + Send + 'static,
@@ -263,7 +262,7 @@ fn copy_user_buffer(buf: &UserRef<ByteBuffer>) -> Vec<u8> {
     unsafe {
         let buf = buf.to_enclave();
         if buf.len > 0 {
-            let user = StdUser::from_raw_parts(buf.data as _, buf.len);
+            let user = User::from_raw_parts(buf.data as _, buf.len);
             let v = user.to_enclave();
             batch_drop(user);
             v

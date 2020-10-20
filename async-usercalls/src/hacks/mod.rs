@@ -1,5 +1,5 @@
 use std::ops::{Deref, DerefMut};
-use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
+use std::os::fortanix_sgx::usercalls::alloc::{User, UserSafeSized};
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 
 mod async_queues;
@@ -58,4 +58,5 @@ impl<T> DerefMut for MakeSend<T> {
 }
 
 unsafe impl Send for MakeSend<ByteBuffer> {}
-unsafe impl Send for MakeSend<crate::alloc::User<ByteBuffer>> {}
+unsafe impl Send for MakeSend<User<ByteBuffer>> {}
+unsafe impl Send for MakeSend<User<[u8]>> {}

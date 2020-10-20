@@ -5,7 +5,7 @@ use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::ops::Deref;
 use std::os::fortanix_sgx::io::AsRawFd;
-use std::os::fortanix_sgx::usercalls::alloc::User as StdUser;
+use std::os::fortanix_sgx::usercalls::alloc::User;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -192,12 +192,10 @@ fn safe_alloc_free() {
     rx.recv().unwrap();
 }
 
-unsafe impl Send for MakeSend<StdUser<[u8]>> {}
-
 #[test]
 fn write_buffer_basic() {
     const LENGTH: usize = 1024;
-    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+    let mut write_buffer = WriteBuffer::new(User::<[u8]>::uninitialized(1024));
 
     let buf = vec![0u8; LENGTH];
     assert_eq!(write_buffer.write(&buf), LENGTH);
@@ -213,7 +211,7 @@ fn write_buffer_basic() {
 #[should_panic]
 fn call_consumable_chunk_twice() {
     const LENGTH: usize = 1024;
-    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+    let mut write_buffer = WriteBuffer::new(User::<[u8]>::uninitialized(1024));
 
     let buf = vec![0u8; LENGTH];
     assert_eq!(write_buffer.write(&buf), LENGTH);
@@ -228,19 +226,19 @@ fn call_consumable_chunk_twice() {
 #[should_panic]
 fn consume_wrong_buf() {
     const LENGTH: usize = 1024;
-    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+    let mut write_buffer = WriteBuffer::new(User::<[u8]>::uninitialized(1024));
 
     let buf = vec![0u8; LENGTH];
     assert_eq!(write_buffer.write(&buf), LENGTH);
     assert_eq!(write_buffer.write(&buf), 0);
 
-    let unrelated_buf: UserBuf = super::alloc_buf(512).into();
+    let unrelated_buf: UserBuf = User::<[u8]>::uninitialized(512).into();
     write_buffer.consume(unrelated_buf, 100);
 }
 
 #[test]
 fn read_buffer_basic() {
-    let mut buf = super::alloc_buf(64);
+    let mut buf = User::<[u8]>::uninitialized(64);
     const DATA: &'static [u8] = b"hello";
     buf[0..DATA.len()].copy_from_enclave(DATA);
 
@@ -293,7 +291,8 @@ impl FnOnce<(io::Result<TcpStream>,)> for KeepAccepting {
                 read: true,
                 provider: self.provider.clone(),
             };
-            self.provider.read(fd, alloc_buf(Echo::READ_BUF_SIZE), cb);
+            self.provider
+                .read(fd, User::<[u8]>::uninitialized(Echo::READ_BUF_SIZE), cb);
         }
         let provider = Arc::clone(&self.provider);
         provider.accept_stream(self.listener.as_raw_fd(), self);
@@ -345,7 +344,11 @@ impl FnOnce<(io::Result<usize>, UserBuf)> for Echo {
             Ok(len) if len > 0 => {
                 self.read = true;
                 let provider = Arc::clone(&self.provider);
-                provider.read(self.stream.as_raw_fd(), alloc_buf(Echo::READ_BUF_SIZE), self);
+                provider.read(
+                    self.stream.as_raw_fd(),
+                    User::<[u8]>::uninitialized(Echo::READ_BUF_SIZE),
+                    self,
+                );
             }
             _ => self.close(),
         }

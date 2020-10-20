@@ -1,9 +1,8 @@
-use crate::alloc::User;
 use std::cell::UnsafeCell;
 use std::cmp;
 use std::io::IoSlice;
 use std::ops::{Deref, DerefMut, Range};
-use std::os::fortanix_sgx::usercalls::alloc::UserRef;
+use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef};
 use std::sync::Arc;
 
 pub struct UserBuf(UserBufKind);
