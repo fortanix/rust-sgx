@@ -1,4 +1,4 @@
-use super::slab::User;
+use crate::alloc::User;
 use std::cell::UnsafeCell;
 use std::cmp;
 use std::io::IoSlice;

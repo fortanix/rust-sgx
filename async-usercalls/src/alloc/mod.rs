@@ -3,13 +3,11 @@ use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 
 mod allocator;
 mod bitmap;
-mod io_bufs;
 mod slab;
 #[cfg(test)]
 mod tests;
 
 use self::allocator::{LocalAllocator, SharedAllocator};
-pub use self::io_bufs::{ReadBuffer, UserBuf, WriteBuffer};
 pub use self::slab::{User, UserSafeExt};
 
 /// Allocates a slice of bytes in userspace that is at least as large as `size`.

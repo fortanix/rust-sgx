@@ -1,6 +1,7 @@
-use crate::alloc::{alloc_buf, alloc_byte_buffer, User, UserBuf};
+use crate::alloc::{alloc_buf, alloc_byte_buffer, User};
 use crate::batch_drop;
 use crate::hacks::{new_std_listener, new_std_stream, MakeSend};
+use crate::io_bufs::UserBuf;
 use crate::raw::RawApi;
 use crate::{AsyncUsercallProvider, CancelHandle};
 use fortanix_sgx_abi::Fd;

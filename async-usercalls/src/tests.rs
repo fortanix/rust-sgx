@@ -195,6 +195,65 @@ fn safe_alloc_free() {
 unsafe impl Send for MakeSend<StdUser<[u8]>> {}
 
 #[test]
+fn write_buffer_basic() {
+    const LENGTH: usize = 1024;
+    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+
+    let buf = vec![0u8; LENGTH];
+    assert_eq!(write_buffer.write(&buf), LENGTH);
+    assert_eq!(write_buffer.write(&buf), 0);
+
+    let chunk = write_buffer.consumable_chunk().unwrap();
+    write_buffer.consume(chunk, 200);
+    assert_eq!(write_buffer.write(&buf), 200);
+    assert_eq!(write_buffer.write(&buf), 0);
+}
+
+#[test]
+#[should_panic]
+fn call_consumable_chunk_twice() {
+    const LENGTH: usize = 1024;
+    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+
+    let buf = vec![0u8; LENGTH];
+    assert_eq!(write_buffer.write(&buf), LENGTH);
+    assert_eq!(write_buffer.write(&buf), 0);
+
+    let chunk1 = write_buffer.consumable_chunk().unwrap();
+    let _ = write_buffer.consumable_chunk().unwrap();
+    drop(chunk1);
+}
+
+#[test]
+#[should_panic]
+fn consume_wrong_buf() {
+    const LENGTH: usize = 1024;
+    let mut write_buffer = WriteBuffer::new(super::alloc_buf(1024));
+
+    let buf = vec![0u8; LENGTH];
+    assert_eq!(write_buffer.write(&buf), LENGTH);
+    assert_eq!(write_buffer.write(&buf), 0);
+
+    let unrelated_buf: UserBuf = super::alloc_buf(512).into();
+    write_buffer.consume(unrelated_buf, 100);
+}
+
+#[test]
+fn read_buffer_basic() {
+    let mut buf = super::alloc_buf(64);
+    const DATA: &'static [u8] = b"hello";
+    buf[0..DATA.len()].copy_from_enclave(DATA);
+
+    let mut read_buffer = ReadBuffer::new(buf, DATA.len());
+    assert_eq!(read_buffer.len(), DATA.len());
+    assert_eq!(read_buffer.remaining_bytes(), DATA.len());
+    let mut buf = [0u8; 8];
+    assert_eq!(read_buffer.read(&mut buf), DATA.len());
+    assert_eq!(read_buffer.remaining_bytes(), 0);
+    assert_eq!(&buf, b"hello\0\0\0");
+}
+
+#[test]
 #[ignore]
 fn echo() {
     println!();

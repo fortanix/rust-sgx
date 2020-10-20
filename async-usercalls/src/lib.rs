@@ -15,6 +15,7 @@ mod batch_drop;
 mod callback;
 mod duplicated;
 mod hacks;
+mod io_bufs;
 mod provider_api;
 mod provider_core;
 mod queues;
@@ -22,9 +23,10 @@ mod raw;
 #[cfg(test)]
 mod tests;
 
-pub use self::alloc::{alloc_buf, alloc_byte_buffer, ReadBuffer, User, UserBuf, UserSafeExt, WriteBuffer};
+pub use self::alloc::{alloc_buf, alloc_byte_buffer, User, UserSafeExt};
 pub use self::batch_drop::batch_drop;
 pub use self::callback::CbFn;
+pub use self::io_bufs::{ReadBuffer, UserBuf, WriteBuffer};
 pub use self::raw::RawApi;
 
 use self::callback::*;
