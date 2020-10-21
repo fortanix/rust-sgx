@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::*;
+use std::sync::atomic::Ordering;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for AsyncSender<T, S> {}
@@ -52,9 +53,12 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
     pub async fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
-                Ok((val, wake_sender)) => {
+                Ok((val, wake_sender, read_wrapped_around)) => {
                     if wake_sender {
                         self.synchronizer.notify(QueueEvent::NotFull);
+                    }
+                    if read_wrapped_around {
+                        self.read_epoch.fetch_add(1, Ordering::Relaxed);
                     }
                     return Ok(val);
                 }
@@ -65,6 +69,13 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
                 }
                 Err(TryRecvError::Closed) => return Err(RecvError::Closed),
             }
+        }
+    }
+
+    pub fn position_monitor(&self) -> PositionMonitor<T> {
+        PositionMonitor {
+            read_epoch: self.read_epoch.clone(),
+            fifo: self.inner.clone(),
         }
     }
 
@@ -151,6 +162,65 @@ mod tests {
         do_multi_sender(4, 1, 100).await;
         do_multi_sender(2, 10, 100).await;
         do_multi_sender(1024, 30, 100).await;
+    }
+
+    #[tokio::test]
+    async fn positions() {
+        const LEN: usize = 16;
+        let s = TestAsyncSynchronizer::new();
+        let (tx, rx) = bounded_async(LEN, s);
+        let monitor = rx.position_monitor();
+        let mut id = 1;
+
+        let p0 = monitor.write_position();
+        tx.send(Identified { id, data: TestValue(1) }).await.unwrap();
+        let p1 = monitor.write_position();
+        tx.send(Identified { id: id + 1, data: TestValue(2) }).await.unwrap();
+        let p2 = monitor.write_position();
+        tx.send(Identified { id: id + 2, data: TestValue(3) }).await.unwrap();
+        let p3 = monitor.write_position();
+        id += 3;
+        assert!(monitor.read_position().is_past(&p0) == false);
+        assert!(monitor.read_position().is_past(&p1) == false);
+        assert!(monitor.read_position().is_past(&p2) == false);
+        assert!(monitor.read_position().is_past(&p3) == false);
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == true);
+        assert!(monitor.read_position().is_past(&p1) == false);
+        assert!(monitor.read_position().is_past(&p2) == false);
+        assert!(monitor.read_position().is_past(&p3) == false);
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == true);
+        assert!(monitor.read_position().is_past(&p1) == true);
+        assert!(monitor.read_position().is_past(&p2) == false);
+        assert!(monitor.read_position().is_past(&p3) == false);
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == true);
+        assert!(monitor.read_position().is_past(&p1) == true);
+        assert!(monitor.read_position().is_past(&p2) == true);
+        assert!(monitor.read_position().is_past(&p3) == false);
+
+        for i in 0..1000 {
+            let n = 1 + (i % LEN);
+            let p4 = monitor.write_position();
+            for _ in 0..n {
+                tx.send(Identified { id, data: TestValue(id) }).await.unwrap();
+                id += 1;
+            }
+            let p5 = monitor.write_position();
+            for _ in 0..n {
+                rx.recv().await.unwrap();
+                assert!(monitor.read_position().is_past(&p0) == true);
+                assert!(monitor.read_position().is_past(&p1) == true);
+                assert!(monitor.read_position().is_past(&p2) == true);
+                assert!(monitor.read_position().is_past(&p3) == true);
+                assert!(monitor.read_position().is_past(&p4) == true);
+                assert!(monitor.read_position().is_past(&p5) == false);
+            }
+        }
     }
 
     struct Subscription<T> {

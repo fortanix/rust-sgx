@@ -629,9 +629,13 @@ impl Usercalls {
 /// Additionally, userspace may choose to ignore cancellations for non-blocking
 /// usercalls. Userspace should be able to cancel a usercall that has been sent
 /// by the enclave but not yet received by the userspace, i.e. if cancellation
-/// is received before the usercall itself. However, userspace should not keep
-/// cancellations forever since that would prevent the enclave from re-using
-/// usercall ids.
+/// is received before the usercall itself. To avoid keeping such cancellations
+/// forever and preventing the enclave from re-using usercall ids, userspace
+/// should synchronize cancel queue with the usercall queue such that the
+/// following invariant is maintained: whenever the enclave writes an id to the
+/// usercall or cancel queue, the enclave will not reuse that id until the
+/// usercall queue's read pointer has advanced to the write pointer at the time
+/// the id was written.
 ///
 /// *TODO*: Add diagram.
 ///
@@ -721,8 +725,8 @@ pub mod async {
     #[derive(Copy, Clone, Default)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
     pub struct Cancel {
-        /// This must be the same value as `Usercall.0`.
-        pub usercall_nr: u64,
+        /// Reserved for future use.
+        pub reserved: u64,
     }
 
     /// A circular buffer used as a FIFO queue with atomic reads and writes.

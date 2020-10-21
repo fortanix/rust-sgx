@@ -34,7 +34,7 @@ use tokio::sync::mpsc as async_mpsc;
 use tokio::sync::Semaphore;
 
 use fortanix_sgx_abi::*;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent, WritePosition};
 use sgxs::loader::Tcs as SgxsTcs;
 
 use crate::loader::{EnclavePanic, ErasedTcs};
@@ -691,26 +691,22 @@ impl Work {
 enum UsercallEvent {
     Started(u64, tokio::sync::oneshot::Sender<()>),
     Finished(u64),
-    Cancelled(u64, Instant),
-}
-
-fn ignore_cancel_impl(usercall_nr: u64) -> bool {
-    usercall_nr != UsercallList::read as u64 &&
-    usercall_nr != UsercallList::read_alloc as u64 &&
-    usercall_nr != UsercallList::write as u64 &&
-    usercall_nr != UsercallList::accept_stream as u64 &&
-    usercall_nr != UsercallList::connect_stream as u64 &&
-    usercall_nr != UsercallList::wait as u64
+    Cancelled(u64, WritePosition),
 }
 
 trait IgnoreCancel {
     fn ignore_cancel(&self) -> bool;
 }
+
 impl IgnoreCancel for Identified<Usercall> {
-    fn ignore_cancel(&self) -> bool { ignore_cancel_impl(self.data.0) }
-}
-impl IgnoreCancel for Identified<Cancel> {
-    fn ignore_cancel(&self) -> bool { ignore_cancel_impl(self.data.usercall_nr) }
+    fn ignore_cancel(&self) -> bool {
+        self.data.0 != UsercallList::read as u64 &&
+        self.data.0 != UsercallList::read_alloc as u64 &&
+        self.data.0 != UsercallList::write as u64 &&
+        self.data.0 != UsercallList::accept_stream as u64 &&
+        self.data.0 != UsercallList::connect_stream as u64 &&
+        self.data.0 != UsercallList::wait as u64
+    }
 }
 
 impl EnclaveState {
@@ -947,6 +943,8 @@ impl EnclaveState {
             *enclave_clone.fifo_guards.lock().await = Some(fifo_guards);
             *enclave_clone.return_queue_tx.lock().await = Some(return_queue_tx);
 
+            let usercall_queue_monitor = usercall_queue_rx.position_monitor();
+
             tokio::task::spawn_local(async move {
                 while let Ok(usercall) = usercall_queue_rx.recv().await {
                     let _ = io_queue_send.send(UsercallSendData::Async(usercall));
@@ -955,37 +953,32 @@ impl EnclaveState {
 
             let (usercall_event_tx, mut usercall_event_rx) = async_mpsc::unbounded_channel();
             let usercall_event_tx_clone = usercall_event_tx.clone();
+            let usercall_queue_monitor_clone = usercall_queue_monitor.clone();
             tokio::task::spawn_local(async move {
                 while let Ok(c) = cancel_queue_rx.recv().await {
-                    if !c.ignore_cancel() {
-                        let _ = usercall_event_tx_clone.send(UsercallEvent::Cancelled(c.id, Instant::now()));
-                    }
+                    let write_position = usercall_queue_monitor_clone.write_position();
+                    let _ = usercall_event_tx_clone.send(UsercallEvent::Cancelled(c.id, write_position));
                 }
             });
 
             tokio::task::spawn_local(async move {
                 let mut notifiers = HashMap::new();
-                let mut cancels: HashMap<u64, Instant> = HashMap::new();
-                // This should be greater than the amount of time it takes for the enclave runner
-                // to start executing a usercall after the enclave sends it on the usercall_queue.
-                const CANCEL_EXPIRY: Duration = Duration::from_millis(100);
+                let mut cancels: HashMap<u64, WritePosition> = HashMap::new();
                 loop {
                     match usercall_event_rx.recv().await.expect("usercall_event channel closed unexpectedly") {
                         UsercallEvent::Started(id, notifier) => match cancels.remove(&id) {
-                            Some(t) if t.elapsed() < CANCEL_EXPIRY => { let _ = notifier.send(()); },
+                            Some(_) => { let _ = notifier.send(()); },
                             _ => { notifiers.insert(id, notifier); },
                         },
                         UsercallEvent::Finished(id) => { notifiers.remove(&id); },
-                        UsercallEvent::Cancelled(id, t) => if t.elapsed() < CANCEL_EXPIRY {
-                            match notifiers.remove(&id) {
-                                Some(notifier) => { let _ = notifier.send(()); },
-                                None => { cancels.insert(id, t); },
-                            }
+                        UsercallEvent::Cancelled(id, wp) => match notifiers.remove(&id) {
+                            Some(notifier) => { let _ = notifier.send(()); },
+                            None => { cancels.insert(id, wp); },
                         },
                     }
-                    // cleanup expired cancels
-                    let now = Instant::now();
-                    cancels.retain(|_id, &mut t| now - t < CANCEL_EXPIRY);
+                    // cleanup old cancels
+                    let read_position = usercall_queue_monitor.read_position();
+                    cancels.retain(|_id, wp| !read_position.is_past(wp));
                 }
             });
 

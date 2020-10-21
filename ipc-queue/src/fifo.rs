@@ -6,7 +6,7 @@
 
 use std::cell::UnsafeCell;
 use std::mem;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
@@ -33,7 +33,7 @@ where
     let arc = Arc::new(FifoBuffer::new(len));
     let inner = Fifo::from_arc(arc);
     let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
-    let rx = AsyncReceiver { inner, synchronizer: s };
+    let rx = AsyncReceiver { inner, synchronizer: s, read_epoch: Arc::new(AtomicU32::new(0)) };
     (tx, rx)
 }
 
@@ -84,6 +84,12 @@ impl<T> Clone for Fifo<T> {
             offsets: self.offsets,
             storage: self.storage.clone(),
         }
+    }
+}
+
+impl<T> Fifo<T> {
+    pub(crate) fn current_offsets(&self, ordering: Ordering) -> Offsets {
+        Offsets::new(self.offsets.load(ordering), self.data.len() as u32)
     }
 }
 
@@ -152,7 +158,7 @@ impl<T: Transmittable> Fifo<T> {
     pub(crate) fn try_send_impl(&self, val: Identified<T>) -> Result</*wake up reader:*/ bool, TrySendError> {
         let (new, was_empty) = loop {
             // 1. Load the current offsets.
-            let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
+            let current = self.current_offsets(Ordering::SeqCst);
             let was_empty = current.is_empty();
 
             // 2. If the queue is full, wait, then go to step 1.
@@ -179,9 +185,9 @@ impl<T: Transmittable> Fifo<T> {
         Ok(was_empty)
     }
 
-    pub(crate) fn try_recv_impl(&self) -> Result<(Identified<T>, /*wake up writer:*/ bool), TryRecvError> {
+    pub(crate) fn try_recv_impl(&self) -> Result<(Identified<T>, /*wake up writer:*/ bool, /*read offset wrapped around:*/bool), TryRecvError> {
         // 1. Load the current offsets.
-        let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
+        let current = self.current_offsets(Ordering::SeqCst);
 
         // 2. If the queue is empty, wait, then go to step 1.
         if current.is_empty() {
@@ -216,7 +222,7 @@ impl<T: Transmittable> Fifo<T> {
 
         // 8. If the queue was full before step 7, signal the writer to wake up.
         let was_full = Offsets::new(before, self.data.len() as u32).is_full();
-        Ok((val, was_full))
+        Ok((val, was_full, new.read_offset() == 0))
     }
 }
 
@@ -282,6 +288,14 @@ impl Offsets {
             ..*self
         }
     }
+
+    pub(crate) fn read_high_bit(&self) -> bool {
+        self.read & self.len == self.len
+    }
+
+    pub(crate) fn write_high_bit(&self) -> bool {
+        self.write & self.len == self.len
+    }
 }
 
 #[cfg(test)]
@@ -308,7 +322,7 @@ mod tests {
         }
 
         for i in 1..=7 {
-            let (v, wake) = inner.try_recv_impl().unwrap();
+            let (v, wake, _) = inner.try_recv_impl().unwrap();
             assert!(!wake);
             assert_eq!(v.id, i);
             assert_eq!(v.data.0, i);
@@ -327,7 +341,7 @@ mod tests {
             assert!(inner.try_send_impl(Identified { id: 9, data: TestValue(9) }).is_err());
 
             for i in 1..=8 {
-                let (v, wake) = inner.try_recv_impl().unwrap();
+                let (v, wake, _) = inner.try_recv_impl().unwrap();
                 assert!(if i == 1 { wake } else { !wake });
                 assert_eq!(v.id, i);
                 assert_eq!(v.data.0, i);
