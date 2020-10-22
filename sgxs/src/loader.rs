@@ -9,7 +9,7 @@ use std::os::raw::c_void;
 
 use failure::Error;
 
-use abi::{Attributes, Miscselect, Sigstruct};
+use abi::{Attributes, Miscselect, PageType, Sigstruct};
 use sgxs::SgxsRead;
 
 /// An owned `Tcs` is the only reference to a particular Thread Control
@@ -42,6 +42,8 @@ pub trait EnclaveControl: 'static + Send + Sync + Debug {
     fn trim(&self, addr: *mut u8, size: usize) -> Result<(), Error>;
 
     fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), Error>;
+
+    fn change_memory_type(&self, addr: *const u8, size: usize, page_type: PageType) -> Result<(), Error>;
 }
 
 /// An interface that is able to load an enclave into memory.

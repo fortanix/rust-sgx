@@ -359,6 +359,10 @@ impl EnclaveControl for NoEnclaveControl {
     fn remove_trimmed(&self, _: *const u8, _: usize) -> std::result::Result<(), failure::Error> {
         match *self {}
     }
+
+    fn change_memory_type(&self, _: *const u8, _: usize, _: PageType) -> std::result::Result<(), failure::Error> {
+        match *self{}
+    }
 }
 
 impl loader::Load for Library {

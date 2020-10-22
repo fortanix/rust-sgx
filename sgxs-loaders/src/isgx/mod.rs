@@ -85,6 +85,8 @@ pub enum Error {
     Trim(#[cause] SgxIoctlError),
     #[fail(display = "Failed to remove trimmed region.")]
     RemoveTrimmed(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to change page type of region.")]
+    ChangePageType(#[cause] SgxIoctlError),
 }
 
 impl Error {
@@ -481,6 +483,28 @@ impl EnclaveControl for EnclaveController {
                 };
                 let result = ioctl_unsafe!{RemoveTrimmed, ioctl::montgomery::notify_accept(fd.as_raw_fd(), &range)};
                 result.map_err(|e| e.into())
+            },
+        }
+    }
+
+    fn change_memory_type(&self, addr: *const u8, size: usize, page_type: PageType) -> Result<(), ::failure::Error> {
+        match self.family {
+            DriverFamily::Augusta => Err(format_err!("Driver doesn't support changing page types")),
+            DriverFamily::Montgomery => {
+                let fd = OpenOptions::new().read(true).write(true).open(&**self.path).unwrap();
+                let range = SgxRange {
+                    start_addr: addr as _,
+                    nr_pages: (size / 0x1000) as _,
+                    };
+                match page_type {
+                    PageType::Tcs => {
+                        let result = ioctl_unsafe!{ChangePageType, ioctl::montgomery::page_to_tcs(fd.as_raw_fd(), &range)};
+                        result.map_err(|e| e.into())
+                    }
+                    _ => {
+                        Err(format_err!("Changing enclave page type to anything other than TCS is not supported"))
+                    }
+                }
             },
         }
     }

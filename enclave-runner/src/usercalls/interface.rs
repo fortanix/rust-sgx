@@ -10,6 +10,7 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IoResult};
 use std::slice;
 
 use fortanix_sgx_abi::*;
+use sgx_isa::PageType;
 
 use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, IOHandlerInput};
@@ -268,6 +269,19 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
             let ret = Ok(self.0.remove_trimmed(region, size).to_sgx_result());
+            return (self, ret)
+        }
+            .boxed_local()
+    }
+
+    fn change_memory_type(
+        self,
+        region: *const u8,
+        size: usize,
+        page_type: PageType
+    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
+        async move {
+            let ret = Ok(self.0.change_memory_type(region, size, page_type).to_sgx_result());
             return (self, ret)
         }
             .boxed_local()

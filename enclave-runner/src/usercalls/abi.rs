@@ -11,7 +11,9 @@
 #![allow(unused)]
 
 use fortanix_sgx_abi::*;
+use sgx_isa::PageType;
 
+use std::convert::TryFrom;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -150,6 +152,16 @@ impl<T: RegisterArgument> RegisterArgument for Option<NonNull<T>> {
     }
     fn into_register(self) -> Register {
         self.map_or(0 as _, NonNull::as_ptr) as _
+    }
+}
+
+impl RegisterArgument for PageType {
+    fn from_register(reg: Register) -> Self {
+        PageType::try_from(reg as u8).unwrap_or(PageType::Reg)
+    }
+
+    fn into_register(self) -> Register {
+        self as _
     }
 }
 

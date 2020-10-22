@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use failure::Error;
+use sgx_isa::PageType;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::MappingInfoDynController;
@@ -42,6 +43,10 @@ impl EnclaveControl for NoEnclaveControl {
     }
 
     fn remove_trimmed(&self, _: *const u8, _: usize) -> std::result::Result<(), failure::Error> {
+        match *self {}
+    }
+
+    fn change_memory_type(&self, _: *const u8, _: usize, _: PageType) -> std::result::Result<(), failure::Error> {
         match *self {}
     }
 }

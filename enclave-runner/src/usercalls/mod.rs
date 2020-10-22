@@ -36,6 +36,7 @@ use tokio::sync::mpsc as async_mpsc;
 use fortanix_sgx_abi::*;
 use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
 use sgxs::loader::Tcs as SgxsTcs;
+use sgx_isa::PageType;
 
 use crate::MappingInfoDynController;
 use crate::loader::{EnclavePanic, ErasedTcs};
@@ -1618,10 +1619,21 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     pub fn remove_trimmed(&self, region: *const u8, size: usize) -> IoResult<()> {
-        println!("Calling driver to remove trimmed enclave region {:?}:{:x}", region, size);
         match &(*self.enclave).enclave_controller.dyn_controller() {
             Some(ctr) => {
                 ctr.remove_trimmed(region as _, size).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
+            },
+            None => {
+                Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))
+            }
+        }
+    }
+
+    pub fn change_memory_type(&self, region: *const u8, size: usize, page_type: PageType) -> IoResult<()> {
+        println!("Calling driver to change page type of {:?}:{:x} to {:?}", region, size, page_type);
+        match &(*self.enclave).enclave_controller.dyn_controller() {
+            Some(ctr) => {
+                ctr.change_memory_type(region as _, size, page_type).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
             },
             None => {
                 Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))

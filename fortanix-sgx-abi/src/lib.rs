@@ -81,6 +81,9 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
+extern crate sgx_isa;
+
+use sgx_isa::PageType;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU64, AtomicUsize};
 
@@ -601,6 +604,8 @@ impl Usercalls {
     pub fn trim(region: *const u8, size: usize) -> Result { unimplemented!() }
 
     pub fn remove_trimmed(region: *const u8, size: usize) -> Result { unimplemented!() }
+
+    pub fn change_memory_type(region: *const u8, size: usize, page_type: PageType) -> Result { unimplemented!() }
 }
 
 /// Asynchronous usercall specification.
