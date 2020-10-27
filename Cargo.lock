@@ -686,6 +686,7 @@ dependencies = [
  "enclave-runner",
  "failure",
  "failure_derive",
+ "fortanix-sgx-abi",
  "libc",
  "nix 0.13.1",
  "num_cpus",

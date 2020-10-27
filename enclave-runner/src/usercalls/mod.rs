@@ -11,7 +11,7 @@ use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration, Instant};
@@ -485,6 +485,12 @@ impl<T> EnclaveAbort<T> {
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 struct TcsAddress(usize);
 
+impl SgxsTcs for TcsAddress {
+    fn address(&self) -> *mut c_void {
+        self.0 as _
+    }
+}
+
 impl ErasedTcs {
     fn address(&self) -> TcsAddress {
         TcsAddress(SgxsTcs::address(self) as _)
@@ -500,6 +506,11 @@ impl fmt::Pointer for TcsAddress {
 struct StoppedTcs {
     tcs: ErasedTcs,
     event_queue: futures::channel::mpsc::UnboundedReceiver<u8>,
+}
+
+enum TcsState {
+    Running,
+    Stopped(StoppedTcs),
 }
 
 struct IOHandlerInput<'tcs> {
@@ -594,13 +605,13 @@ struct FifoGuards {
 
 pub(crate) struct EnclaveState {
     kind: EnclaveKind,
-    event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
+    event_queues: RwLock<FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>>,
     fds: Mutex<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
     last_fd: AtomicUsize,
     exiting: AtomicBool,
     usercall_ext: Box<dyn UsercallExtension>,
     enclave_controller: Box<dyn MappingInfoDynController>,
-    available_enclave_threads: Mutex<FnvHashMap<TcsAddress, StoppedTcs>>,
+    enclave_threads: Mutex<FnvHashMap<TcsAddress, TcsState>>,
     forward_panics: bool,
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
     fifo_guards: Mutex<Option<FifoGuards>>,
@@ -650,9 +661,15 @@ impl EnclaveState {
         }
     }
 
+    async fn add_enclave_thread(&self, tcs: ErasedTcs) {
+        let mut queues = self.event_queues.write().unwrap();
+        let stopped_tcs = Self::event_queue_add_tcs(&mut queues, tcs);
+        self.enclave_threads.lock().await.insert(stopped_tcs.tcs.address(), TcsState::Stopped(stopped_tcs));
+    }
+
     fn new(
         kind: EnclaveKind,
-        mut event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
+        event_queues: FnvHashMap<TcsAddress, futures::channel::mpsc::UnboundedSender<u8>>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         enclave_controller: Box<dyn MappingInfoDynController>,
         threads_vector: Vec<ErasedTcs>,
@@ -679,28 +696,28 @@ impl EnclaveState {
             )))),
         );
         let last_fd = AtomicUsize::new(fds.keys().cloned().max().unwrap() as _);
-
         let usercall_ext = usercall_ext.unwrap_or_else(|| Box::new(UsercallExtensionDefault));
 
-        let mut available_enclave_threads = FnvHashMap::default();
-
-        for thread in threads_vector {
-            available_enclave_threads.insert(thread.address(), Self::event_queue_add_tcs(&mut event_queues, thread));
-        }
-
-        Arc::new(EnclaveState {
+        let state = EnclaveState {
             kind,
-            event_queues,
+            event_queues: RwLock::new(event_queues),
             fds: Mutex::new(fds),
             last_fd,
             exiting: AtomicBool::new(false),
             enclave_controller,
             usercall_ext,
-            available_enclave_threads: Mutex::new(available_enclave_threads),
+            enclave_threads: Mutex::new(FnvHashMap::default()),
             forward_panics,
             fifo_guards: Mutex::new(None),
             return_queue_tx: Mutex::new(None),
-        })
+        };
+
+        executor::block_on(async {
+            for thread in threads_vector {
+                state.add_enclave_thread(thread).await;
+            }
+        });
+        Arc::new(state)
     }
 
     async fn handle_usercall(
@@ -866,10 +883,10 @@ impl EnclaveState {
                         let fut = async move {
                             let ret = match state.mode {
                                 EnclaveEntry::Library => {
-                                    enclave_clone.available_enclave_threads.lock().await.insert(tcs.address(), StoppedTcs {
+                                    enclave_clone.enclave_threads.lock().await.insert(tcs.address(), TcsState::Stopped(StoppedTcs {
                                         tcs,
                                         event_queue: state.event_queue,
-                                    });
+                                    }));
                                     Ok((v1, v2))
                                 }
                                 EnclaveEntry::ExecutableMain => Err(EnclaveAbort::MainReturned),
@@ -882,10 +899,10 @@ impl EnclaveState {
                                     // If the enclave is in the exit-state, threads are no
                                     // longer able to be launched
                                     if !enclave_clone.exiting.load(Ordering::SeqCst) {
-                                        enclave_clone.available_enclave_threads.lock().await.insert(tcs.address(), StoppedTcs {
+                                        enclave_clone.enclave_threads.lock().await.insert(tcs.address(), TcsState::Stopped(StoppedTcs {
                                             tcs,
                                             event_queue: state.event_queue,
-                                        });
+                                        }));
                                     }
                                     Ok((0, 0))
                                 }
@@ -1015,7 +1032,7 @@ impl EnclaveState {
 
         rt.block_on(async move {
             enclave.abort_all_threads();
-            enclave.available_enclave_threads.lock().await.clear();
+            enclave.enclave_threads.lock().await.clear();
 
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.panic_reason.lock().await;
@@ -1066,10 +1083,18 @@ impl EnclaveState {
         p5: u64,
     ) -> StdResult<(u64, u64), failure::Error> {
         let thread = executor::block_on(async {
-            let mut available_enclave_threads = enclave.available_enclave_threads.lock().await;
-            let k = available_enclave_threads.keys().next()?.to_owned();
-            available_enclave_threads.remove(&k)
-        }).expect("out of enclave threads");
+            let mut enclave_threads = enclave.enclave_threads.lock().await;
+            let k = enclave_threads.iter().find_map(|(k, v)| match v {
+                TcsState::Stopped(_tcs) => Some(k),
+                TcsState::Running => None,
+            })?.to_owned();
+            enclave_threads.remove(&k)
+        });
+        let thread = match thread {
+            Some(TcsState::Stopped(tcs)) => tcs,
+            Some(TcsState::Running) => unreachable!(),
+            None => panic!("Out of TCSes"),
+        };
         let work = Work {
             tcs: RunningTcs {
                 event_queue: thread.event_queue,
@@ -1104,9 +1129,11 @@ impl EnclaveState {
     fn abort_all_threads(&self) {
         self.exiting.store(true, Ordering::SeqCst);
         // wake other threads
-        for queue in self.event_queues.values() {
-            let _ = queue.unbounded_send(EV_ABORT as _);
-        }
+        executor::block_on(async {
+            for queue in self.event_queues.read().unwrap().values() {
+                let _ = queue.unbounded_send(EV_ABORT as _);
+            }
+        });
     }
 }
 
@@ -1408,23 +1435,34 @@ impl<'tcs> IOHandlerInput<'tcs> {
             .ok_or(IoErrorKind::InvalidInput)?;
         let tcs_address = TcsAddress(tcs_address);
         let new_tcs = executor::block_on(async {
-                loop {
-                    let mut guard = self.enclave.available_enclave_threads.lock().await;
+                let tcs = loop {
+                    let mut guard = self.enclave.enclave_threads.lock().await;
                     match guard.remove(&tcs_address) {
-                        Some(tcs) => break tcs,
+                        Some(tcs) =>
+                            match tcs {
+                                TcsState::Stopped(tcs) => break tcs,
+                                TcsState::Running => {
+                                    // Release lock and try again. The enclave is in charge of its own TCS
+                                    // structs. Unfortunately, there is a small issue recording terminated
+                                    // TCSs; when a thread has finished with the task it was assigned, it
+                                    // marks its own TCS as available for new threads, while in fact it is
+                                    // still executing (see `Task::run()` in `std/src/sys/sgx/thread.rs`).
+                                    // When that TCS is subsequently selected to run a new thread, it may
+                                    // still not have terminated yet and thus may not yet be present in this
+                                    // `available_enclave_threads`. We need to wait for it to become ready.
+                                    drop(guard);
+                                }
+                            }
                         None => {
-                            // Release lock and try again. The enclave is in charge of its own TCS
-                            // structs. Unfortunately, there is a small issue recording terminated
-                            // TCSs; when a thread has finished with the task it was assigned, it
-                            // marks its own TCS as available for new threads, while in fact it is
-                            // still executing (see `Task::run()` in `std/src/sys/sgx/thread.rs`).
-                            // When that TCS is subsequently selected to run a new thread, it may
-                            // still not have terminated yet and thus may not yet be present in this
-                            // `available_enclave_threads`. We need to wait for it to become ready.
+                            // No TCS found -- must be a new TCS
                             drop(guard);
+                            let tcs = ErasedTcs::new(tcs_address);
+                            self.enclave.add_enclave_thread(tcs).await;
                         }
                     }
-                }
+                };
+                self.enclave.enclave_threads.lock().await.insert(tcs_address, TcsState::Running);
+                tcs
             });
 
         let ret = self.work_sender.send(Work {
@@ -1437,16 +1475,16 @@ impl<'tcs> IOHandlerInput<'tcs> {
         });
         match ret {
             Ok(()) => Ok(()),
-            Err(e) => {
+            Err(e) =>   {
                 let event_queue = e.0.tcs.event_queue;
                 let entry = e.0.entry;
                 match entry {
                     CoEntry::Initial(tcs, _, _ ,_, _, _) => {
                         executor::block_on(async {
-                            self.enclave.available_enclave_threads.lock().await.insert(tcs.address(), StoppedTcs {
+                            self.enclave.enclave_threads.lock().await.insert(tcs.address(), TcsState::Stopped(StoppedTcs {
                                 tcs,
                                 event_queue,
-                            });
+                            }));
                         })
                     },
                     _ => unreachable!(),
@@ -1550,23 +1588,25 @@ impl<'tcs> IOHandlerInput<'tcs> {
             return Err(IoErrorKind::InvalidInput.into());
         }
 
-        if let Some(tcs) = target {
-            let tcs = TcsAddress(tcs.as_ptr() as _);
-            let queue = self
-                .enclave
-                .event_queues
-                .get(&tcs)
-                .ok_or(IoErrorKind::InvalidInput)?;
-            queue
-                .unbounded_send(event_set)
-                .expect("TCS event queue disconnected");
-        } else {
-            for queue in self.enclave.event_queues.values() {
-                let _ = queue.unbounded_send(event_set);
+        futures::executor::block_on(async {
+            if let Some(tcs) = target {
+                let tcs = TcsAddress(tcs.as_ptr() as _);
+                self
+                    .enclave
+                    .event_queues
+                    .read()
+                    .unwrap()
+                    .get(&tcs)
+                    .ok_or(IoErrorKind::InvalidInput)?
+                    .unbounded_send(event_set)
+                    .expect("TCS event queue disconnected");
+            } else {
+                for queue in self.enclave.event_queues.read().unwrap().values() {
+                    let _ = queue.unbounded_send(event_set);
+                }
             }
-        }
-
-        Ok(())
+            Ok(())
+        })
     }
 
     #[inline(always)]
@@ -1733,8 +1773,10 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
         // When the enclave needs to wait on a queue, it executes the wait() usercall synchronously,
         // specifying EV_USERCALLQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, or both in the event_mask.
         // Userspace will wake any or all threads waiting on the appropriate event when it is triggered.
-        for queue in self.enclave.event_queues.values() {
-            let _ = queue.unbounded_send(ev as _);
-        }
+        futures::executor::block_on(async {
+            for queue in self.enclave.event_queues.read().unwrap().values() {
+                let _ = queue.unbounded_send(ev as _);
+            }
+        });
     }
 }

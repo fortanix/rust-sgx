@@ -111,7 +111,7 @@ pub(crate) struct ErasedTcs {
 unsafe impl Send for ErasedTcs {}
 
 impl ErasedTcs {
-    fn new<T: Tcs + 'static>(tcs: T) -> ErasedTcs {
+    pub(crate) fn new<T: Tcs + 'static>(tcs: T) -> ErasedTcs {
         ErasedTcs {
             address: tcs.address(),
             tcs: Box::new(tcs),

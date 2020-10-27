@@ -480,10 +480,15 @@ pub const WAIT_INDEFINITE: u64 = !0;
 impl Usercalls {
     /// In [executables](entry/executable/index.html), this will instruct
     /// userspace to enter another TCS in another thread. This TCS should have
-    /// the [`thread_entry`] entrypoint. As documented in [`thread_entry`], the
-    /// enclave should keep track of how many threads it launched and reconcile
-    /// this with the number of entries into [`thread_entry`]. If no free TCSes
-    /// are immediately available, this may return an error.
+    /// the [`thread_entry`] entrypoint. SGXv2 enclaves can provide the address
+    /// of the TCS page to use, or none when the enclave-runner should select
+    /// one for it. *Warning:* There is no guarantee that this TCS will actually
+    /// be called. An attacker may choose to launch another thread with a different
+    /// TCS structure (e.g., with a different stack size), or none at all.
+    /// SGXv1 enclave will always pass in `None`. As documented in 
+    /// [`thread_entry`], SGXv1 enclaves should keep track of how many threads
+    /// it launched and reconcile this with the number of entries into
+    /// [`thread_entry`]. If no free TCSes are immediately available, this may return an error.
     ///
     /// This function will never be succesful in [libraries]. See the
     /// [`library`] documentation on how to use threads with libraries.
