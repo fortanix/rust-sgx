@@ -59,7 +59,6 @@ macro_rules! define_usercalls {
             // using if/else because you can't match an integer against enum variants
             let (handler, ret) = $(
                 if n == UsercallList::$f as Register {
-                    //let mut handler_ref = &mut handler;
                     let (handler, ret) = unsafe {
                         enclave_usercalls_internal_define_usercalls!(handler, replace_args a1,a2,a3,a4 $f($($n),*))
                     };

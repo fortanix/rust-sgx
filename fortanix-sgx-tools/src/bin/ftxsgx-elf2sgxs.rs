@@ -47,6 +47,7 @@ struct Symbols<'a> {
     ENCLAVE_SIZE: &'a DynSymEntry,
     CFGDATA_BASE: &'a DynSymEntry,
     DEBUG: &'a DynSymEntry,
+    SGX_VERSION: &'a DynSymEntry,
     EH_FRM_HDR_BASE: Option<&'a DynSymEntry>,
     EH_FRM_HDR_SIZE: Option<&'a DynSymEntry>,
     TEXT_BASE: &'a DynSymEntry,
@@ -118,6 +119,7 @@ pub struct LayoutInfo<'a> {
     unmapped_size: u64,
     threads: usize,
     debug: bool,
+    sgx_version: u8,
     library: bool,
     sized: bool,
     ehfrm: SectionRange,
@@ -236,7 +238,7 @@ impl<'a> LayoutInfo<'a> {
         // Tool must support both variants for backwards compatibility at least until 'https://github.com/fortanix/rust-sgx/issues/174' is merged into rust-lang.
         //
         // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
-        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE, TCS_LIST, UNMAPPED_BASE, UNMAPPED_SIZE
+        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, SGX_VERSION, TEXT_BASE, TEXT_SIZE, TCS_LIST, UNMAPPED_BASE, UNMAPPED_SIZE
                               optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
                               in syms : elf);
 
@@ -250,6 +252,7 @@ impl<'a> LayoutInfo<'a> {
         check_size!(syms.ENCLAVE_SIZE == 8);
         check_size!(syms.CFGDATA_BASE == 8);
         check_size!(syms.DEBUG == 1);
+        check_size!(syms.SGX_VERSION == 1);
         check_size!(syms.TEXT_BASE == 8);
         check_size!(syms.TEXT_SIZE == 8);
         check_size!(syms.TCS_LIST == 8);
@@ -395,6 +398,7 @@ impl<'a> LayoutInfo<'a> {
         unmapped_size: u64,
         threads: usize,
         debug: bool,
+        sgx_version: u8,
         library: bool,
         sized: bool,
     ) -> Result<LayoutInfo<'a>, Error> {
@@ -420,6 +424,7 @@ impl<'a> LayoutInfo<'a> {
             unmapped_size,
             threads,
             debug,
+            sgx_version,
             library,
             ehfrm,
             ehfrm_hdr,
@@ -460,6 +465,7 @@ impl<'a> LayoutInfo<'a> {
             ),
             Splice::for_sym_u64(self.sym.CFGDATA_BASE, memory_size),
             Splice::for_sym_u8(self.sym.DEBUG, self.debug as _),
+            Splice::for_sym_u8(self.sym.SGX_VERSION, self.sgx_version),
             Splice::for_sym_u64(self.sym.TEXT_BASE, self.text.offset),
             Splice::for_sym_u64(self.sym.TEXT_SIZE, self.text.size),
             Splice::for_sym_u64(self.sym.TCS_LIST, tcs_list),
@@ -737,7 +743,16 @@ macro_rules! impl_numarg(
         }
     }
 )+););
-impl_numarg!(u32, u64, usize);
+impl_numarg!(u8, u32, u64, usize);
+
+fn validate_sgx_version(version: String) -> Result<(), String> {
+    u8::validate_arg(version.to_string())?;
+    let version: u8 = parse_num(version).unwrap();
+    match version {
+        1 | 2 => Ok(()),
+        _ => Err(String::from("Only sgx versions 1 and 2 are currently supported")),
+    }
+}
 
 fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, IoError> {
     let mut f = File::open(path)?;
@@ -754,6 +769,7 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
     let unmapped_size = u64::parse_arg(args.value_of("unmapped-memory-size").unwrap());
 
     let debug = args.is_present("debug");
+    let sgx_version = u8::parse_arg(args.value_of("sgx-version").unwrap());
     let library = args.is_present("library");
     if library {
         println!("WARNING: Library support is experimental");
@@ -770,6 +786,7 @@ fn main_result(args: ArgMatches) -> Result<(), Error> {
         unmapped_size,
         threads,
         debug,
+        sgx_version,
         library,
         sized,
     )?;
@@ -835,6 +852,16 @@ fn main() {
                 .required(false)
                 .default_value("0")
                 .help("Specify the (minimum) size of unmapped memory (useable on SGXv2 capable processors only)"),
+        )
+        .arg(
+            Arg::with_name("sgx-version")
+                .short("V")
+                .long("sgx-version")
+                .value_name("VERSION")
+                .validator(validate_sgx_version)
+                .required(false)
+                .default_value("1")
+                .help("Specify the number of threads"),
         )
         .arg(
             Arg::with_name("debug")

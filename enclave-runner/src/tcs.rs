@@ -88,9 +88,10 @@ pub(crate) fn coenter<T: Tcs>(
     if p1 == 0 {
         CoResult::Return((tcs, p2, p3))
     } else {
-        CoResult::Yield(Usercall {
+        let r = CoResult::Yield(Usercall {
             tcs: tcs,
             parameters: (p1, p2, p3, p4, p5),
-        })
+        });
+	r
     }
 }
