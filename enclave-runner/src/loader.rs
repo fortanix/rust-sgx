@@ -10,7 +10,8 @@ use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
 
-use failure::{Error, ResultExt};
+use failure::{format_err, Error, ResultExt};
+use failure_derive::Fail;
 
 #[cfg(feature = "crypto-openssl")]
 use openssl::{
@@ -262,6 +263,10 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
+        self.cmd_args.get_or_insert_with(|| vec![b"enclave".to_vec()])
+    }
+
     /// Adds multiple arguments to pass to enclave's `fn main`.
     /// **NOTE:** This is not an appropriate channel for passing secrets or
     /// security configurations to the enclave.
@@ -278,10 +283,7 @@ impl<'a> EnclaveBuilder<'a> {
         S: AsRef<[u8]>,
     {
         let args = args.into_iter().map(|a| a.as_ref().to_owned());
-        match self.cmd_args {
-            None => self.cmd_args = Some(args.collect()),
-            Some(ref mut cmd_args) => cmd_args.extend(args),
-        }
+        self.initialized_args_mut().extend(args);
         self
     }
 
@@ -297,10 +299,7 @@ impl<'a> EnclaveBuilder<'a> {
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
     pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
         let arg = arg.as_ref().to_owned();
-        match self.cmd_args {
-            None => self.cmd_args = Some(vec![arg]),
-            Some(ref mut cmd_args) => cmd_args.push(arg),
-        }
+        self.initialized_args_mut().push(arg);
         self
     }
 

@@ -541,7 +541,7 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 
 [[package]]
 name = "enclave-runner"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "crossbeam",
  "failure",
@@ -549,6 +549,7 @@ dependencies = [
  "fnv",
  "fortanix-sgx-abi",
  "futures 0.3.6",
+ "ipc-queue",
  "lazy_static 1.4.0",
  "libc",
  "nix 0.13.1",
@@ -691,7 +692,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.4.3"
+version = "0.5.0"
 dependencies = [
  "aesm-client",
  "clap",
@@ -1036,6 +1037,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2b3ea6ff95e175473f8ffe6a7eb7c00d054240321b84c57051175fe3c1e075e"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "ipc-queue"
+version = "0.1.0"
+dependencies = [
+ "fortanix-sgx-abi",
+ "futures 0.3.6",
+ "static_assertions",
+ "tokio 0.2.22",
 ]
 
 [[package]]
@@ -1976,7 +1987,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "enclave-runner",
  "failure",
@@ -2231,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "aesm-client",
  "atty",
@@ -2317,6 +2328,12 @@ dependencies = [
  "redox_syscall",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "string"

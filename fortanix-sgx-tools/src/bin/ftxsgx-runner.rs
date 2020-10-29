@@ -81,7 +81,6 @@ fn main() -> Result<(), Error> {
         None => (),
     }
 
-    enclave_builder.arg(file);
     if let Some(enclave_args) = args.values_of("enclave-args") {
         enclave_builder.args(enclave_args);
     }
