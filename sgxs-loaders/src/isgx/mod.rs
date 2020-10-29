@@ -10,6 +10,7 @@ use libc;
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error as IoError, Result as IoResult};
+use std::ops::Range;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
 use std::ptr;
@@ -120,6 +121,7 @@ macro_rules! ioctl_unsafe {
 
 impl EnclaveLoad for InnerDevice {
     type Error = Error;
+    type MapData = MapData;
 
     fn new(
         mut device: Arc<InnerDevice>,
@@ -177,6 +179,7 @@ impl EnclaveLoad for InnerDevice {
 
         let mapping = Mapping {
             device,
+            mapdata: Default::default(),
             base: ptr as u64,
             size: ecreate.size,
             tcss: vec![],
@@ -261,15 +264,33 @@ impl EnclaveLoad for InnerDevice {
                     },
                     _ => unreachable!(),
                 };
-                unsafe {
-                    mmap(
-                        dstpage as _,
-                        4096,
-                        prot,
-                        Map::MAP_SHARED | Map::MAP_FIXED,
-                        mapping.device.fd.as_raw_fd(),
-                        0,
-                    ).map_err(Error::map)?;
+
+                let range = dstpage..(dstpage + data.0.len() as u64);
+
+                impl PendingMmap {
+                    fn append(&mut self, prot: Prot, range: &Range<u64>) -> bool {
+                        let can_append = prot == self.prot && self.range.end == range.start;
+                        if can_append {
+                            self.range.end = range.end;
+                        }
+                        can_append
+                    }
+                }
+
+                let (pending, map_now) = match mapping.mapdata.pending_mmap.take() {
+                    Some(mut pending_mmap) => {
+                        if pending_mmap.append(prot, &range) {
+                            (Some(pending_mmap), None)
+                        } else {
+                            (None, Some(pending_mmap))
+                        }
+                    },
+                    None => (None, None)
+                };
+
+                mapping.mapdata.pending_mmap = Some(pending.unwrap_or(PendingMmap { prot, range }));
+                if let Some(map_now) = map_now {
+                    unsafe { map_now.map(&mapping.device)? };
                 }
 
                 Ok(())
@@ -278,7 +299,7 @@ impl EnclaveLoad for InnerDevice {
     }
 
     fn init(
-        mapping: &Mapping<Self>,
+        mapping: &mut Mapping<Self>,
         sigstruct: &Sigstruct,
         einittoken: Option<&Einittoken>,
     ) -> Result<(), Self::Error> {
@@ -334,6 +355,10 @@ impl EnclaveLoad for InnerDevice {
             }
         }
 
+        if let Some(pending_mmap) = mapping.mapdata.pending_mmap.take() {
+            unsafe { pending_mmap.map(&mapping.device)? };
+        }
+
         // Try either EINIT ioctl(), in the order that makes most sense given
         // the function arguments
         if let Some(einittoken) = einittoken {
@@ -358,6 +383,31 @@ impl EnclaveLoad for InnerDevice {
     fn destroy(mapping: &mut Mapping<Self>) {
         unsafe { libc::munmap(mapping.base as usize as *mut _, mapping.size as usize) };
     }
+}
+
+#[derive(Debug)]
+#[must_use]
+struct PendingMmap {
+    prot: Prot,
+    range: Range<u64>,
+}
+
+impl PendingMmap {
+    unsafe fn map(self, device: &InnerDevice) -> Result<(), Error> {
+        mmap(
+            self.range.start as _,
+            (self.range.end - self.range.start) as _,
+            self.prot,
+            Map::MAP_SHARED | Map::MAP_FIXED,
+            device.fd.as_raw_fd(),
+            0,
+        ).map(|_| ()).map_err(Error::map)
+    }
+}
+
+#[derive(Debug, Default)]
+struct MapData {
+    pending_mmap: Option<PendingMmap>
 }
 
 #[derive(Debug)]

@@ -684,7 +684,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fortanix-sgx-abi"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -2225,7 +2225,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aesm-client",
  "bitflags 1.2.1",
