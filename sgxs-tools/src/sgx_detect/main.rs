@@ -62,6 +62,7 @@ use sgxs_loaders::isgx::Device as SgxDevice;
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 use sgxs_loaders::sgx_enclave_common::Library as EnclCommonLib;
+use proc_mounts::MountList;
 
 mod interpret;
 #[cfg(windows)]
@@ -260,7 +261,19 @@ impl SgxSupport {
             if let Ok(ref aesm) = aesm_service {
                 dev = dev.einittoken_provider(aesm.clone());
             }
-            Ok(Rc::new(RefCell::new(dev.build())))
+            let device = dev.build();
+            if let Ok(mount_list) = MountList::new() {
+                let mut path = device.path();
+                while let Some(p) = path.parent() {
+                    if let Some(mount_info) = mount_list.0.iter().find(|&x| x.dest == p) {
+                        if mount_info.options.iter().any(|o| o == "noexec") {
+                            return Err(failure::format_err!("{:?} mounted with `noexec` option", mount_info.dest));
+                        }
+                    }
+                    path = p;
+                }
+            }
+            Ok(Rc::new(RefCell::new(device)))
         })();
         let sgxdev_status = imp::kmod_status();
         let loader_encllib = (|| {
@@ -370,7 +383,7 @@ fn main() {
         tests::EnvConfig::EnclaveManager
     } else if args.is_present("DATA_SHIELD") {
         tests::EnvConfig::DataShield
-    } else{
+    } else {
         tests::EnvConfig::Generic
     };
 
@@ -390,7 +403,7 @@ fn main() {
 
     if args.is_present("EXPORT") {
         serde_yaml::to_writer(io::stdout(), &support).unwrap();
-        println!("");
+        println!();
     } else {
         let mut tests = Tests::new();
         tests.check_support(&support);
