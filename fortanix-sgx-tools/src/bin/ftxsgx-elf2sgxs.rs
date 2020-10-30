@@ -35,6 +35,8 @@ use sgxs_crate::util::{size_fit_natural, size_fit_page};
 use clap::ArgMatches;
 use std::convert::TryInto;
 
+const NUMBER_OF_SSA_FRAMES: u8 = 1;
+
 #[allow(non_snake_case)]
 struct Symbols<'a> {
     sgx_entry: &'a DynSymEntry,
@@ -48,6 +50,7 @@ struct Symbols<'a> {
     CFGDATA_BASE: &'a DynSymEntry,
     DEBUG: &'a DynSymEntry,
     SGX_VERSION: &'a DynSymEntry,
+    NSSA: &'a DynSymEntry,
     EH_FRM_HDR_BASE: Option<&'a DynSymEntry>,
     EH_FRM_HDR_SIZE: Option<&'a DynSymEntry>,
     TEXT_BASE: &'a DynSymEntry,
@@ -238,7 +241,7 @@ impl<'a> LayoutInfo<'a> {
         // Tool must support both variants for backwards compatibility at least until 'https://github.com/fortanix/rust-sgx/issues/174' is merged into rust-lang.
         //
         // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
-        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, SGX_VERSION, TEXT_BASE, TEXT_SIZE, TCS_LIST, UNMAPPED_BASE, UNMAPPED_SIZE
+        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, SGX_VERSION, NSSA, TEXT_BASE, TEXT_SIZE, TCS_LIST, UNMAPPED_BASE, UNMAPPED_SIZE
                               optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
                               in syms : elf);
 
@@ -253,6 +256,7 @@ impl<'a> LayoutInfo<'a> {
         check_size!(syms.CFGDATA_BASE == 8);
         check_size!(syms.DEBUG == 1);
         check_size!(syms.SGX_VERSION == 1);
+        check_size!(syms.NSSA == 1);
         check_size!(syms.TEXT_BASE == 8);
         check_size!(syms.TEXT_SIZE == 8);
         check_size!(syms.TCS_LIST == 8);
@@ -466,6 +470,7 @@ impl<'a> LayoutInfo<'a> {
             Splice::for_sym_u64(self.sym.CFGDATA_BASE, memory_size),
             Splice::for_sym_u8(self.sym.DEBUG, self.debug as _),
             Splice::for_sym_u8(self.sym.SGX_VERSION, self.sgx_version),
+            Splice::for_sym_u8(self.sym.NSSA, NUMBER_OF_SSA_FRAMES),
             Splice::for_sym_u64(self.sym.TEXT_BASE, self.text.offset),
             Splice::for_sym_u64(self.sym.TEXT_SIZE, self.text.size),
             Splice::for_sym_u64(self.sym.TCS_LIST, tcs_list),
@@ -597,11 +602,10 @@ impl<'a> LayoutInfo<'a> {
         let mut thread_start = size_fit_page(unmapped_addr + self.unmapped_size);
         const THREAD_GUARD_SIZE: u64 = 0x10000;
         const TLS_SIZE: u64 = 0x1000;
-        let nssa = 1u32;
         let thread_size = THREAD_GUARD_SIZE
             + self.stack_size
             + TLS_SIZE
-            + (1 + (nssa as u64) * (self.ssaframesize as u64)) * 0x1000;
+            + (1 + (NUMBER_OF_SSA_FRAMES as u64) * (self.ssaframesize as u64)) * 0x1000;
         let tcs_list = thread_start + (self.threads as u64) * thread_size;
         let memory_size = tcs_list + (self.threads as u64 + 1) * mem::size_of::<u64>() as u64;
         let enclave_size = if self.sized {
@@ -667,7 +671,7 @@ impl<'a> LayoutInfo<'a> {
             // Output TCS, SSA
             let tcs = Tcs {
                 ossa: tcs_addr + 0x1000,
-                nssa: nssa,
+                nssa: NUMBER_OF_SSA_FRAMES as u32,
                 oentry: self.sym.sgx_entry.value(),
                 ofsbasgx: tls_addr,
                 ogsbasgx: stack_tos,
@@ -686,7 +690,7 @@ impl<'a> LayoutInfo<'a> {
             };
             writer.write_pages::<&[u8]>(
                 None,
-                (nssa * self.ssaframesize) as usize,
+                (NUMBER_OF_SSA_FRAMES as u32 * self.ssaframesize) as usize,
                 None,
                 secinfo
             )?;
