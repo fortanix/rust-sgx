@@ -457,21 +457,6 @@ impl EnclaveController {
 }
 
 impl EnclaveControl for EnclaveController {
-    fn trim(&self, addr: *mut u8, size: usize) -> Result<(), ::failure::Error> {
-        match self.family {
-            DriverFamily::Augusta => Err(format_err!("Driver doesn't support trimming enclave pages")),
-            DriverFamily::Montgomery => {
-                let fd = OpenOptions::new().read(true).write(true).open(&**self.path).unwrap();
-                let range = SgxRange {
-                    start_addr: addr as _,
-                    nr_pages: (size / 0x1000) as _,
-                };
-                let res = ioctl_unsafe!{Trim, ioctl::montgomery::trim(fd.as_raw_fd(), &range)};
-                res.map_err(|e| e.into())
-            },
-        }
-    }
-
     fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), ::failure::Error> {
         match self.family {
             DriverFamily::Augusta => Err(format_err!("Driver doesn't support trimming enclave pages")),
@@ -499,6 +484,10 @@ impl EnclaveControl for EnclaveController {
                 match page_type {
                     PageType::Tcs => {
                         let result = ioctl_unsafe!{ChangePageType, ioctl::montgomery::page_to_tcs(fd.as_raw_fd(), &range)};
+                        result.map_err(|e| e.into())
+                    }
+                    PageType::Trim => {
+                        let result = ioctl_unsafe!{Trim, ioctl::montgomery::trim(fd.as_raw_fd(), &range)};
                         result.map_err(|e| e.into())
                     }
                     _ => {

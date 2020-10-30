@@ -1606,18 +1606,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
         }
     }
 
-    fn trim(&self, region: *const u8, size: usize) -> IoResult<()> {
-        println!("Calling driver to trim enclave region {:?}:{:x}", region, size);
-        match &(*self.enclave).enclave_controller.dyn_controller() {
-            Some(ctr) => {
-                ctr.trim(region as _, size).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))
-            },
-            None => {
-                Err(io::Error::new(io::ErrorKind::NotFound, "Enclave controller not found"))
-            }
-        }
-    }
-
     pub fn remove_trimmed(&self, region: *const u8, size: usize) -> IoResult<()> {
         match &(*self.enclave).enclave_controller.dyn_controller() {
             Some(ctr) => {
@@ -1630,7 +1618,6 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     pub fn change_memory_type(&self, region: *const u8, size: usize, page_type: PageType) -> IoResult<()> {
-        println!("Calling driver to change page type of {:?}:{:x} to {:?}", region, size, page_type);
         match &(*self.enclave).enclave_controller.dyn_controller() {
             Some(ctr) => {
                 ctr.change_memory_type(region as _, size, page_type).map_err(|e| io::Error::new(io::ErrorKind::PermissionDenied, e))

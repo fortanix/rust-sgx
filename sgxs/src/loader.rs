@@ -39,8 +39,6 @@ pub struct Mapping<T: Load + ?Sized> {
 }
 
 pub trait EnclaveControl: 'static + Send + Sync + Debug {
-    fn trim(&self, addr: *mut u8, size: usize) -> Result<(), Error>;
-
     fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), Error>;
 
     fn change_memory_type(&self, addr: *const u8, size: usize, page_type: PageType) -> Result<(), Error>;

@@ -38,10 +38,6 @@ impl fmt::Debug for Library {
 pub enum NoEnclaveControl{}
 
 impl EnclaveControl for NoEnclaveControl {
-    fn trim(&self, _: *mut u8, _: usize) -> std::result::Result<(), failure::Error> {
-        match *self{}
-    }
-
     fn remove_trimmed(&self, _: *const u8, _: usize) -> std::result::Result<(), failure::Error> {
         match *self {}
     }

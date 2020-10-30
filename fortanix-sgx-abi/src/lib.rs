@@ -601,8 +601,6 @@ impl Usercalls {
 /// closely together with the operating system and thus requires usercalls
 /// See https://caslab.csl.yale.edu/workshops/hasp2016/HASP16-17.pdf
 impl Usercalls {
-    pub fn trim(region: *const u8, size: usize) -> Result { unimplemented!() }
-
     pub fn remove_trimmed(region: *const u8, size: usize) -> Result { unimplemented!() }
 
     pub fn change_memory_type(region: *const u8, size: usize, page_type: PageType) -> Result { unimplemented!() }
