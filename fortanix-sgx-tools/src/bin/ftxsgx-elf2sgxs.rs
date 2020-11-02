@@ -6,6 +6,7 @@
 
 #[macro_use]
 extern crate clap;
+extern crate fortanix_sgx_abi;
 extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
 extern crate xmas_elf;
@@ -27,6 +28,8 @@ use xmas_elf::program::{SegmentData, Type as PhType};
 use xmas_elf::sections::{SectionData, SHN_UNDEF, ShType};
 use xmas_elf::symbol_table::{DynEntry64 as DynSymEntry, Entry};
 use xmas_elf::ElfFile;
+
+use fortanix_sgx_abi::tcsls::{Tcsls, TcslsFlags};
 
 use sgx_isa::{PageType, SecinfoFlags, Tcs};
 use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
@@ -584,6 +587,10 @@ impl<'a> LayoutInfo<'a> {
     }
 
     pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(), Error> {
+        fn tcsls_size() -> u64 {
+            size_fit_page(std::mem::size_of::<Tcsls>() as u64)
+        }
+
         let max_addr = self
             .elf
             .program_iter()
@@ -601,12 +608,11 @@ impl<'a> LayoutInfo<'a> {
         let unmapped_addr = size_fit_page(heap_addr + self.heap_size);
         let mut thread_start = size_fit_page(unmapped_addr + self.unmapped_size);
         const THREAD_GUARD_SIZE: u64 = 0x10000;
-        const TLS_SIZE: u64 = 0x1000;
         let thread_size = THREAD_GUARD_SIZE
             + self.stack_size
-            + TLS_SIZE
+            + tcsls_size()
             + (1 + (NUMBER_OF_SSA_FRAMES as u64) * (self.ssaframesize as u64)) * 0x1000;
-        let tcs_list = thread_start + (self.threads as u64) * thread_size;
+        let tcs_list = thread_start + (self.threads as u64) * thread_size + THREAD_GUARD_SIZE;
         let memory_size = tcs_list + (self.threads as u64 + 1) * mem::size_of::<u64>() as u64;
         let enclave_size = if self.sized {
             Some(size_fit_natural(memory_size))
@@ -641,8 +647,8 @@ impl<'a> LayoutInfo<'a> {
         for i in 0..self.threads {
             let stack_addr = thread_start + THREAD_GUARD_SIZE;
             let stack_tos = stack_addr + self.stack_size;
-            let tls_addr = stack_tos;
-            let tcs_addr = tls_addr + TLS_SIZE;
+            let tcsls_addr = stack_tos;
+            let tcs_addr = tcsls_addr + tcsls_size();
 
             // Output stack
             let secinfo = SecinfoTruncated {
@@ -655,28 +661,28 @@ impl<'a> LayoutInfo<'a> {
                 secinfo
             )?;
 
-            // Output TLS
+            // Output TCSLS
             let secondary = match (self.library, i) {
                 (true, _) | (false, 0) => false,
                 (false, _) => true,
             };
-            let tls = unsafe {
-                std::mem::transmute::<_, [u8; 32]>([stack_tos, secondary as u64, 0u64, 0u64])
-            };
+            let flags = if secondary { TcslsFlags::SECONDARY_TCS } else { TcslsFlags::empty() };
+            let tcsls = Tcsls::new(stack_tos, flags);
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
-            writer.write_pages(Some(&mut &tls[..]), 1, Some(tls_addr), secinfo)?;
+            let tcsls = unsafe{ std::mem::transmute::<_, [u8; 112]>(tcsls) };
+            writer.write_pages(Some(&mut &tcsls[..]), (tcsls_size() / 0x1000) as usize, Some(tcsls_addr), secinfo)?;
 
             // Output TCS, SSA
             let tcs = Tcs {
                 ossa: tcs_addr + 0x1000,
                 nssa: NUMBER_OF_SSA_FRAMES as u32,
                 oentry: self.sym.sgx_entry.value(),
-                ofsbasgx: tls_addr,
-                ogsbasgx: stack_tos,
-                fslimit: 0xfff,
-                gslimit: 0xfff,
+                ofsbasgx: tcsls_addr,
+                ogsbasgx: tcsls_addr,
+                fslimit: (tcsls_size() - 1) as _,
+                gslimit: (tcsls_size() - 1) as _,
                 ..Tcs::default()
             };
             let tcs = unsafe { std::mem::transmute::<_, [u8; 4096]>(tcs) };
@@ -698,7 +704,7 @@ impl<'a> LayoutInfo<'a> {
             thread_start += thread_size;
         }
 
-        let tcs_list = thread_start;
+        let tcs_list = thread_start + THREAD_GUARD_SIZE;
         tcses.push(0);
         let secinfo = SecinfoTruncated {
             flags: SecinfoFlags::R | PageType::Reg.into(),

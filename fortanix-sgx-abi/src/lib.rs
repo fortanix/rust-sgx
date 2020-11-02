@@ -82,10 +82,14 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 extern crate sgx_isa;
+#[macro_use]
+extern crate bitflags;
 
 use sgx_isa::PageType;
 use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU64, AtomicUsize};
+
+pub mod tcsls;
 
 macro_rules! invoke_with_abi_spec [
     ( $m:ident ) => [ $m![
