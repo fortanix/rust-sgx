@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-sgx-tools"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -21,12 +21,13 @@ edition = "2018"
 # Project dependencies
 aesm-client = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }
 sgxs-loaders = { version = "0.3.0", path = "../sgxs-loaders" }
-enclave-runner = { version = "0.5.0", path = "../enclave-runner" }
+enclave-runner = { version = "0.6.0", path = "../enclave-runner" }
 sgxs = { version = "0.7.0", path = "../sgxs" }
 sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
 
 # External dependencies
 xmas-elf = "0.6.0"         # Apache-2.0/MIT
+bitflags = "1.2.1"         # Apache-2.0/MIT
 clap = "2.2.5"             # MIT
 failure = "0.1.1"          # MIT/Apache-2.0
 failure_derive = "0.1.1"   # MIT/Apache-2.0

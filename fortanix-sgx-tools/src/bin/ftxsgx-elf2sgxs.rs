@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate clap;
 extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
@@ -15,7 +17,7 @@ extern crate failure;
 use std::borrow::Borrow;
 use std::fs::File;
 use std::io::{repeat, Error as IoError, Read};
-use std::mem::replace;
+use std::mem::{self, replace};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
@@ -101,6 +103,63 @@ impl Splice {
             address: address.value(),
             value: vec![value],
             truncate: false,
+        }
+    }
+}
+
+bitflags! {
+    struct TcslsFlags: u16 {
+        const SECONDARY = 0b0000_0000_0000_0001;
+        const INIT_ONCE = 0b0000_0000_0000_0010;
+    }
+}
+
+impl Default for TcslsFlags {
+    fn default() -> TcslsFlags {
+        TcslsFlags::empty()
+    }
+}
+
+/// Follows the macros at https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S#L82
+#[repr(C, packed)]
+#[derive(Default)]
+struct Tcsls {
+    tcsls_tos: u64,
+    tcsls_flags: TcslsFlags,
+    tcsls_user_fcw: u16,
+    tcsls_user_mxcsr: u32,
+    tcsls_last_rsp: u64,
+    tcsls_panic_last_rsp: u64,
+    tcsls_debug_panic_buf_ptr: u64,
+    tcsls_static_tcs_addr: u64,
+    tcsls_clist_next: u64,
+    tcsls_user_rsp: u64,
+    tcsls_user_retip: u64,
+    tcsls_user_rbp: u64,
+    tcsls_user_r12: u64,
+    tcsls_user_r13: u64,
+    tcsls_user_r14: u64,
+    tcsls_user_r15: u64,
+    tcsls_tls_ptr: u64,
+    tcsls_tcs_addr: u64,
+}
+
+impl Tcsls {
+    fn new(stack_tos: u64, secondary: bool, tcs_addr: u64, tcsls_clist_next: u64) -> Tcsls {
+        Tcsls {
+            tcsls_tos: stack_tos,
+            tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
+            tcsls_static_tcs_addr: tcs_addr,
+            tcsls_clist_next,
+            ..Default::default()
+        }
+    }
+}
+
+impl From<Tcsls> for [u8; 128] {
+    fn from(tcsls: Tcsls) -> Self {
+        unsafe {
+            std::mem::transmute(tcsls)
         }
     }
 }
@@ -576,6 +635,7 @@ impl<'a> LayoutInfo<'a> {
         let mut thread_start = heap_addr + self.heap_size;
         const THREAD_GUARD_SIZE: u64 = 0x10000;
         const TLS_SIZE: u64 = 0x1000;
+        assert!(TLS_SIZE > mem::size_of::<Tcsls>() as u64);
         let nssa = 1u32;
         let thread_size = THREAD_GUARD_SIZE
             + self.stack_size
@@ -587,6 +647,7 @@ impl<'a> LayoutInfo<'a> {
         } else {
             None
         };
+        let mut tcses: Vec<u64> = Vec::with_capacity(self.threads + 1);
 
         let mut writer = CanonicalSgxsWriter::new(
             writer,
@@ -611,6 +672,7 @@ impl<'a> LayoutInfo<'a> {
             secinfo
         )?;
 
+        let mut tcsls_clist_item_prev = thread_start as u64 + ((self.threads as u64 - 1) * thread_size) + THREAD_GUARD_SIZE + self.stack_size;
         for i in 0..self.threads {
             let stack_addr = thread_start + THREAD_GUARD_SIZE;
             let stack_tos = stack_addr + self.stack_size;
@@ -633,9 +695,8 @@ impl<'a> LayoutInfo<'a> {
                 (true, _) | (false, 0) => false,
                 (false, _) => true,
             };
-            let tls = unsafe {
-                std::mem::transmute::<_, [u8; 32]>([stack_tos, secondary as u64, 0u64, 0u64])
-            };
+            let tls: [u8; 128] = Tcsls::new(stack_tos, secondary, tcs_addr, tcsls_clist_item_prev).into();
+            tcsls_clist_item_prev = tls_addr;
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
@@ -657,6 +718,7 @@ impl<'a> LayoutInfo<'a> {
                 flags: PageType::Tcs.into(),
             };
             writer.write_page(Some(&mut &tcs[..]), Some(tcs_addr), secinfo)?;
+            tcses.push(tcs_addr);
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };

@@ -43,6 +43,9 @@ The memory region pointed to by `OGSBASGX` should be initialized as follows:
 - Offset `0x8`: `1` if this is an executable and this is a secondary TCS, `0`
   otherwise.
 - Offsets `0x10`, `0x18`, `0x20`: `0`
+- Offset `0x28`: The offset to the TCS structure from the image base.
+- Offset `0x30`: The offset to the next TCSLS page (part of a circular linked
+    list) from the image base.
 - Other offsets: uninitialized.
 
 ## Globals
