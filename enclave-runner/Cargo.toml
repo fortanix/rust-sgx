@@ -34,7 +34,7 @@ openssl = { version = "0.10", optional = true } # Apache-2.0
 crossbeam = "0.7.1"                             # MIT/Apache-2.0
 num_cpus = "1.10.0"                             # MIT/Apache-2.0
 tokio = { version = "0.2", features = ["full"] } # MIT
-futures = { version = "0.3", features = ["compat", "io-compat"] }
+futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
 
 [features]
 default = ["crypto-openssl"]
