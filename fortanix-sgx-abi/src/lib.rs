@@ -488,7 +488,7 @@ impl Usercalls {
     /// [`thread_entry`]: entry/executable/fn.thread_entry.html
     /// [libraries]: entry/library/index.html
     /// [`library`]: entry/library/index.html
-    pub fn launch_thread() -> Result { unimplemented!() }
+    pub fn launch_thread(tcs: usize) -> Result { unimplemented!() }
 
     /// Signals to userspace that this enclave needs to be destroyed.
     ///

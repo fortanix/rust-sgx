@@ -541,7 +541,7 @@ checksum = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 
 [[package]]
 name = "enclave-runner"
-version = "0.4.1"
+version = "0.6.0"
 dependencies = [
  "crossbeam",
  "failure",
@@ -670,7 +670,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fortanix-sgx-abi"
-version = "0.3.3"
+version = "0.5.0"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -678,7 +678,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.4.3"
+version = "0.6.0"
 dependencies = [
  "aesm-client",
  "clap",

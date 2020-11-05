@@ -171,9 +171,10 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
 
     fn launch_thread(
         self,
+        tcs: usize,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
-            let ret = Ok(self.0.launch_thread().to_sgx_result());
+            let ret = Ok(self.0.launch_thread(tcs).to_sgx_result());
             return (self, ret);
         }.boxed_local()
     }
