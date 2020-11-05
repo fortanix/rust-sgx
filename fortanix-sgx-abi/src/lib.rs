@@ -724,10 +724,7 @@ pub mod async {
     #[repr(C)]
     #[derive(Copy, Clone, Default)]
     #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
-    pub struct Cancel {
-        /// Reserved for future use.
-        pub reserved: u64,
-    }
+    pub struct Cancel;
 
     /// A circular buffer used as a FIFO queue with atomic reads and writes.
     ///
