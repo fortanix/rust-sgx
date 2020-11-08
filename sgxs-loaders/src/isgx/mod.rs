@@ -440,6 +440,7 @@ impl Device {
     /// Try to open an SGX device from a list of default paths
     pub fn new() -> IoResult<DeviceBuilder> {
         const DEFAULT_DEVICE_PATHS: &[(&str, DriverFamily)] = &[
+            ("/dev/sgx_enclave", Augusta),
             ("/dev/sgx/enclave", Augusta),
             ("/dev/isgx", Montgomery),
             ("/dev/sgx", Montgomery),
