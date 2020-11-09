@@ -533,15 +533,15 @@ impl PendingEvents {
         }
     }
 
-    fn take(&self, event_mask: u8) -> Option<u8> {
-        assert!((event_mask as usize) < Self::EV_MAX);
+    fn take(&self, event_mask: u64) -> Option<u64> {
+        assert!(event_mask < Self::EV_MAX_U64);
 
         if let Ok(_) = self.abort.try_acquire() {
-            return Some(EV_ABORT as _);
+            return Some(EV_ABORT);
         }
 
         for i in (1..Self::EV_MAX).rev() {
-            let ev = i as u8;
+            let ev = i as u64;
             if (ev & event_mask) != 0 {
                 if let Ok(permit) = self.counts[i].try_acquire() {
                     permit.forget();
@@ -552,37 +552,37 @@ impl PendingEvents {
         None
     }
 
-    async fn wait_for(&self, event_mask: u8) -> u8 {
-        assert!((event_mask as usize) < Self::EV_MAX);
+    async fn wait_for(&self, event_mask: u64) -> u64 {
+        assert!(event_mask < Self::EV_MAX_U64);
 
         if let Ok(_) = self.abort.try_acquire() {
-            return EV_ABORT as _;
+            return EV_ABORT;
         }
 
-        let it = std::iter::once((EV_ABORT as usize, &self.abort))
-            .chain(self.counts.iter().enumerate().filter(|&(ev, _)| (ev as u8) & event_mask != 0))
-            .map(|(ev, sem)| sem.acquire().map(move |permit| (ev as u8, permit)).boxed());
+        let it = std::iter::once((EV_ABORT, &self.abort))
+            .chain(self.counts.iter().enumerate().map(|(ev, sem)| (ev as u64, sem)).filter(|&(ev, _)| ev & event_mask != 0))
+            .map(|(ev, sem)| sem.acquire().map(move |permit| (ev, permit)).boxed());
 
         let ((ev, permit), _, _) = futures::future::select_all(it).await;
 
         // Abort should take precedence if it happens concurrently with another
         // event. The abort semaphore may not have been selected.
         if let Ok(_) = self.abort.try_acquire() {
-            return EV_ABORT as _;
+            return EV_ABORT;
         }
-        if ev != EV_ABORT as _ {
+        if ev != EV_ABORT {
             permit.forget();
         }
         ev
     }
 
-    fn push(&self, event: u8) {
-        debug_assert!(event != 0 && (event as usize) < Self::EV_MAX);
+    fn push(&self, event: u64) {
+        debug_assert!(event != 0 && event < Self::EV_MAX_U64);
         let index = event as usize;
         // add_permits() panics if the permit limit is exceeded.
         // NOTE: [the documentation] incorrectly specifies the maximum to be
-        // usize::MAX >> 3, while the actual maximum is usize::MAX >> 4. It's
-        // possible to have multiple threads pushing the same event
+        // `usize::MAX >> 3`, while the actual maximum is `usize::MAX >> 4`.
+        // It's possible to have multiple threads pushing the same event
         // concurrently, hence the smaller bound.
         //
         // [the documentation]: https://docs.rs/tokio/0.2.22/tokio/sync/struct.Semaphore.html#method.add_permits
@@ -593,9 +593,9 @@ impl PendingEvents {
     }
 
     fn abort(&self) {
-        // add a "large" number of permits without panicing if `abort` is called
-        // "multiple" times.
-        self.abort.add_permits(usize::MAX >> 8);
+        if self.abort.available_permits() == 0 {
+            self.abort.add_permits(usize::MAX >> 5);
+        }
     }
 }
 
@@ -1476,7 +1476,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         EnclaveAbort::Exit { panic }
     }
 
-    fn check_event_set(set: u64) -> IoResult<u8> {
+    fn check_event_set(set: u64) -> IoResult<()> {
         const EV_ALL: u64 = EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK;
         if (set & !EV_ALL) != 0 {
             return Err(IoErrorKind::InvalidInput.into());
@@ -1484,12 +1484,12 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
         assert!((EV_ALL | EV_ABORT) <= u8::max_value().into());
         assert!((EV_ALL & EV_ABORT) == 0);
-        Ok(set as u8)
+        Ok(())
     }
 
     #[inline(always)]
     async fn wait(&mut self, event_mask: u64, timeout: u64) -> IoResult<u64> {
-        let event_mask = Self::check_event_set(event_mask)?;
+        Self::check_event_set(event_mask)?;
 
         let timeout = match timeout {
             WAIT_NO | WAIT_INDEFINITE => timeout,
@@ -1515,7 +1515,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
         };
 
         if let Some(ev) = ret {
-            if (ev & (EV_ABORT as u8)) != 0 {
+            if (ev & EV_ABORT) != 0 {
                 // dispatch will make sure this is not returned to enclave
                 return Err(IoErrorKind::Other.into());
             }
@@ -1526,7 +1526,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     fn send(&self, event_set: u64, target: Option<Tcs>) -> IoResult<()> {
-        let event_set = Self::check_event_set(event_set)?;
+        Self::check_event_set(event_set)?;
 
         if event_set == 0 {
             return Err(IoErrorKind::InvalidInput.into());
