@@ -44,9 +44,7 @@ impl ProviderCore {
         assert!(usercall.id != 0);
         let cancel = Identified {
             id: usercall.id,
-            data: Cancel {
-                reserved: 0,
-            },
+            data: Cancel,
         };
         PROVIDERS
             .usercall_sender()

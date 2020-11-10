@@ -22,10 +22,7 @@ unsafe impl UserSafeSized for Return {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub struct Cancel {
-    /// Reserved for future use.
-    pub reserved: u64,
-}
+pub struct Cancel;
 
 unsafe impl UserSafeSized for Cancel {}
 
