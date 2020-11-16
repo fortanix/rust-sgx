@@ -326,9 +326,8 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "mbedtls"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56beb73c239d884634701be56f12cc21c2098a086e8d66d7b2d8c9c711541fd5"
+version = "0.6.1"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=acruceru/wip-mbed-hyper-v2#eb11732cd4b1f97fe40780837f3465997c4a59d5"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder",
@@ -342,9 +341,8 @@ dependencies = [
 
 [[package]]
 name = "mbedtls-sys-auto"
-version = "2.18.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42659b9c9dbf9b6d30ab1a287b43ff4a6bcac1d3425383420792f39e93b54945"
+version = "2.19.0"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=acruceru/wip-mbed-hyper-v2#eb11732cd4b1f97fe40780837f3465997c4a59d5"
 dependencies = [
  "bindgen",
  "cmake",
