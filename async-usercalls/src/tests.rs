@@ -252,6 +252,25 @@ fn read_buffer_basic() {
 }
 
 #[test]
+fn callback_handler_waker() {
+    let (_provider, handler) = AsyncUsercallProvider::new();
+    let waker = handler.waker();
+    let (tx, rx) = mpmc::bounded(1);
+    let h = thread::spawn(move || {
+        let n1 = handler.poll(None);
+        tx.send(()).unwrap();
+        let n2 = handler.poll(Some(Duration::from_secs(3)));
+        tx.send(()).unwrap();
+        n1 + n2
+    });
+    for _ in 0..2 {
+        waker.wake();
+        rx.recv().unwrap();
+    }
+    assert_eq!(h.join().unwrap(), 0);
+}
+
+#[test]
 #[ignore]
 fn echo() {
     println!();
