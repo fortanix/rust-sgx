@@ -186,6 +186,9 @@ pub struct ByteBuffer {
     pub len: usize
 }
 
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+unsafe impl Send for ByteBuffer {}
+
 /// Error code definitions and space allocation.
 ///
 /// Only non-zero positive values are valid errors. The variants are designed
