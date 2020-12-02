@@ -6,8 +6,8 @@ use std::mem;
 use std::os::fortanix_sgx::usercalls::alloc::{User, UserSafe};
 use std::os::fortanix_sgx::usercalls::raw::UsercallNrs;
 
-pub trait BatchDropable: private::BatchDropable {}
-impl<T: private::BatchDropable> BatchDropable for T {}
+pub trait BatchDroppable: private::BatchDroppable {}
+impl<T: private::BatchDroppable> BatchDroppable for T {}
 
 /// Drop the given value at some point in the future (no rush!). This is useful
 /// for freeing userspace memory when we don't particularly care about when the
@@ -20,7 +20,7 @@ impl<T: private::BatchDropable> BatchDropable for T {}
 /// usercall queue is empty we still need to exit the enclave to signal the
 /// userspace that the queue is not empty anymore. The batch send would send
 /// multiple usercalls and notify the userspace at most once.
-pub fn batch_drop<T: BatchDropable>(t: T) {
+pub fn batch_drop<T: BatchDroppable>(t: T) {
     t.batch_drop();
 }
 
@@ -85,11 +85,11 @@ mod private {
         static PROVIDER: RefCell<BatchDropProvider> = RefCell::new(BatchDropProvider::new());
     }
 
-    pub trait BatchDropable {
+    pub trait BatchDroppable {
         fn batch_drop(self);
     }
 
-    impl<T: UserSafe + ?Sized> BatchDropable for User<T> {
+    impl<T: UserSafe + ?Sized> BatchDroppable for User<T> {
         fn batch_drop(self) {
             PROVIDER.with(|p| p.borrow_mut().free(self));
         }

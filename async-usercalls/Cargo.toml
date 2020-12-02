@@ -23,7 +23,6 @@ fortanix-sgx-abi = { version = "0.4", path = "../fortanix-sgx-abi" }
 # External dependencies
 lazy_static = "1.4.0"     # MIT/Apache-2.0
 crossbeam-channel = "0.4" # MIT/Apache-2.0
-spin = "0.5"              # MIT/Apache-2.0
 fnv = "1.0"               # MIT/Apache-2.0
 
 # For cargo test --target x86_64-fortanix-unknown-sgx
