@@ -29,7 +29,7 @@ matrix:
       before_script:
         - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
       script:
-        - cargo test --verbose --all --exclude sgxs-loaders
+        - cargo test --verbose --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
         - cargo test --verbose -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
         - cargo test --verbose -p dcap-ql --features link

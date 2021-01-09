@@ -787,10 +787,12 @@ impl EnclaveState {
             Err(EnclaveAbort::Exit { panic: true }) => {
                 let panic = match handle_data {
                     UsercallHandleData::Sync(usercall, _, debug_buf) => {
-                        println!("Attaching debugger");
-                        #[cfg(unix)]
-                        trap_attached_debugger(usercall.tcs_address() as _).await;
-                        EnclavePanic::from(debug_buf.into_inner())
+                        let debug_buf = debug_buf.into_inner();
+                        #[cfg(unix)] {
+                            eprintln!("Attaching debugger");
+                            trap_attached_debugger(usercall.tcs_address() as _, debug_buf.as_ptr()).await;
+                        }
+                        EnclavePanic::from(debug_buf)
                     }
                     UsercallHandleData::Async(_) => {
                         // TODO: https://github.com/fortanix/rust-sgx/issues/235#issuecomment-641811437
@@ -1217,17 +1219,14 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
  * Here, we also store tcs in rbx, so that the debugger could read it, to
  * set sgx state and correctly map the enclave symbols.
  */
-async fn trap_attached_debugger(tcs: usize) {
+async fn trap_attached_debugger(tcs: usize, debug_buf: *const u8) {
     let _g = DEBUGGER_TOGGLE_SYNC.lock().await;
     let hdl = self::signal::SigHandler::SigAction(handle_trap);
     let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
     // Synchronized
     unsafe {
         let old = signal::sigaction(signal::SIGTRAP, &sig_action).unwrap();
-        llvm_asm!("int3" : /* No output */
-                    : /*input */ "{rbx}"(tcs)
-                    :/* No clobber */
-                    :"volatile");
+        asm!("int3", in("rbx") tcs, in("r10") debug_buf, options(nomem, nostack, att_syntax));
         signal::sigaction(signal::SIGTRAP, &old).unwrap();
     }
 }
