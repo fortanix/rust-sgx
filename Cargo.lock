@@ -466,14 +466,14 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "byteorder",
  "dcap-ql-sys",
  "failure",
  "lazy_static 1.4.0",
  "libc",
- "mbedtls 0.6.1",
+ "mbedtls 0.7.0",
  "num",
  "num-derive",
  "num-traits",
@@ -1156,9 +1156,9 @@ dependencies = [
 
 [[package]]
 name = "mbedtls"
-version = "0.6.1"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "953eb5b6355b3699e2d815ca9839cf56dffe0cdaf8d1155c161c5709540cd3ff"
+checksum = "ffcecd8f85ae073c7dba23426c5908b1720b87338b167bd6db752e7ff495cc4e"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder",
@@ -1172,12 +1172,14 @@ dependencies = [
 
 [[package]]
 name = "mbedtls-sys-auto"
-version = "2.18.5"
+version = "2.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42659b9c9dbf9b6d30ab1a287b43ff4a6bcac1d3425383420792f39e93b54945"
+checksum = "8eeb0c32b843d28e6706e357c38885c32b2d99d62c6255172885c7efae882aaa"
 dependencies = [
  "bindgen",
+ "cfg-if 1.0.0",
  "cmake",
+ "lazy_static 1.4.0",
  "libc",
 ]
 
