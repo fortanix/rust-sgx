@@ -30,10 +30,10 @@ matrix:
         - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
       script:
         - cargo test --verbose --all --exclude sgxs-loaders
-        - cargo test --verbose -p sgx-isa --features sgxstd -Z package-features --target x86_64-fortanix-unknown-sgx --no-run
-        - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx -Z package-features
-        - cargo test --verbose -p dcap-ql --features link -Z package-features
-        - cargo test --verbose -p dcap-ql --features verify -Z package-features
+        - cargo test --verbose -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+        - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
+        - cargo test --verbose -p dcap-ql --features link
+        - cargo test --verbose -p dcap-ql --features verify
         - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
         # NOTE: linking glibc version of OpenSSL with musl binary.
         # Unlikely to produce a working binary, but at least the build succeeds.
