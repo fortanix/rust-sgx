@@ -13,7 +13,7 @@ use pkix::{DerWrite, ToDer};
 use pkix::bit_vec::BitVec;
 use pkix::pem::{pem_to_der, der_to_pem, PEM_CERTIFICATE, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
-use pkix::types::{Attribute, ObjectIdentifier, RsaPkcs15, Sha256, DerSequence};
+use pkix::types::{Attribute, RsaPkcs15, Sha256, DerSequence};
 use pkix;
 use sgx_isa::{Report, Targetinfo};
 use sgx_pkix::attestation::{SgxName,AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
@@ -81,6 +81,39 @@ pub trait ExternalKey {
     fn sign_sha256(&mut self, input: &[u8]) -> Result<Vec<u8>>;
 }
 
+pub trait CsrSigner {
+    fn get_public_key_der(&mut self) -> Result<Vec<u8>>;
+    fn sign_csr(&mut self, csr: &CertificationRequestInfo<DerSequence>) -> Result<String>;
+}
+
+impl<T> CsrSigner for T
+where
+    T: ExternalKey
+{
+    fn get_public_key_der(&mut self) -> Result<Vec<u8>> {
+        ExternalKey::get_public_key_der(self)
+    }
+
+    fn sign_csr(&mut self, csr: &CertificationRequestInfo<DerSequence>) -> Result<String>
+    {
+        let reqinfo = DerSequence::from(pkix::yasna::construct_der(|writer| {
+            csr.write(writer)
+        }));
+
+        let sig = self.sign_sha256(reqinfo.as_ref())?;
+
+        let csr = pkix::yasna::construct_der(|writer| {
+            CertificationRequest {
+                reqinfo,
+                sigalg: RsaPkcs15(Sha256),
+                sig: BitVec::from_bytes(&sig),
+            }.write(writer)
+        });
+
+        Ok(der_to_pem(&csr, PEM_CERTIFICATE_REQUEST))
+    }
+}
+
 /// Result of the certificate issuance operation.
 pub struct FortanixEmCertificate {
     // Signed fortanix certificate with attestation extension.
@@ -98,27 +131,38 @@ pub struct FortanixEmCertificate {
 /// common_name - domain name to issue certificate for
 /// key         - trait over public/private key pair that allows access to public key and to a sign operation.
 /// 
-pub fn get_fortanix_em_certificate(url: &str, common_name: &str, key: &mut dyn ExternalKey) -> Result<FortanixEmCertificate> {
+pub fn get_fortanix_em_certificate(
+    url: &str,
+    common_name: &str,
+    signer: &mut dyn CsrSigner
+) -> Result<FortanixEmCertificate> {
 
     let mut client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
 
     // Get an SGX report for target info provided by remote
-    let pub_key = key.get_public_key_der()?;
+    let pub_key = signer.get_public_key_der()?;
     let report = get_target_report(&mut client, &pub_key)?;
 
     // Create attestation CSR request
-    let attestation = AttestationInlineSgxLocal { keyid: Cow::Borrowed(&report.keyid), mac: Cow::Borrowed(&report.mac) }.to_der();
-    let csr = get_csr(common_name, &pub_key, &report, vec![(oid::attestationInlineSgxLocal.clone(), vec![attestation])]);
-    let csr_pem = sign_csr(csr, key)?;
+    let attestation = AttestationInlineSgxLocal {
+        keyid: Cow::Borrowed(&report.keyid),
+        mac: Cow::Borrowed(&report.mac)
+    }.to_der().into();
+    let attributes = vec![Attribute { oid: oid::attestationInlineSgxLocal.clone(), value: vec![attestation] }];
+    let csr = get_csr(common_name, &pub_key, &report, attributes);
+    let csr_pem = signer.sign_csr(&csr)?;
 
     // Send CSR to Node Agent and receive signed app/node/attestation certificates
     let (fqpe_cert, node_cert) = get_attestation_certificates(&mut client, &report, csr_pem)?;
 
     // Create main certificate CSR request
-    let attestation = AttestationEmbeddedFqpe { app_cert: Cow::Borrowed(&fqpe_cert), node_cert: Cow::Borrowed(&node_cert) }.to_der();
-    let attribute = vec![(oid::attestationEmbeddedFqpe.clone(), vec![attestation])];
-    let csr = get_csr(common_name, &pub_key, &report, attribute);
-    let csr_pem = sign_csr(csr, key)?;
+    let attestation = AttestationEmbeddedFqpe {
+        app_cert: Cow::Borrowed(&fqpe_cert),
+        node_cert: Cow::Borrowed(&node_cert)
+    }.to_der().into();
+    let attributes = vec![Attribute { oid: oid::attestationEmbeddedFqpe.clone(), value: vec![attestation] }];
+    let csr = get_csr(common_name, &pub_key, &report, attributes);
+    let csr_pem = signer.sign_csr(&csr)?;
 
     // Send the request
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
@@ -159,38 +203,20 @@ fn get_target_report(client: &mut Client, pub_key: &Vec<u8>) -> Result<sgx_isa::
     Ok(sgx_isa::Report::for_target(&target_info, &data))        
 }
 
-fn get_csr(common_name: &str, pub_key_der: &[u8], report: &Report, attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>) -> Vec<u8> {
+fn get_csr<'a>(
+    common_name: &str,
+    pub_key_der: &'a [u8],
+    report: &Report,
+    attributes: Vec<Attribute<'a>>
+) -> CertificationRequestInfo<'a, DerSequence<'a>> {
     let mut sgx_name = SgxName::from_report(report, true);
     sgx_name.append(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
 
-    let attributes = attributes.iter().map(|&(ref oid,ref elems)|
-            Attribute {
-                oid: oid.clone(),
-                value: elems.iter().map(|e| e[..].into()).collect(),
-            }
-        ).collect::<Vec<_>>();
-    
-    pkix::yasna::construct_der(|writer| {
-        CertificationRequestInfo {
-            subject: sgx_name.to_name(),
-            spki: DerSequence::from(&pub_key_der[..]),
-            attributes: attributes,
-        }.write(writer)
-    })
-}
-
-fn sign_csr(reqinfo: Vec<u8>, key: &mut dyn ExternalKey) -> Result<String> {
-    let sig = key.sign_sha256(&reqinfo)?;
-
-    let csr = pkix::yasna::construct_der(|writer| {
-        CertificationRequest {
-            reqinfo: DerSequence::from(&reqinfo[..]),
-            sigalg: RsaPkcs15(Sha256),
-            sig: BitVec::from_bytes(&sig),
-        }.write(writer)
-    });
-
-    Ok(der_to_pem(&csr, PEM_CERTIFICATE_REQUEST))
+    CertificationRequestInfo {
+        subject: sgx_name.to_name(),
+        spki: DerSequence::from(&pub_key_der[..]),
+        attributes: attributes,
+    }
 }
 
 fn get_attestation_certificates(client: &mut Client, report: &Report, csr_pem: String) -> Result<(Vec<u8>, Vec<u8>)> {
