@@ -38,3 +38,4 @@ matrix:
         # NOTE: linking glibc version of OpenSSL with musl binary.
         # Unlikely to produce a working binary, but at least the build succeeds.
         - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude cargo build -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
+        - pushd em-app/examples/get-certificate/ && cargo build  && popd
