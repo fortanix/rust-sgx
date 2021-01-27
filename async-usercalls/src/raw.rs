@@ -153,3 +153,92 @@ impl RawApi for AsyncUsercallProvider {
         self.send_usercall(u, callback.map(|cb| Callback::Free(cb)));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
+    use crossbeam_channel as mpmc;
+    use std::io;
+    use std::sync::atomic::{AtomicPtr, Ordering};
+    use std::sync::Arc;
+    use std::thread;
+    use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn get_time_async_raw() {
+        fn run(tid: u32, provider: AutoPollingProvider) -> (u32, u32, Duration) {
+            let pid = provider.provider_id();
+            const N: usize = 500;
+            let (tx, rx) = mpmc::bounded(N);
+            for _ in 0..N {
+                let tx = tx.clone();
+                let cb = move |d| {
+                    let system_time = UNIX_EPOCH + Duration::from_nanos(d);
+                    tx.send(system_time).unwrap();
+                };
+                unsafe {
+                    provider.raw_insecure_time(Some(cb.into()));
+                }
+            }
+            let mut all = Vec::with_capacity(N);
+            for _ in 0..N {
+                all.push(rx.recv().unwrap());
+            }
+
+            assert_eq!(all.len(), N);
+            // The results are returned in arbitrary order
+            all.sort();
+            let t0 = *all.first().unwrap();
+            let tn = *all.last().unwrap();
+            let total = tn.duration_since(t0).unwrap();
+            (tid, pid, total / N as u32)
+        }
+
+        println!();
+        const THREADS: usize = 4;
+        let mut providers = Vec::with_capacity(THREADS);
+        for _ in 0..THREADS {
+            providers.push(AutoPollingProvider::new());
+        }
+        let mut handles = Vec::with_capacity(THREADS);
+        for (i, provider) in providers.into_iter().enumerate() {
+            handles.push(thread::spawn(move || run(i as u32, provider)));
+        }
+        for h in handles {
+            let res = h.join().unwrap();
+            println!("[{}/{}] (Tn - T0) / N = {:?}", res.0, res.1, res.2);
+        }
+    }
+
+    #[test]
+    fn raw_alloc_free() {
+        let provider = AutoPollingProvider::new();
+        let ptr: Arc<AtomicPtr<u8>> = Arc::new(AtomicPtr::new(0 as _));
+        let ptr2 = Arc::clone(&ptr);
+        const SIZE: usize = 1024;
+        const ALIGN: usize = 8;
+
+        let (tx, rx) = mpmc::bounded(1);
+        let cb_alloc = move |p: io::Result<*mut u8>| {
+            let p = p.unwrap();
+            ptr2.store(p, Ordering::Relaxed);
+            tx.send(()).unwrap();
+        };
+        unsafe {
+            provider.raw_alloc(SIZE, ALIGN, Some(cb_alloc.into()));
+        }
+        rx.recv().unwrap();
+        let p = ptr.load(Ordering::Relaxed);
+        assert!(!p.is_null());
+
+        let (tx, rx) = mpmc::bounded(1);
+        let cb_free = move |()| {
+            tx.send(()).unwrap();
+        };
+        unsafe {
+            provider.raw_free(p, SIZE, ALIGN, Some(cb_free.into()));
+        }
+        rx.recv().unwrap();
+    }
+}

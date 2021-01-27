@@ -80,7 +80,7 @@ struct ReturnHandler {
 }
 
 impl ReturnHandler {
-    const N: usize = 1024;
+    const RECV_BATCH_SIZE: usize = 1024;
 
     fn send(&self, returns: &[Identified<Return>]) {
         // This should hold the lock only for a short amount of time
@@ -90,6 +90,8 @@ impl ReturnHandler {
         let provider_map = self.provider_map.lock().unwrap();
         for ret in returns {
             let provider_id = (ret.id >> 32) as u32;
+            // NOTE: some providers might decide not to receive results of usercalls they send
+            // because the results are not interesting, e.g. BatchDropProvider.
             if let Some(sender) = provider_map.get(provider_id).and_then(|entry| entry.as_ref()) {
                 let _ = sender.send(*ret);
             }
@@ -97,18 +99,14 @@ impl ReturnHandler {
     }
 
     fn run(self) {
-        const DEFAULT_RETURN: Identified<Return> = Identified {
-            id: 0,
-            data: Return(0, 0),
-        };
+        let mut returns = [Identified::default(); Self::RECV_BATCH_SIZE];
         loop {
-            let mut returns = [DEFAULT_RETURN; Self::N];
             let first = match self.return_queue_rx.recv() {
                 Ok(ret) => ret,
                 Err(RecvError::Closed) => break,
             };
             let mut count = 0;
-            for ret in iter::once(first).chain(self.return_queue_rx.try_iter().take(Self::N - 1)) {
+            for ret in iter::once(first).chain(self.return_queue_rx.try_iter().take(Self::RECV_BATCH_SIZE - 1)) {
                 assert!(ret.id != 0);
                 returns[count] = ret;
                 count += 1;
