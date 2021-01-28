@@ -159,7 +159,7 @@ impl EnclaveLoad for InnerDevice {
                         ptr::null_mut(),
                         esize * 2,
                         Prot::PROT_NONE,
-                        Map::MAP_SHARED | Map::MAP_ANONYMOUS,
+                        Map::MAP_SHARED | Map::MAP_ANONYMOUS | Map::MAP_NORESERVE,
                         0,
                         0,
                     ).map_err(Error::map)?;
