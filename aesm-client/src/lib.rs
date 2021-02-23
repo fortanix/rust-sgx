@@ -254,8 +254,7 @@ impl AesmClient {
         nonce: Vec<u8>
     ) -> Result<QuoteResult> {
         let target_info = target_info.unwrap_or_else( ||
-            sgx_isa::Targetinfo::from(sgx_isa::Report::try_copy_from(&report).unwrap())
-                .as_ref()
+            AsRef::<[u8]>::as_ref(&sgx_isa::Targetinfo::from(sgx_isa::Report::try_copy_from(&report).unwrap()))
                 .to_owned()
         );
         self.inner.get_quote_ex(att_key_id, report, target_info, nonce)
