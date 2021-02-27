@@ -68,7 +68,7 @@ impl RawApi for AsyncUsercallProvider {
         callback: Option<CbFn<io::Result<usize>>>,
     ) -> CancelHandle {
         let u = Usercall(UsercallNrs::read as _, fd as _, buf as _, len as _, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Read(cb)))
+        self.send_usercall(u, callback.map(|cb| Callback::read(cb)))
     }
 
     unsafe fn raw_write(
@@ -79,17 +79,17 @@ impl RawApi for AsyncUsercallProvider {
         callback: Option<CbFn<io::Result<usize>>>,
     ) -> CancelHandle {
         let u = Usercall(UsercallNrs::write as _, fd as _, buf as _, len as _, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Write(cb)))
+        self.send_usercall(u, callback.map(|cb| Callback::write(cb)))
     }
 
     unsafe fn raw_flush(&self, fd: Fd, callback: Option<CbFn<io::Result<()>>>) {
         let u = Usercall(UsercallNrs::flush as _, fd as _, 0, 0, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Flush(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::flush(cb)));
     }
 
     unsafe fn raw_close(&self, fd: Fd, callback: Option<CbFn<()>>) {
         let u = Usercall(UsercallNrs::close as _, fd as _, 0, 0, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Close(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::close(cb)));
     }
 
     unsafe fn raw_bind_stream(
@@ -100,7 +100,7 @@ impl RawApi for AsyncUsercallProvider {
         callback: Option<CbFn<io::Result<Fd>>>,
     ) {
         let u = Usercall(UsercallNrs::bind_stream as _, addr as _, len as _, local_addr as _, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::BindStream(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::bind_stream(cb)));
     }
 
     unsafe fn raw_accept_stream(
@@ -117,7 +117,7 @@ impl RawApi for AsyncUsercallProvider {
             peer_addr as _,
             0,
         );
-        self.send_usercall(u, callback.map(|cb| Callback::AcceptStream(cb)))
+        self.send_usercall(u, callback.map(|cb| Callback::accept_stream(cb)))
     }
 
     unsafe fn raw_connect_stream(
@@ -135,22 +135,22 @@ impl RawApi for AsyncUsercallProvider {
             local_addr as _,
             peer_addr as _,
         );
-        self.send_usercall(u, callback.map(|cb| Callback::ConnectStream(cb)))
+        self.send_usercall(u, callback.map(|cb| Callback::connect_stream(cb)))
     }
 
     unsafe fn raw_insecure_time(&self, callback: Option<CbFn<u64>>) {
         let u = Usercall(UsercallNrs::insecure_time as _, 0, 0, 0, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::InsecureTime(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::insecure_time(cb)));
     }
 
     unsafe fn raw_alloc(&self, size: usize, alignment: usize, callback: Option<CbFn<io::Result<*mut u8>>>) {
         let u = Usercall(UsercallNrs::alloc as _, size as _, alignment as _, 0, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Alloc(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::alloc(cb)));
     }
 
     unsafe fn raw_free(&self, ptr: *mut u8, size: usize, alignment: usize, callback: Option<CbFn<()>>) {
         let u = Usercall(UsercallNrs::free as _, ptr as _, size as _, alignment as _, 0);
-        self.send_usercall(u, callback.map(|cb| Callback::Free(cb)));
+        self.send_usercall(u, callback.map(|cb| Callback::free(cb)));
     }
 }
 
