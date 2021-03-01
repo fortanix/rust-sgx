@@ -32,7 +32,7 @@ sgx-isa = { version = "0.3.0", path = "../sgx-isa"}
 # External dependencies
 byteorder = "1.0"          # Unlicense/MIT
 lazy_static = "1"          # MIT/Apache-2.0
-protobuf = "2.8.0"         # MIT/Apache-2.0
+protobuf = "2.19.0"        # MIT/Apache-2.0
 failure = "0.1.1"          # MIT/Apache-2.0
 failure_derive = "0.1.1"   # MIT/Apache-2.0
 
