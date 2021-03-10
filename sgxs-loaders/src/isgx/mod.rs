@@ -48,6 +48,7 @@ pub enum DriverFamily {
     Montgomery,
     /// This API is commonly exposed via a device node at
     /// * `/dev/sgx/enclave`
+    /// * `/dev/sgx_enclave`
     ///
     /// # Compatibility notes
     ///
