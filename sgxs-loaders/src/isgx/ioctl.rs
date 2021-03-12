@@ -72,6 +72,13 @@ pub mod augusta {
 
     #[repr(C)]
     #[derive(Clone, Copy, Debug)]
+    pub struct ExtendData {
+        pub offset: u64,
+    }
+    ioctl_readwrite!(extend, SGX_IOCTL, 0x04, ExtendData);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug)]
     pub struct InitData {
         pub sigstruct: *const sgx_isa::Sigstruct,
     }

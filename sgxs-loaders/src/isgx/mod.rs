@@ -79,6 +79,8 @@ pub enum Error {
     Create(#[cause] SgxIoctlError),
     #[fail(display = "Failed to call EADD.")]
     Add(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to call EEXTEND.")]
+    Extend(#[cause] SgxIoctlError),
     #[fail(display = "Failed to call EINIT.")]
     Init(#[cause] SgxIoctlError),
 }
@@ -223,15 +225,10 @@ impl EnclaveLoad for InnerDevice {
                 ioctl_unsafe!(Add, ioctl::montgomery::add(mapping.device.fd.as_raw_fd(), &adddata))
             },
             Augusta => {
-                let flags = match chunks.0 {
-                    0 => ioctl::augusta::SgxPageFlags::empty(),
-                    0xffff => ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE,
-                    _ => {
-                        return Err(Error::Add(SgxIoctlError::Io(IoError::new(
-                            io::ErrorKind::Other,
-                            "Partially-measured pages not supported in this driver",
-                        ))))
-                    }
+                let flags = if chunks.0 == 0xffff {
+                    ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE
+                } else {
+                    ioctl::augusta::SgxPageFlags::empty()
                 };
 
                 let data = ioctl::augusta::Align4096(data);
@@ -245,6 +242,17 @@ impl EnclaveLoad for InnerDevice {
                 };
                 ioctl_unsafe!(Add, ioctl::augusta::add(mapping.device.fd.as_raw_fd(), &mut adddata))?;
                 assert_eq!(adddata.length, adddata.count);
+
+                if chunks.0 != 0xffff {
+                    for chunk in 0..16 {
+                        if (0x1 << chunk) & chunks.0 != 0 {
+                            let mut extenddata = ioctl::augusta::ExtendData {
+                                offset: eadd.offset + chunk as u64 * 256,
+                            };
+                            ioctl_unsafe!(Extend, ioctl::augusta::extend(mapping.device.fd.as_raw_fd(), &mut extenddata))?;
+                        }
+                    }
+                }
 
                 let prot = match PageType::try_from(secinfo.flags.page_type()) {
                     Ok(PageType::Reg) => {
