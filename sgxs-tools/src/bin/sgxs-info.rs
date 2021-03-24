@@ -8,12 +8,13 @@ extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
 
 use std::convert::TryFrom;
-use std::ffi::OsStr;
 use std::fmt;
 use std::fs::File;
 use std::path::Path;
 
-use sgx_isa::{PageType, SecinfoFlags};
+use clap::{App, Arg};
+use sgx_isa::{PageType, SecinfoFlags, Tcs};
+
 use crate::sgxs_crate::sgxs::{self, SgxsRead};
 use crate::sgxs_crate::util::size_fit_natural;
 
@@ -126,6 +127,7 @@ enum PageCharacteristic {
         flags: SecinfoFlags,
         measured_chunks: sgxs::PageChunks,
         data: DataClass,
+        tcs_info: Option<String>,
     },
 }
 
@@ -138,6 +140,7 @@ impl fmt::Display for PageCharacteristic {
                 ref flags,
                 measured_chunks,
                 ref data,
+                ref tcs_info,
             } => {
                 let mut perm = [b'-'; 3];
                 if flags.contains(SecinfoFlags::R) {
@@ -152,11 +155,12 @@ impl fmt::Display for PageCharacteristic {
 
                 write!(
                     f,
-                    "{:<4} {} {:>7} meas={}",
+                    "{:<4} {} {:>7} meas={}{}",
                     format!("{:?}", PageType::try_from(flags.page_type()).unwrap()),
                     unsafe { std::str::from_utf8_unchecked(&perm) },
                     data,
-                    measured_chunks
+                    measured_chunks,
+                    tcs_info.as_ref().unwrap_or(&String::new()),
                 )
             }
         }
@@ -204,12 +208,20 @@ impl<'a, R: sgxs::SgxsRead + 'a> Iterator for Pages<'a, R> {
 impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
     fn next_page(&mut self) -> sgxs::Result<Option<(u64, PageCharacteristic)>> {
         Ok(self.reader.read_page()?.map(|(eadd, chunks, data)| {
+            let tcs_info = if eadd.secinfo.flags.page_type() == PageType::Tcs as u8 {
+                let tcs = Tcs::try_copy_from(&data).unwrap();
+                Some(format!(" [oentry=0x{:x}, ossa=0x{:x}, nssa={}]",
+                             tcs.oentry, tcs.ossa, tcs.nssa))
+            } else {
+                None
+            };
             (
                 eadd.offset,
                 PageCharacteristic::Page {
                     flags: eadd.secinfo.flags,
                     measured_chunks: chunks,
                     data: classify_data(&data),
+                    tcs_info,
                 },
             )
         }))
@@ -223,7 +235,7 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
             None
         };
         let mut ret = Pages {
-            reader: reader,
+            reader,
             last_offset: None,
             last_read_page: None,
             size,
@@ -301,37 +313,23 @@ fn dump_mem<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
 }
 
 fn main() {
-    let mut args = std::env::args_os();
-    let name = args.next();
-    let command = args.next();
-    let file = args.next();
-    if let (Some(command), Some(file)) = (command, file) {
-        if &command[..] == OsStr::new("list-all") {
-            list_all(file).unwrap();
-            return;
-        } else if &command[..] == OsStr::new("list-pages") {
-            list_pages(file).unwrap();
-            return;
-        } else if &command[..] == OsStr::new("info") {
-            summary(file).unwrap();
-            return;
-        } else if &command[..] == OsStr::new("dump-mem") {
-            dump_mem(file).unwrap();
-            return;
-        }
+    let matches = App::new("sgxs-info")
+        .about("Parses SGXS files for further analysis")
+        .arg(Arg::with_name("mode")
+            .possible_values(&["list-all", "list-pages", "info", "summary", "dump-mem"])
+            .required(true)
+        )
+        .arg(Arg::with_name("file").required(true))
+        .get_matches();
+
+    let command = matches.value_of("mode").unwrap();
+    let file = matches.value_of("file").unwrap();
+
+    match command {
+        "list-all" => list_all(file).unwrap(),
+        "list-pages" => list_pages(file).unwrap(),
+        "info" | "summary" => summary(file).unwrap(),
+        "dump-mem" => dump_mem(file).unwrap(),
+        _ => unreachable!()
     }
-    let s1;
-    let s2;
-    let s3;
-    println!(
-        "Usage: {} <mode> <file>",
-        if let Some(s) = name {
-            s1 = s;
-            s2 = Path::new(&s1).display();
-            &s2 as &dyn fmt::Display
-        } else {
-            s3 = "sgxs-info";
-            &s3 as &_
-        }
-    );
 }

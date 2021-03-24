@@ -1,4 +1,4 @@
-# SGXS utilites
+# SGXS utilities
 
 Compiles with Rust nightly.
 
@@ -10,7 +10,7 @@ utilities.
 
 ## sgx-debug-read
 
-`sgx-debug-read` tries to reads memory in the EPC. This will only succeed for
+`sgx-debug-read` tries to read memory in the EPC. This will only succeed for
 regular and TCS pages that are part of debug enclaves. The contents of the
 memory (or zeroes for inaccessible memory) will be output to stdout. Errors
 will be printed to stderr.
@@ -28,7 +28,7 @@ enclu
 ^D
 $ objcopy -O binary -j .text a.out
 $ sgxs-build rx=a.out tcs=nssa:1 > a.sgxs
-$ sgxs-info info a.sgxs
+$ sgxs-info summary a.sgxs
    0- fff Reg  r-x  (data) meas=all
 1000-1fff Tcs  ---  (data) meas=all
 2000-2fff Reg  rw- (empty) meas=all
@@ -45,8 +45,8 @@ following commands:
 ### list-all
 
 The most verbose listing format, which lists all the individual commands
-contained the input file, including their parameters. For EEXTEND commands,
-data is as either `(empty)` if the data is all zeroes, `[byte]*` if the data is
+contained in the input file, including their parameters. For EEXTEND commands,
+data is either `(empty)` if the data is all zeroes, `[byte]*` if the data is
 all the same value `byte`, or `(data)` in any other case.
 
 This is the only command that can read non-canonical SGXS files.
@@ -59,12 +59,13 @@ displayed in the same format as in the `list-all` command. The `measured` field
 indicates which part of the page are being measured by an EEXTEND command:
 `all`, `partial` or `none`.
 
-### info
+### summary
 
 This command gives a summarized overview of all the different sections in
 memory. The entire memory indicated by the enclave size is described.
 Consecutive pages that have the same type, flags, data and measurement fields
 are consolidated into a single line. Unmapped pages are indicated as such.
+Characteristics of TCS pages are displayed.
 
 ### dump-mem
 
