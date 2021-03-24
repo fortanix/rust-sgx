@@ -72,8 +72,6 @@ fn main() {
     b.warnings(false).compile(name);
 }
 
-fn sorted<A: Ord, I: Iterator<Item=A>>(iterator: I) -> Vec<A> {
-    let mut items: Vec<_> = iterator.collect();
-    items.sort();
-    items
+fn sorted<A: Ord, I: Iterator<Item=A>>(iterator: I) -> BTreeSet<A> {
+    iterator.collect()
 }
