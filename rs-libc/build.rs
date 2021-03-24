@@ -9,6 +9,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{read_dir, DirEntry};
 use std::path::PathBuf;
+use std::collections::BTreeSet;
 
 fn main() {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
@@ -34,14 +35,14 @@ fn main() {
     let mut build = cc::Build::new();
 
     #[cfg(unix)]
-    for path in read_dir(p_s).unwrap().filter_map(extension_filter("S")) {
+    for path in sorted(read_dir(p_s).unwrap().filter_map(extension_filter("S"))) {
         build.file(path);
     }
     #[cfg(windows)]
-    for path in read_dir(p_s).unwrap().filter_map(extension_filter("o")) {
+    for path in sorted(read_dir(p_s).unwrap().filter_map(extension_filter("o"))) {
         build.object(path);
     }
-    for path in read_dir(p_c).unwrap().filter_map(extension_filter("c")) {
+    for path in sorted(read_dir(p_c).unwrap().filter_map(extension_filter("c"))) {
         build.file(path);
     }
 
@@ -70,4 +71,8 @@ fn main() {
         }
 
     b.warnings(false).compile(name);
+}
+
+fn sorted<A: Ord, I: Iterator<Item=A>>(iterator: I) -> BTreeSet<A> {
+    iterator.collect()
 }
