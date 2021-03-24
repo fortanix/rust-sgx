@@ -34,14 +34,14 @@ fn main() {
     let mut build = cc::Build::new();
 
     #[cfg(unix)]
-    for path in read_dir(p_s).unwrap().filter_map(extension_filter("S")) {
+    for path in sorted(read_dir(p_s).unwrap().filter_map(extension_filter("S"))) {
         build.file(path);
     }
     #[cfg(windows)]
-    for path in read_dir(p_s).unwrap().filter_map(extension_filter("o")) {
+    for path in sorted(read_dir(p_s).unwrap().filter_map(extension_filter("o"))) {
         build.object(path);
     }
-    for path in read_dir(p_c).unwrap().filter_map(extension_filter("c")) {
+    for path in sorted(read_dir(p_c).unwrap().filter_map(extension_filter("c"))) {
         build.file(path);
     }
 
@@ -70,4 +70,10 @@ fn main() {
         }
 
     b.warnings(false).compile(name);
+}
+
+fn sorted<A: Ord, I: Iterator<Item=A>>(iterator: I) -> Vec<A> {
+    let mut items: Vec<_> = iterator.collect();
+    items.sort();
+    items
 }
