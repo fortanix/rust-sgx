@@ -9,6 +9,7 @@ use std::env;
 use std::ffi::OsStr;
 use std::fs::{read_dir, DirEntry};
 use std::path::PathBuf;
+use std::collections::BTreeSet;
 
 fn main() {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
