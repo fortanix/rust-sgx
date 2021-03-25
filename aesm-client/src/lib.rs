@@ -144,7 +144,7 @@ fn quote_buffer_size(sig_rl: &[u8]) -> u32 {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct QuoteResult {
-    /// For Intel attestatations, the EPID signature from Intel QE.
+    /// For Intel attestations, the EPID signature from Intel QE.
     quote: Vec<u8>,
 
     /// SGX report (EREPORT) from the Intel quoting enclave for the quote.
