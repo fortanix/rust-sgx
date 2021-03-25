@@ -15,13 +15,17 @@ use std::time::Duration;
 
 /// This timeout is an argument in AESM request protobufs.
 ///
-/// This value should be used for requests that can be completed locally, i.e.
-/// without network interaction.
+/// This value should be used for operations that can be completed locally, i.e.
+/// without network interaction. Only the `try_connect()` operation falls into this
+/// category.
+#[allow(unused)]
 pub(super) const LOCAL_AESM_TIMEOUT_US: u32 = 1_000_000;
 /// This timeout is an argument in AESM request protobufs.
 ///
-/// This value should be used for requests that might need interaction with
-/// remote servers, such as provisioning EPID.
+/// This value should be used for operations that might need interaction with
+/// remote servers. All AESM requests fall into this category, because they either
+/// always require interaction with a remote server or can trigger an initialization
+/// step that involves communication with a remote server.
 pub(super) const REMOTE_AESM_TIMEOUT_US: u32 = 30_000_000;
 
 impl AesmClient {
@@ -56,7 +60,7 @@ impl AesmClient {
 
     pub fn init_quote(&self) -> Result<QuoteInfo> {
         let mut req = Request_InitQuoteRequest::new();
-        req.set_timeout(LOCAL_AESM_TIMEOUT_US);
+        req.set_timeout(REMOTE_AESM_TIMEOUT_US);
         let mut res = self.transact(req)?;
 
         let (target_info, gid) = (res.take_targetInfo(), res.take_gid());
