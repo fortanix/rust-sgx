@@ -17,6 +17,7 @@ use std::time::Duration;
 ///
 /// This value should be used for requests that can be completed locally, i.e.
 /// without network interaction.
+#[allow(unused)]
 pub(super) const LOCAL_AESM_TIMEOUT_US: u32 = 1_000_000;
 /// This timeout is an argument in AESM request protobufs.
 ///
@@ -56,7 +57,7 @@ impl AesmClient {
 
     pub fn init_quote(&self) -> Result<QuoteInfo> {
         let mut req = Request_InitQuoteRequest::new();
-        req.set_timeout(LOCAL_AESM_TIMEOUT_US);
+        req.set_timeout(REMOTE_AESM_TIMEOUT_US);
         let mut res = self.transact(req)?;
 
         let (target_info, gid) = (res.take_targetInfo(), res.take_gid());
