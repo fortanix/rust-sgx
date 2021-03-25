@@ -17,7 +17,7 @@ checksum = "ee2a4ec343196209d6594e19543ae87a39f96d5534d7174822a3ad825dd6ed7e"
 
 [[package]]
 name = "aesm-client"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "byteorder",
  "failure",
