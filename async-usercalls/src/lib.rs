@@ -126,7 +126,7 @@ pub struct CallbackHandler {
 }
 
 impl CallbackHandler {
-    const RECV_BATCH_SIZE: usize = 1024;
+    const RECV_BATCH_SIZE: usize = 128;
 
     // Returns an object that can be used to interrupt a blocked `self.poll()`.
     pub fn waker(&self) -> CallbackHandlerWaker {
