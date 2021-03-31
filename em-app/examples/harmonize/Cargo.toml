@@ -1,0 +1,31 @@
+#
+# This will be part of rust-sgx EDP PR when everything is ready.
+# At the moment it's only meant for CI and POCs.
+#
+# Minimal application for testing purposes - used to fetch app config via cert auth.
+[workspace]
+
+[package]
+name = "harmonize"
+version = "0.1.0"
+authors = ["fortanix.com"]
+edition = "2018"
+license = "MPL-2.0"
+
+[dependencies]
+em-app = { path = "../../" }
+mbedtls = { version = "0.8.1" }
+serde_json = "1.0.62"
+serde = "1.0.123"
+serde_derive = "1.0.123"
+uuid = { version = "0.6.3", features = ["v4", "serde"] }
+b64-ct = "0.1.0"
+hyper = "0.10"
+sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "uuid-compat", default-features = false }
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
+csv = "1.1"
+pkix = "0.1.1"
+url = "1"
+
+[patch.crates-io]
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }

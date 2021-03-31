@@ -3,6 +3,12 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+#[macro_use]
+pub extern crate serde_derive;
+
+pub mod utils;
+pub mod mbedtls_hyper;
+
 use b64_ct::{ToBase64, FromBase64, STANDARD};
 use em_node_agent_client::{Api, Client, models};
 use mbedtls::cipher::{Cipher, raw};
@@ -13,13 +19,15 @@ use pkix::{DerWrite, ToDer};
 use pkix::bit_vec::BitVec;
 use pkix::pem::{pem_to_der, der_to_pem, PEM_CERTIFICATE, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
-use pkix::types::{Attribute, RsaPkcs15, Sha256, DerSequence};
+use pkix::types::{Attribute, Extension, ObjectIdentifier, RsaPkcs15, Sha256, DerSequence};
 use pkix;
 use sgx_isa::{Report, Targetinfo};
 use sgx_pkix::attestation::{SgxName,AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
 use sgx_pkix::oid;
 use std::borrow::Cow;
 use std::{error, fmt};
+use pkix::x509::DnsAltNames;
+use rustc_serialize::hex::FromHex;
 
 pub use mbedtls::rng::Rdrand as FtxRng;
 type Result<T> = std::result::Result<T, Error>;
@@ -56,6 +64,9 @@ pub enum Error {
 
     // Error replies from Node Agent for certificate issue
     CertIssue(RemoteError),
+
+    // Error using provided application config id.
+    ConfigIdIssue(String),
 }
 
 impl fmt::Display for crate::Error {
@@ -71,6 +82,7 @@ impl fmt::Display for crate::Error {
             Error::AttestationCertInternal(e)   => write!(f, "Internal error in processing attestation certificate: {}", e),
             Error::AttestationCertValidation(e) => write!(f, "Validation failed for data returned by Node Agent: {}", e),
             Error::CertIssue(e)                 => write!(f, "Failure in final certificate issue step: {}", e),
+            Error::ConfigIdIssue(e)             => write!(f, "Failure in parsing input application config id: {}", e),
         }
     }
 }
@@ -136,21 +148,35 @@ pub fn get_fortanix_em_certificate(
     common_name: &str,
     signer: &mut dyn CsrSigner
 ) -> Result<FortanixEmCertificate> {
+    get_certificate(url, common_name, signer, None, None)
+}
+
+pub fn get_certificate(
+    url: &str, 
+    common_name: &str, 
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>, 
+    config_id: Option<&str>
+) -> Result<FortanixEmCertificate> {
 
     let mut client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
 
     // Get an SGX report for target info provided by remote
     let pub_key = signer.get_public_key_der()?;
-    let report = get_target_report(&mut client, &pub_key)?;
+    let report = get_target_report(&mut client, &pub_key, config_id)?;
 
     // Create attestation CSR request
     let attestation = AttestationInlineSgxLocal {
         keyid: Cow::Borrowed(&report.keyid),
         mac: Cow::Borrowed(&report.mac)
     }.to_der().into();
-    let attributes = vec![Attribute { oid: oid::attestationInlineSgxLocal.clone(), value: vec![attestation] }];
-    let csr = get_csr(common_name, &pub_key, &report, attributes);
-    let csr_pem = signer.sign_csr(&csr)?;
+
+    let attributes = vec![(oid::attestationInlineSgxLocal.clone(), vec![attestation])];
+    let extensions = alt_names.and_then(|names| {
+        Some(vec![(pkix::oid::subjectAltName.clone(), false, pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)).into())])
+    });
+
+    let csr_pem = get_csr(common_name, &pub_key, &report, signer, attributes, &extensions)?;
 
     // Send CSR to Node Agent and receive signed app/node/attestation certificates
     let (fqpe_cert, node_cert) = get_attestation_certificates(&mut client, &report, csr_pem)?;
@@ -160,9 +186,9 @@ pub fn get_fortanix_em_certificate(
         app_cert: Cow::Borrowed(&fqpe_cert),
         node_cert: Cow::Borrowed(&node_cert)
     }.to_der().into();
-    let attributes = vec![Attribute { oid: oid::attestationEmbeddedFqpe.clone(), value: vec![attestation] }];
-    let csr = get_csr(common_name, &pub_key, &report, attributes);
-    let csr_pem = signer.sign_csr(&csr)?;
+    let attributes = vec![(oid::attestationEmbeddedFqpe.clone(), vec![attestation])];
+
+    let csr_pem = get_csr(common_name, &pub_key, &report, signer, attributes, &extensions)?;
 
     // Send the request
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
@@ -190,7 +216,7 @@ impl ExternalKey for Pk {
     }
 }
 
-fn get_target_report(client: &mut Client, pub_key: &Vec<u8>) -> Result<sgx_isa::Report> {
+fn get_target_report(client: &mut Client, pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<sgx_isa::Report> {
     let result = client.get_target_info().map_err(|e| Error::TargetReport(Box::new(e)))?;
     
     let target_info = Targetinfo::try_copy_from(result.target_info.ok_or(Error::TargetReportInternal("Node Agent returned empty target_info".to_string()))?
@@ -198,25 +224,76 @@ fn get_target_report(client: &mut Client, pub_key: &Vec<u8>) -> Result<sgx_isa::
                                                                   .as_ref()
                                                ).ok_or(Error::TargetReportInternal("Failed creating SGX structure from remote target info".to_string()))?;
 
+
     let mut data=[0u8;64];
     Md::hash(Type::Sha256, &pub_key, &mut data).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+    if let Some(id) = config_id {
+        let id = id.from_hex().map_err(|e| Error::ConfigIdIssue(format!("Failed decoding config ID: {}", e)))?;
+
+        let mut payload=[0u8;65];
+        payload[0] = 1;
+        payload[1..33].copy_from_slice(&data[0..32]);
+        payload[33..65].copy_from_slice(&id[0..32]);
+
+        // The payload is formed as follows in case of workflow report.
+        
+        // First 32 bytes is a Sha256 of (Version + public key sha256 + config-id)
+        Md::hash(Type::Sha256, &payload, &mut data[0..32]).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+        // Second 32 bytes part is the actual config-id.
+        data[32..64].copy_from_slice(&id[0..32]);
+    }
+    // if non-workflow report then first 32 bytes is the hash of the public key, second 32 bytes are all 0.
+    
     Ok(sgx_isa::Report::for_target(&target_info, &data))        
 }
 
-fn get_csr<'a>(
+fn get_csr(
     common_name: &str,
-    pub_key_der: &'a [u8],
+    pub_key_der: &[u8],
     report: &Report,
-    attributes: Vec<Attribute<'a>>
-) -> CertificationRequestInfo<'a, DerSequence<'a>> {
+    signer: &mut dyn CsrSigner,
+    attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
+    extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>
+) -> Result<String> {
+
     let mut sgx_name = SgxName::from_report(report, true);
     sgx_name.append(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
 
-    CertificationRequestInfo {
+    let mut attributes = attributes.iter().map(|&(ref oid,ref elems)|
+            Attribute {
+                oid: oid.clone(),
+                value: elems.iter().map(|e| e[..].into()).collect(),
+            }
+        ).collect::<Vec<_>>();
+
+    let extension_bytes = extensions.as_ref().and_then(|ext| {
+        Some(pkix::yasna::construct_der(|w|w.write_sequence(|w|{
+            for &(ref oid, critical, ref value) in ext {
+                Extension {
+                    oid: oid.clone(),
+                    critical: critical,
+                    value: value[..].to_owned(),
+                }.write(w.next())
+            }
+        })))
+    });
+
+    if let Some(bytes) = &extension_bytes {
+        attributes.push(Attribute{
+            oid: pkix::oid::extensionRequest.clone(),
+            value: vec![bytes[..].into()],
+        });
+    }
+    
+    let csr = CertificationRequestInfo {
         subject: sgx_name.to_name(),
         spki: DerSequence::from(&pub_key_der[..]),
         attributes: attributes,
-    }
+    };
+    
+    signer.sign_csr(&csr)
 }
 
 fn get_attestation_certificates(client: &mut Client, report: &Report, csr_pem: String) -> Result<(Vec<u8>, Vec<u8>)> {

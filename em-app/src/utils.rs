@@ -1,0 +1,209 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+use std::sync::Arc;
+use std::io::Read;
+
+pub use em_client::models;
+
+use hyper::client::Pool;
+use hyper::net::HttpsConnector;
+use em_client::{Api, Client};
+use mbedtls::alloc::{List as MbedtlsList};
+use mbedtls::cipher::raw::{CipherId, CipherMode};
+use mbedtls::cipher::{Decryption, Encryption, Fresh, Authenticated};
+use mbedtls::cipher;
+use mbedtls::pk::Pk;
+use mbedtls::rng::{Rdrand, Random};
+use mbedtls::ssl::Config;
+use mbedtls::ssl::config::{Endpoint, Preset, Transport, AuthMode, Version};
+use mbedtls::x509::{Certificate, Crl};
+use rustc_serialize::hex::FromHex;
+use sdkms::api_model::Blob;
+use uuid::Uuid;
+use url::Url;
+
+use crate::mbedtls_hyper::MbedSSLClient;
+
+pub fn get_runtime_configuration(
+    server: &str,
+    port: u16,
+    cert: Arc<MbedtlsList<Certificate>>,
+    key: Arc<Pk>,
+    ca_cert_list: Option<Arc<MbedtlsList<Certificate>>>,
+    ca_crl: Option<Arc<Crl>>
+) -> Result<models::RuntimeAppConfig, String> {
+
+    let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
+
+    config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    if let Some(ca_cert_list) = ca_cert_list {
+        config.set_ca_list(ca_cert_list, ca_crl);
+        config.set_authmode(AuthMode::Required);
+    } else {
+        config.set_authmode(AuthMode::Optional);
+    }
+    
+    config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    
+    let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(format!("nodes.{}", server)));
+    let connector = HttpsConnector::new(ssl);
+    let client = Client::try_new_with_connector(&format!("https://{}:{}/v1/runtime/app_configs", server, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
+    let response = client.get_runtime_application_config().map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
+
+    Ok(response)
+}
+
+pub fn get_sdkms_dataset(
+    sdkms_url: String,
+    dataset_id: String,
+    app_id: Uuid,
+    cert: Arc<MbedtlsList<Certificate>>,
+    key: Arc<Pk>,
+    ca_cert_list: Option<Arc<MbedtlsList<Certificate>>>,
+    ca_crl: Option<Arc<Crl>>
+) -> Result<Blob, String> {
+
+    let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
+    
+    config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    if let Some(ca_cert_list) = ca_cert_list {
+        config.set_ca_list(ca_cert_list, ca_crl);
+        config.set_authmode(AuthMode::Required);
+    } else {
+        config.set_authmode(AuthMode::Optional);
+    }
+    
+    config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    
+    let ssl = MbedSSLClient::new(Arc::new(config), true);
+    let connector = HttpsConnector::new(ssl);
+    let client = Arc::new(hyper::Client::with_connector(Pool::with_connector(Default::default(), connector)));
+
+    let client = sdkms::SdkmsClient::builder()
+        .with_api_endpoint(&sdkms_url)
+        .with_hyper_client(client)
+        .build().map_err(|e| format!("SDKMS Build failed: {:?}", e))?
+        .authenticate_with_cert(Some(&app_id)).map_err(|e| format!("SDKMS authenticate failed: {:?}", e))?;
+
+    let key_id = sdkms::api_model::SobjectDescriptor::Name(dataset_id);
+    
+    let result = client.export_sobject(&key_id).map_err(|e| format!("Failed SDKMS export operation: {:?}", e))?;
+    
+    result.value.ok_or("Missing value in exported object".to_string())
+}
+
+pub fn https_get(url: Url,
+                 ca_cert_list: Option<Arc<MbedtlsList<Certificate>>>,
+                 ca_crl: Option<Arc<Crl>>
+) -> Result<Vec<u8>, String> {
+    let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
+    
+    config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    if let Some(ca_cert_list) = ca_cert_list {
+        config.set_ca_list(ca_cert_list, ca_crl);
+        config.set_authmode(AuthMode::Required);
+    } else {
+        config.set_authmode(AuthMode::Optional);
+    }
+
+    let ssl = MbedSSLClient::new(Arc::new(config), true);
+    let connector = HttpsConnector::new(ssl);
+    let client = hyper::Client::with_connector(Pool::with_connector(Default::default(), connector));
+    let mut response = client.get(url).send().map_err(|e| format!("Failed downloading, error: {:?}", e))?;
+
+    if response.status != hyper::status::StatusCode::Ok {
+        return Err(format!("Request failed, result: {:?}", response));
+    }
+    
+    let mut body = vec![];
+    response.read_to_end(&mut body).map_err(|e| format!("Failed reading body, error: {:?}", e))?;
+
+    Ok(body)
+}
+
+pub fn https_put(url: Url,
+                 body: Vec<u8>,
+                 ca_cert_list: Option<Arc<MbedtlsList<Certificate>>>,
+                 ca_crl: Option<Arc<Crl>>
+) -> Result<(), String> {
+    let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
+    
+    config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    if let Some(ca_cert_list) = ca_cert_list {
+        config.set_ca_list(ca_cert_list, ca_crl);
+        config.set_authmode(AuthMode::Required);
+    } else {
+        config.set_authmode(AuthMode::Optional);
+    }
+
+    let ssl = MbedSSLClient::new(Arc::new(config), true);
+    let connector = HttpsConnector::new(ssl);
+    let client = hyper::Client::with_connector(Pool::with_connector(Default::default(), connector));
+    let result = client.put(url).body(body.as_slice()).send().map_err(|e| format!("Failed upload, error: {:?}", e))?;
+
+    if result.status != hyper::status::StatusCode::Ok {
+        return Err(format!("Request failed, result: {:?}", result));
+    }
+    
+    Ok(())
+}
+
+const NONCE_SIZE : usize = 12;
+const TAG_SIZE : usize = 16;
+
+// Basic AES-256-GCM encrypt/decrypt utility functions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CredentialsEncryption {
+    pub key: String,
+}
+
+pub fn encrypt_buffer(body: &[u8], encryption: &CredentialsEncryption) -> Result<Vec<u8>, String>{
+    let key = encryption.key.from_hex().map_err(|e| format!("Failed decoding key as a hex string: {:?}", e))?;
+
+    let mut nonce = [0; NONCE_SIZE];
+    Rdrand.random(&mut nonce[..]).map_err(|e| format!("Could not generate random nonce {}", e))?;
+
+    let cipher = cipher::Cipher::<Encryption, Authenticated, Fresh>::new(CipherId::Aes, CipherMode::GCM, 256).map_err(|e| format!("Failed creating cypher: {:?}", e))?;
+    let cipher_k = cipher.set_key_iv(&key, &nonce).map_err(|e| format!("Failed setting key, error: {:?}", e))?;
+
+    let mut output = Vec::new();
+    output.resize(body.len() + NONCE_SIZE + TAG_SIZE + cipher_k.block_size(), 0);
+
+    let size = cipher_k.encrypt_auth(&[], &body[..], &mut output[NONCE_SIZE..], TAG_SIZE).map_err(|e| format!("Failed encrypting body, error: {:?}", e))?.0;
+    output.resize(size + NONCE_SIZE, 0);
+
+    output[0..NONCE_SIZE].copy_from_slice(&nonce);
+
+    Ok(output)
+}
+
+pub fn decrypt_buffer(body: &Vec<u8>, encryption: &CredentialsEncryption) -> Result<Vec<u8>, String>{
+    let key = encryption.key.from_hex().map_err(|e| format!("Failed deconding key as a hex string: {:?}", e))?;
+    
+    let cipher = cipher::Cipher::<Decryption, Authenticated, Fresh>::new(CipherId::Aes, CipherMode::GCM, 256).map_err(|e| format!("Failed creating cypher: {:?}", e))?;
+    let cipher_k = cipher.set_key_iv(&key, &body[0..NONCE_SIZE]).map_err(|e| format!("Failed setting key, error: {:?}", e))?;
+    
+    let mut decrypted = Vec::new();
+    
+    // Allocate the length + 1 block size more to have enough space for decrypted content
+    decrypted.resize(body.len() + cipher_k.block_size(), 0);
+    
+    // Decrypt starting from byte 12 after our nonce and up to -TAG_SIZE which is 16 bytes
+    let (size, _cipher_f) = cipher_k.decrypt_auth(&[], &body[NONCE_SIZE..], &mut decrypted, TAG_SIZE).map_err(|e| format!("Failed decrypting body, error: {:?}", e))?;
+    
+    decrypted.resize(size, 0);
+    Ok(decrypted)
+}
+
+

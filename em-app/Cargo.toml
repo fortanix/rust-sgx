@@ -2,7 +2,7 @@
 
 [package]
 name = "em-app"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -13,12 +13,24 @@ keywords = [ "sgx" ]
 
 [dependencies]
 hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.7", default-features = false, features = ["sgx"] }
+mbedtls = { version = "0.8.1", features = [ "rdrand" ] }
 b64-ct = "0.1.0"
+serde = "1.0.123"
+serde_derive = "1.0.123"
 serde_bytes = "0.10"
 serde_json = "1.0"
 sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
 
+em-client = { git = "https://github.com/fortanix/em-client-rust", branch = "acruceru/api-update", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
 sgx_pkix = "0.1.0"
 pkix = "0.1.1"
+
+sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "uuid-compat", default-features = false }
+uuid = { version = "0.6.3", features = ["v4", "serde"] }
+
+url = "1"
+
+[patch.crates-io]
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
