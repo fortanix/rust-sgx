@@ -12,6 +12,7 @@ use std::process::{self, Command, ExitStatus};
 use failure::{Error, ResultExt};
 
 const HEAP_SIZE: u64 = 0x2000000;
+const UNMAPPED_MEMORY_SIZE: u64 = 0x20000000; // 512 MiB
 const SSAFRAMESIZE: u32 = 1;
 const STACK_SIZE: u32 = 0x20000;
 const DEBUG: bool = true;
@@ -21,6 +22,7 @@ const RUNNER: &'static str = "ftxsgx-runner";
 #[serde(rename_all = "kebab-case")]
 struct Target {
     heap_size: Option<u64>,
+    unmapped_memory_size: Option<u64>,
     ssaframesize: Option<u32>,
     stack_size: Option<u32>,
     threads: Option<u32>,
@@ -73,6 +75,7 @@ fn run() -> Result<(), Error> {
     let config: Config = toml::from_str(&content).context("Unable to parse the manifest")?;
     let custom_values  = config.package.metadata.fortanix_sgx;
     let heap_size = custom_values.heap_size.unwrap_or(HEAP_SIZE).to_string();
+    let unmapped_memory_size = custom_values.unmapped_memory_size.unwrap_or(UNMAPPED_MEMORY_SIZE).to_string();
     let ssaframesize = custom_values.ssaframesize.unwrap_or(SSAFRAMESIZE).to_string();
     let stack_size = custom_values.stack_size.unwrap_or(STACK_SIZE).to_string();
     let available_cpus = num_cpus::get() as u32;
@@ -85,6 +88,8 @@ fn run() -> Result<(), Error> {
     ftxsgx_elf2sgxs_command.arg(&args[1])
         .arg("--heap-size")
         .arg(heap_size)
+        .arg("--unmapped-memory-size")
+        .arg(unmapped_memory_size)
         .arg("--ssaframesize")
         .arg(ssaframesize)
         .arg("--stack-size")
