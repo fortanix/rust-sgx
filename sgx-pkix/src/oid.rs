@@ -36,7 +36,7 @@ lazy_static!{
     pub static ref lms_15_10_sha256: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 4, 3].into();
 
     // Intel SGX OID namespaces:
-    // https://download.01.org/intel-sgx/sgx-dcap/1.5/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf
+    // https://download.01.org/intel-sgx/sgx-dcap/1.10/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.4.pdf
     // https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/master/QuoteVerification/QVL/Src/AttestationParsers/src/ParserUtils.h#L57
     pub static ref SGX_EXTENSION:                     ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1].into();
     pub static ref SGX_EXTENSION_PPID:                ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 1].into();
@@ -62,6 +62,11 @@ lazy_static!{
     pub static ref SGX_EXTENSION_PCEID:               ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 3].into();
     pub static ref SGX_EXTENSION_FMSPC:               ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 4].into();
     pub static ref SGX_EXTENSION_SGX_TYPE:            ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 5].into();
+    pub static ref SGX_EXTENSION_PLATFORM_INSTANCE_ID: ObjectIdentifier = vec![1, 2, 840, 113741, 1, 13, 1, 6].into();
+    pub static ref SGX_EXTENSION_CONFIGURATION:       ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7].into();
+    pub static ref SGX_EXTENSION_CONF_DYNAMIC_PLATFORM: ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 1].into();
+    pub static ref SGX_EXTENSION_CONF_CACHED_KEYS:    ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 2].into();
+    pub static ref SGX_EXTENSION_CONF_SMT_ENABLED:    ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 3].into();
     
     static ref MAPPING: (HashMap<ObjectIdentifier, &'static str>, HashMap<&'static str, ObjectIdentifier>) = {
         let mut name_to_oid = HashMap::new();
@@ -107,6 +112,11 @@ lazy_static!{
             [1, 2, 840, 113741, 1, 13, 1, 3] => SGX_EXTENSION_PCEID,
             [1, 2, 840, 113741, 1, 13, 1, 4] => SGX_EXTENSION_FMSPC,
             [1, 2, 840, 113741, 1, 13, 1, 5] => SGX_EXTENSION_SGX_TYPE,
+            [1, 2, 840, 113741, 1, 13, 1, 6] => SGX_EXTENSION_PLATFORM_INSTANCE_ID,
+            [1, 2, 840, 113741, 1, 13, 1, 7] => SGX_EXTENSION_CONFIGURATION,
+            [1, 2, 840, 113741, 1, 13, 1, 7, 1] => SGX_EXTENSION_CONF_DYNAMIC_PLATFORM,
+            [1, 2, 840, 113741, 1, 13, 1, 7, 2] => SGX_EXTENSION_CONF_CACHED_KEYS,
+            [1, 2, 840, 113741, 1, 13, 1, 7, 3] => SGX_EXTENSION_CONF_SMT_ENABLED,
         }
 
         (oid_to_name, name_to_oid)
