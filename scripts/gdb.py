@@ -52,18 +52,14 @@ def get_text_offset(file_name):
       raise Exception("ELF Read Error")
   for line in sections.decode('utf-8').rstrip().split('\n'):
       if ".text" in line:
-          # 1     2    3    4       5
-          # [Nr]  Name Type Address Off
-          m=re.match('^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s+([0-9a-fA-F]+)\s', line)
+          # 1     2    3    4
+          # [Nr]  Name Type Address
+          m=re.match('^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s', line)
           if m is not None:
-              return int(m.group(5), 16)
+              return int(m.group(4), 16)
           break
 
-  # text_info layout
-  # 0  1    2    3    4       5
-  # '' Nr   Name Type Address Off
-  offset = int(text_info[5], 16)
-  return offset
+  raise Exception(".text section not found")
 
 def sgx_load_sym_file(file_name, encl_addr):
    offset=get_text_offset(file_name)
