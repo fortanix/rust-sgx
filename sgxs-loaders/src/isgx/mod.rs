@@ -451,6 +451,7 @@ impl Device {
             match Self::open(path, family) {
                 Err(ref e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(ref e) if e.raw_os_error() == Some(libc::ENOTDIR as _) => continue,
+                Err(ref e) if e.raw_os_error() == Some(libc::EISDIR as _) => continue,
                 result => return result,
             }
         }
