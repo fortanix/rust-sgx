@@ -447,7 +447,11 @@ impl Device {
             ("/dev/sgx", Montgomery),
         ];
 
+        for &(path, _) in DEFAULT_DEVICE_PATHS {
+            println!("paths: {}", path);
+        }
         for &(path, family) in DEFAULT_DEVICE_PATHS {
+            println!("trying: {}", path);
             match Self::open(path, family) {
                 Err(ref e) if e.kind() == io::ErrorKind::NotFound => continue,
                 Err(ref e) if e.raw_os_error() == Some(libc::ENOTDIR as _) => continue,
