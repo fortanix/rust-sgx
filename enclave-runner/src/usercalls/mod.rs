@@ -1226,7 +1226,14 @@ async fn trap_attached_debugger(tcs: usize, debug_buf: *const u8) {
     // Synchronized
     unsafe {
         let old = signal::sigaction(signal::SIGTRAP, &sig_action).unwrap();
-        asm!("int3", in("rbx") tcs, in("r10") debug_buf, options(nomem, nostack, att_syntax));
+        asm!("
+            xchg %rbx, {0}
+            int3
+            xchg {0}, %rbx
+            ",
+            in(reg) tcs, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
+            in("r10") debug_buf,
+            options(nomem, nostack, att_syntax));
         signal::sigaction(signal::SIGTRAP, &old).unwrap();
     }
 }
