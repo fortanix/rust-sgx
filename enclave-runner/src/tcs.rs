@@ -184,10 +184,12 @@ pub(crate) fn coenter<T: Tcs>(
         } else {
             asm!("
                     lea 1f(%rip), %rcx // set SGX AEP
+                    xchg {0}, %rbx
 1:                  enclu
+                    xchg %rbx, {0}
                 ",
+                inout(reg) tcs.address() => _, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
                 inout("eax") Enclu::EEnter as u32 => sgx_result,
-                inout("rbx") tcs.address() => _,
                 out("rcx") _,
                 inout("rdx") p3,
                 inout("rdi") p1,
