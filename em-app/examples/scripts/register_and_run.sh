@@ -4,6 +4,7 @@
 #
 
 set -eo pipefail
+set -x
 
 config_file="$1"
 
@@ -35,6 +36,10 @@ function em-cli-ratelimit() {
 
 function build_and_sign() {
     echo "Building application."
+
+    export CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
+    export CC_x86_64_fortanix_unknown_sgx=clang-11
+    
     cargo build --target=x86_64-fortanix-unknown-sgx
 
     echo "Signing application."
@@ -136,6 +141,8 @@ login
 configure_account
 fetch_zone_ca
 build_and_sign
+
+em-cli user refresh
 configure_app
 whitelist_domain
 configure_build
