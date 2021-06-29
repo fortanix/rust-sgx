@@ -16,8 +16,7 @@ keywords = ["sgx", "enclave"]
 categories = ["hardware-support"]
 
 [dev-dependencies]
-# External dependencies
-"mbedtls" = { version = "0.5", default-features = false, features = ["sgx"] }
+mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", package = "mbedtls", branch = "acruceru/arc-io", default-features = false }
 
 [dependencies]
 # External dependencies
