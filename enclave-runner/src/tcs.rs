@@ -43,6 +43,14 @@ impl<T: Tcs> Usercall<T> {
         coenter(self.tcs, 0, retval.0, retval.1, 0, 0, debug_buf)
     }
 
+    pub fn tcs(&mut self) -> &T {
+        &self.tcs
+    }
+
+    pub fn tcs_mut(&mut self) -> &mut T {
+        &mut self.tcs
+    }
+
     pub fn tcs_address(&self) -> *mut c_void {
         self.tcs.address()
     }
