@@ -1478,13 +1478,14 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    async fn launch_thread(&self) -> IoResult<()> {
+    async fn launch_thread(&self, tcs_address: Option<Tcs>) -> IoResult<()> {
         // check if enclave is of type command
         self.enclave
             .kind
             .as_command()
             .ok_or(IoErrorKind::InvalidInput)?;
-        let work = self.enclave.create_work(None, EnclaveEntry::ExecutableNonMain, [0; 5]).await?;
+        let tcs_address = tcs_address.map(|addr| TcsAddress(addr.as_ptr() as _));
+        let work = self.enclave.create_work(tcs_address, EnclaveEntry::ExecutableNonMain, [0; 5]).await?;
 
         self.work_sender.send(work).map_err(|_|
             std::io::Error::new(
