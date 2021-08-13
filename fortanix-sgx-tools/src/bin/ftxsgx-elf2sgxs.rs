@@ -35,7 +35,7 @@ use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 use clap::ArgMatches;
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 
 #[allow(non_snake_case)]
 struct Symbols<'a> {
@@ -123,7 +123,29 @@ impl Default for TcslsFlags {
 /// Follows the macros at https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S#L82
 #[repr(C, packed)]
 #[derive(Default)]
-struct Tcsls {
+struct Tcsls_v1 {
+    tcsls_tos: u64,
+    tcsls_flags: TcslsFlags,
+    tcsls_user_fcw: u16,
+    tcsls_user_mxcsr: u32,
+    tcsls_last_rsp: u64,
+    tcsls_panic_last_rsp: u64,
+    tcsls_debug_panic_buf_ptr: u64,
+    tcsls_user_rsp: u64,
+    tcsls_user_retip: u64,
+    tcsls_user_rbp: u64,
+    tcsls_user_r12: u64,
+    tcsls_user_r13: u64,
+    tcsls_user_r14: u64,
+    tcsls_user_r15: u64,
+    tcsls_tls_ptr: u64,
+    tcsls_tcs_addr: u64,
+}
+
+/// Follows the macros at https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S#L82
+#[repr(C, packed)]
+#[derive(Default)]
+struct Tcsls_v2 {
     tcsls_tos: u64,
     tcsls_flags: TcslsFlags,
     tcsls_user_fcw: u16,
@@ -144,22 +166,57 @@ struct Tcsls {
     tcsls_tcs_addr: u64,
 }
 
+enum Tcsls{
+    Version1(Tcsls_v1),
+    Version2(Tcsls_v2),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolchainVersion {
+    V1,
+    V2,
+}
+
+impl TryFrom<u32> for ToolchainVersion {
+    type Error = Error;
+    fn try_from(v: u32) -> Result<ToolchainVersion, Error> {
+        match v {
+            1 => Ok(ToolchainVersion::V1),
+            2 => Ok(ToolchainVersion::V2),
+            _ => bail!("Unknown toolchain version")
+        }
+    }
+}
+
 impl Tcsls {
-    fn new(stack_tos: u64, secondary: bool, tcs_addr: u64, tcsls_clist_next: u64) -> Tcsls {
-        Tcsls {
-            tcsls_tos: stack_tos,
-            tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
-            tcsls_static_tcs_addr: tcs_addr,
-            tcsls_clist_next,
-            ..Default::default()
+    fn new(stack_tos: u64, secondary: bool, tcs_addr: u64, tcsls_clist_next: u64, version: ToolchainVersion) -> Tcsls {
+        match version {
+            ToolchainVersion::V1 => Tcsls::Version1(Tcsls_v1 {
+                tcsls_tos: stack_tos,
+                tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
+                ..Default::default()
+            }),
+            ToolchainVersion::V2 => Tcsls::Version2(Tcsls_v2 {
+                tcsls_tos: stack_tos,
+                tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
+                tcsls_static_tcs_addr: tcs_addr,
+                tcsls_clist_next,
+                ..Default::default()
+            }),
         }
     }
 }
 
 impl From<Tcsls> for [u8; 128] {
     fn from(tcsls: Tcsls) -> Self {
-        unsafe {
-            std::mem::transmute(tcsls)
+        match tcsls {
+            Tcsls::Version1(tcsls) => {
+                let bytes: [u8; 112] = unsafe { std::mem::transmute(tcsls) };
+                let mut bytes: Vec<u8> = Vec::from(bytes);
+                bytes.resize(128, 0);
+                bytes.try_into().expect("Resized to correct size")
+            },
+            Tcsls::Version2(tcsls) => unsafe { std::mem::transmute(tcsls) },
         }
     }
 }
@@ -178,6 +235,7 @@ pub struct LayoutInfo<'a> {
     ehfrm: SectionRange,
     ehfrm_hdr: SectionRange,
     text: SectionRange,
+    toolchain_version: ToolchainVersion,
 }
 
 macro_rules! read_syms {
@@ -241,7 +299,7 @@ macro_rules! check_size {
 
 impl<'a> LayoutInfo<'a> {
     // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/src/libstd/sys/sgx/abi/entry.S
-    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
+    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<ToolchainVersion, Error> {
         let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
             .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
 
@@ -261,17 +319,16 @@ impl<'a> LayoutInfo<'a> {
                 let version = u32::from_le_bytes(desc.try_into()
                     .map_err(|_| format_err!("Expecting 32 bit 'toolchain-version' in .note.x86_64-fortanix-unknown-sgx"))?);
 
-                const MAX_SUPPORTED_VERSION: u32 = 1;
+                const MAX_SUPPORTED_VERSION: u32 = 2;
                 
                 if version > MAX_SUPPORTED_VERSION {
                     bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, MAX_SUPPORTED_VERSION);
                 }
+                version.try_into()
             },
             Ok(_) => bail!("Section data for .note.x86_64-fortanix-unknown-sgx is not a note."),
             Err(_) => bail!("Failed fetching data for section .note.x86_64-fortanix-unknown-sgx.")
         }
-
-        Ok(())
     }
     
     #[allow(non_snake_case)]
@@ -453,7 +510,7 @@ impl<'a> LayoutInfo<'a> {
         } else {
             bail!("Only 64-bit ELF supported!");
         }
-        Self::check_toolchain_version(&elf)?;
+        let toolchain_version = Self::check_toolchain_version(&elf)?;
         let sym = Self::check_symbols(&elf)?;
         let dynamic = Self::check_dynamic(&elf)?;
         Self::check_relocs(&elf, dynamic.as_ref())?;
@@ -475,6 +532,7 @@ impl<'a> LayoutInfo<'a> {
             ehfrm_hdr,
             text,
             sized,
+            toolchain_version,
         })
     }
 
@@ -695,7 +753,7 @@ impl<'a> LayoutInfo<'a> {
                 (true, _) | (false, 0) => false,
                 (false, _) => true,
             };
-            let tls: [u8; 128] = Tcsls::new(stack_tos, secondary, tcs_addr, tcsls_clist_item_prev).into();
+            let tls: [u8; 128] = Tcsls::new(stack_tos, secondary, tcs_addr, tcsls_clist_item_prev, self.toolchain_version).into();
             tcsls_clist_item_prev = tls_addr;
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
