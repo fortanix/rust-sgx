@@ -2300,7 +2300,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.4"
+version = "0.8.5"
 dependencies = [
  "aesm-client",
  "atty",

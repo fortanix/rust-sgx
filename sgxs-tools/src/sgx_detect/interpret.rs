@@ -121,6 +121,7 @@ impl From<CpuidResult> for Cpuid12h1 {
 pub enum EpcType {
     Invalid,
     ConfidentialityIntegrityProtected,
+    ConfidentialityProtectedOnly,
     Unknown,
 }
 
@@ -146,6 +147,7 @@ impl From<(u32, CpuidResult)> for Cpuid12hEnum {
                 let ty = match v.ecx & 0xf {
                     0 => EpcType::Invalid,
                     1 => EpcType::ConfidentialityIntegrityProtected,
+                    2 => EpcType::ConfidentialityProtectedOnly,
                     n => {
                         warn!("CPUID 12h, sub-leaf {} (EPC section) unknown EPC type: {:x}h. EAX={:08x}, EBX={:08x}, ECX={:08x}, EDX={:08x}", subleaf, n, v.eax, v.ebx, v.ecx, v.edx);
                         EpcType::Unknown
