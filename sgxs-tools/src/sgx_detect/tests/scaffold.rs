@@ -33,7 +33,7 @@ pub enum EnvConfig {
 }
 
 impl Default for EnvConfig {
-    fn default() -> Self {EnvConfig::Generic}
+    fn default() -> Self { EnvConfig::Generic }
 }
 
 pub trait Print: Name {
@@ -97,7 +97,7 @@ pub type TypeIdIdx = u8;
 pub struct DetectItemMap {
     next: TypeIdIdx,
     map: FnvHashMap<TypeId, TypeIdIdx>,
-    store: Vec<Box<dyn DetectItem>>
+    store: Vec<Box<dyn DetectItem>>,
 }
 
 impl DetectItemMap {

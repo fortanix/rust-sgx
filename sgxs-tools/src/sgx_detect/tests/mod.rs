@@ -155,7 +155,7 @@ impl Print for SgxCpuConfiguration {
 struct EnclaveAttributes {
     standard_attributes: bool,
     kss: bool,
-    cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>
+    cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>,
 }
 
 #[dependency]
@@ -242,14 +242,14 @@ impl Dependency<SgxCpuSupport> for EnclavePageCache {
                     total_size_cip,
                     total_size_cpo,
                     any_unknown,
-                    cpuid_12h_epc: Ok(c.clone())
+                    cpuid_12h_epc: Ok(c.clone()),
                 })
             }
             (Some(_), c) => Some(EnclavePageCacheInner {
                 total_size_cip: 0,
                 total_size_cpo: 0,
                 any_unknown: true,
-                cpuid_12h_epc: c.clone()
+                cpuid_12h_epc: c.clone(),
             }),
             _ => None,
         };
@@ -428,7 +428,7 @@ impl Print for FlcCpuSupport {
 #[derive(Clone, Default, Update)]
 struct FlcCpuConfiguration {
     sgx_conf: Status,
-    msr_3ah: Option<Result<Msr3ah, Rc<Error>>>
+    msr_3ah: Option<Result<Msr3ah, Rc<Error>>>,
 }
 
 #[dependency]
@@ -563,7 +563,7 @@ impl Update for DeviceLoader {
             },
             #[cfg(windows)]
             devpath: Err(Rc::new(IoError::new(ErrorKind::NotFound, "Device Driver Path not supported in Windows").into())),
-            modstatus: support.sgxdev_status.clone()
+            modstatus: support.sgxdev_status.clone(),
         });
     }
 }
@@ -907,7 +907,7 @@ struct EnclaveManager {
     version: Result<String, Rc<Error>>,
 }
 
-impl Update for EnclaveManager{
+impl Update for EnclaveManager {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(EnclaveManagerInner {
             version: match support.node_agent.clone() {
@@ -924,7 +924,7 @@ impl Print for EnclaveManager {
     }
 
     fn print(&self, level: usize) {
-        if self.supported() == Status::Supported  {
+        if self.supported() == Status::Supported {
             println!("{:width$}{}{} ({})", "", self.supported().paint(), self.name(), self.inner.as_ref().map(|inner| inner.version.clone().unwrap()).unwrap(), width = level * 2);
         } else {
             println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
@@ -938,7 +938,7 @@ struct PermDaemon {
     service: Result<(), Rc<Error>>,
 }
 
-impl Update for PermDaemon{
+impl Update for PermDaemon {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(PermDaemonInner {
             service: support.perm_daemon.clone()
@@ -953,7 +953,7 @@ impl Print for PermDaemon {
 
     fn print(&self, level: usize) {
         if self.supported() == Status::Supported {
-            println!( "{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+            println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
         } else {
             println!("{:width$}{}{} {}", "", self.supported().paint(), self.name(), "(Okay if container runtime is CRI-O (openshift))", width = level * 2);
         }

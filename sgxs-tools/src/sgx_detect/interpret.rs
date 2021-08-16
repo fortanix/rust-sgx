@@ -316,7 +316,7 @@ impl From<Vec<u8>> for EfiSoftwareguardstatus {
 pub enum AesmStatus {
     Absent,
     Installed,
-    Running
+    Running,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
