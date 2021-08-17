@@ -352,12 +352,12 @@ impl Print for EpcSize {
     }
 
     fn print(&self, level: usize) {
-        fn epc_size_unit(total_size: u64) -> (f64, String) {
+        fn epc_size_unit(total_size: u64) -> (f64, &'static str) {
             let mut epc_size = total_size as f64 / 1024.0 / 1024.0;
-            let mut epc_unit = "MiB".to_owned();
+            let mut epc_unit = "MiB";
             if epc_size >= 1024.0 {
                 epc_size /= 1024.0;
-                epc_unit = "GiB".to_owned();
+                epc_unit = "GiB";
             }
             (epc_size, epc_unit)
         }
@@ -366,12 +366,11 @@ impl Print for EpcSize {
             print!("{:width$}{}:", "", self.name(), width = level * 2);
             if epc.total_size_cip > 0 {
                 let (epc_size, epc_unit) = epc_size_unit(epc.total_size_cip);
-                print!(" {:.1}{} (Confidentiality and Integrity Protected)", epc_size, epc_unit);
+                print!(" {:.1}{}", epc_size, epc_unit);
             }
             if epc.total_size_cpo > 0 {
-                if epc.total_size_cip > 0 { print!(","); }
                 let (epc_size, epc_unit) = epc_size_unit(epc.total_size_cpo);
-                print!(" {:.1}{} (Confidentiality Protected Only)", epc_size, epc_unit);
+                print!(" {:.1}{} (no integrity protection)", epc_size, epc_unit);
             }
             println!();
         }
