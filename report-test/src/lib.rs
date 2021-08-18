@@ -17,7 +17,7 @@ use failure::{Error, ResultExt};
 
 use enclave_runner::EnclaveBuilder;
 use sgx_isa::{PageType, Report, SecinfoFlags, Targetinfo, Attributes, AttributesFlags, Miscselect};
-use sgxs::loader::Load;
+use sgxs::loader::{EnclaveControl, Load, MappingInfo};
 use sgxs::sgxs::{PageChunk, SecinfoTruncated, SgxsWrite};
 
 pub struct ReportBuilder {
@@ -59,7 +59,7 @@ impl ReportBuilder {
         self
     }
 
-    pub fn build<L: Load>(self, enclave_loader: &mut L) -> Result<Report, Error> {
+    pub fn build<C: EnclaveControl + Sized, M: MappingInfo<EnclaveControl=C>, L: Load<MappingInfo=M>>(self, enclave_loader: &mut L) -> Result<Report, Error> {
         let mut builder = EnclaveBuilder::new_from_memory(&self.enclave_bytes);
 
         if let Some(attributes) = self.attributes {
@@ -83,6 +83,6 @@ impl ReportBuilder {
     }
 }
 
-pub fn report<L: Load>(targetinfo: &Targetinfo, enclave_loader: &mut L) -> Result<Report, Error> {
+pub fn report<C: EnclaveControl + Sized, M: MappingInfo<EnclaveControl=C>, L: Load<MappingInfo=M>>(targetinfo: &Targetinfo, enclave_loader: &mut L) -> Result<Report, Error> {
     ReportBuilder::new(targetinfo).build(enclave_loader)
 }

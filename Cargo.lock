@@ -164,8 +164,11 @@ checksum = "aad18937a628ec6abcd26d1489012cc0e18c21798210f491af69ded9b881106d"
 [[package]]
 name = "bitflags"
 version = "1.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
+source = "git+https://github.com/bitflags/bitflags#c2ba43141307a97484518ad7728534855e1a51f2"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "block-buffer"
@@ -470,6 +473,12 @@ dependencies = [
  "openssl",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "cty"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7313c0d620d0cb4dbd9d019e461a4beb501071ff46ec0ab933efb4daa76d73e3"
 
 [[package]]
 name = "dcap-provider"
@@ -2241,7 +2250,9 @@ name = "sgx-isa"
 version = "0.3.3"
 dependencies = [
  "bitflags 1.2.1",
+ "compiler_builtins",
  "mbedtls 0.5.4",
+ "rustc-std-workspace-core",
  "serde",
 ]
 
@@ -2271,6 +2282,7 @@ version = "0.7.2"
 dependencies = [
  "byteorder",
  "crypto-hash",
+ "cty",
  "failure",
  "failure_derive",
  "foreign-types",
@@ -2287,6 +2299,7 @@ version = "0.3.1"
 dependencies = [
  "aesm-client",
  "bitflags 1.2.1",
+ "cty",
  "failure",
  "failure_derive",
  "libc",

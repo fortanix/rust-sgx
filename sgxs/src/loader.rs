@@ -21,16 +21,27 @@ pub trait Tcs: 'static + Debug + Send {
 
 /// An enclave that's been loaded into memory.
 pub trait MappingInfo: 'static + Debug {
+    type EnclaveControl: EnclaveControl + ?Sized;
+
     /// The base address of the enclave.
     fn address(&self) -> *mut c_void;
 
     /// The size of the enclave (ELRANGE).
     fn size(&self) -> usize;
+
+    /// The controller for the enclave (e.g., add/trim pages)
+    fn enclave_controller(&self) -> Option<&Self::EnclaveControl>;
 }
 
 pub struct Mapping<T: Load + ?Sized> {
     pub info: T::MappingInfo,
     pub tcss: Vec<T::Tcs>,
+}
+
+pub trait EnclaveControl: 'static + Send + Sync + Debug {
+    fn trim(&self, addr: *mut u8, size: usize) -> Result<(), Error>;
+
+    fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), Error>;
 }
 
 /// An interface that is able to load an enclave into memory.

@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
 use std::os::raw::c_void;
@@ -22,6 +23,7 @@ use openssl::{
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
+use sgxs::loader::{EnclaveControl};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use crate::tcs::DebugBuffer;
@@ -306,7 +308,7 @@ impl<'a> EnclaveBuilder<'a> {
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), Error> {
+    ) -> Result<(Vec<ErasedTcs>, <T as Load>::MappingInfo, bool), Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -322,29 +324,30 @@ impl<'a> EnclaveBuilder<'a> {
         }
         Ok((
             mapping.tcss.into_iter().map(ErasedTcs::new).collect(),
-            mapping.info.address(),
-            mapping.info.size(),
+            mapping.info,
             forward_panics,
         ))
     }
 
-    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+    pub fn build<C: Debug + EnclaveControl, M: MappingInfo<EnclaveControl=C>, T: Load<MappingInfo=M>>(mut self, loader: &mut T) -> Result<Command, Error> {
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
+            .map(|(t, info, fp)| {
+                Command::internal_new(t, c, info, fp, args)
+            })
     }
 
     /// Panics if you have previously called [`arg`] or [`args`].
     ///
     /// [`arg`]: struct.EnclaveBuilder.html#method.arg
     /// [`args`]: struct.EnclaveBuilder.html#method.args
-    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
+    pub fn build_library<C: Debug + EnclaveControl, M: MappingInfo<EnclaveControl=C>, T: Load<MappingInfo=M>>(mut self, loader: &mut T) -> Result<Library, Error> {
         if self.cmd_args.is_some() {
             panic!("Command arguments do not apply to Library enclaves.");
         }
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
+            .map(|(t, info, fp)| Library::internal_new(t, c, info, fp))
     }
 }

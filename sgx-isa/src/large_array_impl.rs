@@ -33,7 +33,7 @@ macro_rules! impl_default_clone_eq {
 }
 
 impl ::core::fmt::Debug for Secs {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Secs {
                 size: ref __self_0_0,
@@ -64,7 +64,7 @@ impl ::core::fmt::Debug for Secs {
 }
 
 impl ::core::fmt::Debug for Tcs {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Tcs {
                 flags: ref __self_0_1,
@@ -95,7 +95,7 @@ impl ::core::fmt::Debug for Tcs {
 }
 
 impl ::core::fmt::Debug for Secinfo {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Secinfo {
                 flags: ref __self_0_0,
@@ -110,7 +110,7 @@ impl ::core::fmt::Debug for Secinfo {
 }
 
 impl ::core::fmt::Debug for Pcmd {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Pcmd {
                 secinfo: ref __self_0_0,
@@ -129,7 +129,7 @@ impl ::core::fmt::Debug for Pcmd {
 }
 
 impl ::core::fmt::Debug for Sigstruct {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Sigstruct {
                 header: ref __self_0_0,
@@ -176,7 +176,7 @@ impl ::core::fmt::Debug for Sigstruct {
 }
 
 impl ::core::fmt::Debug for Einittoken {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Einittoken {
                 valid: ref __self_0_0,
@@ -211,7 +211,7 @@ impl ::core::fmt::Debug for Einittoken {
 }
 
 impl ::core::fmt::Debug for Report {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Report {
                 cpusvn: ref __self_0_0,
@@ -244,7 +244,7 @@ impl ::core::fmt::Debug for Report {
 }
 
 impl ::core::fmt::Debug for Targetinfo {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Targetinfo {
                 measurement: ref __self_0_0,
@@ -263,7 +263,7 @@ impl ::core::fmt::Debug for Targetinfo {
 }
 
 impl ::core::fmt::Debug for Keyrequest {
-    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter::<'_>) -> ::core::fmt::Result {
         match *self {
             Keyrequest {
                 keyname: ref __self_0_0,

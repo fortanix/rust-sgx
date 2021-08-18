@@ -16,6 +16,7 @@ pub struct CreateData {
 ioctl_write_ptr!(create, SGX_IOCTL, 0x00, CreateData);
 
 pub mod montgomery {
+    use cty::{c_uint, c_ulong};
     use super::SGX_IOCTL;
 
     #[repr(C, packed)]
@@ -44,6 +45,15 @@ pub mod montgomery {
         pub sigstruct: *const sgx_isa::Sigstruct,
     }
     ioctl_write_ptr!(init, SGX_IOCTL, 0x02, InitData);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug)]
+    pub struct SgxRange {
+        pub start_addr: c_ulong,
+        pub nr_pages: c_uint,
+    }
+    ioctl_write_ptr!(trim, SGX_IOCTL, 0x0b, SgxRange);
+    ioctl_write_ptr!(notify_accept, SGX_IOCTL, 0x0c, SgxRange);
 }
 
 pub mod augusta {

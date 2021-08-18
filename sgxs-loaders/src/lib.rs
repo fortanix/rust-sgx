@@ -8,8 +8,12 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
+extern crate cty;
+
 #[cfg(unix)] #[macro_use]
 extern crate nix;
+#[macro_use]
+extern crate failure;
 #[macro_use]
 extern crate failure_derive;
 #[macro_use]
@@ -17,6 +21,8 @@ extern crate bitflags;
 
 mod generic;
 #[cfg(unix)] pub mod isgx;
+#[cfg(unix)] pub use isgx::EnclaveController;
+#[cfg(unix)] use sgxs::loader::EnclaveControl;
 pub mod sgx_enclave_common;
 #[cfg(windows)] pub mod enclaveapi;
 
@@ -39,18 +45,25 @@ impl loader::Tcs for Tcs {
 }
 
 #[derive(Debug)]
-pub struct MappingInfo {
+pub struct MappingInfo<C> {
     _mapping: Arc<dyn Debug + Sync + Send>,
     base: u64,
     size: u64,
+    enclave_controller: Option<C>
 }
 
-impl loader::MappingInfo for MappingInfo {
+impl<C: EnclaveControl> loader::MappingInfo for MappingInfo<C> {
+    type EnclaveControl = C;
+
     fn address(&self) -> *mut c_void {
         self.base as _
     }
 
     fn size(&self) -> usize {
         self.size as _
+    }
+
+    fn enclave_controller(&self) -> Option<&Self::EnclaveControl> {
+        self.enclave_controller.as_ref()
     }
 }

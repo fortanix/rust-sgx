@@ -23,8 +23,11 @@ categories = ["hardware-support"]
 # External dependencies
 bitflags = "1" # MIT/Apache-2.0
 serde = { version = "1.0.104", features = ["derive"], optional = true } # MIT/Apache-2.0
+compiler_builtins = { version = '0.1.2', optional = true }
+core = { version = '1.0.0', optional = true, package = 'rustc-std-workspace-core' }
 
 [features]
 large_array_derive = []
 sgxstd = []
 nightly = []
+rustc-dep-of-std = ["core", "compiler_builtins", "bitflags/rustc-dep-of-std"]

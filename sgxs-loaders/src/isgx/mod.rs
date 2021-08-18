@@ -21,9 +21,11 @@ use nix::sys::mman::{mmap, munmap, ProtFlags as Prot, MapFlags as Map};
 use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct, PageType, SecinfoFlags};
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
+use sgxs::loader::EnclaveControl;
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
 
 use crate::{MappingInfo, Tcs};
+use crate::isgx::ioctl::montgomery::SgxRange;
 use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
 
 /// A Linux SGX driver API family.
@@ -81,6 +83,10 @@ pub enum Error {
     Add(#[cause] SgxIoctlError),
     #[fail(display = "Failed to call EINIT.")]
     Init(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to trim region.")]
+    Trim(#[cause] SgxIoctlError),
+    #[fail(display = "Failed to remove trimmed region.")]
+    RemoveTrimmed(#[cause] SgxIoctlError),
 }
 
 impl Error {
@@ -121,6 +127,7 @@ macro_rules! ioctl_unsafe {
 }
 
 impl EnclaveLoad for InnerDevice {
+    type EnclaveController = EnclaveController;
     type Error = Error;
     type MapData = MapData;
 
@@ -384,6 +391,10 @@ impl EnclaveLoad for InnerDevice {
     fn destroy(mapping: &mut Mapping<Self>) {
         unsafe { libc::munmap(mapping.base as usize as *mut _, mapping.size as usize) };
     }
+
+    fn create_controller(mapping: &Mapping<Self>) -> Option<Self::EnclaveController> {
+        Some(EnclaveController::new(mapping.device.path.clone(), mapping.device.driver))
+    }
 }
 
 #[derive(Debug)]
@@ -480,8 +491,55 @@ impl Device {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct EnclaveController{
+    path: Arc<PathBuf>,
+    family: DriverFamily,
+}
+
+impl EnclaveController {
+    pub fn new(path: Arc<PathBuf>, family: DriverFamily) -> Self {
+        EnclaveController{
+            path,
+            family,
+        }
+    }
+}
+
+impl EnclaveControl for EnclaveController {
+    fn trim(&self, addr: *mut u8, size: usize) -> Result<(), ::failure::Error> {
+        match self.family {
+            DriverFamily::Augusta => Err(format_err!("Driver doesn't support trimming enclave pages")),
+            DriverFamily::Montgomery => {
+                let fd = OpenOptions::new().read(true).write(true).open(&**self.path).unwrap();
+                let range = SgxRange {
+                    start_addr: addr as _,
+                    nr_pages: (size / 0x1000) as _,
+                };
+                let res = ioctl_unsafe!{Trim, ioctl::montgomery::trim(fd.as_raw_fd(), &range)};
+                res.map_err(|e| e.into())
+            },
+        }
+    }
+
+    fn remove_trimmed(&self, addr: *const u8, size: usize) -> Result<(), ::failure::Error> {
+        match self.family {
+            DriverFamily::Augusta => Err(format_err!("Driver doesn't support trimming enclave pages")),
+            DriverFamily::Montgomery => {
+                let fd = OpenOptions::new().read(true).write(true).open(&**self.path).unwrap();
+                let range = SgxRange {
+                    start_addr: addr as _,
+                    nr_pages: (size / 0x1000) as _,
+                };
+                let result = ioctl_unsafe!{RemoveTrimmed, ioctl::montgomery::notify_accept(fd.as_raw_fd(), &range)};
+                result.map_err(|e| e.into())
+            },
+        }
+    }
+}
+
 impl loader::Load for Device {
-    type MappingInfo = MappingInfo;
+    type MappingInfo = MappingInfo<EnclaveController>;
     type Tcs = Tcs;
 
     fn load<R: SgxsRead>(
