@@ -105,13 +105,14 @@ impl Signer {
         hasher.finish()
     }
 
-    /// # Panics
-    ///
-    /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
-    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
-        Self::check_key(key);
+    pub fn unsigned_hash<H: SgxHashOps>(self) -> Hash {
+        let sig = Self::unsigned_sig(self);
 
-        let mut sig = Sigstruct {
+        Self::sighash::<H>(&sig)
+    }
+
+    pub fn unsigned_sig(self) -> Sigstruct {
+        let sig = Sigstruct {
             header: SIGSTRUCT_HEADER1,
             vendor: 0,
             date: self.date,
@@ -135,12 +136,49 @@ impl Signer {
             q2: [0; 384],
         };
 
+        sig
+    }
+
+    /// # Panics
+    ///
+    /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
+    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
+        Self::check_key(key);
+
+        let mut sig = Self::unsigned_sig(self);
+
         let (s, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig))?;
         let n = key.n();
 
         // Pad to 384 bytes
         (&mut sig.modulus[..]).write_all(&n).unwrap();
         (&mut sig.signature[..]).write_all(&s).unwrap();
+        (&mut sig.q1[..]).write_all(&q1).unwrap();
+        (&mut sig.q2[..]).write_all(&q2).unwrap();
+
+        Ok(sig)
+    }
+
+    /// Adds a signature from raw bytes. This is used to add a signature
+    /// generated in an out-of-band process outside of sgxs-tools.
+    pub fn cat_sign<K: SgxRsaOps>(
+        self,
+        key: &K,
+        mut s_vec: Vec<u8>,
+    ) -> Result<Sigstruct, K::Error> {
+        Self::check_key(key);
+
+        let mut sig = Self::unsigned_sig(self);
+        let (q1, q2) = key.calculate_q1_q2(&s_vec)?;
+
+        // The signature is read in as big-endian. It must be little-endian for
+        // the sigstruct.
+        s_vec.reverse();
+
+        let n = key.n();
+
+        (&mut sig.modulus[..]).write_all(&n).unwrap();
+        (&mut sig.signature[..]).write_all(&s_vec).unwrap();
         (&mut sig.q1[..]).write_all(&q1).unwrap();
         (&mut sig.q2[..]).write_all(&q2).unwrap();
 

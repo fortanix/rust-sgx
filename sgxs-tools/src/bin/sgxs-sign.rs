@@ -21,6 +21,7 @@ use openssl::pkey::{self, PKey};
 use regex::Regex;
 
 use sgx_isa::{AttributesFlags, Miscselect, Sigstruct};
+use sgxs::crypto::Hash;
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 fn write_sigstruct(path: &str, sig: Sigstruct) {
@@ -103,11 +104,10 @@ fn parse_hexstr<S: Borrow<str>>(s: S) -> Vec<u8> {
     vec
 }
 
-fn args_desc<'a>() -> clap::App<'a, 'a> {
+fn common_args<'a>(app: clap::App<'a, 'a>) -> clap::App<'a, 'a> {
     use clap::Arg;
 
-    clap::App::new("sgxs-sign")
-        .about("SGXS SIGSTRUCT generator")
+    app
         .arg(Arg::with_name("swdefined")               .short("s").long("swdefined") .takes_value(true)     .validator(num_validate)    .help("Sets the SWDEFINED field (default: 0)"))
         .arg(Arg::with_name("miscselect/miscmask")     .short("m").long("miscselect").takes_value(true)     .validator(num_num_validate).help("Sets the MISCSELECT and inverse MISCMASK fields (default: 0/0)"))
         .arg(Arg::with_name("attributes/attributemask").short("a").long("attributes").takes_value(true)     .validator(num_num_validate).help("Sets the lower ATTRIBUTES and inverse lower ATTRIBUTEMASK fields (default: 0x4/0x2)"))
@@ -117,21 +117,104 @@ fn args_desc<'a>() -> clap::App<'a, 'a> {
         .arg(Arg::with_name("date")                               .long("date")      .value_name("YYYYMMDD").validator(date_validate)   .help("Sets the DATE field (default: today)"))
         .arg(Arg::with_name("isvprodid")               .short("p").long("isvprodid") .takes_value(true)     .validator(num_validate)    .help("Sets the ISVPRODID field (default: 0)"))
         .arg(Arg::with_name("isvsvn")                  .short("v").long("isvsvn")    .takes_value(true)     .validator(num_validate)    .help("Sets the ISVSVN field (default: 0)"))
-        .arg(Arg::with_name("key-file")                .short("k").long("key")       .value_name("FILE")    .required(true)             .help("Sets the path to the PEM-encoded RSA private key"))
-        .arg(Arg::with_name("verifykey")               .short("V").long("resign-verify").value_name("FILE")                             .help("Verify the output file is a correct signature using the specified PEM-encoded RSA private key"))
         .arg(Arg::with_name("input-hash")                         .long("in-hash")                                                      .help("<input> specifies the ENCLAVEHASH field directly, instead of an SGXS file"))
         .arg(Arg::with_name("input")                                                                        .required(true)             .help("The enclave SGXS file that will be hashed"))
-        .arg(Arg::with_name("output")                                                                       .required(true)             .help("The output SIGSTRUCT file"))
-        .after_help("NUMERIC ARGUMENTS:
+}
+
+fn sign_args<'a>(app: clap::App<'a, 'a>) -> clap::App<'a, 'a> {
+    use clap::Arg;
+
+    common_args(app)
+        .arg(
+            Arg::with_name("key-file")
+                .short("k").long("key")
+                .value_name("FILE")
+                .required(true)
+                .help("Sets the path to the PEM-encoded RSA private key")
+        )
+        .arg(
+            Arg::with_name("verifykey")
+                .short("V")
+                .long("resign-verify")
+                .value_name("FILE")
+                .help("Verify the output file is a correct signature using the specified PEM-encoded RSA private key")
+        )
+        .arg(
+            Arg::with_name("output")
+                .required(true)
+                .help("The output SIGSTRUCT file")
+        )
+}
+
+fn args_desc<'a>() -> clap::App<'a, 'a> {
+    use clap::Arg;
+
+    let app = clap::App::new("sgxs-sign").about("SGXS SIGSTRUCT generator");
+
+    let sign_subcommand = sign_args(clap::App::new("sign").about("one step sigstruct signer"));
+
+    // Setup subcommands
+    let gendata_subcommand = common_args(clap::App::new("gendata"))
+        .about("generates data to sign in an offline signing process")
+        .arg(
+            Arg::with_name("output")
+                .required(true)
+                .help("The output hash file"),
+        );
+
+    let catsig_subcommand = common_args(clap::App::new("catsig"))
+        .about("final step in offline signing process")
+        .arg(
+            Arg::with_name("public-key")
+                .long("public-key")
+                .required(true)
+                .takes_value(true)
+                .help("the public key of the signer"),
+        )
+        .arg(
+            Arg::with_name("signature")
+                .long("signature")
+                .required(true)
+                .takes_value(true)
+                .help("the signature from the offline signing process"),
+        )
+        .arg(
+            Arg::with_name("output")
+                .required(true)
+                .help("The output SIGSTRUCT file"),
+        );
+
+    let verify_subcommand = clap::App::new("verify")
+        .about("verify a sigstruct")
+        .arg(
+            Arg::with_name("public-key")
+                .long("public-key")
+                .required(true)
+                .takes_value(true)
+                .help("the public key of the signer"),
+        )
+        .arg(Arg::with_name("input").required(true).help("the sigstruct"));
+
+    // We wrap the root "app" (below) in sign_args() to maintain backward
+    // compatibility with older versions of the sgxs-sign tool.
+    sign_args(app)
+        .setting(clap::AppSettings::SubcommandsNegateReqs)
+        .subcommand(sign_subcommand)
+        .subcommand(gendata_subcommand)
+        .subcommand(catsig_subcommand)
+        .subcommand(verify_subcommand)
+        .after_help(
+            "NUMERIC ARGUMENTS:
     Unsigned values only. It is possible to specify hexadecimal numbers using
     the 0x prefix.
 
 MISCSELECT / ATTRIBUTES MASKS:
     Specify the *inverse* of the mask you want. If you don't specify a mask,
-    the same value will be used twice.")
+    the same value will be used twice.",
+        )
 }
 
-fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sigstruct {
+fn create_signer<'a>(matches: &clap::ArgMatches<'a>) -> Signer {
     let enclavehash = if matches.is_present("input-hash") {
         let s = matches.value_of("input").unwrap();
         hash_validate(s).unwrap();
@@ -205,15 +288,27 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
             date[6..8].parse::<u8>().unwrap(),
         );
     }
-
     signer
-        .sign::<_, Hasher>(&*key.rsa().unwrap())
-        .expect("Error during signing operation")
 }
 
 fn main() {
     let matches = args_desc().get_matches();
 
+    match matches.subcommand() {
+        ("gendata", Some(sub_matches)) => gendata_command(sub_matches),
+        ("sign", Some(sub_matches)) => sign_command(sub_matches),
+        ("catsig", Some(sub_matches)) => catsig_command(sub_matches),
+        ("verify", Some(sub_matches)) => verify_command(sub_matches),
+        _ => match matches.subcommand_name() {
+            None => sign_command(&matches),
+            Some(name) => {
+                panic!("Unexpected subcommand '{}' found", name);
+            }
+        },
+    }
+}
+
+fn sign_command<'a>(matches: &clap::ArgMatches<'a>) {
     let mut pem = vec![];
     File::open(matches.value_of("key-file").unwrap())
         .expect("Unable to open input key file")
@@ -221,7 +316,7 @@ fn main() {
         .expect("Unable to read input key file");
     let key = PKey::private_key_from_pem(&pem).unwrap();
 
-    let sig = do_sign(&matches, &key);
+    let sig = do_sign(matches, &key);
 
     if let Some(vrk) = matches.value_of("verifykey") {
         let mut pem = vec![];
@@ -243,36 +338,251 @@ fn main() {
 
     write_sigstruct(matches.value_of("output").unwrap(), sig);
 
+    print_enclavehash(enclavehash);
+}
+
+fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sigstruct {
+    let signer = create_signer(matches);
+    signer
+        .sign::<_, Hasher>(&*key.rsa().unwrap())
+        .expect("Error during signing operation")
+}
+
+fn gendata_command<'a>(matches: &clap::ArgMatches<'a>) {
+    let unsigned_hash = do_gendata(matches);
+
+    let path = matches.value_of("output").unwrap();
+
+    let mut file = File::create(path).expect("Unable to open output file");
+
+    file.write_all(&unsigned_hash)
+        .expect("Unable to write output file");
+}
+
+fn do_gendata<'a>(matches: &clap::ArgMatches<'a>) -> Hash {
+    let signer = create_signer(matches);
+
+    signer.unsigned_hash::<Hasher>()
+}
+
+fn catsig_command<'a>(matches: &clap::ArgMatches<'a>) {
+    // Load the public key
+    let mut pem = vec![];
+    File::open(matches.value_of("public-key").unwrap())
+        .expect("Unable to open public key")
+        .read_to_end(&mut pem)
+        .expect("Unable to read public key");
+    let key = PKey::public_key_from_pem(&pem).expect("Unable to read input public key file");
+
+    let mut signature: Vec<u8> = vec![];
+    File::open(matches.value_of("signature").unwrap())
+        .expect("Unable to open signature file")
+        .read_to_end(&mut signature)
+        .expect("Unable to read public key");
+
+    let sig = do_catsig(matches, signature, &key);
+    let enclavehash = sig.enclavehash.clone();
+
+    write_sigstruct(matches.value_of("output").unwrap(), sig);
+
+    // Verify newly created signature
+    let new_sig =
+        sigstruct::read(&mut File::open(matches.value_of("output").unwrap()).unwrap()).unwrap();
+
+    sigstruct::verify::<_, Hasher>(&new_sig, &*key.rsa().unwrap())
+        .expect("Input signature verification failed");
+
+    // This shouldn't happen, but let's test for it anyway
+    if enclavehash != new_sig.enclavehash {
+        panic!("Unexpected ENCLAVEHASH written");
+    }
+
+    print_enclavehash(enclavehash);
+}
+
+fn do_catsig<'a>(
+    matches: &clap::ArgMatches<'a>,
+    signature: Vec<u8>,
+    key: &PKey<pkey::Public>,
+) -> Sigstruct {
+    let signer = create_signer(matches);
+    signer.cat_sign(&*key.rsa().unwrap(), signature).unwrap()
+}
+
+fn verify_command<'a>(matches: &clap::ArgMatches<'a>) {
+    // Load the public key
+    let mut pem = vec![];
+    File::open(matches.value_of("public-key").unwrap())
+        .expect("Unable to open public key")
+        .read_to_end(&mut pem)
+        .expect("Unable to read public key");
+    let key = PKey::public_key_from_pem(&pem).expect("Unable to read input verify key file");
+
+    let sig =
+        sigstruct::read(&mut File::open(matches.value_of("input").unwrap()).unwrap()).unwrap();
+
+    sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap())
+        .expect("SIGSTRUCT failed verification");
+
+    print_enclavehash(sig.enclavehash.clone());
+}
+
+fn print_enclavehash(enclavehash: [u8; 32]) {
     println!("ENCLAVEHASH: {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} (OK)",enclavehash[0],enclavehash[1],enclavehash[2],enclavehash[3],enclavehash[4],enclavehash[5],enclavehash[6],enclavehash[7],enclavehash[8],enclavehash[9],enclavehash[10],enclavehash[11],enclavehash[12],enclavehash[13],enclavehash[14],enclavehash[15],enclavehash[16],enclavehash[17],enclavehash[18],enclavehash[19],enclavehash[20],enclavehash[21],enclavehash[22],enclavehash[23],enclavehash[24],enclavehash[25],enclavehash[26],enclavehash[27],enclavehash[28],enclavehash[29],enclavehash[30],enclavehash[31]);
 }
 
 #[cfg(test)]
-#[test]
-fn test_sig() {
-    static KEY: &'static [u8] = include_bytes!("../../tests/data/sig1.key.pem");
-    static SIGSTRUCT: &'static [u8] = include_bytes!("../../tests/data/sig1.sigstruct.bin");
+mod test {
+    use super::*;
 
-    let matches = args_desc().get_matches_from(&[
-        "ARG0",
-        "-x",
-        "3/0xe4",
-        "--date",
-        "20160109",
-        "--in-hash",
-        "-k",
-        "KEY",
-        "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
-        "OUTPUT",
-    ]);
+    use openssl::hash::Hasher;
+    use openssl::pkey::PKey;
 
-    let key = PKey::private_key_from_pem(KEY).unwrap();
+    use sgxs::sigstruct;
 
-    let sig = do_sign(&matches, &key);
+    #[test]
+    fn test_sig() {
+        static KEY: &'static [u8] = include_bytes!("../../tests/data/sig1.key.pem");
+        static SIGSTRUCT: &'static [u8] = include_bytes!("../../tests/data/sig1.sigstruct.bin");
 
-    sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap()).unwrap();
+        let matches = args_desc().get_matches_from(&[
+            "ARG0",
+            "-x",
+            "3/0xe4",
+            "--date",
+            "20160109",
+            "--in-hash",
+            "-k",
+            "KEY",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
 
-    assert_eq!(
-        sig.as_ref(),
-        SIGSTRUCT
-    );
+        let key = PKey::private_key_from_pem(KEY).unwrap();
+
+        let sig = do_sign(&matches, &key);
+
+        sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap()).unwrap();
+
+        assert_eq!(sig.as_ref(), SIGSTRUCT);
+    }
+
+    #[test]
+    fn test_gendata() {
+        static SIGSTRUCT_HASH: &'static [u8] =
+            include_bytes!("../../tests/data/sig1.sigstruct.sha256.bin");
+
+        let matches1 = args_desc().get_matches_from(&[
+            "ARG0",
+            "gendata",
+            "-x",
+            "3/0xe4",
+            "--date",
+            "20160109",
+            "--in-hash",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
+
+        let matches2 = args_desc().get_matches_from(&[
+            "ARG0",
+            "gendata",
+            "-x",
+            "3/0xe4",
+            "--date",
+            "20160109",
+            "--in-hash",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
+
+        let matches3 = args_desc().get_matches_from(&[
+            "ARG0",
+            "gendata",
+            "--in-hash",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
+
+        let hash1 = do_gendata(&matches1.subcommand_matches("gendata").unwrap());
+        let hash2 = do_gendata(&matches2.subcommand_matches("gendata").unwrap());
+        let hash3 = do_gendata(&matches3.subcommand_matches("gendata").unwrap());
+
+        assert_eq!(hash1, hash2);
+        assert_eq!(hash1, SIGSTRUCT_HASH);
+        assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_catsig() {
+        static PUB: &'static [u8] = include_bytes!("../../tests/data/sig1.pub.pem");
+        static SIGSTRUCT: &'static [u8] = include_bytes!("../../tests/data/sig1.sigstruct.bin");
+        static SIGSTRUCT_HASH_SIG: &'static [u8] =
+            include_bytes!("../../tests/data/sig1.sigstruct.sha256.sig");
+
+        let matches = args_desc().get_matches_from(&[
+            "ARG0",
+            "catsig",
+            "-x",
+            "3/0xe4",
+            "--date",
+            "20160109",
+            "--public-key",
+            "KEY",
+            "--signature",
+            "SIGNATURE",
+            "--in-hash",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
+
+        let key = PKey::public_key_from_pem(PUB).unwrap();
+
+        let signature = Vec::from(SIGSTRUCT_HASH_SIG);
+
+        let sig = do_catsig(
+            matches.subcommand_matches("catsig").unwrap(),
+            signature,
+            &key,
+        );
+
+        sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap()).unwrap();
+
+        assert_eq!(sig.as_ref(), SIGSTRUCT);
+    }
+
+    #[test]
+    fn test_catsig_fails() {
+        // This catsig fails because the options passed in for attributes and
+        // other metadata do not match the created sigstruct sha256 that was
+        // signed in `sig1.sigstruct.sha256.sig`.
+        static PUB: &'static [u8] = include_bytes!("../../tests/data/sig1.pub.pem");
+        static SIGSTRUCT_HASH_SIG: &'static [u8] =
+            include_bytes!("../../tests/data/sig1.sigstruct.sha256.sig");
+
+        let matches = args_desc().get_matches_from(&[
+            "ARG0",
+            "catsig",
+            "--public-key",
+            "KEY",
+            "--signature",
+            "SIGNATURE",
+            "--in-hash",
+            "c50673624a6cb17c1c6c2a4e6906f47a170c4629b8723781d1017ef376f1a75d",
+            "OUTPUT",
+        ]);
+
+        let key = PKey::public_key_from_pem(PUB).unwrap();
+        let signature = Vec::from(SIGSTRUCT_HASH_SIG);
+        let sig = do_catsig(
+            matches.subcommand_matches("catsig").unwrap(),
+            signature,
+            &key,
+        );
+
+        let result = std::panic::catch_unwind(|| {
+            sigstruct::verify::<_, Hasher>(&sig, &*key.rsa().unwrap()).unwrap()
+        });
+        assert!(result.is_err());
+    }
 }
