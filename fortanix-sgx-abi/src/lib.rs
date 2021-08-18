@@ -485,13 +485,18 @@ impl Usercalls {
     /// this with the number of entries into [`thread_entry`]. If no free TCSes
     /// are immediately available, this may return an error.
     ///
+    /// If `tcs` is set to some `Tcs`, that TCS will be used to launch the new
+    /// thread. When that TCS is currently in use, the request is blocked until
+    /// it becomes available. When `None` is passed, an arbitrary available TCS
+    /// will be used.
+    ///
     /// This function will never be succesful in [libraries]. See the
     /// [`library`] documentation on how to use threads with libraries.
     ///
     /// [`thread_entry`]: entry/executable/fn.thread_entry.html
     /// [libraries]: entry/library/index.html
     /// [`library`]: entry/library/index.html
-    pub fn launch_thread() -> Result { unimplemented!() }
+    pub fn launch_thread(tcs: Option<Tcs>) -> Result { unimplemented!() }
 
     /// Signals to userspace that this enclave needs to be destroyed.
     ///

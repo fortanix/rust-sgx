@@ -5,6 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #[macro_use]
+extern crate bitflags;
+#[macro_use]
 extern crate clap;
 extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
@@ -15,7 +17,7 @@ extern crate failure;
 use std::borrow::Borrow;
 use std::fs::File;
 use std::io::{repeat, Error as IoError, Read};
-use std::mem::replace;
+use std::mem::{self, replace};
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
@@ -33,7 +35,7 @@ use sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated, SgxsWrite};
 use sgxs_crate::util::{size_fit_natural, size_fit_page};
 
 use clap::ArgMatches;
-use std::convert::TryInto;
+use std::convert::{TryInto, TryFrom};
 
 #[allow(non_snake_case)]
 struct Symbols<'a> {
@@ -105,6 +107,120 @@ impl Splice {
     }
 }
 
+bitflags! {
+    struct TcslsFlags: u16 {
+        const SECONDARY = 0b0000_0000_0000_0001;
+        const INIT_ONCE = 0b0000_0000_0000_0010;
+    }
+}
+
+impl Default for TcslsFlags {
+    fn default() -> TcslsFlags {
+        TcslsFlags::empty()
+    }
+}
+
+/// Follows the macros at https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S#L82
+#[repr(C, packed)]
+#[derive(Default)]
+struct Tcsls_v1 {
+    tcsls_tos: u64,
+    tcsls_flags: TcslsFlags,
+    tcsls_user_fcw: u16,
+    tcsls_user_mxcsr: u32,
+    tcsls_last_rsp: u64,
+    tcsls_panic_last_rsp: u64,
+    tcsls_debug_panic_buf_ptr: u64,
+    tcsls_user_rsp: u64,
+    tcsls_user_retip: u64,
+    tcsls_user_rbp: u64,
+    tcsls_user_r12: u64,
+    tcsls_user_r13: u64,
+    tcsls_user_r14: u64,
+    tcsls_user_r15: u64,
+    tcsls_tls_ptr: u64,
+    tcsls_tcs_addr: u64,
+}
+
+/// Follows the macros at https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S#L82
+#[repr(C, packed)]
+#[derive(Default)]
+struct Tcsls_v2 {
+    tcsls_tos: u64,
+    tcsls_flags: TcslsFlags,
+    tcsls_user_fcw: u16,
+    tcsls_user_mxcsr: u32,
+    tcsls_last_rsp: u64,
+    tcsls_panic_last_rsp: u64,
+    tcsls_debug_panic_buf_ptr: u64,
+    tcsls_static_tcs_addr: u64,
+    tcsls_clist_next: u64,
+    tcsls_user_rsp: u64,
+    tcsls_user_retip: u64,
+    tcsls_user_rbp: u64,
+    tcsls_user_r12: u64,
+    tcsls_user_r13: u64,
+    tcsls_user_r14: u64,
+    tcsls_user_r15: u64,
+    tcsls_tls_ptr: u64,
+    tcsls_tcs_addr: u64,
+}
+
+enum Tcsls{
+    Version1(Tcsls_v1),
+    Version2(Tcsls_v2),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ToolchainVersion {
+    V1,
+    V2,
+}
+
+impl TryFrom<u32> for ToolchainVersion {
+    type Error = Error;
+    fn try_from(v: u32) -> Result<ToolchainVersion, Error> {
+        match v {
+            1 => Ok(ToolchainVersion::V1),
+            2 => Ok(ToolchainVersion::V2),
+            _ => bail!("Unknown toolchain version")
+        }
+    }
+}
+
+impl Tcsls {
+    fn new(stack_tos: u64, secondary: bool, tcs_addr: u64, tcsls_clist_next: u64, version: ToolchainVersion) -> Tcsls {
+        match version {
+            ToolchainVersion::V1 => Tcsls::Version1(Tcsls_v1 {
+                tcsls_tos: stack_tos,
+                tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
+                ..Default::default()
+            }),
+            ToolchainVersion::V2 => Tcsls::Version2(Tcsls_v2 {
+                tcsls_tos: stack_tos,
+                tcsls_flags: if secondary { TcslsFlags::SECONDARY } else { TcslsFlags::empty() },
+                tcsls_static_tcs_addr: tcs_addr,
+                tcsls_clist_next,
+                ..Default::default()
+            }),
+        }
+    }
+}
+
+impl From<Tcsls> for [u8; 128] {
+    fn from(tcsls: Tcsls) -> Self {
+        match tcsls {
+            Tcsls::Version1(tcsls) => {
+                let bytes: [u8; 112] = unsafe { std::mem::transmute(tcsls) };
+                let mut bytes: Vec<u8> = Vec::from(bytes);
+                bytes.resize(128, 0);
+                bytes.try_into().expect("Resized to correct size")
+            },
+            Tcsls::Version2(tcsls) => unsafe { std::mem::transmute(tcsls) },
+        }
+    }
+}
+
 pub struct LayoutInfo<'a> {
     elf: ElfFile<'a>,
     sym: Symbols<'a>,
@@ -119,6 +235,7 @@ pub struct LayoutInfo<'a> {
     ehfrm: SectionRange,
     ehfrm_hdr: SectionRange,
     text: SectionRange,
+    toolchain_version: ToolchainVersion,
 }
 
 macro_rules! read_syms {
@@ -182,7 +299,7 @@ macro_rules! check_size {
 
 impl<'a> LayoutInfo<'a> {
     // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/src/libstd/sys/sgx/abi/entry.S
-    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
+    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<ToolchainVersion, Error> {
         let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
             .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
 
@@ -202,17 +319,16 @@ impl<'a> LayoutInfo<'a> {
                 let version = u32::from_le_bytes(desc.try_into()
                     .map_err(|_| format_err!("Expecting 32 bit 'toolchain-version' in .note.x86_64-fortanix-unknown-sgx"))?);
 
-                const MAX_SUPPORTED_VERSION: u32 = 1;
+                const MAX_SUPPORTED_VERSION: u32 = 2;
                 
                 if version > MAX_SUPPORTED_VERSION {
                     bail!("Update required for 'fortanix-sgx-tools'. ELF file has toolchain version {}, installed tools supports up to version {}", version, MAX_SUPPORTED_VERSION);
                 }
+                version.try_into()
             },
             Ok(_) => bail!("Section data for .note.x86_64-fortanix-unknown-sgx is not a note."),
             Err(_) => bail!("Failed fetching data for section .note.x86_64-fortanix-unknown-sgx.")
         }
-
-        Ok(())
     }
     
     #[allow(non_snake_case)]
@@ -394,7 +510,7 @@ impl<'a> LayoutInfo<'a> {
         } else {
             bail!("Only 64-bit ELF supported!");
         }
-        Self::check_toolchain_version(&elf)?;
+        let toolchain_version = Self::check_toolchain_version(&elf)?;
         let sym = Self::check_symbols(&elf)?;
         let dynamic = Self::check_dynamic(&elf)?;
         Self::check_relocs(&elf, dynamic.as_ref())?;
@@ -416,6 +532,7 @@ impl<'a> LayoutInfo<'a> {
             ehfrm_hdr,
             text,
             sized,
+            toolchain_version,
         })
     }
 
@@ -576,6 +693,7 @@ impl<'a> LayoutInfo<'a> {
         let mut thread_start = heap_addr + self.heap_size;
         const THREAD_GUARD_SIZE: u64 = 0x10000;
         const TLS_SIZE: u64 = 0x1000;
+        assert!(TLS_SIZE > mem::size_of::<Tcsls>() as u64);
         let nssa = 1u32;
         let thread_size = THREAD_GUARD_SIZE
             + self.stack_size
@@ -587,6 +705,7 @@ impl<'a> LayoutInfo<'a> {
         } else {
             None
         };
+        let mut tcses: Vec<u64> = Vec::with_capacity(self.threads + 1);
 
         let mut writer = CanonicalSgxsWriter::new(
             writer,
@@ -611,6 +730,7 @@ impl<'a> LayoutInfo<'a> {
             secinfo
         )?;
 
+        let mut tcsls_clist_item_prev = thread_start as u64 + ((self.threads as u64 - 1) * thread_size) + THREAD_GUARD_SIZE + self.stack_size;
         for i in 0..self.threads {
             let stack_addr = thread_start + THREAD_GUARD_SIZE;
             let stack_tos = stack_addr + self.stack_size;
@@ -633,9 +753,8 @@ impl<'a> LayoutInfo<'a> {
                 (true, _) | (false, 0) => false,
                 (false, _) => true,
             };
-            let tls = unsafe {
-                std::mem::transmute::<_, [u8; 32]>([stack_tos, secondary as u64, 0u64, 0u64])
-            };
+            let tls: [u8; 128] = Tcsls::new(stack_tos, secondary, tcs_addr, tcsls_clist_item_prev, self.toolchain_version).into();
+            tcsls_clist_item_prev = tls_addr;
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
@@ -657,6 +776,7 @@ impl<'a> LayoutInfo<'a> {
                 flags: PageType::Tcs.into(),
             };
             writer.write_page(Some(&mut &tcs[..]), Some(tcs_addr), secinfo)?;
+            tcses.push(tcs_addr);
             let secinfo = SecinfoTruncated {
                 flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
             };
