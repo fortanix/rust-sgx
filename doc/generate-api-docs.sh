@@ -1,5 +1,10 @@
 #!/bin/bash -e
 
+if [[ -z "${WORKSPACE}" ]]; then
+    echo "Must provide WORKSPACE in environment" 1>&2
+    exit 1
+fi
+
 cd "$(readlink -f "$(dirname "$0")/..")"
 
 rm -rf target/doc
@@ -49,12 +54,37 @@ LIBS_SORTED=$(
     | egrep '^'$(echo $LIBS|sed 's/ /|/g')'$'
 )
 
+dependencies=''
+
 for LIB in $LIBS_SORTED; do
     cd $LIB
-    ARGS=""
-    if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
-        ARGS="--features $FEATURES"
+    version=$(git tag --sort=taggerdate | grep $LIB'_' | tail -n1 | cut -d'_' -f2 | cut -d'v' -f2)
+    dependency=$LIB' = { version = "='$version'"'
+    features="$(cargo read-manifest|jq -c '.metadata.docs.rs.features')"
+    if [ $features != 'null' ]; then
+        dependency=$dependency', features = '$features
     fi
-    cargo doc --no-deps --lib $ARGS
+    dependency=$dependency' }'
+    dependencies=$dependencies$dependency$'\n'
     cd -
 done
+
+pushd $WORKSPACE
+cargo new foo
+cd foo
+echo "$dependencies" >> Cargo.toml
+
+for LIB in $LIBS_SORTED; do
+    cargo doc -p $LIB --no-deps
+done
+
+popd
+
+for LIB in $LIBS_SORTED; do
+    _LIB=${LIB//-/_}
+    cp -r $WORKSPACE/foo/target/doc/$_LIB target/doc
+done
+
+pushd $WORKSPACE
+rm -rf foo
+popd
