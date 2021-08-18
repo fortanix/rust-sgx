@@ -10,6 +10,7 @@ use std::future::Future;
 #[cfg(target_env = "sgx")]
 use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
 use std::pin::Pin;
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 
 use fortanix_sgx_abi::FifoDescriptor;
@@ -19,6 +20,7 @@ use self::fifo::{Fifo, FifoBuffer};
 mod fifo;
 mod interface_sync;
 mod interface_async;
+mod position;
 #[cfg(test)]
 mod test_support;
 
@@ -123,6 +125,7 @@ pub struct AsyncSender<T: 'static, S> {
 pub struct AsyncReceiver<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
+    read_epoch: Arc<AtomicU32>,
 }
 
 /// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
@@ -137,3 +140,19 @@ impl<T> DescriptorGuard<T> {
         self.descriptor
     }
 }
+
+/// `PositionMonitor<T>` can be used to record the current read/write positions
+/// of a queue. Even though a queue is comprised of a limited number of slots
+/// arranged as a ring buffer, we can assign a position to each value written/
+/// read to/from the queue. This is useful in case we want to know whether or
+/// not a particular value written to the queue has been read.
+pub struct PositionMonitor<T: 'static> {
+    read_epoch: Arc<AtomicU32>,
+    fifo: Fifo<T>,
+}
+
+/// A read position in a queue.
+pub struct ReadPosition(u64);
+
+/// A write position in a queue.
+pub struct WritePosition(u64);

@@ -252,12 +252,13 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         self,
         usercall_queue: *mut FifoDescriptor<Usercall>,
         return_queue: *mut FifoDescriptor<Return>,
+        cancel_queue: *mut FifoDescriptor<Cancel>,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
             unsafe {
                 let ret = match (usercall_queue.as_mut(), return_queue.as_mut()) {
                     (Some(usercall_queue), Some(return_queue)) => {
-                        self.0.async_queues(usercall_queue, return_queue).await.map(Ok)
+                        self.0.async_queues(usercall_queue, return_queue, cancel_queue.as_mut()).await.map(Ok)
                     },
                     _ => {
                         Ok(Err(IoErrorKind::InvalidInput.into()))
@@ -321,13 +322,13 @@ fn result_from_io_error(err: IoError) -> Result {
     ret as _
 }
 
-trait ToSgxResult {
+pub(super) trait ToSgxResult {
     type Return;
 
     fn to_sgx_result(self) -> Self::Return;
 }
 
-trait SgxReturn {
+pub(super) trait SgxReturn {
     fn on_error() -> Self;
 }
 

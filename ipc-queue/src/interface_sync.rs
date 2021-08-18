@@ -112,7 +112,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     }
 
     pub fn try_recv(&self) -> Result<Identified<T>, TryRecvError> {
-        self.inner.try_recv_impl().map(|(val, wake_sender)| {
+        self.inner.try_recv_impl().map(|(val, wake_sender, _)| {
             if wake_sender {
                 self.synchronizer.notify(QueueEvent::NotFull);
             }
@@ -127,7 +127,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     pub fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
-                Ok((val, wake_sender)) => {
+                Ok((val, wake_sender, _)) => {
                     if wake_sender {
                         self.synchronizer.notify(QueueEvent::NotFull);
                     }

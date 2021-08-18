@@ -19,7 +19,7 @@ use futures::future::Future;
 
 type Register = u64;
 
-trait RegisterArgument {
+pub(super) trait RegisterArgument {
     fn from_register(_: Register) -> Self;
     fn into_register(self) -> Register;
 }
@@ -29,7 +29,7 @@ type EnclaveAbort = super::EnclaveAbort<bool>;
 pub(crate) type UsercallResult<T> = ::std::result::Result<T, EnclaveAbort>;
 pub(crate) type DispatchResult = UsercallResult<(Register, Register)>;
 
-trait ReturnValue {
+pub(super) trait ReturnValue {
     fn into_registers(self) -> DispatchResult;
 }
 
