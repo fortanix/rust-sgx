@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-tools"
-version = "0.8.4"
+version = "0.8.5"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """

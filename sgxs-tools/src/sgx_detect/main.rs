@@ -219,7 +219,7 @@ impl EinittokenProvider for TimeoutHardError<AesmClient> {
 }
 
 impl SgxSupport {
-    fn detect(env_config :tests::EnvConfig) -> Self {
+    fn detect(env_config: tests::EnvConfig) -> Self {
         fn rcerr<T>(v: Result<T, Error>) -> Result<T, Rc<Error>> {
             v.map_err(Rc::new)
         }
@@ -290,7 +290,7 @@ impl SgxSupport {
         let nodeagent_status = (|| {
             let mut response = reqwest::get("http://localhost:9092/v1/sys/version")?;
             let ver: NodeAgentVersion = response.json()?;
-            Ok(NodeAgentVersion{version: ver.version})
+            Ok(NodeAgentVersion { version: ver.version })
         })();
         let permdaemon_status = (|| -> Result<(), Error> {
             let mut isgx = false;
@@ -371,7 +371,7 @@ fn main() {
         (@arg PLAIN:    --plaintext                                             "Disable color and UTF-8 output")
         (@arg VERBOSE:  --verbose -v                                            "Print extra information when encountering issues")
         (@group environment_type =>
-            (@arg ENCLAVE_OS: --("enclave-os")                                   "Run extra diagnostics tests for EnclaveOS")
+            (@arg ENCLAVE_OS: --("enclave-os")                                  "Run extra diagnostics tests for EnclaveOS")
             (@arg ENCLAVE_MANAGER: --("enclave-manager")                        "Run extra diagnostics tests for Enclave Manager")
             (@arg DATA_SHIELD: --("data-shield")                                "Run extra diagnostics tests for Data Shield")
         )

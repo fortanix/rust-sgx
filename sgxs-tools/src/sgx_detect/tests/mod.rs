@@ -155,7 +155,7 @@ impl Print for SgxCpuConfiguration {
 struct EnclaveAttributes {
     standard_attributes: bool,
     kss: bool,
-    cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>
+    cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>,
 }
 
 #[dependency]
@@ -198,8 +198,16 @@ impl Print for EnclaveAttributes {
 #[optional_inner]
 #[derive(Clone, Update)]
 struct EnclavePageCache {
-    total_size: u64,
+    // Total size of confidentiality and integrity protected EPC
+    total_size_cip: u64,
+
+    // Total size of confidentiality protected only EPC
+    total_size_cpo: u64,
+
+    // Whether any pages were identified as unknown
     any_unknown: bool,
+
+    // Intel SGX Capability Enumeration Leaf
     cpuid_12h_epc: Result<Vec<Cpuid12hEnum>, Rc<Error>>,
 }
 
@@ -210,7 +218,8 @@ impl Dependency<SgxCpuSupport> for EnclavePageCache {
     fn update_dependency(&mut self, dependency: &SgxCpuSupport, support: &SgxSupport) {
         self.inner = match (&dependency.inner, &support.cpuid_12h_epc) {
             (Some(SgxCpuSupportInner { sgx: Ok(true) }), Ok(c)) => {
-                let mut total_size = 0;
+                let mut total_size_cip = 0;
+                let mut total_size_cpo = 0;
                 let mut any_unknown = false;
                 for section in c {
                     match section {
@@ -218,22 +227,29 @@ impl Dependency<SgxCpuSupport> for EnclavePageCache {
                             ty: EpcType::ConfidentialityIntegrityProtected,
                             phys_size,
                             ..
-                        } => total_size += phys_size,
+                        } => total_size_cip += phys_size,
+                        Cpuid12hEnum::Epc {
+                            ty: EpcType::ConfidentialityProtectedOnly,
+                            phys_size,
+                            ..
+                        } => total_size_cpo += phys_size,
                         Cpuid12hEnum::Invalid => unreachable!(),
                         _ => any_unknown = true,
                     }
                 }
 
                 Some(EnclavePageCacheInner {
-                    total_size,
+                    total_size_cip,
+                    total_size_cpo,
                     any_unknown,
-                    cpuid_12h_epc: Ok(c.clone())
+                    cpuid_12h_epc: Ok(c.clone()),
                 })
-            },
+            }
             (Some(_), c) => Some(EnclavePageCacheInner {
-                total_size: 0,
+                total_size_cip: 0,
+                total_size_cpo: 0,
                 any_unknown: true,
-                cpuid_12h_epc: c.clone()
+                cpuid_12h_epc: c.clone(),
             }),
             _ => None,
         };
@@ -249,7 +265,7 @@ impl Print for EnclavePageCache {
     fn supported(&self) -> Status {
         match self.inner {
             // Minimum useful EPC size: 1 VA + 1 SECS + 2 REG + 1 TCS
-            Some(EnclavePageCacheInner { total_size, .. }) if total_size >= 0x5000 => {
+            Some(EnclavePageCacheInner { total_size_cip, total_size_cpo, .. }) if total_size_cip >= 0x5000 || total_size_cpo >= 0x5000 => {
                 Status::Supported
             }
             Some(EnclavePageCacheInner {
@@ -336,14 +352,27 @@ impl Print for EpcSize {
     }
 
     fn print(&self, level: usize) {
+        fn epc_size_unit(total_size: u64) -> (f64, &'static str) {
+            let mut epc_size = total_size as f64 / 1024.0 / 1024.0;
+            let mut epc_unit = "MiB";
+            if epc_size >= 1024.0 {
+                epc_size /= 1024.0;
+                epc_unit = "GiB";
+            }
+            (epc_size, epc_unit)
+        }
+
         if let Some(epc) = &self.epc {
-            println!(
-                "{:width$}{}: {:.1}MiB",
-                "",
-                self.name(),
-                epc.total_size as f64 / (1048576.),
-                width = level * 2
-            );
+            print!("{:width$}{}:", "", self.name(), width = level * 2);
+            if epc.total_size_cip > 0 {
+                let (epc_size, epc_unit) = epc_size_unit(epc.total_size_cip);
+                print!(" {:.1}{}", epc_size, epc_unit);
+            }
+            if epc.total_size_cpo > 0 {
+                let (epc_size, epc_unit) = epc_size_unit(epc.total_size_cpo);
+                print!(" {:.1}{} (no integrity protection)", epc_size, epc_unit);
+            }
+            println!();
         }
     }
 }
@@ -398,7 +427,7 @@ impl Print for FlcCpuSupport {
 #[derive(Clone, Default, Update)]
 struct FlcCpuConfiguration {
     sgx_conf: Status,
-    msr_3ah: Option<Result<Msr3ah, Rc<Error>>>
+    msr_3ah: Option<Result<Msr3ah, Rc<Error>>>,
 }
 
 #[dependency]
@@ -533,7 +562,7 @@ impl Update for DeviceLoader {
             },
             #[cfg(windows)]
             devpath: Err(Rc::new(IoError::new(ErrorKind::NotFound, "Device Driver Path not supported in Windows").into())),
-            modstatus: support.sgxdev_status.clone()
+            modstatus: support.sgxdev_status.clone(),
         });
     }
 }
@@ -877,7 +906,7 @@ struct EnclaveManager {
     version: Result<String, Rc<Error>>,
 }
 
-impl Update for EnclaveManager{
+impl Update for EnclaveManager {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(EnclaveManagerInner {
             version: match support.node_agent.clone() {
@@ -894,7 +923,7 @@ impl Print for EnclaveManager {
     }
 
     fn print(&self, level: usize) {
-        if self.supported() == Status::Supported  {
+        if self.supported() == Status::Supported {
             println!("{:width$}{}{} ({})", "", self.supported().paint(), self.name(), self.inner.as_ref().map(|inner| inner.version.clone().unwrap()).unwrap(), width = level * 2);
         } else {
             println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
@@ -908,7 +937,7 @@ struct PermDaemon {
     service: Result<(), Rc<Error>>,
 }
 
-impl Update for PermDaemon{
+impl Update for PermDaemon {
     fn update(&mut self, support: &SgxSupport) {
         self.inner = Some(PermDaemonInner {
             service: support.perm_daemon.clone()
@@ -923,7 +952,7 @@ impl Print for PermDaemon {
 
     fn print(&self, level: usize) {
         if self.supported() == Status::Supported {
-            println!( "{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
+            println!("{:width$}{}{}", "", self.supported().paint(), self.name(), width = level * 2);
         } else {
             println!("{:width$}{}{} {}", "", self.supported().paint(), self.name(), "(Okay if container runtime is CRI-O (openshift))", width = level * 2);
         }
