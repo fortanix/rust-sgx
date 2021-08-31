@@ -1,5 +1,3 @@
-[workspace]
-
 [package]
 name = "em-app"
 version = "0.3.0"
@@ -31,6 +29,3 @@ sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "u
 uuid = { version = "0.6.3", features = ["v4", "serde"] }
 
 url = "1"
-
-[patch.crates-io]
-rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
