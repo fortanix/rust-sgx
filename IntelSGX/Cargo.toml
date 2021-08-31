@@ -15,6 +15,10 @@ members = [
     "sgx-isa",
     "sgx-pkix",
     "sgxs-loaders",
-    "sgxs-tools"
+    "sgxs-tools",
+    "em-app",
 ]
 exclude = ["examples"]
+
+[patch.crates-io]
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
