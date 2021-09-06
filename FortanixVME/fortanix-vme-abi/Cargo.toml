@@ -1,0 +1,17 @@
+[package]
+name = "fortanix-vme-abi"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+compiler_builtins = { version = "0.1.0", optional = true }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde_cbor = { version = "0.10", default-features = false, features = ["alloc"] }
+
+[features]
+docs = []
+rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std"]
