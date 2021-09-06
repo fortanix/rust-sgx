@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "enclave-runner",
+    "fortanix-vme-abi",
+]
