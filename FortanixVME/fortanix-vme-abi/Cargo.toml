@@ -2,6 +2,7 @@
 name = "fortanix-vme-abi"
 version = "0.1.0"
 edition = "2018"
+authors = ["Fortanix, Inc."]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,9 +10,11 @@ edition = "2018"
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 compiler_builtins = { version = "0.1.0", optional = true }
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_cbor = { version = "0.10", default-features = false, features = ["alloc"] }
+serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib", default-features = false, features = ["derive"] }
+serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib", default-features = false, features = ["alloc"] }
 
 [features]
+default = ["std"]
 docs = []
-rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std"]
+rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std", "serde/rustc-dep-of-std", "serde_cbor/rustc-dep-of-std"]
+std = ["serde_cbor/std"]
