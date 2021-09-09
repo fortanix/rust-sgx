@@ -2,4 +2,13 @@
 members = [
     "enclave-runner",
     "fortanix-vme-abi",
+    "tests/outgoing_connection",
 ]
+
+[patch.crates-io]
+libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" } 
+serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib" }
+serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib" }
+nix_19 = { git = "https://github.com/raoulstrackx/nix.git", branch = "raoul/fortanixvme_r0.19.2", package = "nix" }
+nix_22 = { git = "https://github.com/raoulstrackx/nix.git", branch = "raoul/fortanixvme_r0.22.4", package = "nix" }
+vsock = { git = "https://github.com/raoulstrackx/vsock-rs.git", branch = "raoul/fortanixvme" }
