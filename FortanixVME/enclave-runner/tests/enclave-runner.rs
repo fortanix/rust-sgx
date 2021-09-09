@@ -1,26 +1,8 @@
 use fortanix_vme_abi::{self, Response, Request};
 use std::thread;
-use std::io::{Error as IoError, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
-
-const READ_BUFF_SIZE: usize = 10;
-
-fn read_from_stream(stream: &mut TcpStream) -> Result<Vec<u8>, IoError> {
-    let mut buff = Vec::new();
-    buff.resize(READ_BUFF_SIZE, 0);
-    let n = stream.read(&mut buff)?;
-    buff.resize(n, 0);
-    if n == READ_BUFF_SIZE {
-        buff.append(&mut read_from_stream(stream)?);
-    }
-    Ok(buff)
-}
-
-fn read_response(stream: &mut TcpStream) -> Result<Response, IoError> {
-    let response = read_from_stream(stream)?;
-    Ok(Response::deserialize(&response).unwrap())
-}
 
 #[test]
 fn test_connect() {
@@ -28,14 +10,27 @@ fn test_connect() {
         let server = enclave_runner::server::Server::new();
         server.run().unwrap();
     });
-    thread::sleep(Duration::from_millis(1000));
-    let mut runner = TcpStream::connect(format!("localhost:{}", fortanix_vme_abi::SERVER_PORT)).unwrap();
-    let connect = Request::Connect {
-        addr: "google.com".to_string(),
-    };
-    let buf = connect.serialize().unwrap();
 
-    runner.write(&buf).unwrap();
-    let response = read_response(&mut runner).unwrap();
-    println!("response = {:?}", response);
+    // Wait until server starts listening
+    thread::sleep(Duration::from_millis(2000));
+
+    // Signal to connect to the specified server
+    let mut runner = fortanix_vme_abi::Client::new();
+    let connect = Request::Connect {
+        addr: "google.com:80".to_string(),
+    };
+
+    let Response::Connected{ port: proxy_port, .. } = runner.send(connect);
+
+    // Connect with proxy
+    thread::sleep(Duration::from_millis(500));
+    let mut proxy = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).unwrap();
+
+    thread::sleep(Duration::from_millis(500));
+    proxy.write(b"GET / HTTP/1.1\n\n").unwrap();
+    proxy.flush().unwrap();
+    let mut out = [0; 4000];
+    proxy.read(&mut out).unwrap();
+    let out = String::from_utf8(out.to_vec()).unwrap();
+    assert!(out.contains("Google"));
 }

@@ -7,5 +7,9 @@ edition = "2018"
 
 [dependencies]
 fortanix-vme-abi = { path = "../fortanix-vme-abi" }
+nix = "0.22.1"
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_cbor = { version = "0.10", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"]}
