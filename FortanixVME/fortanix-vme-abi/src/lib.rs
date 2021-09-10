@@ -5,7 +5,6 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
-use serde_cbor::Error;
 use alloc::vec::Vec;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
@@ -25,16 +24,6 @@ pub enum Request {
     },
 }
 
-impl Request{
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        serde_cbor::ser::to_vec(self)
-    }
-
-    pub fn deserialize(req: &Vec<u8>) -> Result<Self, Error> {
-        serde_cbor::from_slice(req)
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Connected {
@@ -44,35 +33,55 @@ pub enum Response {
     },
 }
 
-impl Response {
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        serde_cbor::ser::to_vec(self)
-    }
+#[derive(Debug)]
+pub enum Error {
+    SerializationError(serde_cbor::Error),
+    DeserializationError(serde_cbor::Error),
+    #[cfg(feature="std")]
+    ConnectionError(IoError),
+    AlreadyConnected,
+}
 
-    pub fn deserialize(res: &Vec<u8>) -> Result<Self, Error> {
-        serde_cbor::from_slice(res)
+#[cfg(feature="std")]
+impl From<IoError> for Error {
+    fn from(e: IoError) -> Error {
+        Error::ConnectionError(e)
     }
 }
 
 pub struct Client {
     #[cfg(feature="std")]
-    stream: TcpStream,
+    stream: Option<TcpStream>,
 }
 
 #[cfg(feature="std")]
 impl Client {
     pub fn new() -> Self {
-        Client{
-            stream: TcpStream::connect(alloc::format!("localhost:{}", SERVER_PORT)).unwrap(),
+        Client {
+            stream: None,
         }
     }
 
-    pub fn send(&mut self, req: Request) -> Response {
-        let req = req.serialize().unwrap();
-        self.stream.write(&req).unwrap();
+    pub fn connect(&mut self) -> Result<(), Error> {
+        if let Some(_) = self.stream {
+            return Err(Error::AlreadyConnected);
+        }
 
-        let response = Self::read_from_stream(&mut self.stream).unwrap();
-        Response::deserialize(&response).unwrap()
+        let stream = TcpStream::connect(alloc::format!("localhost:{}", SERVER_PORT))?;
+        self.stream = Some(stream);
+        Ok(())
+    }
+
+    pub fn send(&mut self, req: Request) -> Result<Response, Error> {
+        if let Some(stream) = self.stream.as_mut() {
+            let req = serde_cbor::ser::to_vec(&req).map_err(|e| Error::SerializationError(e))?;
+            stream.write(&req)?;
+
+            let response = Self::read_from_stream(stream).unwrap();
+            serde_cbor::from_slice(&response).map_err(|e| Error::DeserializationError(e))
+        } else {
+            Err(Error::AlreadyConnected)
+        }
     }
 
     fn read_from_stream(stream: &mut TcpStream) -> Result<Vec<u8>, IoError> {

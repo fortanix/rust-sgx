@@ -1,9 +1,9 @@
 use nix::sys::select::{select, FdSet};
 use std::thread;
-use std::io::{Error as IoError, Read, Write};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
-use fortanix_vme_abi::{self, Response, Request};
+use fortanix_vme_abi::{self, Error, Response, Request};
 
 const BUFF_SIZE: usize = 1024;
 const PROXY_BUFF_SIZE: usize = 4192;
@@ -37,9 +37,9 @@ impl Server {
         println!("{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
     }
 
-    fn read_request(stream: &mut TcpStream) -> Result<Request, IoError> {
+    fn read_request(stream: &mut TcpStream) -> Result<Request, Error> {
         let buff = Self::read_from_stream(stream)?;
-        let req = Request::deserialize(&buff).unwrap();
+        let req = serde_cbor::from_slice(&buff).map_err(|e| Error::DeserializationError(e))?;
         Self::log_communication(
             "runner",
             stream.local_addr().map(|addr| addr.port()).unwrap_or_default(),
@@ -140,8 +140,9 @@ impl Server {
     }
 
     fn handle_client(stream: &mut TcpStream) -> Result<(), IoError> {
-        match Self::read_request(stream)? {
-            Request::Connect{ addr } => Self::handle_request_connect(&addr, stream)?,
+        match Self::read_request(stream) {
+            Ok(Request::Connect{ addr }) => Self::handle_request_connect(&addr, stream)?,
+            Err(_e)                      => return Err(IoError::new(IoErrorKind::InvalidInput, "Failed to read request")),
         };
         Ok(())
     }

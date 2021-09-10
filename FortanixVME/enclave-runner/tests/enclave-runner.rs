@@ -16,11 +16,12 @@ fn test_connect() {
 
     // Signal to connect to the specified server
     let mut runner = fortanix_vme_abi::Client::new();
+    runner.connect().unwrap();
     let connect = Request::Connect {
         addr: "google.com:80".to_string(),
     };
 
-    let Response::Connected{ port: proxy_port, .. } = runner.send(connect);
+    let Response::Connected{ port: proxy_port, .. } = runner.send(connect).unwrap();
 
     // Connect with proxy
     thread::sleep(Duration::from_millis(500));
