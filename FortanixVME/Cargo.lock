@@ -15,12 +15,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
 
 [[package]]
-name = "byteorder"
-version = "1.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
-
-[[package]]
 name = "cc"
 version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -46,7 +40,7 @@ name = "enclave-runner"
 version = "0.1.0"
 dependencies = [
  "fortanix-vme-abi",
- "nix 0.22.1",
+ "nix",
  "serde",
  "serde_cbor",
 ]
@@ -60,14 +54,17 @@ dependencies = [
  "rustc-std-workspace-core",
  "serde",
  "serde_cbor",
- "vsock",
 ]
 
 [[package]]
 name = "half"
 version = "1.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62aca2aba2d62b4a7f5b33f3712cb1b0692779a56fb510499d5c0aa594daeaf3"
+source = "git+https://github.com/raoulstrackx/half-rs.git?branch=raoul/stdlib#a3297e47be330f8381f77e43c9a5ec932aa15ebf"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-alloc",
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "libc"
@@ -82,18 +79,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59accc507f1338036a0477ef61afdae33cde60840f4dfe481319ce3ad116ddf9"
 dependencies = [
  "autocfg",
-]
-
-[[package]]
-name = "nix"
-version = "0.19.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2ccba0cfe4fdf15982d1674c69b1fd80bad427d293849982668dfe454bd61f2"
-dependencies = [
- "bitflags",
- "cc",
- "cfg-if",
- "libc",
 ]
 
 [[package]]
@@ -141,29 +126,31 @@ checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
 
 [[package]]
 name = "serde"
-version = "1.0.130"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f12d06de37cf59146fbdecab66aa99f9fe4f78722e3607577a5375d66bd0c913"
+version = "1.0.131"
+source = "git+https://github.com/raoulstrackx/serde.git?branch=raoul/stdlib#c71e45f1e4b89e4577740a0c8b031e6667fec3b0"
 dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-alloc",
+ "rustc-std-workspace-core",
  "serde_derive",
 ]
 
 [[package]]
 name = "serde_cbor"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7081ed758ec726a6ed8ee7e92f5d3f6e6f8c3901b1f972e3a4a2f2599fad14f"
+version = "0.11.3"
+source = "git+https://github.com/raoulstrackx/cbor.git?branch=raoul/stdlib#77cb938b948f6f48f409196d9fe95ba4ae1a8aa7"
 dependencies = [
- "byteorder",
+ "compiler_builtins",
  "half",
+ "rustc-std-workspace-alloc",
+ "rustc-std-workspace-core",
  "serde",
 ]
 
 [[package]]
 name = "serde_derive"
 version = "1.0.130"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7bc1a1ab1961464eae040d96713baa5a724a8152c1222492465b54322ec508b"
+source = "git+https://github.com/raoulstrackx/serde.git?branch=raoul/stdlib#c71e45f1e4b89e4577740a0c8b031e6667fec3b0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -182,17 +169,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "tcp_connection"
+version = "0.1.0"
+
+[[package]]
 name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
-
-[[package]]
-name = "vsock"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c932be691560e8f3f7b2be5a47df1b8f45387e1d1df40d45b2e62284b9e9150e"
-dependencies = [
- "libc",
- "nix 0.19.1",
-]

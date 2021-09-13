@@ -5,6 +5,8 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
+
+#[cfg(feature="std")]
 use alloc::vec::Vec;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
@@ -15,6 +17,7 @@ use std::net::TcpStream;
 
 #[cfg(feature="std")]
 pub const SERVER_PORT: u16 = 1024;
+#[cfg(feature="std")]
 const BUFF_SIZE: usize = 1024;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]

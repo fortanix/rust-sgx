@@ -2,4 +2,9 @@
 members = [
     "enclave-runner",
     "fortanix-vme-abi",
+    "tests/tcp_connection",
 ]
+
+[patch.crates-io]
+serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib" }
+serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib" }

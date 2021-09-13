@@ -2,14 +2,15 @@
 name = "enclave-runner"
 version = "0.1.0"
 edition = "2018"
+authors = ["Fortanix, Inc."]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 fortanix-vme-abi = { path = "../fortanix-vme-abi" }
 nix = "0.22.1"
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde_cbor = { version = "0.10", default-features = false, features = ["alloc"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_cbor = { version = "0.11", features = ["std"] }
 
 [dev-dependencies]
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"]}
