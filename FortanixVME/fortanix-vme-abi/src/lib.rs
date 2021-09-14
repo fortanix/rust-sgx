@@ -5,6 +5,11 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
+#[cfg(not(feature="std"))]
+use core::fmt::{self, Display};
+#[cfg(feature="std")]
+use std::fmt::{self, Display};
+
 use core::convert::{TryFrom, TryInto};
 use alloc::vec::Vec;
 use alloc::string::String;
@@ -73,6 +78,12 @@ pub enum Error {
     #[cfg(feature="std")]
     ConnectionError(IoError),
     AlreadyConnected,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "todo")
+    }
 }
 
 #[cfg(feature="std")]
