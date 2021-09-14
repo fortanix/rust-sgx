@@ -5,8 +5,7 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
-
-#[cfg(feature="std")]
+use core::convert::{TryFrom, TryInto};
 use alloc::vec::Vec;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,6 @@ use std::io::{Error as IoError, Read, Write};
 #[cfg(feature="std")]
 use std::net::TcpStream;
 
-#[cfg(feature="std")]
 pub const SERVER_PORT: u16 = 1024;
 #[cfg(feature="std")]
 const BUFF_SIZE: usize = 1024;
@@ -27,6 +25,22 @@ pub enum Request {
     },
 }
 
+impl TryFrom<&[u8]> for Request {
+    type Error = Error;
+
+    fn try_from(request: &[u8]) -> Result<Request, Error> {
+        serde_cbor::from_slice(&request).map_err(|e| Error::DeserializationError(e))
+    }
+}
+
+impl TryInto<Vec<u8>> for Request {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Vec<u8>, Error> {
+        serde_cbor::ser::to_vec(&self).map_err(|e| Error::SerializationError(e))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Connected {
@@ -34,6 +48,22 @@ pub enum Response {
         local_addr: String,
         peer_addr: String,
     },
+}
+
+impl TryFrom<&[u8]> for Response {
+    type Error = Error;
+
+    fn try_from(response: &[u8]) -> Result<Response, Error> {
+        serde_cbor::from_slice(&response).map_err(|e| Error::DeserializationError(e))
+    }
+}
+
+impl TryInto<Vec<u8>> for Response {
+    type Error = Error;
+
+    fn try_into(self) -> Result<Vec<u8>, Error> {
+        serde_cbor::ser::to_vec(&self).map_err(|e| Error::SerializationError(e))
+    }
 }
 
 #[derive(Debug)]
@@ -77,7 +107,7 @@ impl Client {
 
     pub fn send(&mut self, req: Request) -> Result<Response, Error> {
         if let Some(stream) = self.stream.as_mut() {
-            let req = serde_cbor::ser::to_vec(&req).map_err(|e| Error::SerializationError(e))?;
+            let req: Vec<u8> = req.try_into()?;
             stream.write(&req)?;
 
             let response = Self::read_from_stream(stream).unwrap();
