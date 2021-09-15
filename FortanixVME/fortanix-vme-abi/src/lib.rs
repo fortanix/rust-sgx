@@ -5,23 +5,19 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
-#[cfg(not(feature="std"))]
 use core::fmt::{self, Display};
-#[cfg(feature="std")]
-use std::fmt::{self, Display};
-
 use core::convert::{TryFrom, TryInto};
 use alloc::vec::Vec;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 #[cfg(feature="std")]
-use std::io::{Error as IoError, Read, Write};
+use std::io::{Error as IoError, ErrorKind, Read, Write};
 #[cfg(feature="std")]
 use std::net::TcpStream;
 
 pub const SERVER_PORT: u16 = 1024;
 #[cfg(feature="std")]
-const BUFF_SIZE: usize = 1024;
+const BUFF_SIZE: usize = 2048;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
@@ -78,6 +74,7 @@ pub enum Error {
     #[cfg(feature="std")]
     ConnectionError(IoError),
     AlreadyConnected,
+    NotConnected,
 }
 
 impl Display for Error {
@@ -121,21 +118,46 @@ impl Client {
             let req: Vec<u8> = req.try_into()?;
             stream.write(&req)?;
 
-            let response = Self::read_from_stream(stream).unwrap();
-            serde_cbor::from_slice(&response).map_err(|e| Error::DeserializationError(e))
+            let response = self.read_from_stream().unwrap();
+            Response::try_from(response.as_slice())
         } else {
-            Err(Error::AlreadyConnected)
+            Err(Error::NotConnected)
         }
     }
 
-    fn read_from_stream(stream: &mut TcpStream) -> Result<Vec<u8>, IoError> {
+    fn read_from_stream(&mut self) -> Result<Vec<u8>, IoError> {
         let mut buff = [0; BUFF_SIZE];
-        let n = stream.read(&mut buff)?;
+        let n = self.read(&mut buff)?;
         let mut buff = buff[0..n].to_vec();
         //TODO This will block when the n*BUFF_SIZE bytes need to be read
         if n == BUFF_SIZE {
-            buff.append(&mut Self::read_from_stream(stream)?);
+            buff.append(&mut self.read_from_stream()?);
         }
         Ok(buff)
+    }
+
+    fn to_inner(&mut self) -> Result<&mut TcpStream, Error> {
+        self.stream.as_mut().ok_or(Error::NotConnected)
+    }
+}
+
+#[cfg(feature="std")]
+impl Read for Client {
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
+        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
+        socket.read(buf)
+    }
+}
+
+#[cfg(feature="std")]
+impl Write for Client {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, IoError> {
+        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
+        socket.write(buf)
+    }
+
+    fn flush(&mut self) -> Result<(), IoError> {
+        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
+        socket.flush()
     }
 }
