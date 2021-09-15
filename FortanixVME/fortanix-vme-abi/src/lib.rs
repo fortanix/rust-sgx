@@ -11,12 +11,11 @@ use alloc::vec::Vec;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 #[cfg(feature="std")]
-use std::io::{Error as IoError, ErrorKind, Read, Write};
+use std::io::{Error as IoError, Read, Write};
 #[cfg(feature="std")]
 use std::net::TcpStream;
 
 pub const SERVER_PORT: u16 = 1024;
-#[cfg(feature="std")]
 const BUFF_SIZE: usize = 2048;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -71,10 +70,9 @@ impl TryInto<Vec<u8>> for Response {
 pub enum Error {
     SerializationError(serde_cbor::Error),
     DeserializationError(serde_cbor::Error),
-    #[cfg(feature="std")]
-    ConnectionError(IoError),
-    AlreadyConnected,
-    NotConnected,
+    ConnectionFailed,
+    WriteFailed,
+    ReadFailed,
 }
 
 impl Display for Error {
@@ -85,79 +83,82 @@ impl Display for Error {
 
 #[cfg(feature="std")]
 impl From<IoError> for Error {
-    fn from(e: IoError) -> Error {
-        Error::ConnectionError(e)
+    fn from(_e: IoError) -> Error {
+        Error::ConnectionFailed
     }
 }
 
-pub struct Client {
-    #[cfg(feature="std")]
-    stream: Option<TcpStream>,
+pub struct Client<T: EnclaveRunnerConnection> {
+    stream: T,
+}
+
+pub trait EnclaveRunnerConnection where Self: Sized {
+    fn create_connection() -> Result<Self, Error>;
+    fn send_to_runner(&mut self, buff: &[u8]) -> Result<(), Error>;
+    fn receive_from_runner(&mut self, buff: &mut [u8]) -> Result<usize, Error>;
 }
 
 #[cfg(feature="std")]
-impl Client {
-    pub fn new() -> Self {
-        Client {
-            stream: None,
-        }
+impl EnclaveRunnerConnection for TcpStream {
+    fn create_connection() -> Result<Self, Error> {
+        TcpStream::connect(alloc::format!("localhost:{}", SERVER_PORT)).map_err(|_| Error::ConnectionFailed)
     }
 
-    pub fn connect(&mut self) -> Result<(), Error> {
-        if let Some(_) = self.stream {
-            return Err(Error::AlreadyConnected);
-        }
-
-        let stream = TcpStream::connect(alloc::format!("localhost:{}", SERVER_PORT))?;
-        self.stream = Some(stream);
+    fn send_to_runner(&mut self, buff: &[u8]) -> Result<(), Error> {
+        self.write(buff).map_err(|_| Error::WriteFailed)?;
         Ok(())
     }
 
-    pub fn send(&mut self, req: Request) -> Result<Response, Error> {
-        if let Some(stream) = self.stream.as_mut() {
-            let req: Vec<u8> = req.try_into()?;
-            stream.write(&req)?;
+    fn receive_from_runner(&mut self, buff: &mut [u8]) -> Result<usize, Error> {
+        self.read(buff).map_err(|_| Error::ReadFailed)
+    }
+}
 
-            let response = self.read_from_stream().unwrap();
-            Response::try_from(response.as_slice())
-        } else {
-            Err(Error::NotConnected)
-        }
+impl<T: EnclaveRunnerConnection> Client<T> {
+    pub fn new() -> Result<Self, Error> {
+        let stream = T::create_connection()?;
+
+        Ok(Client {
+            stream,
+        })
     }
 
-    fn read_from_stream(&mut self) -> Result<Vec<u8>, IoError> {
+    pub fn send(&mut self, req: Request) -> Result<(), Error> {
+        let req: Vec<u8> = req.try_into()?;
+        self.stream.send_to_runner(&req)
+    }
+
+    fn read_all(&mut self) -> Result<Vec<u8>, Error> {
         let mut buff = [0; BUFF_SIZE];
-        let n = self.read(&mut buff)?;
+        let n = self.stream.receive_from_runner(&mut buff)?;
         let mut buff = buff[0..n].to_vec();
         //TODO This will block when the n*BUFF_SIZE bytes need to be read
         if n == BUFF_SIZE {
-            buff.append(&mut self.read_from_stream()?);
+            buff.append(&mut self.read_all()?);
         }
         Ok(buff)
     }
 
-    fn to_inner(&mut self) -> Result<&mut TcpStream, Error> {
-        self.stream.as_mut().ok_or(Error::NotConnected)
+    pub fn receive(&mut self) -> Result<Response, Error> {
+        let response = self.read_all()?;
+        Response::try_from(response.as_slice())
     }
 }
 
 #[cfg(feature="std")]
-impl Read for Client {
+impl<T: EnclaveRunnerConnection + Read> Read for Client<T> {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, IoError> {
-        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
-        socket.read(buf)
+        self.stream.read(buf)
     }
 }
 
 #[cfg(feature="std")]
-impl Write for Client {
+impl<T: EnclaveRunnerConnection + Write> Write for Client<T> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, IoError> {
-        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
-        socket.write(buf)
+        self.stream.write(buf)
     }
 
     fn flush(&mut self) -> Result<(), IoError> {
-        let socket = self.to_inner().map_err(|_| IoError::new(ErrorKind::NotConnected, ""))?;
-        socket.flush()
+        self.stream.flush()
     }
 }

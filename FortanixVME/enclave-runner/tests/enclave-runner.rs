@@ -15,13 +15,13 @@ fn test_connect() {
     thread::sleep(Duration::from_millis(2000));
 
     // Signal to connect to the specified server
-    let mut runner = fortanix_vme_abi::Client::new();
-    runner.connect().unwrap();
+    let mut runner = fortanix_vme_abi::Client::<TcpStream>::new().expect("Connection failed");
     let connect = Request::Connect {
         addr: "google.com:80".to_string(),
     };
 
-    let Response::Connected{ port: proxy_port, .. } = runner.send(connect).unwrap();
+    runner.send(connect).expect("Send to enclave runner failed");
+    let Response::Connected{ port: proxy_port, .. } = runner.receive().expect("Receiving from enclave runner failed");
 
     // Connect with proxy
     thread::sleep(Duration::from_millis(500));
