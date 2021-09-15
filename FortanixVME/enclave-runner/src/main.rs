@@ -1,7 +1,7 @@
-use enclave_runner::server::Server;
+use enclave_runner::server::{Server, Tcp};
 
 fn main() {
     println!("Starting enclave runner...");
-    let server = Server::new();
+    let server: Server<Tcp> = Server::new();
     server.run().expect("Server failed");
 }
