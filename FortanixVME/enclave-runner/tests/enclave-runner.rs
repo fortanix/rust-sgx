@@ -1,4 +1,4 @@
-use fortanix_vme_abi::{self, Response, Request};
+use fortanix_vme_abi;
 use std::thread;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -15,17 +15,12 @@ fn test_connect() {
     thread::sleep(Duration::from_millis(2000));
 
     // Signal to connect to the specified server
-    let mut runner = fortanix_vme_abi::Client::<TcpStream>::new().expect("Connection failed");
-    let connect = Request::Connect {
-        addr: "google.com:80".to_string(),
-    };
-
-    runner.send(connect).expect("Send to enclave runner failed");
-    let Response::Connected{ port: proxy_port, .. } = runner.receive().expect("Receiving from enclave runner failed");
+    let mut client = fortanix_vme_abi::Client::<TcpStream>::new().expect("Connection failed");
+    let proxy_port = client.open_proxy_connection("google.com:80".to_string()).expect("Proxy connection failed");
 
     // Connect with proxy
     thread::sleep(Duration::from_millis(500));
-    let mut proxy = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).unwrap();
+    let mut proxy = TcpStream::connect(format!("127.0.0.1:{}", proxy_port)).expect("Proxy failed");
 
     thread::sleep(Duration::from_millis(500));
     proxy.write(b"GET / HTTP/1.1\n\n").unwrap();

@@ -73,6 +73,7 @@ pub enum Error {
     ConnectionFailed,
     WriteFailed,
     ReadFailed,
+    UnexpectedResponse,
 }
 
 impl Display for Error {
@@ -121,6 +122,18 @@ impl<T: EnclaveRunnerConnection> Client<T> {
         Ok(Client {
             stream,
         })
+    }
+
+    pub fn open_proxy_connection(&mut self, addr: String) -> Result<u16, Error> {
+        let connect = Request::Connect {
+            addr
+        };
+        self.send(connect)?;
+        if let Response::Connected{ port: proxy_port, .. } = self.receive()? {
+            Ok(proxy_port)
+        } else {
+            Err(Error::UnexpectedResponse)
+        }
     }
 
     pub fn send(&mut self, req: Request) -> Result<(), Error> {
