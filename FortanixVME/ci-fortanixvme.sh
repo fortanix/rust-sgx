@@ -17,6 +17,12 @@ function setup_environment {
     cargo clean
 }
 
+function test_runner {
+    pushd enclave-runner
+    cargo test
+    popd
+}
+
 function start_runner {
     pushd enclave-runner
     cargo build
@@ -34,6 +40,7 @@ function cargo_test {
     popd
 }
 
+test_runner
 setup_environment
 start_runner
 cargo_test tcp_connection
