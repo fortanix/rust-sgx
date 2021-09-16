@@ -5,9 +5,11 @@ use std::marker::PhantomData;
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use fortanix_vme_abi::{self, Error, Response, Request};
+use vsock::{SockAddr, VsockListener, VsockStream};
 
 const BUFF_SIZE: usize = 1024;
 const PROXY_BUFF_SIZE: usize = 4192;
+const VMADDR_CID_ANY: u32 = 0xFFFFFFFF;
 
 pub struct Server<T: ProxyConnection> {
     port: u16,
@@ -18,6 +20,8 @@ pub trait ProxyConnection {
     type Listener;
     type Stream: StreamConnection;
 
+    fn name() -> &'static str;
+
     fn bind(port: u16) -> io::Result<Self::Listener>;
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream>;
@@ -26,11 +30,11 @@ pub trait ProxyConnection {
 pub trait StreamConnection: Read + Write + Sized + Send + 'static {
     fn local(&self) -> io::Result<String>;
 
-    fn local_port(&self) -> io::Result<u16>;
+    fn local_port(&self) -> io::Result<u32>;
 
     fn peer(&self) -> io::Result<String>;
 
-    fn peer_port(&self) -> io::Result<u16>;
+    fn peer_port(&self) -> io::Result<u32>;
 
     fn shutdown(&self, how: Shutdown) -> io::Result<()>;
 }
@@ -40,6 +44,10 @@ pub struct Tcp {}
 impl ProxyConnection for Tcp {
     type Listener = TcpListener;
     type Stream = TcpStream;
+
+    fn name() -> &'static str {
+        "TCP"
+    }
 
     fn bind(port: u16) -> io::Result<Self::Listener> {
         TcpListener::bind(format!("127.0.0.1:{}", port))
@@ -55,16 +63,73 @@ impl StreamConnection for TcpStream {
         self.local_addr().map(|addr| addr.to_string())
     }
 
-    fn local_port(&self) -> io::Result<u16> {
-        self.local_addr().map(|addr| addr.port())
+    fn local_port(&self) -> io::Result<u32> {
+        self.local_addr().map(|addr| addr.port() as _)
     }
 
     fn peer(&self) -> io::Result<String> {
         self.peer_addr().map(|addr| addr.to_string())
     }
 
-    fn peer_port(&self) -> io::Result<u16> {
-        self.peer_addr().map(|addr| addr.port())
+    fn peer_port(&self) -> io::Result<u32> {
+        self.peer_addr().map(|addr| addr.port() as _)
+    }
+
+    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        self.shutdown(how)
+    }
+}
+
+pub struct Vsock {}
+
+impl ProxyConnection for Vsock {
+    fn name() -> &'static str {
+        "Vsock"
+    }
+
+    type Listener = VsockListener;
+    type Stream = VsockStream;
+
+    fn bind(port: u16) -> io::Result<Self::Listener> {
+        VsockListener::bind_with_cid_port(VMADDR_CID_ANY, port as _)
+    }
+
+    fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
+        listener.accept().map(|(stream, _addr)| stream)
+    }
+}
+
+impl StreamConnection for VsockStream {
+    fn local(&self) -> io::Result<String> {
+        self.local_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
+            format!("{}", addr.cid())
+        } else {
+            unreachable!();
+        })
+    }
+
+    fn local_port(&self) -> io::Result<u32> {
+        self.local_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
+            addr.port()
+        } else {
+            unreachable!();
+        })
+    }
+
+    fn peer(&self) -> io::Result<String> {
+        self.peer_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
+            format!("{}", addr.cid())
+        } else {
+            unreachable!();
+        })
+    }
+
+    fn peer_port(&self) -> io::Result<u32> {
+        self.peer_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
+            addr.port()
+        } else {
+            unreachable!();
+        })
     }
 
     fn shutdown(&self, how: Shutdown) -> io::Result<()> {
@@ -91,7 +156,7 @@ impl<T: ProxyConnection> Server<T> {
         Ok(buff)
     }
 
-    fn log_communication(src: &str, src_port: u16, dst: &str, dst_port: u16, msg: &str, arrow: &str) {
+    fn log_communication(src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: &str) {
         let src = format!("{}:{}", src, src_port);
         let dst = format!("{}:{}", dst, dst_port);
         let msg: String = msg.chars().into_iter().take(80).collect();
@@ -116,18 +181,18 @@ impl<T: ProxyConnection> Server<T> {
         let n = src.read(&mut buff[..])?;
         Self::log_communication(
             "runner",
-            src.local_addr().map(|addr| addr.port()).unwrap_or_default(),
+            src.local_addr().map(|addr| addr.port() as _).unwrap_or_default(),
             src_name,
-            src.peer_addr().map(|addr| addr.port()).unwrap_or_default(),
+            src.peer_addr().map(|addr| addr.port() as _).unwrap_or_default(),
             &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
             "<-");
         if n > 0 {
             dst.write_all(&buff[0..n])?;
             Self::log_communication(
                 dst_name,
-                dst.peer_addr().map(|addr| addr.port()).unwrap_or_default(),
+                dst.peer_addr().map(|addr| addr.port() as _).unwrap_or_default(),
                 "runner",
-                dst.local_addr().map(|addr| addr.port()).unwrap_or_default(),
+                dst.local_addr().map(|addr| addr.port() as _).unwrap_or_default(),
                 &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
                 "<-");
         }
@@ -209,6 +274,8 @@ impl<T: ProxyConnection> Server<T> {
     }
 
     pub fn run(&self) -> std::io::Result<()> {
+        println!("Starting enclave runner.");
+        println!("Listening on {} port {}...", T::name(), self.port);
         let listener = T::bind(self.port)?;
 
         loop {
