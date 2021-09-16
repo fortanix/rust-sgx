@@ -1,3 +1,4 @@
+use enclave_runner::server::{Server, Tcp};
 use fortanix_vme_abi;
 use std::thread;
 use std::io::{Read, Write};
@@ -7,7 +8,7 @@ use std::time::Duration;
 #[test]
 fn test_connect() {
     let _ = thread::spawn(|| {
-        let server = enclave_runner::server::Server::new();
+        let server: Server<Tcp> = enclave_runner::server::Server::new();
         server.run().unwrap();
     });
 
