@@ -26,7 +26,7 @@ function test_runner {
 function start_runner {
     pushd enclave-runner
     cargo build
-    cargo run &
+    cargo run -- --tcp &
     pid_runner=$!
     popd
 }

@@ -6,17 +6,15 @@ use std::net::TcpStream;
 use std::time::Duration;
 
 #[test]
-fn test_connect() {
-    let _ = thread::spawn(|| {
-        let server: Server<Tcp> = enclave_runner::server::Server::new();
-        server.run().unwrap();
-    });
+fn outgoing_connections() {
+    let server: Server<Tcp> = enclave_runner::server::Server::new(None);
+    let (_server_thread, server_port) = server.run().unwrap();
 
     // Wait until server starts listening
-    thread::sleep(Duration::from_millis(2000));
+    thread::sleep(Duration::from_millis(500));
 
     // Signal to connect to the specified server
-    let mut client = fortanix_vme_abi::Client::<TcpStream>::new().expect("Connection failed");
+    let mut client = fortanix_vme_abi::Client::<TcpStream>::new(Some(server_port)).expect("Connection failed");
     let proxy_port = client.open_proxy_connection("google.com:80".to_string()).expect("Proxy connection failed");
 
     // Connect with proxy

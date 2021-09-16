@@ -9,8 +9,10 @@ authors = ["Fortanix, Inc."]
 [dependencies]
 fortanix-vme-abi = { path = "../fortanix-vme-abi" }
 nix = "0.22.1"
+rand = "0.8.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = { version = "0.11", features = ["std"] }
+vsock = "0.2.4"
 
 [dev-dependencies]
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"]}
