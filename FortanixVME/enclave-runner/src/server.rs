@@ -13,6 +13,7 @@ const PROXY_BUFF_SIZE: usize = 4192;
 const SOCKET_BIND_RETRIES: u16 = 10;
 const VMADDR_CID_ANY: u32 = 0xFFFFFFFF;
 const VMADDR_CID_LOCAL: u32 = 0x1;
+const VMADDR_CID_HOST: u32 = 0x2;
 
 enum Direction {
     Left,
@@ -33,6 +34,8 @@ pub trait ProxyConnection {
     fn bind(port: Option<u16>) -> io::Result<Self::Listener>;
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream>;
+
+    fn connect(port: u32) -> io::Result<Self::Stream>;
 }
 
 pub trait StreamConnection: Read + Write + AsRawFd + Sized + Send + 'static {
@@ -73,6 +76,10 @@ impl ProxyConnection for Tcp {
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
         listener.accept().map(|(stream, _addr)| stream)
+    }
+
+    fn connect(port: u32) -> io::Result<Self::Stream> {
+        TcpStream::connect(format!("localhost:{}", port))
     }
 }
 
@@ -142,6 +149,10 @@ impl ProxyConnection for Vsock {
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
         listener.accept().map(|(stream, _addr)| stream)
+    }
+
+    fn connect(port: u32) -> io::Result<Self::Stream> {
+        unimplemented!()
     }
 }
 
@@ -339,10 +350,70 @@ impl<T: ProxyConnection> Server<T> {
         Ok(())
     }
 
+    fn handle_incoming_connection(mut remote: TcpStream, mut proxy: T::Stream) {
+        loop {
+            let mut fd_set = FdSet::new();
+            fd_set.insert(remote.as_raw_fd());
+            fd_set.insert(proxy.as_raw_fd());
+            select(None, Some(&mut fd_set), None, None, None).unwrap();
+
+            if fd_set.contains(remote.as_raw_fd()) {
+                if Self::transfer_data(&mut remote, "remote", &mut proxy, "proxy").is_err() {
+                    break;
+                }
+            }
+            if fd_set.contains(proxy.as_raw_fd()) {
+                if Self::transfer_data(&mut proxy, "proxy", &mut remote, "remote").is_err() {
+                    break;
+                }
+            }
+        }
+    }
+
+    /*
+     * +-----------+
+     * |   remote  |
+     * +-----------+
+     *       ^
+     *       |
+     *       |
+     *       v
+     * +----[2]-----+            +-------------+
+     * |   Runner   |            |   enclave   |
+     * +--[3]--[1]--+            +-[ ]----[ ]--+
+     *     \    \---- enclave ------/      /
+     *      \-------- proxy --------------/
+     *
+     *  [1] enclave
+     *  [2] remote
+     *  [3] proxy
+     */
+    fn handle_request_bind(addr: &String, enclave_port: u32, enclave: &mut T::Stream) -> Result<(), IoError> {
+        let listener = TcpListener::bind(addr)?;
+        let port = listener.local_addr().map(|addr| addr.port())?;
+        let response = Response::Bound{ port: port as _ };
+        Self::log_communication(
+            "runner",
+            enclave.local_port().unwrap_or_default(),
+            "enclave",
+            enclave.peer_port().unwrap_or_default(),
+            &format!("{:?}", &response),
+            Direction::Right,
+            T::name());
+        enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
+
+        for incoming in listener.incoming() {
+            let proxy = T::connect(enclave_port)?;
+            Self::handle_incoming_connection(incoming?, proxy);
+        }
+        Ok(())
+    }
+
     fn handle_client(stream: &mut T::Stream) -> Result<(), IoError> {
         match Self::read_request(stream) {
-            Ok(Request::Connect{ addr }) => Self::handle_request_connect(&addr, stream)?,
-            Err(_e)                      => return Err(IoError::new(IoErrorKind::InvalidInput, "Failed to read request")),
+            Ok(Request::Connect{ addr })               => Self::handle_request_connect(&addr, stream)?,
+            Ok(Request::Bind{ addr, enclave_port })    => Self::handle_request_bind(&addr, enclave_port, stream)?,
+            Err(_e)                                    => return Err(IoError::new(IoErrorKind::InvalidInput, "Failed to read request")),
         };
         Ok(())
     }

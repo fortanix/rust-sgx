@@ -29,3 +29,41 @@ fn outgoing_connections() {
     let out = String::from_utf8(out.to_vec()).unwrap();
     assert!(out.contains("Google"));
 }
+
+#[test]
+fn incoming_connections() {
+    let server: Server<Tcp> = enclave_runner::server::Server::new(None);
+    let (_server_thread, server_port) = server.run().unwrap();
+
+    // Wait until server starts listening
+    thread::sleep(Duration::from_millis(500));
+
+    // Start listening on a socket and tell the enclave runner to do the same and forward incoming
+    // connections
+    // This will be a vsock listener
+    let mut client = fortanix_vme_abi::Client::<TcpStream>::new(Some(server_port)).expect("Connection failed");
+    let (enclave_listener, parent_port) = client.bind_socket("localhost:0".to_string()).expect("Bind failed");
+
+    thread::spawn(move || {
+        // emulate enclave handling incoming connections
+        for stream in enclave_listener.incoming() {
+            let mut stream = stream.unwrap();
+            let mut buff = [0u8; 100];
+            let n = stream.read(&mut buff).unwrap();
+
+            let buff: Vec<u8> = buff[0..n].iter_mut().map(|c| char::from(*c).to_ascii_uppercase() as u8).collect();
+            stream.write(&buff).unwrap();
+        }
+    });
+
+    // Connect to the enclave and inspect what it returns
+    let mut stream = TcpStream::connect(format!("localhost:{}", parent_port)).expect("Can't connect to runner socket");
+    let in_msg = "Hello World!";
+    stream.write(in_msg.as_bytes()).unwrap();
+    let mut buff = [0u8; 100];
+    let n = stream.read(&mut buff).unwrap();
+    let out_msg = String::from_utf8((&buff[0..n]).to_vec()).unwrap();
+    let mut expected = String::from(in_msg);
+    expected.make_ascii_uppercase();
+    assert_eq!(expected, out_msg);
+}
