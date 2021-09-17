@@ -11,6 +11,11 @@ const BUFF_SIZE: usize = 1024;
 const PROXY_BUFF_SIZE: usize = 4192;
 const VMADDR_CID_ANY: u32 = 0xFFFFFFFF;
 
+enum Direction {
+    Left,
+    Right,
+}
+
 pub struct Server<T: ProxyConnection> {
     port: Option<u16>,
     phantom_data: PhantomData<T>
@@ -50,7 +55,7 @@ impl ProxyConnection for Tcp {
     type Stream = TcpStream;
 
     fn name() -> &'static str {
-        "TCP"
+        "tcp"
     }
 
     fn bind(port: Option<u16>) -> io::Result<Self::Listener> {
@@ -94,7 +99,7 @@ pub struct Vsock {}
 
 impl ProxyConnection for Vsock {
     fn name() -> &'static str {
-        "Vsock"
+        "vsock"
     }
 
     type Listener = VsockListener;
@@ -176,10 +181,14 @@ impl<T: ProxyConnection> Server<T> {
         Ok(buff)
     }
 
-    fn log_communication(src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: &str) {
+    fn log_communication(src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: Direction, prot: &str) {
         let src = format!("{}:{}", src, src_port);
         let dst = format!("{}:{}", dst, dst_port);
         let msg: String = msg.chars().into_iter().take(80).collect();
+        let arrow = match arrow {
+            Direction::Left => format!("<{:-^width$}", prot, width = 10),
+            Direction::Right => format!("{:-^width$}>", prot, width = 10),
+        };
         println!("{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
     }
 
@@ -192,7 +201,8 @@ impl<T: ProxyConnection> Server<T> {
             "enclave",
             stream.peer_port().unwrap_or_default(),
             &format!("{:?}", &req),
-            "<-");
+            Direction::Left,
+            T::name());
         Ok(req)
     }
 
@@ -205,7 +215,8 @@ impl<T: ProxyConnection> Server<T> {
             src_name,
             src.peer_addr().map(|addr| addr.port() as _).unwrap_or_default(),
             &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
-            "<-");
+            Direction::Left,
+            "TCP");
         if n > 0 {
             dst.write_all(&buff[0..n])?;
             Self::log_communication(
@@ -214,7 +225,8 @@ impl<T: ProxyConnection> Server<T> {
                 "runner",
                 dst.local_addr().map(|addr| addr.port() as _).unwrap_or_default(),
                 &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
-                "<-");
+                Direction::Left,
+                "TCP");
         }
         Ok(n)
     }
@@ -258,7 +270,8 @@ impl<T: ProxyConnection> Server<T> {
             "enclave",
             enclave.peer_port().unwrap_or_default(),
             &format!("{:?}", &response),
-            "->");
+            Direction::Right,
+            T::name());
         enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
 
         // Wait for incoming connection from enclave
