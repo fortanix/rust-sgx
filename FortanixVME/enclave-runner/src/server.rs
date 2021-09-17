@@ -1,4 +1,5 @@
 use nix::sys::select::{select, FdSet};
+use rand::Rng;
 use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
 use std::marker::PhantomData;
@@ -9,7 +10,9 @@ use vsock::{SockAddr, VsockListener, VsockStream};
 
 const BUFF_SIZE: usize = 1024;
 const PROXY_BUFF_SIZE: usize = 4192;
+const SOCKET_BIND_RETRIES: u16 = 10;
 const VMADDR_CID_ANY: u32 = 0xFFFFFFFF;
+const VMADDR_CID_LOCAL: u32 = 0x1;
 
 enum Direction {
     Left,
@@ -32,7 +35,9 @@ pub trait ProxyConnection {
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream>;
 }
 
-pub trait StreamConnection: Read + Write + Sized + Send + 'static {
+pub trait StreamConnection: Read + Write + AsRawFd + Sized + Send + 'static {
+    fn protocol() -> &'static str;
+
     fn local(&self) -> io::Result<String>;
 
     fn local_port(&self) -> io::Result<u32>;
@@ -45,7 +50,11 @@ pub trait StreamConnection: Read + Write + Sized + Send + 'static {
 }
 
 pub trait StreamListener: Send + 'static {
+    type Stream: StreamConnection;
+
     fn port(&self) -> io::Result<u32>;
+
+    fn accept(&self) -> io::Result<Self::Stream>;
 }
 
 pub struct Tcp {}
@@ -68,6 +77,10 @@ impl ProxyConnection for Tcp {
 }
 
 impl StreamConnection for TcpStream {
+    fn protocol() -> &'static str {
+        "tcp"
+    }
+
     fn local(&self) -> io::Result<String> {
         self.local_addr().map(|addr| addr.to_string())
     }
@@ -90,8 +103,14 @@ impl StreamConnection for TcpStream {
 }
 
 impl StreamListener for TcpListener {
+    type Stream = TcpStream;
+
     fn port(&self) -> io::Result<u32> {
         self.local_addr().map(|addr| addr.port() as _)
+    }
+
+    fn accept(&self) -> io::Result<Self::Stream> {
+        self.accept().map(|(stream, _addr)| stream)
     }
 }
 
@@ -106,7 +125,19 @@ impl ProxyConnection for Vsock {
     type Stream = VsockStream;
 
     fn bind(port: Option<u16>) -> io::Result<Self::Listener> {
-        VsockListener::bind_with_cid_port(VMADDR_CID_ANY, port.unwrap_or(0) as _)
+        fn bind_to_port(port: Option<u32>, retries: u16) -> io::Result<VsockListener> {
+            let chosen_port = port.unwrap_or(rand::thread_rng().gen_range(1024..u32::MAX));
+            match VsockListener::bind_with_cid_port(VMADDR_CID_ANY, chosen_port) {
+                Ok(listener) => Ok(listener),
+                Err(e)       => if retries == 0 {
+                    Err(e)
+                } else {
+                    bind_to_port(port, retries - 1)
+                }
+            }
+        }
+
+        bind_to_port(port.map(|p| p as _), SOCKET_BIND_RETRIES)
     }
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
@@ -115,6 +146,10 @@ impl ProxyConnection for Vsock {
 }
 
 impl StreamConnection for VsockStream {
+    fn protocol() -> &'static str {
+        "vsock"
+    }
+
     fn local(&self) -> io::Result<String> {
         self.local_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
             format!("{}", addr.cid())
@@ -153,12 +188,18 @@ impl StreamConnection for VsockStream {
 }
 
 impl StreamListener for VsockListener {
+    type Stream = VsockStream;
+
     fn port(&self) -> io::Result<u32> {
         self.local_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
             addr.port() as _
         } else {
             0
         })
+    }
+
+    fn accept(&self) -> io::Result<Self::Stream> {
+        self.accept().map(|(stream, _addr)| stream)
     }
 }
 
@@ -206,27 +247,27 @@ impl<T: ProxyConnection> Server<T> {
         Ok(req)
     }
 
-    fn transfer_data(src: &mut TcpStream, src_name: &str, dst: &mut TcpStream, dst_name: &str) -> Result<usize, IoError> {
+    fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
         let mut buff = [0; PROXY_BUFF_SIZE];
         let n = src.read(&mut buff[..])?;
         Self::log_communication(
             "runner",
-            src.local_addr().map(|addr| addr.port() as _).unwrap_or_default(),
+            src.local_port().unwrap_or_default(),
             src_name,
-            src.peer_addr().map(|addr| addr.port() as _).unwrap_or_default(),
+            src.peer_port().unwrap_or_default(),
             &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
             Direction::Left,
-            "TCP");
+            S::protocol());
         if n > 0 {
             dst.write_all(&buff[0..n])?;
             Self::log_communication(
                 dst_name,
-                dst.peer_addr().map(|addr| addr.port() as _).unwrap_or_default(),
+                dst.peer_port().unwrap_or_default(),
                 "runner",
-                dst.local_addr().map(|addr| addr.port() as _).unwrap_or_default(),
+                dst.local_port().unwrap_or_default(),
                 &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
                 Direction::Left,
-                "TCP");
+                D::protocol());
         }
         Ok(n)
     }
@@ -255,8 +296,8 @@ impl<T: ProxyConnection> Server<T> {
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
-        let proxy_server = TcpListener::bind("127.0.0.1:0")?;
-        let proxy_server_port = proxy_server.local_addr()?.port();
+        let proxy_server = <T as ProxyConnection>::bind(None)?;
+        let proxy_server_port = proxy_server.port()?;
 
         // Notify the enclave on which port her proxy is listening on
         let response = Response::Connected {
@@ -275,7 +316,7 @@ impl<T: ProxyConnection> Server<T> {
         enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
 
         // Wait for incoming connection from enclave
-        let mut proxy = proxy_server.incoming().next().unwrap()?;
+        let mut proxy = proxy_server.accept()?;
 
         // Pass messages between remote server <-> enclave
         loop {

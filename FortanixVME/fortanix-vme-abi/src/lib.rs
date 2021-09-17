@@ -44,7 +44,7 @@ impl TryInto<Vec<u8>> for Request {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Connected {
-        port: u16,
+        port: u32,
         local_addr: String,
         peer_addr: String,
     },
@@ -124,7 +124,7 @@ impl<T: EnclaveRunnerConnection> Client<T> {
         })
     }
 
-    pub fn open_proxy_connection(&mut self, addr: String) -> Result<u16, Error> {
+    pub fn open_proxy_connection(&mut self, addr: String) -> Result<u32, Error> {
         let connect = Request::Connect {
             addr
         };
