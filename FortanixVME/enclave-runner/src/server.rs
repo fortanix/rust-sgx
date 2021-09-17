@@ -73,40 +73,65 @@ impl Server {
         Ok(n)
     }
 
-    fn handle_request_connect(server: &String, client: &mut TcpStream) -> Result<(), IoError> {
-        let proxy_socket = TcpListener::bind("127.0.0.1:0")?;
-        let proxy_port = proxy_socket.local_addr()?.port();
-        let mut server_socket = TcpStream::connect(server)?;
-        let server = server.split_terminator(":").next().unwrap_or(server);
+    /*
+     * +-----------+
+     * |   remote  |
+     * +-----------+
+     *       ^
+     *       |
+     *       |
+     *       v
+     * +----[2]-----+            +-------------+
+     * |   Runner   |            |   enclave   |
+     * +--[3]--[1]--+            +-[ ]----[ ]--+
+     *     \    \---- enclave ------/      /
+     *      \-------- proxy --------------/
+     *
+     *  [1] enclave
+     *  [2] remote
+     *  [3] proxy
+     */
+    fn handle_request_connect(remote_addr: &String, enclave: &mut TcpStream) -> Result<(), IoError> {
+        // Connect to remote server
+        let mut remote_socket = TcpStream::connect(remote_addr)?;
+        let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
+
+        // Create listening socket that the enclave can connect to
+        let proxy_server = TcpListener::bind("127.0.0.1:0")?;
+        let proxy_server_port = proxy_server.local_addr()?.port();
+
+        // Notify the enclave on which port her proxy is listening on
         let response = Response::Connected {
-                port: proxy_port,
-                local_addr: client.local_addr()?.to_string(),
-                peer_addr: client.peer_addr()?.to_string(),
+                port: proxy_server_port,
+                local_addr: enclave.local_addr()?.to_string(),
+                peer_addr: enclave.peer_addr()?.to_string(),
             };
         Self::log_communication(
             "runner",
-            client.local_addr().map(|addr| addr.port()).unwrap_or_default(),
+            enclave.local_addr().map(|addr| addr.port()).unwrap_or_default(),
             "enclave",
-            client.peer_addr().map(|addr| addr.port()).unwrap_or_default(),
+            enclave.peer_addr().map(|addr| addr.port()).unwrap_or_default(),
             &format!("{:?}", &response),
             "->");
-        client.write(&response.serialize().unwrap())?;
+        enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
 
-        let mut client_socket = proxy_socket.incoming().next().unwrap()?;
+        // Wait for incoming connection from enclave
+        let mut proxy = proxy_server.incoming().next().unwrap()?;
 
+        // Pass messages between remote server <-> enclave
         loop {
             let mut fd_set = FdSet::new();
-            fd_set.insert(client_socket.as_raw_fd());
-            fd_set.insert(server_socket.as_raw_fd());
+            fd_set.insert(proxy.as_raw_fd());
+            fd_set.insert(remote_socket.as_raw_fd());
             select(None, Some(&mut fd_set), None, None, None).unwrap();
 
-            if fd_set.contains(client_socket.as_raw_fd()) {
-                if Self::transfer_data(&mut client_socket, "proxy client", &mut server_socket, server).is_err() {
+            if fd_set.contains(proxy.as_raw_fd()) {
+                if Self::transfer_data(&mut proxy, "proxy", &mut remote_socket, remote_name).is_err() {
                     break;
                 }
             }
-            if fd_set.contains(server_socket.as_raw_fd()) {
-                if Self::transfer_data(&mut server_socket, server, &mut client_socket, "proxy client").is_err() {
+            if fd_set.contains(remote_socket.as_raw_fd()) {
+                if Self::transfer_data(&mut remote_socket, remote_name, &mut proxy, "proxy").is_err() {
                     break;
                 }
             }
