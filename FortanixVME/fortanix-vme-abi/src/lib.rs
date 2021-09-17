@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature="std")]
 use std::io::{Error as IoError, Read, Write};
 #[cfg(feature="std")]
-use std::net::TcpStream;
+use std::net::{TcpStream, TcpListener};
 
 pub const SERVER_PORT: u16 = 1024;
 const BUFF_SIZE: usize = 2048;
@@ -22,6 +22,10 @@ const BUFF_SIZE: usize = 2048;
 pub enum Request {
     Connect {
         addr: String,
+    },
+    Bind {
+        addr: String,
+        enclave_port: u32,
     },
 }
 
@@ -47,6 +51,9 @@ pub enum Response {
         port: u32,
         local_addr: String,
         peer_addr: String,
+    },
+    Bound {
+        port: u32,
     },
 }
 
@@ -94,13 +101,18 @@ pub struct Client<T: EnclaveRunnerConnection> {
 }
 
 pub trait EnclaveRunnerConnection where Self: Sized {
+    type Listerner;
+
     fn create_connection(port: Option<u32>) -> Result<Self, Error>;
     fn send_to_runner(&mut self, buff: &[u8]) -> Result<(), Error>;
     fn receive_from_runner(&mut self, buff: &mut [u8]) -> Result<usize, Error>;
+    fn bind() -> Result<(Self::Listerner, u32), Error>;
 }
 
 #[cfg(feature="std")]
 impl EnclaveRunnerConnection for TcpStream {
+    type Listerner = TcpListener;
+
     fn create_connection(port: Option<u32>) -> Result<Self, Error> {
         TcpStream::connect(alloc::format!("localhost:{}", port.unwrap_or(SERVER_PORT as _))).map_err(|_| Error::ConnectionFailed)
     }
@@ -112,6 +124,12 @@ impl EnclaveRunnerConnection for TcpStream {
 
     fn receive_from_runner(&mut self, buff: &mut [u8]) -> Result<usize, Error> {
         self.read(buff).map_err(|_| Error::ReadFailed)
+    }
+
+    fn bind() -> Result<(Self::Listerner, u32), Error> {
+        let listener = TcpListener::bind("localhost:0")?;
+        let port = listener.local_addr()?.port();
+        Ok((listener, port as _))
     }
 }
 
@@ -131,6 +149,25 @@ impl<T: EnclaveRunnerConnection> Client<T> {
         self.send(connect)?;
         if let Response::Connected{ port: proxy_port, .. } = self.receive()? {
             Ok(proxy_port)
+        } else {
+            Err(Error::UnexpectedResponse)
+        }
+    }
+
+    pub fn bind_socket(&mut self, addr: String) -> Result<(<T as EnclaveRunnerConnection>::Listerner, u32), Error> {
+        // Start listener socket within enclave, waiting for incoming connections from enclave
+        // runner
+        let (enclave_socket, enclave_port) = T::bind()?;
+
+        // Tell runner to start listening on the specified address and forward trafic to the
+        // specified port
+        let bind = Request::Bind {
+            addr,
+            enclave_port,
+        };
+        self.send(bind)?;
+        if let Response::Bound { port } = self.receive()? {
+            Ok((enclave_socket, port))
         } else {
             Err(Error::UnexpectedResponse)
         }
