@@ -94,15 +94,15 @@ pub struct Client<T: EnclaveRunnerConnection> {
 }
 
 pub trait EnclaveRunnerConnection where Self: Sized {
-    fn create_connection() -> Result<Self, Error>;
+    fn create_connection(port: Option<u32>) -> Result<Self, Error>;
     fn send_to_runner(&mut self, buff: &[u8]) -> Result<(), Error>;
     fn receive_from_runner(&mut self, buff: &mut [u8]) -> Result<usize, Error>;
 }
 
 #[cfg(feature="std")]
 impl EnclaveRunnerConnection for TcpStream {
-    fn create_connection() -> Result<Self, Error> {
-        TcpStream::connect(alloc::format!("localhost:{}", SERVER_PORT)).map_err(|_| Error::ConnectionFailed)
+    fn create_connection(port: Option<u32>) -> Result<Self, Error> {
+        TcpStream::connect(alloc::format!("localhost:{}", port.unwrap_or(SERVER_PORT as _))).map_err(|_| Error::ConnectionFailed)
     }
 
     fn send_to_runner(&mut self, buff: &[u8]) -> Result<(), Error> {
@@ -116,8 +116,8 @@ impl EnclaveRunnerConnection for TcpStream {
 }
 
 impl<T: EnclaveRunnerConnection> Client<T> {
-    pub fn new() -> Result<Self, Error> {
-        let stream = T::create_connection()?;
+    pub fn new(port: Option<u32>) -> Result<Self, Error> {
+        let stream = T::create_connection(port)?;
 
         Ok(Client {
             stream,

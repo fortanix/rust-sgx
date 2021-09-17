@@ -1,5 +1,5 @@
 use nix::sys::select::{select, FdSet};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
 use std::marker::PhantomData;
 use std::net::{Shutdown, TcpListener, TcpStream};
@@ -12,17 +12,17 @@ const PROXY_BUFF_SIZE: usize = 4192;
 const VMADDR_CID_ANY: u32 = 0xFFFFFFFF;
 
 pub struct Server<T: ProxyConnection> {
-    port: u16,
+    port: Option<u16>,
     phantom_data: PhantomData<T>
 }
 
 pub trait ProxyConnection {
-    type Listener;
+    type Listener: StreamListener;
     type Stream: StreamConnection;
 
     fn name() -> &'static str;
 
-    fn bind(port: u16) -> io::Result<Self::Listener>;
+    fn bind(port: Option<u16>) -> io::Result<Self::Listener>;
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream>;
 }
@@ -39,6 +39,10 @@ pub trait StreamConnection: Read + Write + Sized + Send + 'static {
     fn shutdown(&self, how: Shutdown) -> io::Result<()>;
 }
 
+pub trait StreamListener: Send + 'static {
+    fn port(&self) -> io::Result<u32>;
+}
+
 pub struct Tcp {}
 
 impl ProxyConnection for Tcp {
@@ -49,8 +53,8 @@ impl ProxyConnection for Tcp {
         "TCP"
     }
 
-    fn bind(port: u16) -> io::Result<Self::Listener> {
-        TcpListener::bind(format!("127.0.0.1:{}", port))
+    fn bind(port: Option<u16>) -> io::Result<Self::Listener> {
+        TcpListener::bind(format!("127.0.0.1:{}", port.unwrap_or(0)))
     }
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
@@ -80,6 +84,12 @@ impl StreamConnection for TcpStream {
     }
 }
 
+impl StreamListener for TcpListener {
+    fn port(&self) -> io::Result<u32> {
+        self.local_addr().map(|addr| addr.port() as _)
+    }
+}
+
 pub struct Vsock {}
 
 impl ProxyConnection for Vsock {
@@ -90,8 +100,8 @@ impl ProxyConnection for Vsock {
     type Listener = VsockListener;
     type Stream = VsockStream;
 
-    fn bind(port: u16) -> io::Result<Self::Listener> {
-        VsockListener::bind_with_cid_port(VMADDR_CID_ANY, port as _)
+    fn bind(port: Option<u16>) -> io::Result<Self::Listener> {
+        VsockListener::bind_with_cid_port(VMADDR_CID_ANY, port.unwrap_or(0) as _)
     }
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream> {
@@ -137,10 +147,20 @@ impl StreamConnection for VsockStream {
     }
 }
 
+impl StreamListener for VsockListener {
+    fn port(&self) -> io::Result<u32> {
+        self.local_addr().map(|addr| if let SockAddr::Vsock(addr) = addr {
+            addr.port() as _
+        } else {
+            0
+        })
+    }
+}
+
 impl<T: ProxyConnection> Server<T> {
-    pub fn new() -> Self {
+    pub fn new(port: Option<u16>) -> Self {
         Server {
-            port: fortanix_vme_abi::SERVER_PORT,
+            port,
             phantom_data: PhantomData::default(),
         }
     }
@@ -273,22 +293,27 @@ impl<T: ProxyConnection> Server<T> {
         Ok(())
     }
 
-    pub fn run(&self) -> std::io::Result<()> {
+    pub fn run(&self) -> std::io::Result<(JoinHandle<()>, u32)> {
         println!("Starting enclave runner.");
-        println!("Listening on {} port {}...", T::name(), self.port);
         let listener = T::bind(self.port)?;
+        let port = listener.port()?;
+        println!("Listening on {} port {}...", T::name(), port);
 
-        loop {
-            let stream = T::incoming(&listener).unwrap();
-            thread::Builder::new()
-                .spawn(move || {
-                    let mut stream = stream;
-                    if let Err(e) = Self::handle_client(&mut stream) {
-                        eprintln!("Error handling connection: {}, shutting connection down", e);
-                        let _ = stream.shutdown(Shutdown::Both);
-                    }
-                })?;
-        }
+        let handle = thread::Builder::new().spawn(move || {
+            let listener = listener;
+            loop {
+                let stream = T::incoming(&listener).unwrap();
+                let _ = thread::Builder::new()
+                    .spawn(move || {
+                        let mut stream = stream;
+                        if let Err(e) = Self::handle_client(&mut stream) {
+                            eprintln!("Error handling connection: {}, shutting connection down", e);
+                            let _ = stream.shutdown(Shutdown::Both);
+                        }
+                    });
+            }
+        })?;
+        Ok((handle, port))
     }
 }
 
