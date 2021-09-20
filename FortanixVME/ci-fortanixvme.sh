@@ -2,6 +2,8 @@
 repo_root=$(readlink -f $(dirname "${BASH_SOURCE[0]}")/..)
 cd ${repo_root}/FortanixVME
 
+source ./ci-common.sh
+
 function cleanup {
     echo "Stopping enclave runner"
     kill $pid_runner
@@ -43,4 +45,4 @@ function cargo_test {
 test_runner
 setup_environment
 start_runner
-cargo_test tcp_connection
+cargo_test outgoing_connection
