@@ -2,6 +2,8 @@
 repo_root=$(readlink -f $(dirname "${BASH_SOURCE[0]}")/..)
 cd ${repo_root}/FortanixVME
 
+source ./ci-common.sh
+
 function cleanup {
     echo "Stopping enclave runner"
     kill $pid_runner
@@ -36,11 +38,11 @@ function cargo_test {
     pushd tests/$name
     VME_TARGET="${TOOLCHAIN_DIR}/rust/rustup/toolchains/nightly-2021-09-08-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-fortanixvme/x86_64-unknown-linux-fortanixvme.json"
     RUSTFLAGS="-Clink-self-contained=yes" \
-      cargo test --release --target ${VME_TARGET} -Zbuild-std -- --nocapture
+      cargo run --release --target ${VME_TARGET} -Zbuild-std -- --nocapture
     popd
 }
 
 test_runner
 setup_environment
 start_runner
-cargo_test tcp_connection
+cargo_test outgoing_connection
