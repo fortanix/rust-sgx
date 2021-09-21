@@ -1,4 +1,6 @@
 Bind to socket to 3400
 Listening for incoming connections...
-Connected
-Connected
+Waiting for connection 1
+Connection 1: Connected
+Waiting for connection 2
+Connection 2: Connected

@@ -4,8 +4,8 @@ repo_root=$(readlink -f $(dirname "${BASH_SOURCE[0]}")/..)
 function cargo_test {
     name=$1
     pushd ${repo_root}/FortanixVME/tests/$name
-    out=$(mktemp)
-    err=$(mktemp)
+    out=$(mktemp /tmp/$name.out.XXXXX)
+    err=$(mktemp /tmp/$name.err.XXXXX)
 
     if [ -f ./test_interaction.sh ]; then
         ./test_interaction.sh &
@@ -25,14 +25,13 @@ function cargo_test {
     out=$(cat ${out} | grep -v "#")
     expected=$(cat ./out.expected)
     if [ "${out}" == "${expected}" ]; then
-        echo "Ok"
+        echo "Test ${name}: Success"
     else
-        echo "Test ${name} failed"
+        echo "Test ${name}: Failed"
+	echo "Got: ${out}"
+	echo "Expected: ${expected}"
 	exit -1
     fi
-
-    cat ${out}
-    cat ${err}
     popd
 }
 
