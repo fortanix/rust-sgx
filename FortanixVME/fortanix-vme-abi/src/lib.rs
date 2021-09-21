@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use std::io::{Error as IoError, Read, Write};
 #[cfg(feature="std")]
 use std::net::{TcpStream, TcpListener};
+#[cfg(feature="std")]
+use std::println;
 
 pub const SERVER_PORT: u16 = 1024;
 const BUFF_SIZE: usize = 2048;
@@ -129,6 +131,7 @@ impl EnclaveRunnerConnection for TcpStream {
     fn bind() -> Result<(Self::Listerner, u32), Error> {
         let listener = TcpListener::bind("localhost:0")?;
         let port = listener.local_addr()?.port();
+        println!("Bind enclave socket: {}", port);
         Ok((listener, port as _))
     }
 }

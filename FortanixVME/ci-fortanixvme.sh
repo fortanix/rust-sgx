@@ -46,3 +46,6 @@ test_runner
 setup_environment
 start_runner
 cargo_test outgoing_connection
+cargo_test incoming_connection
+
+echo "All tests succeeded!"

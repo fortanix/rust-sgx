@@ -261,15 +261,16 @@ impl<T: ProxyConnection> Server<T> {
     fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
         let mut buff = [0; PROXY_BUFF_SIZE];
         let n = src.read(&mut buff[..])?;
-        Self::log_communication(
-            "runner",
-            src.local_port().unwrap_or_default(),
-            src_name,
-            src.peer_port().unwrap_or_default(),
-            &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
-            Direction::Left,
-            S::protocol());
         if n > 0 {
+            Self::log_communication(
+                "runner",
+                src.local_port().unwrap_or_default(),
+                src_name,
+                src.peer_port().unwrap_or_default(),
+                &String::from_utf8(buff[0..n].to_vec()).unwrap_or_default(),
+                Direction::Left,
+                S::protocol());
+
             dst.write_all(&buff[0..n])?;
             Self::log_communication(
                 dst_name,
@@ -351,6 +352,7 @@ impl<T: ProxyConnection> Server<T> {
     }
 
     fn handle_incoming_connection(mut remote: TcpStream, mut proxy: T::Stream) {
+        println!("[runner] Handling incoming connection");
         loop {
             let mut fd_set = FdSet::new();
             fd_set.insert(remote.as_raw_fd());
@@ -402,9 +404,14 @@ impl<T: ProxyConnection> Server<T> {
             T::name());
         enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
 
+        println!("[runner]: Listening on port: {}", port);
         for incoming in listener.incoming() {
-            let proxy = T::connect(enclave_port)?;
-            Self::handle_incoming_connection(incoming?, proxy);
+            let _ = thread::Builder::new().spawn(move || {
+                println!("[runner] Incoming connection! Connecting to: {}", enclave_port);
+                let proxy = T::connect(enclave_port).unwrap();
+                println!("[runner] Connected!");
+                Self::handle_incoming_connection(incoming.unwrap(), proxy);
+            });
         }
         Ok(())
     }
