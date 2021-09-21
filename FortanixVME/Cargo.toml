@@ -3,6 +3,7 @@ members = [
     "enclave-runner",
     "fortanix-vme-abi",
     "tests/outgoing_connection",
+    "tests/incoming_connection",
 ]
 
 [patch.crates-io]
