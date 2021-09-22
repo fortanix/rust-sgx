@@ -35,7 +35,7 @@ pub trait ProxyConnection {
 
     fn incoming(listener: &Self::Listener) -> io::Result<Self::Stream>;
 
-    fn connect(port: u32) -> io::Result<Self::Stream>;
+    fn connect(address: u32, port: u32) -> io::Result<Self::Stream>;
 }
 
 pub trait StreamConnection: Read + Write + AsRawFd + Sized + Send + 'static {
@@ -78,7 +78,7 @@ impl ProxyConnection for Tcp {
         listener.accept().map(|(stream, _addr)| stream)
     }
 
-    fn connect(port: u32) -> io::Result<Self::Stream> {
+    fn connect(_address: u32, port: u32) -> io::Result<Self::Stream> {
         TcpStream::connect(format!("localhost:{}", port))
     }
 }
@@ -151,9 +151,9 @@ impl ProxyConnection for Vsock {
         listener.accept().map(|(stream, _addr)| stream)
     }
 
-    fn connect(port: u32) -> io::Result<Self::Stream> {
+    fn connect(cid: u32, port: u32) -> io::Result<Self::Stream> {
         println!("[{}:{}] Creating vsock connection to port {}", file!(), line!(), port);
-        let stream = VsockStream::connect_with_cid_port(VMADDR_CID_LOCAL, port)?;
+        let stream = VsockStream::connect_with_cid_port(cid, port)?;
         println!("[{}:{}] vsock connection created to port {}", file!(), line!(), port);
         Ok(stream)
     }
@@ -394,6 +394,8 @@ impl<T: ProxyConnection> Server<T> {
      *  [3] proxy
      */
     fn handle_request_bind(addr: &String, enclave_port: u32, enclave: &mut T::Stream) -> Result<(), IoError> {
+        println!("handle request bind: peer cid = {:?}", enclave.peer());
+        let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(0);
         let listener = TcpListener::bind(addr)?;
         let port = listener.local_addr().map(|addr| addr.port())?;
         let response = Response::Bound{ port: port as _ };
@@ -410,8 +412,8 @@ impl<T: ProxyConnection> Server<T> {
         println!("[runner]: Listening on port: {}", port);
         for incoming in listener.incoming() {
             let _ = thread::Builder::new().spawn(move || {
-                println!("[runner] Incoming connection! Connecting to: {}", enclave_port);
-                let proxy = T::connect(enclave_port).unwrap();
+                println!("[runner] Incoming connection! Connecting to enclave on cid:port: {}:{}", cid, enclave_port);
+                let proxy = T::connect(cid, enclave_port).unwrap();
                 println!("[runner] Connected!");
                 Self::handle_incoming_connection(incoming.unwrap(), proxy);
             });
