@@ -152,7 +152,10 @@ impl ProxyConnection for Vsock {
     }
 
     fn connect(port: u32) -> io::Result<Self::Stream> {
-        unimplemented!()
+        println!("[{}:{}] Creating vsock connection to port {}", file!(), line!(), port);
+        let stream = VsockStream::connect_with_cid_port(VMADDR_CID_LOCAL, port)?;
+        println!("[{}:{}] vsock connection created to port {}", file!(), line!(), port);
+        Ok(stream)
     }
 }
 
