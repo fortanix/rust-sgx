@@ -5,8 +5,7 @@ cd ${repo_root}/FortanixVME
 source ./ci-common.sh
 
 function cleanup {
-    echo "Stopping enclave runner"
-    kill $pid_runner
+    stop_runner
 }
 
 function setup_environment {
@@ -27,25 +26,46 @@ function test_runner {
 
 function start_runner {
     pushd enclave-runner
+    connection_type=$1
     cargo build
-    cargo run -- --tcp &
+    cargo run -- ${connection_type} &
     pid_runner=$!
     popd
 }
 
-function cargo_test {
-    name=$1
-    pushd tests/$name
-    VME_TARGET="${TOOLCHAIN_DIR}/rust/rustup/toolchains/nightly-2021-09-08-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-fortanixvme/x86_64-unknown-linux-fortanixvme.json"
-    RUSTFLAGS="-Clink-self-contained=yes" \
-      cargo run --release --target ${VME_TARGET} -Zbuild-std -- --nocapture
-    popd
+function stop_runner {
+    if [[ ${pid_runner} -ne 0 ]]; then
+        echo "Stopping enclave runner"
+        kill ${pid_runner}
+	pid_runner=0
+    fi
+}
+
+function run_tests {
+    tests=$@
+
+    setup_environment
+    start_runner --tcp
+    for name in ${tests}
+    do
+        cargo_test $name
+    done
+    stop_runner
+
+
+    if [[ ${vsock_loopback} -eq 1 ]]; then
+        start_runner --vsock
+        for name in ${tests}
+        do
+            cargo_test $name
+        done
+        stop_runner
+    else
+        echo "vsock loopback device not available, skipping these tests"
+    fi
 }
 
 test_runner
-setup_environment
-start_runner
-cargo_test outgoing_connection
-cargo_test incoming_connection
+run_tests outgoing_connection incoming_connection
 
 echo "All tests succeeded!"

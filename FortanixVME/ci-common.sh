@@ -1,6 +1,30 @@
 #!/bin/bash -ex
 repo_root=$(readlink -f $(dirname "${BASH_SOURCE[0]}")/..)
 
+function kernel_version {
+    kernel=$(uname -r)
+    IFS='.' read -ra kernel <<< "${kernel}"
+
+    kernel_major=${kernel[0]}
+    kernel_minor=${kernel[1]}
+}
+
+function has_vsock_loopback {
+    kernel_version
+    vsock_loopback=0
+    if [[ 5 -le ${kernel_major} ]]; then
+        if [[ 6 -le ${kernel_minor} ]]; then
+            echo "kernel 5"
+	    vsock_loopback=1
+        fi
+    fi
+}
+
+function init {
+    kernel_version
+    has_vsock_loopback
+}
+
 function cargo_test {
     name=$1
     pushd ${repo_root}/FortanixVME/tests/$name
@@ -35,3 +59,4 @@ function cargo_test {
     popd
 }
 
+init
