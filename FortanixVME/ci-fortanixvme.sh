@@ -6,6 +6,8 @@ source ./ci-common.sh
 
 function cleanup {
     stop_runner
+    copy_to_bravebird || true
+    copy_to_aws || true
 }
 
 function setup_environment {
@@ -16,6 +18,7 @@ function setup_environment {
     trap cleanup err
     trap cleanup exit
     cargo clean
+    rm /mnt/brave_bird/tmp/* || true
 }
 
 function test_runner {
@@ -39,6 +42,20 @@ function stop_runner {
         kill ${pid_runner}
 	pid_runner=0
     fi
+}
+
+function copy_to_bravebird {
+    rm -rf /mnt/brave_bird/tmp/*
+    cp ${repo_root}/FortanixVME/target/debug/enclave-runner /mnt/brave_bird/tmp
+    cp ${repo_root}/FortanixVME/target/x86_64-unknown-linux-fortanixvme/release/deps/outgoing_connection* /mnt/brave_bird/tmp
+    cp ${repo_root}/FortanixVME/target/x86_64-unknown-linux-fortanixvme/release/deps/incoming_connection* /mnt/brave_bird/tmp
+}
+
+function copy_to_aws {
+    rm /mnt/nitro_enclave_dev/tmp/* || true
+    cp ${repo_root}/FortanixVME/target/debug/enclave-runner /mnt/nitro_enclave_dev/tmp/
+    cp ${repo_root}/FortanixVME/target/x86_64-unknown-linux-fortanixvme/release/deps/outgoing_connection* /mnt/nitro_enclave_dev/tmp
+    cp ${repo_root}/FortanixVME/target/x86_64-unknown-linux-fortanixvme/release/deps/incoming_connection* /mnt/nitro_enclave_dev/tmp
 }
 
 function run_tests {
