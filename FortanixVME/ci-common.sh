@@ -24,9 +24,14 @@ function has_vsock_loopback {
     fi
 }
 
+function toolchain_version {
+    toolchain_version="nightly-2021-09-08-x86_64-unknown-linux-gnu"
+}
+
 function init {
     kernel_version
     has_vsock_loopback
+    toolchain_version
 }
 
 function cargo_test {
@@ -40,11 +45,11 @@ function cargo_test {
 	test_interaction=$!
     fi
 
-    VME_TARGET="${TOOLCHAIN_DIR}/rust/rustup/toolchains/nightly-2021-09-08-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-fortanixvme/x86_64-unknown-linux-fortanixvme.json"
+    VME_TARGET="${TOOLCHAIN_DIR}/rust/rustup/toolchains/${toolchain_version}/lib/rustlib/x86_64-unknown-linux-fortanixvme/x86_64-unknown-linux-fortanixvme.json"
     RUSTFLAGS="-Clink-self-contained=yes" \
-      cargo build --release --target ${VME_TARGET} -Zbuild-std
+      cargo +${toolchain_version} build --release --target ${VME_TARGET} -Zbuild-std
     RUSTFLAGS="-Clink-self-contained=yes" \
-      cargo run --release --target ${VME_TARGET} -Zbuild-std -- --nocapture > ${out} 2> ${err}
+      cargo +${toolchain_version} run --release --target ${VME_TARGET} -Zbuild-std -- --nocapture > ${out} 2> ${err}
 
     if [ -f ./test_interaction.sh ]; then
         kill ${test_interaction}
