@@ -14,8 +14,12 @@ function has_vsock_loopback {
     vsock_loopback=0
     if [[ 5 -le ${kernel_major} ]]; then
         if [[ 6 -le ${kernel_minor} ]]; then
-            echo "kernel 5"
-	    vsock_loopback=1
+            if [[ $(lsmod | grep vsock_loopback) ]]; then
+            vsock_loopback=1
+            else
+                echo "You have an vsock loopback capable kernel, but the vsock_loopback module isn't loaded. Please run \'sudo modprobe vsock_loopback\'"
+                exit -1
+	    fi
         fi
     fi
 }
