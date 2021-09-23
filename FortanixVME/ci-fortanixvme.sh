@@ -15,20 +15,20 @@ function setup_environment {
     fi
     trap cleanup err
     trap cleanup exit
-    cargo clean
+    cargo +${toolchain_version} clean
 }
 
 function test_runner {
     pushd enclave-runner
-    cargo test
+    cargo +${toolchain_version} test
     popd
 }
 
 function start_runner {
     pushd enclave-runner
     connection_type=$1
-    cargo build
-    cargo run -- ${connection_type} &
+    cargo +${toolchain_version} build
+    cargo +${toolchain_version} run -- ${connection_type} &
     pid_runner=$!
     popd
 }
