@@ -11,5 +11,5 @@ RUN apt-get -y --no-install-recommends install \
 
 
 WORKDIR /tmp
-COPY ./musl_toolchain.sh /tmp
-RUN ./musl_toolchain.sh
+COPY ./fortanixvme_toolchain.sh /tmp
+RUN ./fortanixvme_toolchain.sh

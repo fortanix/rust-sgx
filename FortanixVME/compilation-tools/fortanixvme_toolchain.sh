@@ -2,7 +2,10 @@
 
 ARCH=x86_64
 TARGET=$ARCH-linux-musl
-OUTPUT=/usr/local
+#OUTPUT=/usr/local
+OUTPUT=/tmp/fortanixvme
+
+mkdir -p ${OUTPUT}
 
 # Ancient binutils versions don't understand debug symbols produced by more recent tools.
 # Apparently applying `-fPIC` everywhere allows them to link successfully.
