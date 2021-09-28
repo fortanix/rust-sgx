@@ -65,6 +65,8 @@ function run_tests {
 }
 
 test_runner
-run_tests outgoing_connection incoming_connection
+run_tests outgoing_connection incoming_connection mbedtls-genrsa
 
-echo "All tests succeeded!"
+echo "********************************"
+echo "**    All tests succeeded!    **"
+echo "********************************"

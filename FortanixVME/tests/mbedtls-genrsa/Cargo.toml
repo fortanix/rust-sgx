@@ -1,0 +1,9 @@
+[package]
+name = "mbedtls-genrsa"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+mbedtls = { version = "0.7.0", package = "mbedtls", features = ["rdrand", "std", "threading", "time", "custom_time", "tokio"], default-features = false }
