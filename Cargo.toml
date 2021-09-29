@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "fortanix-vme/vme-pkix",
     "fortanix-vme/eif-tools",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-runner",
@@ -23,6 +24,9 @@ members = [
     "intel-sgx/sgxs-tools",
     "ipc-queue",
     "rs-libc",
+    "em-app",
+    "em-app/examples/get-certificate/",
+    "em-app/examples/harmonize/",
 ]
 exclude = ["examples"]
 
@@ -30,3 +34,5 @@ exclude = ["examples"]
 libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
+em-client = { git = "https://github.com/fortanix/em-client-rust", rev = "3117ec9404a9657fd0409f07a2d54211c526f77e" }

@@ -1,8 +1,6 @@
-[workspace]
-
 [package]
 name = "em-app"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -12,25 +10,40 @@ categories = [ "api-bindings" ]
 keywords = [ "sgx" ]
 
 [dependencies]
-hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.8.1", features = [ "rdrand" ] }
 b64-ct = "0.1.0"
-serde = "1.0.123"
-serde_derive = "1.0.123"
-serde_bytes = "0.10"
-serde_json = "1.0"
-sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
-rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
-
-em-client = { git = "https://github.com/fortanix/em-client-rust", branch = "acruceru/api-update", default-features = false, features = ["client"] }
+em-client = { version = "3.0.0", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
-sgx_pkix = "0.1.0"
-pkix = "0.1.1"
+hyper = { version = "0.10", default-features = false }
+mbedtls = { version = "0.8.1", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code" ], default-features = false }
+pkix = "0.1.2"
 
-sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "uuid-compat", default-features = false }
-uuid = { version = "0.6.3", features = ["v4", "serde"] }
-
+rustc-serialize = "0.3.24"
+sdkms = { version = "0.2.1", default-features = false }
+serde = "1.0.123"
+serde_bytes = "0.11"
+serde_derive = "1.0.123"
+serde_json = "1.0"
 url = "1"
+uuid = { version = "0.6.3", features = ["v4", "serde"] }
+uuid_sdkms = { package = "uuid", version = "0.7.4", features = ["v4", "serde"] }
 
-[patch.crates-io]
-rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+
+[target.x86_64-fortanix-unknown-sgx.dependencies]
+sgx_pkix = { version = "0.1.0" }
+sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
+
+[target.x86_64-unknown-linux-musl.dependencies]
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-driver", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-io", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+vme-pkix = { path = "../fortanix-vme/vme-pkix/" }
+
+[target.x86_64-unknown-linux-gnu.dependencies]
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-driver", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-io", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+vme-pkix = { path = "../fortanix-vme/vme-pkix/" }
+
+[target.x86_64-unknown-linux-fortanixvme.dependencies]
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-driver", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-io", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }
+vme-pkix = { path = "../fortanix-vme/vme-pkix/" }
