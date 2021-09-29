@@ -24,6 +24,7 @@ use rustc_serialize::hex::FromHex;
 use sdkms::api_model::Blob;
 use uuid::Uuid;
 use url::Url;
+use std::time::Duration;
 
 use crate::mbedtls_hyper::MbedSSLClient;
 
@@ -206,4 +207,39 @@ pub fn decrypt_buffer(body: &Vec<u8>, encryption: &CredentialsEncryption) -> Res
     Ok(decrypted)
 }
 
+const CONNECTION_IDLE_TIMEOUT_SECS: u64 = 30;
 
+pub fn get_hyper_connector_pool(ca_chain: Vec<Vec<u8>>) -> Result<Arc<hyper::Client>, String> {
+    get_mbedtls_hyper_connector_pool(ca_chain, None)
+}
+
+pub fn get_mbedtls_hyper_connector_pool(ca_chain: Vec<Vec<u8>>, client_pki: Option<(Arc<MbedtlsList<Certificate>>, Arc<Pk>)>) -> Result<Arc<hyper::Client>, String> {
+    let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
+
+    config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    if !ca_chain.is_empty() {
+        let mut list = MbedtlsList::<Certificate>::new();
+        for i in ca_chain {
+            list.push(Certificate::from_der(&i).map_err(|e| format!("Failed parsing ca cert, error: {:?}", e))?);
+        }
+
+        config.set_ca_list(Arc::new(list), None);
+        config.set_authmode(AuthMode::Required);
+    } else {
+        config.set_authmode(AuthMode::Optional);
+    }
+
+    if let Some((cert, key)) = client_pki {
+        config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    }
+    
+    let ssl = MbedSSLClient::new(Arc::new(config), true);
+    let connector = HttpsConnector::new(ssl);
+
+    let mut pool = Pool::with_connector(Default::default(), connector);
+    pool.set_idle_timeout(Some(Duration::from_secs(CONNECTION_IDLE_TIMEOUT_SECS)));
+
+    Ok(Arc::new(hyper::Client::with_connector(pool)))
+}

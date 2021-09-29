@@ -2,7 +2,7 @@
 
 [package]
 name = "em-app"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -12,25 +12,38 @@ categories = [ "api-bindings" ]
 keywords = [ "sgx" ]
 
 [dependencies]
-hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.8.1", features = [ "rdrand" ] }
 b64-ct = "0.1.0"
-serde = "1.0.123"
-serde_derive = "1.0.123"
-serde_bytes = "0.10"
-serde_json = "1.0"
-sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
-rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
-
 em-client = { git = "https://github.com/fortanix/em-client-rust", branch = "acruceru/api-update", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
-sgx_pkix = "0.1.0"
+hyper = { version = "0.10", default-features = false }
+lazy_static = "1"
+mbedtls = { version = "0.8.1", features = [ "rdrand", "std" ], default-features = false }
 pkix = "0.1.1"
-
+rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
 sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "uuid-compat", default-features = false }
+serde = "1.0.123"
+serde_bytes = "0.11"
+serde_derive = "1.0.123"
+serde_json = "1.0"
+url = "1"
 uuid = { version = "0.6.3", features = ["v4", "serde"] }
 
-url = "1"
+# Nitro dependencies
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", branch = "main", package = "nsm-driver", optional = true }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", branch = "main", package = "nsm-io", optional = true }
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"], optional = true }
+
+# SGX dependencies
+sgx_pkix = { version = "0.1.0", optional = true }
+sgx-isa = { version="0.3", features=["sgxstd"], default-features=false, optional = true }
+
+
+[features]
+sgx = ["sgx_pkix", "sgx-isa"]
+nitro = ["nsm-driver", "nsm-io", "yasna"]
+
+# Useful for generating fake/expired attestation for testing purposes
+fake_attestation = []
 
 [patch.crates-io]
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
