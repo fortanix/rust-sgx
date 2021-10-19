@@ -29,9 +29,7 @@ use libc::*;
 use nix::sys::signal;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc as async_mpsc;
-use tokio::sync::Semaphore;
+use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 
 use fortanix_sgx_abi::*;
 use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent, WritePosition};
@@ -57,13 +55,13 @@ const CANCEL_QUEUE_SIZE: usize = USERCALL_QUEUE_SIZE * 2;
 
 enum UsercallSendData {
     Sync(ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Identified<Usercall>),
+    Async(Identified<Usercall>, Option<oneshot::Receiver<()>>),
 }
 
 // This is the same as UsercallSendData except that it can't be Sync(CoResult::Return(...), ...)
 enum UsercallHandleData {
     Sync(tcs::Usercall<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Identified<Usercall>, Option<async_mpsc::UnboundedSender<UsercallEvent>>),
+    Async(Identified<Usercall>, Option<oneshot::Receiver<()>>, Option<async_mpsc::UnboundedSender<UsercallEvent>>),
 }
 
 type EnclaveResult = StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>>;
@@ -689,7 +687,7 @@ impl Work {
 }
 
 enum UsercallEvent {
-    Started(u64, tokio::sync::oneshot::Sender<()>),
+    Started(u64, oneshot::Sender<()>),
     Finished(u64),
     Cancelled(u64, WritePosition),
 }
@@ -780,17 +778,12 @@ impl EnclaveState {
         mut handle_data: UsercallHandleData,
     ) {
         let notifier_rx = match handle_data {
-            UsercallHandleData::Async(ref usercall, Some(ref usercall_event_tx)) => {
-                let (notifier_tx, notifier_rx) = tokio::sync::oneshot::channel();
-                usercall_event_tx.send(UsercallEvent::Started(usercall.id, notifier_tx)).ok()
-                    .expect("failed to send usercall event");
-                Some(notifier_rx)
-            },
+            UsercallHandleData::Async(_, ref mut notifier_rx, _) => notifier_rx.take(),
             _ => None,
         };
         let (parameters, mode, tcs) = match handle_data {
             UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode.into(), Some(tcs)),
-            UsercallHandleData::Async(ref usercall, _)             => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
+            UsercallHandleData::Async(ref usercall, _, _)          => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
         };
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
@@ -824,7 +817,7 @@ impl EnclaveState {
                             entry: CoEntry::Resume(usercall, ret),
                         }).expect("Work sender couldn't send data to receiver");
                     }
-                    UsercallHandleData::Async(usercall, usercall_event_tx) => {
+                    UsercallHandleData::Async(usercall, _, usercall_event_tx) => {
                         if let Some(usercall_event_tx) = usercall_event_tx {
                             usercall_event_tx.send(UsercallEvent::Finished(usercall.id)).ok()
                                 .expect("failed to send usercall event");
@@ -849,7 +842,7 @@ impl EnclaveState {
                         }
                         EnclavePanic::from(debug_buf)
                     }
-                    UsercallHandleData::Async(_, _) => {
+                    UsercallHandleData::Async(_, _, _) => {
                         // TODO: https://github.com/fortanix/rust-sgx/issues/235#issuecomment-641811437
                         EnclavePanic::DebugStr("async exit with a panic".to_owned())
                     }
@@ -945,13 +938,21 @@ impl EnclaveState {
 
             let usercall_queue_monitor = usercall_queue_rx.position_monitor();
 
+            let (usercall_event_tx, mut usercall_event_rx) = async_mpsc::unbounded_channel();
+            let usercall_event_tx_clone = usercall_event_tx.clone();
             tokio::task::spawn_local(async move {
                 while let Ok(usercall) = usercall_queue_rx.recv().await {
-                    let _ = io_queue_send.send(UsercallSendData::Async(usercall));
+                    let notifier_rx = if usercall.ignore_cancel() {
+                        None
+                    } else {
+                        let (notifier_tx, notifier_rx) = oneshot::channel();
+                        usercall_event_tx_clone.send(UsercallEvent::Started(usercall.id, notifier_tx)).ok().expect("failed to send usercall event");
+                        Some(notifier_rx)
+                    };
+                    let _ = io_queue_send.send(UsercallSendData::Async(usercall, notifier_rx));
                 }
             });
 
-            let (usercall_event_tx, mut usercall_event_rx) = async_mpsc::unbounded_channel();
             let usercall_event_tx_clone = usercall_event_tx.clone();
             let usercall_queue_monitor_clone = usercall_queue_monitor.clone();
             tokio::task::spawn_local(async move {
@@ -988,9 +989,9 @@ impl EnclaveState {
                 let enclave_clone = enclave_clone.clone();
                 let tx_return_channel = tx_return_channel.clone();
                 match work {
-                    UsercallSendData::Async(usercall) => {
+                    UsercallSendData::Async(usercall, notifier_rx) => {
                         let usercall_event_tx = if usercall.ignore_cancel() { None } else { Some(usercall_event_tx.clone()) };
-                        let uchd = UsercallHandleData::Async(usercall, usercall_event_tx);
+                        let uchd = UsercallHandleData::Async(usercall, notifier_rx, usercall_event_tx);
                         let fut = Self::handle_usercall(enclave_clone, work_sender.clone(), tx_return_channel, uchd);
                         tokio::task::spawn_local(fut);
                     }
