@@ -6,6 +6,7 @@ source ./ci-common.sh
 
 function cleanup {
     stop_runner
+    killall test_interaction
 }
 
 function setup_environment {
@@ -50,7 +51,7 @@ function run_tests {
     fi
 }
 
-run_tests outgoing_connection 
+run_tests outgoing_connection incoming_connection
 
 echo "********************************"
 echo "**    All tests succeeded!    **"
