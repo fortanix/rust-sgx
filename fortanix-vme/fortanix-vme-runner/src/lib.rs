@@ -5,7 +5,7 @@ use std::cmp;
 use std::str;
 use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
-use std::net::{Shutdown, TcpStream};
+use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use fortanix_vme_abi::{self, Response, Request};
 use vsock::{self, Std, VsockListener, VsockStream};
@@ -19,7 +19,7 @@ enum Direction {
 
 pub struct Server;
 
-pub trait StreamConnection: Read + Write + AsRawFd + Sized + Send + 'static {
+pub trait StreamConnection: Read + Write {
     fn protocol() -> &'static str;
 
     fn local(&self) -> io::Result<String>;
@@ -119,15 +119,15 @@ impl Server {
     fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
         let mut buff = [0; PROXY_BUFF_SIZE];
         let n = src.read(&mut buff[..])?;
-        Self::log_communication(
-            "runner",
-            src.local_port().unwrap_or_default(),
-            src_name,
-            src.peer_port().unwrap_or_default(),
-            &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-            Direction::Left,
-            S::protocol());
         if n > 0 {
+            Self::log_communication(
+                "runner",
+                src.local_port().unwrap_or_default(),
+                src_name,
+                src.peer_port().unwrap_or_default(),
+                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
+                Direction::Left,
+                S::protocol());
             dst.write_all(&buff[0..n])?;
             Self::log_communication(
                 dst_name,
@@ -186,33 +186,80 @@ impl Server {
         let (mut proxy, _proxy_addr) = proxy_server.accept()?;
 
         // Pass messages between remote server <-> enclave
+        Self::proxy_connection((&mut remote_socket, remote_name), (&mut proxy, "proxy"));
+        Ok(())
+    }
+
+    /*
+     * +-----------+
+     * |   remote  |
+     * +-----------+
+     *       ^
+     *       |
+     *       |
+     *       v
+     * +----[2]-----+            +-------------+
+     * |   Runner   |            |   enclave   |
+     * +--[3]--[1]--+            +-[ ]----[ ]--+
+     *     \    \---- enclave ------/      /
+     *      \-------- proxy --------------/
+     *
+     *  [1] enclave
+     *  [2] remote
+     *  [3] proxy
+     */
+    fn handle_request_bind(addr: &String, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
+        let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(0);
+        let listener = TcpListener::bind(addr)?;
+        let port = listener.local_addr().map(|addr| addr.port())?;
+        let response = Response::Bound{ port };
+        Self::log_communication(
+            "runner",
+            enclave.local_port().unwrap_or_default(),
+            "enclave",
+            enclave.peer_port().unwrap_or_default(),
+            &format!("{:?}", &response),
+            Direction::Right,
+            "vsock");
+        enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
+
+        for incoming in listener.incoming() {
+            let _ = thread::Builder::new().spawn(move || {
+                let mut proxy = VsockStream::connect_with_cid_port(cid, enclave_port).unwrap();
+                Self::proxy_connection((&mut incoming.unwrap(), "remote"), (&mut proxy, "proxy"));
+            });
+        }
+        Ok(())
+    }
+
+    fn proxy_connection(remote: (&mut TcpStream, &str), proxy: (&mut VsockStream, &str)) {
         loop {
             let mut read_set = FdSet::new();
-            read_set.insert(proxy.as_raw_fd());
-            read_set.insert(remote_socket.as_raw_fd());
+            read_set.insert(remote.0.as_raw_fd());
+            read_set.insert(proxy.0.as_raw_fd());
 
             if let Ok(_num) = select(None, Some(&mut read_set), None, None, None) {
-                if read_set.contains(proxy.as_raw_fd()) {
-                    if let Err(_) = Self::transfer_data(&mut proxy, "proxy", &mut remote_socket, remote_name) {
+                if read_set.contains(remote.0.as_raw_fd()) {
+                    if let Err(_) = Self::transfer_data(remote.0, remote.1, proxy.0, proxy.1) {
                         break;
                     }
                 }
-                if read_set.contains(remote_socket.as_raw_fd()) {
-                    if let Err(_) = Self::transfer_data(&mut remote_socket, remote_name, &mut proxy, "proxy") {
+                if read_set.contains(proxy.0.as_raw_fd()) {
+                    if let Err(_) = Self::transfer_data(proxy.0, proxy.1, remote.0, remote.1) {
                         break;
                     }
                 }
             }
         }
-        let _ = proxy.shutdown(Shutdown::Both);
-        let _ = remote_socket.shutdown(Shutdown::Both);
-        Ok(())
+        let _ = proxy.0.shutdown(Shutdown::Both);
+        let _ = remote.0.shutdown(Shutdown::Both);
     }
 
     fn handle_client(stream: &mut VsockStream) -> Result<(), IoError> {
         match Self::read_request(stream) {
-            Ok(Request::Connect{ addr }) => Self::handle_request_connect(&addr, stream)?,
-            Err(_e)                      => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
+            Ok(Request::Connect{ addr })             => Self::handle_request_connect(&addr, stream)?,
+            Ok(Request::Bind{ addr, enclave_port })  => Self::handle_request_bind(&addr, enclave_port, stream)?,
+            Err(_e)                                  => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
         };
         Ok(())
     }
