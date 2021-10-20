@@ -1,5 +1,5 @@
 [package]
-name = "enclave-runner"
+name = "fortanix-vme-runner"
 version = "0.1.0"
 edition = "2018"
 authors = ["Fortanix, Inc."]

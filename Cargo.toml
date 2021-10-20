@@ -1,5 +1,8 @@
 [workspace]
 members = [
+    "fortanix-vme/fortanix-vme-abi",
+    "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/tests/outgoing_connection",
     "intel-sgx/aesm-client",
     "intel-sgx/dcap-provider",
     "intel-sgx/dcap-ql-sys",
@@ -8,13 +11,20 @@ members = [
     "intel-sgx/enclave-runner",
     "intel-sgx/fortanix-sgx-abi",
     "intel-sgx/fortanix-sgx-tools",
-    "ipc-queue",
     "intel-sgx/report-test",
-    "rs-libc",
     "intel-sgx/sgxs",
     "intel-sgx/sgx-isa",
     "intel-sgx/sgx-pkix",
     "intel-sgx/sgxs-loaders",
-    "intel-sgx/sgxs-tools"
+    "intel-sgx/sgxs-tools",
+    "ipc-queue",
+    "rs-libc",
 ]
 exclude = ["examples"]
+
+[patch.crates-io]
+libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" } 
+serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib" }
+serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib" }
+nix_22 = { git = "https://github.com/raoulstrackx/nix.git", branch = "raoul/fortanixvme_r0.22.4", package = "nix" }
+vsock = { git = "https://github.com/raoulstrackx/vsock-rs.git", branch = "raoul/fortanixvme" }

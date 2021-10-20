@@ -19,13 +19,13 @@ function setup_environment {
 }
 
 function test_runner {
-    pushd enclave-runner
+    pushd fortanix-vme-runner
     cargo +${toolchain_version} test
     popd
 }
 
 function start_runner {
-    pushd enclave-runner
+    pushd fortanix-vme-runner
     cargo +${toolchain_version} run &
     pid_runner=$!
     popd

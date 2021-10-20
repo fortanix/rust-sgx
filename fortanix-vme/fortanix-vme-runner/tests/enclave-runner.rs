@@ -1,4 +1,4 @@
-use enclave_runner::server::Server;
+use fortanix_vme_runner::server::Server;
 use fortanix_vme_abi;
 use std::io::Write;
 use vsock::Std;
