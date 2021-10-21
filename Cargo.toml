@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "fortanix-vme/eif-tools",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/tests/outgoing_connection",
