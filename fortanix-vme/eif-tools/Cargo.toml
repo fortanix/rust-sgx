@@ -1,0 +1,24 @@
+[package]
+name = "eif-tools"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+edition = "2018"
+description = """
+Utilities for working with the AWS Nitro Encalve Image File format.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/"
+homepage = "https://edp.fortanix.com/"
+keywords = ["nitro-enclaves", "enclave", "eif"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0"
+clap = "2.33"
+elf = "0.0.10"
+env_logger = "0.9"
+log = "0.4"
+nitro-cli = { git = "https://github.com/fortanix/aws-nitro-enclaves-cli.git", branch = "raoul/nitro_cli_lib" }
+sha2 = "0.9.5"
+tempdir = "0.3"
