@@ -746,6 +746,7 @@ dependencies = [
 name = "fortanix-vme-runner"
 version = "0.1.0"
 dependencies = [
+ "fnv",
  "fortanix-vme-abi",
  "nix 0.22.2",
  "serde",
