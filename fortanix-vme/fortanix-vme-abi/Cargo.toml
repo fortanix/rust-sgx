@@ -10,12 +10,10 @@ authors = ["Fortanix, Inc."]
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 compiler_builtins = { version = "0.1.0", optional = true }
-serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib", default-features = false, features = ["derive"] }
-serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib", default-features = false, features = ["alloc"] }
-vsock = { git = "https://github.com/raoulstrackx/vsock-rs.git", branch = "raoul/fortanixvme", optional = true, default-features = false, features = ["random_port"] }
+# Avoid using patch section due to https://github.com/rust-lang/cargo/issues/10031
+serde = { git = "https://github.com/fortanix/serde.git", branch = "master", default-features = false, features = ["derive", "alloc"] }
 
 [features]
-default = ["std"]
+default = []
 docs = []
-rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std", "serde/rustc-dep-of-std", "serde_cbor/rustc-dep-of-std", "vsock/rustc-dep-of-std"]
-std = ["serde_cbor/std", "vsock"]
+rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std", "serde/rustc-dep-of-std"]

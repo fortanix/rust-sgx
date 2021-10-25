@@ -15,18 +15,12 @@ function setup_environment {
     fi
     trap cleanup err
     trap cleanup exit
-    cargo +${toolchain_version} clean
-}
-
-function test_runner {
-    pushd fortanix-vme-runner
-    cargo +${toolchain_version} test
-    popd
+    cargo +${toolchain_version} --locked clean
 }
 
 function start_runner {
     pushd fortanix-vme-runner
-    cargo +${toolchain_version} run &
+    cargo +${toolchain_version} --locked run &
     pid_runner=$!
     popd
 }
@@ -56,7 +50,6 @@ function run_tests {
     fi
 }
 
-test_runner
 run_tests outgoing_connection 
 
 echo "********************************"

@@ -17,7 +17,7 @@ function has_vsock_loopback {
             if [[ $(lsmod | grep vsock_loopback) ]]; then
             vsock_loopback=1
             else
-                echo "You have an vsock loopback capable kernel, but the vsock_loopback module isn't loaded. Please run \'sudo modprobe vsock_loopback\'"
+                echo "You have a vsock loopback capable kernel, but the vsock_loopback module isn't loaded. Please run \'sudo modprobe vsock_loopback\'"
                 exit -1
 	    fi
         fi
@@ -58,10 +58,10 @@ function compile {
     VME_TARGET="${TOOLCHAIN_DIR}/rust/rustup/toolchains/${toolchain_version}/lib/rustlib/x86_64-unknown-linux-fortanixvme/x86_64-unknown-linux-fortanixvme.json"
     CC=musl-gcc \
       RUSTFLAGS="-Clink-self-contained=yes" \
-      cargo +${toolchain_version} build --release --target ${VME_TARGET} -Zbuild-std
+      cargo +${toolchain_version} build --locked --release --target ${VME_TARGET} -Zbuild-std
 
     # use elf as an output variable
-    elf=${repo_root}/fortanix-vme/target/x86_64-unknown-linux-fortanixvme/release/${name}
+    elf=${repo_root}/target/x86_64-unknown-linux-fortanixvme/release/${name}
 }
 
 function cargo_test {

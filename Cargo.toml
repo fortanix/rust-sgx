@@ -23,8 +23,5 @@ members = [
 exclude = ["examples"]
 
 [patch.crates-io]
-libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" } 
-serde = { git = "https://github.com/raoulstrackx/serde.git", branch = "raoul/stdlib" }
-serde_cbor = { git = "https://github.com/raoulstrackx/cbor.git", branch = "raoul/stdlib" }
-nix_22 = { git = "https://github.com/raoulstrackx/nix.git", branch = "raoul/fortanixvme_r0.22.4", package = "nix" }
+serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/raoulstrackx/vsock-rs.git", branch = "raoul/fortanixvme" }
