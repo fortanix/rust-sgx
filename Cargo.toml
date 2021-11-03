@@ -1,20 +1,20 @@
 [workspace]
 members = [
-    "aesm-client",
-    "dcap-provider",
-    "dcap-ql-sys",
-    "dcap-ql",
-    "dcap-retrieve-pckid",
-    "enclave-runner",
-    "fortanix-sgx-abi",
-    "fortanix-sgx-tools",
+    "intel-sgx/aesm-client",
+    "intel-sgx/dcap-provider",
+    "intel-sgx/dcap-ql-sys",
+    "intel-sgx/dcap-ql",
+    "intel-sgx/dcap-retrieve-pckid",
+    "intel-sgx/enclave-runner",
+    "intel-sgx/fortanix-sgx-abi",
+    "intel-sgx/fortanix-sgx-tools",
     "ipc-queue",
-    "report-test",
+    "intel-sgx/report-test",
     "rs-libc",
-    "sgxs",
-    "sgx-isa",
-    "sgx-pkix",
-    "sgxs-loaders",
-    "sgxs-tools"
+    "intel-sgx/sgxs",
+    "intel-sgx/sgx-isa",
+    "intel-sgx/sgx-pkix",
+    "intel-sgx/sgxs-loaders",
+    "intel-sgx/sgxs-tools"
 ]
 exclude = ["examples"]
