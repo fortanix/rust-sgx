@@ -23,5 +23,6 @@ members = [
 exclude = ["examples"]
 
 [patch.crates-io]
+libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/raoulstrackx/vsock-rs.git", branch = "raoul/fortanixvme" }

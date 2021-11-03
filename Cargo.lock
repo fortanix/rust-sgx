@@ -910,9 +910,8 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
+version = "0.2.4"
+source = "git+https://github.com/raoulstrackx/getrandom.git?branch=raoul/fortanixvme_target#810e40fb442481dd4f58b987fd564af4ecfc8439"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -1138,9 +1137,8 @@ checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
 
 [[package]]
 name = "libc"
-version = "0.2.106"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a60553f9a9e039a333b4e9b20573b9e9b9c0bb3a11e201ccc48ef4283456d673"
+version = "0.2.104"
+source = "git+https://github.com/fortanix/libc.git?branch=fortanixvme#92233130f38b15b6217cab2669355129400fdcb7"
 dependencies = [
  "rustc-std-workspace-core",
 ]
@@ -3011,9 +3009,9 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 [[package]]
 name = "vsock"
 version = "0.2.5"
-source = "git+https://github.com/raoulstrackx/vsock-rs.git?branch=raoul/fortanixvme#e295f1341489b9b84c33c28b7ec239cb9cc95b35"
+source = "git+https://github.com/raoulstrackx/vsock-rs.git?branch=raoul/fortanixvme#bbd7d41f3bbf8af4f5e9e9b716cec09c7787ea23"
 dependencies = [
- "getrandom 0.2.3",
+ "getrandom 0.2.4",
  "libc",
  "nix 0.22.2",
 ]
