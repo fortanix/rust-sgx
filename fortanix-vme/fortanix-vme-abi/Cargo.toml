@@ -14,7 +14,7 @@ compiler_builtins = { version = "0.1.0", optional = true }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master", default-features = false, features = ["derive", "alloc"] }
 
 [features]
-std = []
-default = []
+std = ["serde/std"]
+default = ["std"]
 docs = []
 rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std", "serde/rustc-dep-of-std"]

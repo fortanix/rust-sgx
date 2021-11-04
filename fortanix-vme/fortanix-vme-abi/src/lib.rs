@@ -16,7 +16,7 @@ pub enum Request {
         addr: String,
     },
     Bind {
-        /// The address the listen on in the parent VM
+        /// The address the listen to in the parent VM
         addr: String,
         /// The port the enclave is listening on to receive connections from the parent VM
         enclave_port: u32,
@@ -68,7 +68,7 @@ pub enum Response {
         proxy_port: u32,
     },
     Bound {
-        /// The TCP port the runner is listening on
+        /// The TCP port the parent VM is listening on
         port: u16,
         /// The id used to identify the listener. It can be used for subsequent calls (e.g., to
         /// accept new incoming connections)
@@ -78,12 +78,11 @@ pub enum Response {
         /// The address of the remote party
         peer: Addr,
         /// The vsock port number the runner will connect to the enclave in order to forward the
-        /// incomming connection
+        /// incoming connection
         proxy_port: u32,
     }
 }
 
-/*
 #[cfg(test)]
 mod test {
     use std::net::{IpAddr, SocketAddr};
@@ -101,4 +100,3 @@ mod test {
         }
     }
 }
-*/

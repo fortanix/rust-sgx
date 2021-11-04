@@ -1,6 +1,5 @@
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
-use nix::sys::socket::SockAddr as NixSockAddr;
 use serde_cbor;
 use std::cmp;
 use std::str;
@@ -215,7 +214,7 @@ impl Server {
     }
 
     fn listener_info(&self, fd: &RawFd) -> Option<Arc<Mutex<ListenerInfo>>> {
-        self.listeners.lock().unwrap().get(&fd).map(|m| m.clone())
+        self.listeners.lock().unwrap().get(&fd).cloned()
     }
 
     /*
@@ -260,7 +259,8 @@ impl Server {
     }
 
     fn handle_request_accept(&self, fd: RawFd, enclave: &mut VsockStream) -> Result<(), IoError> {
-        let listener_info = self.listener_info(&fd).unwrap();
+        let listener_info = self.listener_info(&fd)
+            .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
         let listener_info = listener_info.lock().unwrap();
         let (cid, port) = (listener_info.enclave_cid, listener_info.enclave_port);
         match listener_info.listener.accept() {
