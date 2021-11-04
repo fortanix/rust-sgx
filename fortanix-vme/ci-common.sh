@@ -100,7 +100,6 @@ function cargo_test {
             echo "Success"
 	fi
     else
-	${elf} -- --nocapture
 	${elf} -- --nocapture > ${out} 2> ${err}
 
         out=$(cat ${out} | grep -v "#" || true)
