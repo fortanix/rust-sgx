@@ -4,24 +4,24 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-extern crate aesm_client;
-extern crate byteorder;
-extern crate enclave_runner;
-extern crate libc;
-extern crate sgxs_loaders;
-
-use aesm_client::AesmClient;
-use enclave_runner::usercalls::{SyncListener, SyncStream, UsercallExtension};
-use enclave_runner::EnclaveBuilder;
-use sgxs_loaders::isgx::Device as IsgxDevice;
-use std::io;
-
-use byteorder::{NetworkEndian, ReadBytesExt};
-use std::io::{Error, ErrorKind, Read, Result as IoResult, Write};
+use std::io::{Error, ErrorKind, Result as IoResult, Write};
 use std::mem::size_of;
 use std::net::Shutdown;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpListener, TcpStream};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream as SyncTcpStream};
 use std::thread;
+use std::future::Future;
+use std::marker::Unpin;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
+use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
+use tokio::io::{self, AsyncRead, AsyncReadExt};
+use tokio::net::{TcpListener, TcpStream};
+
+use aesm_client::AesmClient;
+use enclave_runner::usercalls::{AsyncListener, AsyncStream, UsercallExtension};
+use enclave_runner::EnclaveBuilder;
+use sgxs_loaders::isgx::Device as IsgxDevice;
 
 /// This example demonstrates use of usercall extensions for bind call.
 /// User call extension allow the enclave code to "bind" to an external service via a customized enclave runner.
@@ -49,11 +49,11 @@ struct ProxyIpv4Addr {
 }
 
 impl ProxyIpv4Addr {
-    fn from_reader(rdr: &mut impl Read) -> IoResult<Self> {
-        let src_addr = rdr.read_u32::<NetworkEndian>()?;
-        let dst_addr = rdr.read_u32::<NetworkEndian>()?;
-        let src_port = rdr.read_u16::<NetworkEndian>()?;
-        let dst_port = rdr.read_u16::<NetworkEndian>()?;
+    async fn from_reader(rdr: &mut (impl AsyncRead + Unpin)) -> IoResult<Self> {
+        let src_addr = rdr.read_u32().await?;
+        let dst_addr = rdr.read_u32().await?;
+        let src_port = rdr.read_u16().await?;
+        let dst_port = rdr.read_u16().await?;
 
         Ok(ProxyIpv4Addr {
             src_addr,
@@ -67,8 +67,8 @@ impl From<ProxyIpv4Addr> for (SocketAddr, SocketAddr) {
     fn from(proxy_addr: ProxyIpv4Addr) -> (SocketAddr, SocketAddr) {
         let src_ip_addr: Ipv4Addr = proxy_addr.src_addr.into();
         let dst_ip_addr: Ipv4Addr = proxy_addr.dst_addr.into();
-        let local_addr = SocketAddr::new(src_ip_addr.into(), proxy_addr.src_port);
-        let peer_addr = SocketAddr::new(dst_ip_addr.into(), proxy_addr.dst_port);
+        let peer_addr = SocketAddr::new(src_ip_addr.into(), proxy_addr.src_port);
+        let local_addr = SocketAddr::new(dst_ip_addr.into(), proxy_addr.dst_port);
         (local_addr, peer_addr)
     }
 }
@@ -82,13 +82,13 @@ struct ProxyIpv6Addr {
 }
 
 impl ProxyIpv6Addr {
-    fn from_reader(rdr: &mut impl Read) -> IoResult<Self> {
+    async fn from_reader(rdr: &mut (impl AsyncRead + Unpin)) -> IoResult<Self> {
         let mut addr = ProxyIpv6Addr::default();
 
-        let _ = rdr.read_exact(&mut addr.src_addr[..])?;
-        let _ = rdr.read_exact(&mut addr.dst_addr[..])?;
-        addr.src_port = rdr.read_u16::<NetworkEndian>()?;
-        addr.dst_port = rdr.read_u16::<NetworkEndian>()?;
+        let _ = rdr.read_exact(&mut addr.src_addr[..]).await?;
+        let _ = rdr.read_exact(&mut addr.dst_addr[..]).await?;
+        addr.src_port = rdr.read_u16().await?;
+        addr.dst_port = rdr.read_u16().await?;
 
         Ok(addr)
     }
@@ -98,8 +98,8 @@ impl From<ProxyIpv6Addr> for (SocketAddr, SocketAddr) {
     fn from(proxy_addr: ProxyIpv6Addr) -> (SocketAddr, SocketAddr) {
         let src_ip_addr: Ipv6Addr = proxy_addr.src_addr.into();
         let dst_ip_addr: Ipv6Addr = proxy_addr.dst_addr.into();
-        let local_addr = SocketAddr::new(src_ip_addr.into(), proxy_addr.src_port);
-        let peer_addr = SocketAddr::new(dst_ip_addr.into(), proxy_addr.dst_port);
+        let peer_addr = SocketAddr::new(src_ip_addr.into(), proxy_addr.src_port);
+        let local_addr = SocketAddr::new(dst_ip_addr.into(), proxy_addr.dst_port);
         (local_addr, peer_addr)
     }
 }
@@ -119,7 +119,7 @@ impl ProxyAddrReader {
     fn new(ty: ProxyAddrType, len: u16) -> ProxyAddrReader {
         ProxyAddrReader { ty, len }
     }
-    fn read(&self, rdr: &mut impl Read) -> IoResult<Option<(SocketAddr, SocketAddr)>> {
+    async fn read(&self, rdr: &mut (impl AsyncRead + Unpin)) -> IoResult<Option<(SocketAddr, SocketAddr)>> {
         match self.ty {
             ProxyAddrType::V4 => {
                 if self.len as usize != size_of::<ProxyIpv4Addr>() {
@@ -128,7 +128,7 @@ impl ProxyAddrReader {
                         "Unexpected address length received",
                     ))?;
                 }
-                let addr = ProxyIpv4Addr::from_reader(rdr)?;
+                let addr = ProxyIpv4Addr::from_reader(rdr).await?;
                 let (local, peer) = addr.into();
                 Ok(Some((local, peer)))
             }
@@ -139,12 +139,12 @@ impl ProxyAddrReader {
                         "Unexpected address length received",
                     ))?;
                 }
-                let addr = ProxyIpv6Addr::from_reader(rdr)?;
+                let addr = ProxyIpv6Addr::from_reader(rdr).await?;
                 let (local, peer) = addr.into();
                 Ok(Some((local, peer)))
             }
             ProxyAddrType::Unspec => {
-                io::copy(&mut rdr.take(self.len as _), &mut io::sink())?;
+                io::copy(&mut rdr.take(self.len as _), &mut io::sink()).await?;
                 Ok(None)
             }
         }
@@ -161,18 +161,18 @@ struct ProxyHdrV2 {
 }
 
 impl ProxyHdrV2 {
-    fn from_reader(rdr: &mut impl Read) -> IoResult<Self> {
+    async fn from_reader(rdr: &mut (impl AsyncRead + Unpin)) -> IoResult<Self> {
         let mut sig: [u8; SIZE_HEADER_SIG] = [0; SIZE_HEADER_SIG];
-        let _ = rdr.read_exact(&mut sig[..])?;
+        let _ = rdr.read_exact(&mut sig[..]).await?;
         if &sig[..] != HEADER_SIG {
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "Protocol header signature mismatch",
             ));
         }
-        let ver_cmd = rdr.read_u8()?;
-        let fam = rdr.read_u8()?;
-        let len = rdr.read_u16::<NetworkEndian>()?;
+        let ver_cmd = rdr.read_u8().await?;
+        let fam = rdr.read_u8().await?;
+        let len = rdr.read_u16().await?;
         let addr_reader = match (ver_cmd, fam) {
             (V2CMD_LOCAL, FAMILY_UNSPEC) => ProxyAddrReader::new(ProxyAddrType::Unspec, len),
             (V2CMD_PROXY, FAMILY_TCP4) => ProxyAddrReader::new(ProxyAddrType::V4, len),
@@ -192,49 +192,64 @@ impl ProxyHdrV2 {
         })
     }
 }
-fn read_proxy_protocol_header(
+async fn read_proxy_protocol_header(
     stream: &mut TcpStream,
 ) -> IoResult<Option<(SocketAddr, SocketAddr)>> {
-    let hdr = ProxyHdrV2::from_reader(stream)?;
-    hdr.addr_reader.read(stream)
+    let hdr = ProxyHdrV2::from_reader(stream).await?;
+    hdr.addr_reader.read(stream).await
 }
 
 struct ProxyProtocol {
-    listener: TcpListener,
+    listen_stream: Pin<Box<dyn Send + Stream<Item = IoResult<(TcpStream, Option<(SocketAddr, SocketAddr)>)>> >>
 }
 
 impl ProxyProtocol {
-    fn new(addr: &str) -> IoResult<(Self, String)> {
-        TcpListener::bind(addr).map(|listener| {
+    async fn new(addr: &str) -> IoResult<(Self, String)> {
+        TcpListener::bind(addr).await.map(|listener| {
             let local_address = match listener.local_addr() {
                 Ok(local_address) => local_address.to_string(),
                 Err(_) => "error".to_string(),
             };
-            (ProxyProtocol { listener }, local_address)
+            let listen_stream = listener.and_then(|mut stream| { async {
+                let proxied_addrs = read_proxy_protocol_header(&mut stream).await?;
+                Ok((stream, proxied_addrs))
+            }}).boxed();
+            (ProxyProtocol { listen_stream }, local_address)
         })
     }
 }
 
-impl SyncListener for ProxyProtocol {
-    fn accept(&self, local_addr: Option<&mut String>, peer_addr: Option<&mut String>) -> IoResult<Box<dyn SyncStream>> {
-        let (mut stream, peer_address_tcp) = self.listener.accept()?;
-        let local_address_tcp = stream.local_addr()?;
-        eprintln!(
-            "runner:: bind - local_address is {}, peer address is {}",
-            local_address_tcp, peer_address_tcp
-        );
-        let (local_address, peer_address) = read_proxy_protocol_header(&mut stream)?
-            .unwrap_or((local_address_tcp, peer_address_tcp));
+impl AsyncListener for ProxyProtocol {
+    fn poll_accept(
+        self: Pin<&mut Self>,
+        cx: &mut Context,
+        local_addr: Option<&mut String>,
+        peer_addr: Option<&mut String>,
+    ) -> Poll<IoResult<Option<Box<dyn AsyncStream>>>> {
+        self.get_mut().listen_stream.as_mut().poll_next(cx).map(|item| match item {
+            Some(Ok((stream, proxied_addrs))) => {
+                let local_address_tcp = stream.local_addr()?;
+                let peer_address_tcp = stream.peer_addr()?;
+                eprintln!(
+                    "runner:: bind - local_address is {}, peer address is {}",
+                    local_address_tcp, peer_address_tcp
+                );
+                let (local_address, peer_address) = proxied_addrs
+                    .unwrap_or((local_address_tcp, peer_address_tcp));
 
-        if let Some(local_addr) = local_addr {
-            *local_addr = local_address.to_string();
-        }
+                if let Some(local_addr) = local_addr {
+                    *local_addr = local_address.to_string();
+                }
 
-        if let Some(peer_addr) = peer_addr {
-            *peer_addr = peer_address.to_string();
-        }
+                if let Some(peer_addr) = peer_addr {
+                    *peer_addr = peer_address.to_string();
+                }
 
-        Ok(Box::new(stream))
+                Ok(Some(Box::new(stream) as _))
+            },
+            Some(Err(e)) => Err(e),
+            None => Ok(None),
+        })
     }
 }
 
@@ -243,21 +258,23 @@ const HAPROXY_ADDRESS: &str = "localhost:6010";
 #[derive(Debug)]
 struct HaproxyService;
 impl UsercallExtension for HaproxyService {
-    fn bind_stream(
-        &self,
-        addr: &str,
-        local_addr: Option<&mut String>,
-    ) -> IoResult<Option<Box<dyn SyncListener>>> {
-        if addr == HAPROXY_ADDRESS {
-            let (listener, local_address) = ProxyProtocol::new(addr)?;
-            if let Some(local_addr) = local_addr {
-                (*local_addr) = local_address;
-            }
+    fn bind_stream<'future>(
+        &'future self,
+        addr: &'future str,
+        local_addr: Option<&'future mut String>,
+    ) -> Pin<Box<dyn Future<Output = IoResult<Option<Box<dyn AsyncListener>>>> + 'future>> {
+        async move {
+            if addr == HAPROXY_ADDRESS {
+                let (listener, local_address) = ProxyProtocol::new(addr).await?;
+                if let Some(local_addr) = local_addr {
+                    (*local_addr) = local_address;
+                }
 
-            Ok(Some(Box::new(listener)))
-        } else {
-            Ok(None)
-        }
+                Ok(Some(Box::new(listener) as _))
+            } else {
+                Ok(None)
+            }
+        }.boxed_local()
     }
 }
 
@@ -298,7 +315,7 @@ impl SimulateHaProxyConfig {
         static TEST_DATA: &'static str = "connection test data";
 
         thread::sleep(std::time::Duration::from_secs(2));
-        let mut stream = TcpStream::connect(HAPROXY_ADDRESS).unwrap();
+        let mut stream = SyncTcpStream::connect(HAPROXY_ADDRESS).unwrap();
         stream.write_all(header).unwrap();
         stream
             .write_all(&format!("{} {}\n", TEST_DATA, profile_name).as_bytes())
