@@ -313,6 +313,10 @@ impl Server {
         self.listeners.read().unwrap().get(&addr).cloned()
     }
 
+    fn remove_listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
+        self.listeners.write().unwrap().remove(&addr)
+    }
+
     // Preliminary work for PLAT-367
     #[allow(dead_code)]
     fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<ConnectionInfo> {
@@ -413,11 +417,34 @@ impl Server {
         }
     }
 
+    fn handle_request_close(self: Arc<Self>, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
+        let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
+        let addr = VsockAddr::new(cid, enclave_port);
+        if let Some(listener) = self.remove_listener(&addr) {
+            // Close `TcpListener`
+            drop(listener);
+        } else {
+            // Info not found, possibly not a listener socket
+        }
+        let response = Response::Closed;
+        Self::log_communication(
+            "runner",
+            enclave.local_port().unwrap_or_default(),
+            "enclave",
+            enclave.peer_port().unwrap_or_default(),
+            &format!("{:?}", &response),
+            Direction::Right,
+            "vsock");
+        enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
+        Ok(())
+    }
+
     fn handle_client(self: Arc<Self>, stream: &mut VsockStream) -> Result<(), IoError> {
         match Self::read_request(stream) {
             Ok(Request::Connect{ addr })             => self.handle_request_connect(&addr, stream)?,
             Ok(Request::Bind{ addr, enclave_port })  => self.handle_request_bind(&addr, enclave_port, stream)?,
             Ok(Request::Accept{ enclave_port })      => self.handle_request_accept(enclave_port, stream)?,
+            Ok(Request::Close{ enclave_port })       => self.handle_request_close(enclave_port, stream)?,
             Err(_e)                                  => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
         };
         Ok(())
