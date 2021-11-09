@@ -755,6 +755,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fortanix-vme-tools"
+version = "0.1.0"
+dependencies = [
+ "failure",
+ "failure_derive",
+ "serde",
+ "serde_derive 1.0.130 (registry+https://github.com/rust-lang/crates.io-index)",
+ "toml",
+]
+
+[[package]]
 name = "fuchsia-cprng"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

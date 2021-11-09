@@ -2,6 +2,7 @@
 members = [
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/fortanix-vme-tools",
     "fortanix-vme/tests/outgoing_connection",
     "fortanix-vme/tests/incoming_connection",
     "intel-sgx/aesm-client",
