@@ -911,8 +911,8 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.4"
-source = "git+https://github.com/raoulstrackx/getrandom.git?branch=raoul/fortanixvme_target#810e40fb442481dd4f58b987fd564af4ecfc8439"
+version = "0.2.3"
+source = "git+https://github.com/fortanix/getrandom.git?branch=fortanixvme#cf4c6875ca03932aca760eb3a1fcfc4d4f9b47cd"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -3013,10 +3013,10 @@ checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "vsock"
-version = "0.2.5"
-source = "git+https://github.com/raoulstrackx/vsock-rs.git?branch=raoul/fortanixvme#bbd7d41f3bbf8af4f5e9e9b716cec09c7787ea23"
+version = "0.2.4"
+source = "git+https://github.com/fortanix/vsock-rs.git?branch=fortanixvme#a090e2a1268f087bbef0c0b9785bab94c394f3dc"
 dependencies = [
- "getrandom 0.2.4",
+ "getrandom 0.2.3",
  "libc",
  "nix 0.22.2",
 ]
