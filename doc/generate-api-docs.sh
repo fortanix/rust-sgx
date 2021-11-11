@@ -1,4 +1,4 @@
-#!/bin/bash -e
+#!/bin/bash -ex
 
 cd "$(readlink -f "$(dirname "$0")/..")"
 
@@ -50,7 +50,8 @@ LIBS_SORTED=$(
 )
 
 for LIB in $LIBS_SORTED; do
-    cd $LIB
+    LIB_DIR=$(find . -maxdepth 2 -name ${LIB} -type d)
+    cd ${LIB_DIR}
     ARGS=""
     if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
         ARGS="--features $FEATURES"
