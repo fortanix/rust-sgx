@@ -13,7 +13,7 @@ use eif_tools::*;
 /// Create a temporary directory used for creating a docker image.
 fn setup_docker_dir(elf_path: &str) -> Result<TempDir> {
     const DOCKERFILE: &str = "
-        FROM alpine
+        FROM scratch
         COPY enclave .
         CMD ./enclave
     ";
