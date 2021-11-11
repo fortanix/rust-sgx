@@ -1,4 +1,5 @@
 [package]
+# Unfortunately crates.io prevents us from changing the name to `sgx-pkix`
 name = "sgx_pkix"
 version = "0.1.1"
 authors = ["Fortanix, Inc."]
