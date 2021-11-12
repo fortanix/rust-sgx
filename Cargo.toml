@@ -15,7 +15,7 @@ members = [
     "intel-sgx/report-test",
     "intel-sgx/sgxs",
     "intel-sgx/sgx-isa",
-    "intel-sgx/sgx-pkix",
+    "intel-sgx/sgx_pkix",
     "intel-sgx/sgxs-loaders",
     "intel-sgx/sgxs-tools",
     "ipc-queue",
