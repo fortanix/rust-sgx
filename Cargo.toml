@@ -4,6 +4,7 @@ members = [
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/tests/outgoing_connection",
     "fortanix-vme/tests/incoming_connection",
+    "fortanix-vme/tests/iron",
     "intel-sgx/aesm-client",
     "intel-sgx/dcap-provider",
     "intel-sgx/dcap-ql-sys",

@@ -51,7 +51,10 @@ function run_tests {
     fi
 }
 
-run_tests outgoing_connection incoming_connection
+run_tests\
+	outgoing_connection \
+	incoming_connection \
+	iron
 
 echo "********************************"
 echo "**    All tests succeeded!    **"

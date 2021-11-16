@@ -100,7 +100,7 @@ function cargo_test {
             echo "Success"
 	fi
     else
-	${elf} -- --nocapture > ${out} 2> ${err}
+	RUST_BACKTRACE=full ${elf} -- --nocapture > ${out} 2> ${err}
 
         out=$(cat ${out} | grep -v "#" || true)
         expected=$(cat ./out.expected)
