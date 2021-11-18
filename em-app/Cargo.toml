@@ -31,7 +31,7 @@ uuid = { version = "0.6.3", features = ["v4", "serde"] }
 # Nitro dependencies
 nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", branch = "main", package = "nsm-driver", optional = true }
 nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", branch = "main", package = "nsm-io", optional = true }
-yasna = { version = "0.3", features = ["num-bigint", "bit-vec"], optional = true }
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 
 # SGX dependencies
 sgx_pkix = { version = "0.1.0", optional = true }
@@ -40,7 +40,7 @@ sgx-isa = { version="0.3", features=["sgxstd"], default-features=false, optional
 
 [features]
 sgx = ["sgx_pkix", "sgx-isa"]
-nitro = ["nsm-driver", "nsm-io", "yasna"]
+nitro = ["nsm-driver", "nsm-io"]
 
 # Useful for generating fake/expired attestation for testing purposes
 fake_attestation = []
