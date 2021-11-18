@@ -65,6 +65,7 @@ impl From<SocketAddr> for Addr {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Response {
     Connected {
+        /// The vsock port the proxy is listening on for an incoming connection
         proxy_port: u32,
     },
     Bound {

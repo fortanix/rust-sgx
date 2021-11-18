@@ -297,13 +297,29 @@ impl Server {
 
             if let Ok(_num) = select(None, Some(&mut read_set), None, None, None) {
                 if read_set.contains(remote.0.as_raw_fd()) {
-                    if let Err(_) = Self::transfer_data(remote.0, remote.1, proxy.0, proxy.1) {
-                        break;
+                    match Self::transfer_data(remote.0, remote.1, proxy.0, proxy.1) {
+                        Ok(0)  => {
+                            // According to the `Read` threat documentation, reading 0 bytes
+                            // indicates that the connection has been shutdown correctly. So we
+                            // close the proxy service
+                            // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
+                            break
+                        },
+                        Ok(_)  => (),
+                        Err(e) => {
+                            eprintln!("transfer from remote failed: {:?}", e);
+                            break;
+                        }
                     }
                 }
                 if read_set.contains(proxy.0.as_raw_fd()) {
-                    if let Err(_) = Self::transfer_data(proxy.0, proxy.1, remote.0, remote.1) {
-                        break;
+                    match Self::transfer_data(proxy.0, proxy.1, remote.0, remote.1) {
+                        Ok(0)  => break,
+                        Ok(_)  => (),
+                        Err(e) => {
+                            eprintln!("transfer from proxy failed: {:?}", e);
+                            break;
+                        }
                     }
                 }
             }
