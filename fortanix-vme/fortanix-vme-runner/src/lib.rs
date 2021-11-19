@@ -1,3 +1,4 @@
+#![deny(warnings)]
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
 use serde_cbor;
