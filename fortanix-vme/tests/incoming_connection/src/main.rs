@@ -13,6 +13,9 @@ fn main() {
             Ok((mut stream, addr)) => {
                 println!("# addr = {:?}", addr);
                 assert_eq!(stream.peer_addr().unwrap().ip(), Ipv4Addr::new(127, 0, 0, 1));
+                assert!(stream.peer_addr().unwrap().port() != 3400);
+                assert_eq!(stream.local_addr().unwrap().ip(), Ipv4Addr::new(127, 0, 0, 1));
+                assert_eq!(stream.local_addr().unwrap().port(), 3400);
                 println!("Connection {}: Connected", id);
                 let mut buff_in = [0u8; 4192];
                 let n = stream.read(&mut buff_in).unwrap();
