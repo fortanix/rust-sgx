@@ -68,6 +68,8 @@ pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
         proxy_port: u32,
+        /// The local address (as used by the runner)
+        local: Addr,
         /// The address of the remote party
         peer: Addr,
     },
