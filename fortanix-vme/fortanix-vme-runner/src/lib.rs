@@ -1,3 +1,4 @@
+#![deny(warnings)]
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
 use serde_cbor;
@@ -187,6 +188,7 @@ impl Server {
         // Notify the enclave on which port her proxy is listening on
         let response = Response::Connected {
             proxy_port: proxy_server_port,
+            peer: remote_socket.peer_addr()?.into(),
         };
         Self::log_communication(
             "runner",
@@ -243,9 +245,9 @@ impl Server {
     fn handle_request_bind(&self, addr: &String, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
         let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
         let listener = TcpListener::bind(addr)?;
-        let port = listener.local_addr().map(|addr| addr.port())?;
+        let local = listener.local_addr()?.into();
         let fd = self.add_listener_info(ListenerInfo{ listener, enclave_cid: cid, enclave_port });
-        let response = Response::Bound{ port, fd };
+        let response = Response::Bound{ local, fd };
         Self::log_communication(
             "runner",
             enclave.local_port().unwrap_or_default(),

@@ -1,3 +1,4 @@
+#![deny(warnings)]
 #![no_std]
 extern crate alloc;
 #[cfg(feature="std")]
@@ -67,10 +68,12 @@ pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
         proxy_port: u32,
+        /// The address of the remote party
+        peer: Addr,
     },
     Bound {
-        /// The TCP port the parent VM is listening on
-        port: u16,
+        /// The local TCP address the parent VM is listening on
+        local: Addr,
         /// The id used to identify the listener. It can be used for subsequent calls (e.g., to
         /// accept new incoming connections)
         fd: i32,
