@@ -81,6 +81,8 @@ pub enum Response {
         fd: i32,
     },
     IncomingConnection {
+        /// The local address (as used by the runner)
+        local: Addr,
         /// The address of the remote party
         peer: Addr,
         /// The vsock port number the runner will connect to the enclave in order to forward the

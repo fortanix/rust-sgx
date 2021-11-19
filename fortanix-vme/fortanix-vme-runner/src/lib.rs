@@ -270,6 +270,7 @@ impl Server {
             Ok((mut conn, peer)) => {
                 let vsock = Vsock::new::<Std>()?;
                 let response = Response::IncomingConnection{
+                    local: conn.local_addr()?.into(),
                     peer: peer.into(),
                     proxy_port: vsock.addr::<Std>()?.port(),
                 };
