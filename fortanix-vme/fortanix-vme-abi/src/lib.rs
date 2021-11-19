@@ -103,6 +103,7 @@ mod test {
         if let Addr::IPv4 { port, ip } = sock_addr.into() {
             assert_eq!(IpAddr::from(ip), sock_addr.ip());   
             assert_eq!(port, sock_addr.port());
+            assert_eq!(port, 4567);
         } else {
             panic!("Not IPv4")
         }
