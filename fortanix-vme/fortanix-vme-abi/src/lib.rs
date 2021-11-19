@@ -72,8 +72,8 @@ pub enum Response {
         peer: Addr,
     },
     Bound {
-        /// The TCP port the parent VM is listening on
-        port: u16,
+        /// The local TCP address the parent VM is listening on
+        local: Addr,
         /// The id used to identify the listener. It can be used for subsequent calls (e.g., to
         /// accept new incoming connections)
         fd: i32,
