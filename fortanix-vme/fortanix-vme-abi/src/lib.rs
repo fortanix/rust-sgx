@@ -68,6 +68,8 @@ pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
         proxy_port: u32,
+        /// The local address (as used by the runner)
+        local: Addr,
         /// The address of the remote party
         peer: Addr,
     },
@@ -79,6 +81,8 @@ pub enum Response {
         fd: i32,
     },
     IncomingConnection {
+        /// The local address (as used by the runner)
+        local: Addr,
         /// The address of the remote party
         peer: Addr,
         /// The vsock port number the runner will connect to the enclave in order to forward the
@@ -99,6 +103,7 @@ mod test {
         if let Addr::IPv4 { port, ip } = sock_addr.into() {
             assert_eq!(IpAddr::from(ip), sock_addr.ip());   
             assert_eq!(port, sock_addr.port());
+            assert_eq!(port, 4567);
         } else {
             panic!("Not IPv4")
         }
