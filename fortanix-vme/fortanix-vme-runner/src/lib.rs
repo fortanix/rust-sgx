@@ -188,6 +188,7 @@ impl Server {
         // Notify the enclave on which port her proxy is listening on
         let response = Response::Connected {
             proxy_port: proxy_server_port,
+            peer: remote_socket.peer_addr()?.into(),
         };
         Self::log_communication(
             "runner",
