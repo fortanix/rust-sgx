@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 
 use anyhow::Result;
 use clap::{Arg, crate_authors, crate_version};
@@ -47,6 +48,13 @@ fn main() {
             .required(true)
             .value_name("FILE")
             .help("Path to output EIF file"))
+        .arg(Arg::with_name("resource-path")
+             .short("r")
+             .long("resource-path")
+             .required(false)
+             .value_name("resource_path")
+             .help("Path to the resource directory")
+             .validator_os(is_directory))
         .arg(Arg::with_name("signing-certificate")
             .short("c")
             .long("signing-certificate")
@@ -66,7 +74,8 @@ fn main() {
     let output_path = args.value_of("eiffile").unwrap();
     let signing_certificate = args.value_of("signing-certificate").map(|c| c.to_string());
     let private_key = args.value_of("private-key").map(|k| k.to_string());
-
+    let resource_path = args.value_of("resource-path").unwrap_or("/usr/share/nitro_enclaves/blobs/");
+    let resource_path = Path::new(resource_path).to_path_buf();
     let mut logger = env_logger::Builder::from_default_env();
     let logger = logger.format(|buf, record| writeln!(buf, "{}", record.args()));
     if verbose {
@@ -87,7 +96,7 @@ fn main() {
     let docker_dir_path = docker_dir.path().to_str().map(|s| s.to_string());
     debug!("Created docker dir `{:?}`", docker_dir_path);
 
-    let (_output_file, measurements) = match build_from_docker("elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key) {
+    let (_output_file, measurements) = match build_from_docker(&resource_path, "elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key) {
         Ok((o, m)) => {
             if let Err(_) = docker_dir.close() {
                 debug!("Could not clean up docker directory `{:?}`", docker_dir_path)

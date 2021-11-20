@@ -1,5 +1,6 @@
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
+use std::path::PathBuf;
 
 /// Verify that the given path points to a readable file.
 pub fn readable_file(path: &OsStr) -> Result<(), OsString> {
@@ -17,3 +18,13 @@ pub fn readable_elf_file(path: &OsStr) -> Result<(), OsString> {
         Err(e) => Err(format!("{:?} while opening file: {}", e, path.to_string_lossy()).into()),
     }
 }
+
+/// Verify that the given path points to a directory
+pub fn is_directory(path: &OsStr) -> Result<(), OsString> {
+    if PathBuf::from(path).is_dir() {
+        Ok(())
+    } else {
+        Err(format!("{} is not a directory", path.to_string_lossy()).into())
+    }
+}
+
