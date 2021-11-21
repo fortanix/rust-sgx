@@ -11,21 +11,25 @@ language: rust
 matrix:
   include:
     - os: linux
-      dist: xenial
+      dist: focal
       addons:
         apt:
           sources:
-            - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu xenial main'
+            - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main'
               key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
+            - sourceline: "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main"
+              key_url: "https://apt.llvm.org/llvm-snapshot.gpg.key"
           packages:
             - protobuf-compiler
             - libsgx-dcap-ql-dev
-            - libclang-3.8-dev
+            - clang-11
             - musl-tools
       rust:
         - nightly
       env:
-        - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
+        - RUST_BACKTRACE=1
+        - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
+        - CC_x86_64_fortanix_unknown_sgx=clang-11
       before_script:
         - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
       script:
