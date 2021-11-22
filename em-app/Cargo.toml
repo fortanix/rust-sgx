@@ -18,7 +18,8 @@ em-node-agent-client = "1.0.0"
 hyper = { version = "0.10", default-features = false }
 lazy_static = "1"
 mbedtls = { version = "0.8.1", features = [ "rdrand", "std" ], default-features = false }
-pkix = "0.1.1"
+pkix = { git = "https://github.com/fortanix/pkix", branch="acruceru/ecdsa_csr" }
+
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
 sdkms = { git = "https://github.com/fortanix/sdkms-client-rust.git", branch = "uuid-compat", default-features = false }
 serde = "1.0.123"

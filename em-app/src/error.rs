@@ -7,6 +7,9 @@ pub enum Error {
     // Errors returned by ExternalKey trait functions.
     ExternalKey(RemoteError),
 
+    // Errors returned by ExternalKey trait functions.
+    ExternalKeyString(String),
+
     // Errors establishing connection to node agent.
     NodeAgentClient(RemoteError),
 
@@ -51,6 +54,7 @@ impl fmt::Display for crate::Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self {
             Error::ExternalKey(e)               => write!(f, "External key returned error: {}", e),
+            Error::ExternalKeyString(e)         => write!(f, "External key returned error: {}", e),
             Error::NodeAgentClient(e)           => write!(f, "Error creating node agent client: {}", e),
             Error::TargetReport(e)              => write!(f, "Unable to get target report from node agent: {}", e),
             Error::TargetReportHash(e)          => write!(f, "Failure in hash operations while processing target report: {}", e),

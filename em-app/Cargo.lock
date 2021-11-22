@@ -197,7 +197,7 @@ dependencies = [
  "mbedtls",
  "nsm-driver",
  "nsm-io",
- "pkix",
+ "pkix 0.1.1 (git+https://github.com/fortanix/pkix?branch=acruceru/ecdsa_csr)",
  "rustc-serialize",
  "sdkms",
  "serde",
@@ -570,6 +570,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pkix"
+version = "0.1.1"
+source = "git+https://github.com/fortanix/pkix?branch=acruceru/ecdsa_csr#3c5c1e4b62f26c31b3d806fb5f027c931941eeb2"
+dependencies = [
+ "b64-ct",
+ "bit-vec 0.6.3",
+ "chrono",
+ "lazy_static",
+ "num-bigint",
+ "num-integer",
+ "yasna 0.3.2",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -772,7 +786,7 @@ checksum = "bdf3793cb22f01be29fd8ac1f97df9b4685156ec6e9ddea6573b8b1819a7802b"
 dependencies = [
  "byteorder",
  "lazy_static",
- "pkix",
+ "pkix 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "quick-error",
  "sgx-isa",
 ]
