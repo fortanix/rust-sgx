@@ -79,7 +79,7 @@ fn main() {
         exit(1);
     }
 
-    if let Err(e) = builder.add_sign_info(signing_certificate, private_key) {
+    if let Err(e) = builder.set_sign_info(signing_certificate, private_key) {
         println!("Could not parse given certificate and key: {:?}", e);
         exit(1);
     };
