@@ -10,9 +10,10 @@ use std::pin::Pin;
 use std::process::Stdio;
 use std::task::{Context, Poll};
 
-use futures::FutureExt;
-use tokio::io::{AsyncRead, AsyncWrite};
+use futures::{FutureExt, StreamExt, SinkExt};
+use tokio::io::{AsyncRead, AsyncWrite, duplex, DuplexStream};
 use tokio::process::{ChildStdin, ChildStdout, Command};
+use tokio_util::codec::{Framed, LinesCodec};
 
 use aesm_client::AesmClient;
 use enclave_runner::usercalls::{AsyncStream, UsercallExtension};
@@ -73,6 +74,21 @@ impl AsyncWrite for CatService {
     }
 }
 
+fn rpc_service() -> DuplexStream {
+    let (ret, stream) = duplex(8192);
+
+    tokio::spawn(async move {
+        let mut lines = Framed::new(stream, LinesCodec::new());
+
+        while let Some(line) = lines.next().await.transpose().unwrap() {
+            assert_eq!(line, "request");
+            lines.send("response").await.unwrap();
+        }
+    });
+
+    ret
+}
+
 #[derive(Debug)]
 struct ExternalService;
 // Ignoring local_addr and peer_addr, as they are not relavent in the current context.
@@ -91,6 +107,7 @@ impl UsercallExtension for ExternalService {
                     let stream = CatService::new()?;
                     Ok(Some(Box::new(stream) as _))
                 }
+                "rpc" => Ok(Some(Box::new(rpc_service()) as _)),
                 _ => Ok(None),
             }
         }.boxed_local()
