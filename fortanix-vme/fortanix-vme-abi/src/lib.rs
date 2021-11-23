@@ -19,11 +19,13 @@ pub enum Request {
     Bind {
         /// The address the listen to in the parent VM
         addr: String,
-        /// The port the enclave is listening on to receive connections from the parent VM
+        /// The port the enclave is listening on to receive connections from the parent VM. This
+        /// port will also be used to reference the connection
         enclave_port: u32,
     },
     Accept {
-        fd: i32,
+        /// The Vsock port the enclave is listening on
+        enclave_port: u32,
     }
 }
 
@@ -76,9 +78,6 @@ pub enum Response {
     Bound {
         /// The local TCP address the parent VM is listening on
         local: Addr,
-        /// The id used to identify the listener. It can be used for subsequent calls (e.g., to
-        /// accept new incoming connections)
-        fd: i32,
     },
     IncomingConnection {
         /// The local address (as used by the runner)

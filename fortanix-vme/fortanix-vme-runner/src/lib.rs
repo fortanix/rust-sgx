@@ -8,9 +8,8 @@ use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
-use std::os::unix::prelude::RawFd;
 use std::sync::{Arc, Mutex};
-use fortanix_vme_abi::{self, Response, Request};
+use fortanix_vme_abi::{self, Addr, Response, Request};
 use vsock::{self, Std, Vsock, VsockListener, VsockStream};
 
 const PROXY_BUFF_SIZE: usize = 4192;
@@ -93,7 +92,7 @@ pub struct Server {
     /// When the enclave instructs to accept a new connection, the runner accepts a new TCP
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
-    listeners: Mutex<FnvHashMap<RawFd, Arc<Mutex<ListenerInfo>>>>,
+    listeners: Mutex<FnvHashMap<u32, Arc<Mutex<ListenerInfo>>>>,
 }
 
 impl Server {
@@ -210,14 +209,12 @@ impl Server {
         Ok(())
     }
 
-    fn add_listener_info(&self, info: ListenerInfo) -> RawFd {
-        let fd = info.listener.as_raw_fd();
-        self.listeners.lock().unwrap().insert(fd, Arc::new(Mutex::new(info)));
-        fd
+    fn add_listener_info(&self, vsock_listener_port: u32, info: ListenerInfo) {
+        self.listeners.lock().unwrap().insert(vsock_listener_port, Arc::new(Mutex::new(info)));
     }
 
-    fn listener_info(&self, fd: &RawFd) -> Option<Arc<Mutex<ListenerInfo>>> {
-        self.listeners.lock().unwrap().get(&fd).cloned()
+    fn listener_info(&self, vsock_listener_port: u32) -> Option<Arc<Mutex<ListenerInfo>>> {
+        self.listeners.lock().unwrap().get(&vsock_listener_port).cloned()
     }
 
     /*
@@ -246,9 +243,9 @@ impl Server {
     fn handle_request_bind(&self, addr: &String, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
         let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
         let listener = TcpListener::bind(addr)?;
-        let local = listener.local_addr()?.into();
-        let fd = self.add_listener_info(ListenerInfo{ listener, enclave_cid: cid, enclave_port });
-        let response = Response::Bound{ local, fd };
+        let local: Addr = listener.local_addr()?.into();
+        self.add_listener_info(enclave_port, ListenerInfo{ listener, enclave_cid: cid, enclave_port });
+        let response = Response::Bound{ local };
         Self::log_communication(
             "runner",
             enclave.local_port().unwrap_or_default(),
@@ -261,8 +258,8 @@ impl Server {
         Ok(())
     }
 
-    fn handle_request_accept(&self, fd: RawFd, enclave: &mut VsockStream) -> Result<(), IoError> {
-        let listener_info = self.listener_info(&fd)
+    fn handle_request_accept(&self, vsock_listener_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
+        let listener_info = self.listener_info(vsock_listener_port)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
         let listener_info = listener_info.lock().unwrap();
         let (cid, port) = (listener_info.enclave_cid, listener_info.enclave_port);
@@ -336,7 +333,7 @@ impl Server {
         match Self::read_request(stream) {
             Ok(Request::Connect{ addr })             => self.handle_request_connect(&addr, stream)?,
             Ok(Request::Bind{ addr, enclave_port })  => self.handle_request_bind(&addr, enclave_port, stream)?,
-            Ok(Request::Accept{ fd })                => self.handle_request_accept(fd, stream)?,
+            Ok(Request::Accept{ enclave_port })      => self.handle_request_accept(enclave_port, stream)?,
             Err(_e)                                  => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
         };
         Ok(())
