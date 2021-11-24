@@ -2,6 +2,7 @@ use std::net::{Ipv4Addr, TcpStream};
 use std::io::{Read, Write};
 
 fn main() {
+    println!("# Running outgoing connection test");
     let mut socket = TcpStream::connect(format!("google.com:80")).unwrap();
     // `socket.local_addr()` may return the actual local IP address, not 127.0.0.1
     assert!(socket.local_addr().unwrap().port() != 80);

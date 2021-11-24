@@ -76,9 +76,9 @@ function cargo_test {
     fi
 
     compile ${name}
+    eif=$(mktemp /tmp/$name.eif.XXXXX)
 
     if [ "${platform}" == "nitro" ]; then
-	eif=$(mktemp /tmp/$name.eif.XXXXX)
         elf2eif ${elf} ${eif}
 	eif_runner ${eif} ${out} ${err}
         nitro-cli terminate-enclave --all
@@ -100,6 +100,14 @@ function cargo_test {
             echo "Success"
 	fi
     else
+        if [[ -v AWS_VM ]]; then
+            elf2eif ${elf} ${eif}
+            ssh ubuntu@${AWS_VM} "mkdir -p /home/ubuntu/ci-fortanixvme/${name}/"
+            scp ${enclave_eif} ubuntu@${AWS_VM}:/home/ubuntu/ci-fortanixvme/${name}/
+            if [ -f ./test_interaction.sh ]; then
+                scp ./test_interaction.sh ubuntu@${AWS_VM}:/home/ubuntu/ci-fortanixvme/${name}/
+            fi
+        fi
 	RUST_BACKTRACE=full ${elf} -- --nocapture > ${out} 2> ${err}
 
         out=$(cat ${out} | grep -v "#" || true)
@@ -126,14 +134,22 @@ function elf2eif {
     enclave_elf=$1
     enclave_eif=$2
 
-    tmpd=$(mktemp -d)
-    echo "FROM alpine" >> ${tmpd}/Dockerfile
-    echo "COPY enclave ." >> ${tmpd}/Dockerfile
-    echo "CMD ./enclave" >> ${tmpd}/Dockerfile
+    if [[ -z "${NITRO_RESOURCES}" ]]; then
+        dir=$(mktemp -d /tmp/aws_cli.XXXXX)
+        pushd ${dir}
+        git clone https://github.com/aws/aws-nitro-enclaves-cli.git
+        resources=${dir}/aws-nitro-enclaves-cli/blobs/x86_64
+        NITRO_RESOURCES=${resources}
+        popd
+    else
+        resources=${NITRO_RESOURCES}
+    fi
 
-    # Build eif image
-    cp ${enclave_elf} ${tmpd}/enclave
-    nitro-cli build-enclave --docker-dir ${tmpd} --docker-uri enclave --output-file ${enclave_eif}
+    # Newly compiled ftxvme-elf2eif from this repo
+    pushd ${repo_root}/fortanix-vme
+    cargo run --bin ftxvme-elf2eif -- --input-file ${enclave_elf} --output-file ${enclave_eif} --resource-path ${resources} --verbose
+    ls -lh ${enclave_eif}
+    popd
 }
 
 function stop_enclaves {
@@ -156,5 +172,3 @@ function eif_runner {
     # Run enclave
     nitro-cli run-enclave --eif-path ${enclave_eif} --cpu-count 2 --memory 512 --debug-mode > ${out} 2> ${err}
 }
-
-init
