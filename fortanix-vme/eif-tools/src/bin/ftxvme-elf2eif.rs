@@ -16,7 +16,7 @@ fn setup_docker_dir(elf_path: &str) -> Result<TempDir> {
     const DOCKERFILE: &str = "
         FROM scratch
         COPY enclave .
-        CMD ./enclave
+        CMD [\"./enclave\"]
     ";
     info!("Setting up docker directory");
     let docker_dir = TempDir::new("elf2eif_docker_dir")?;
