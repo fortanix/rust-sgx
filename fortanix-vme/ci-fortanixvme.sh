@@ -2,7 +2,14 @@
 repo_root=$(readlink -f $(dirname "${BASH_SOURCE[0]}")/..)
 cd ${repo_root}/fortanix-vme
 
+# Options:
+# AWS_VM: When this environment variable is set, binaries will be sent to this AWS VM
+# NITRO_RESOURCES: The location of the nitro resources (e.g., kernel, ...) required for
+#                    the elf2eif tool. When this environment variable isn't set, the 
+#                    resources will be downloaded
+
 source ./ci-common.sh
+init
 
 function cleanup {
     stop_runner
@@ -21,7 +28,14 @@ function setup_environment {
 
 function start_runner {
     pushd fortanix-vme-runner
+    cargo +${toolchain_version} --locked build
     cargo +${toolchain_version} --locked run &
+
+    if [[ -v AWS_VM ]]; then
+        ssh ubuntu@${AWS_VM} 'mkdir -p /home/ubuntu/ci-fortanixvme'
+        scp ${repo_root}/target/debug/fortanix-vme-runner  ubuntu@${AWS_VM}:/home/ubuntu/ci-fortanixvme
+    fi
+
     pid_runner=$!
     popd
 }
@@ -52,9 +66,10 @@ function run_tests {
 }
 
 run_tests\
-	outgoing_connection \
-	incoming_connection \
-	iron
+    hello_world \
+    outgoing_connection \
+    incoming_connection \
+    iron
 
 echo "********************************"
 echo "**    All tests succeeded!    **"

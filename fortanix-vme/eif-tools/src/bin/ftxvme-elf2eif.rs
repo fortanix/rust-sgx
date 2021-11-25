@@ -16,7 +16,7 @@ fn setup_docker_dir(elf_path: &str) -> Result<TempDir> {
     const DOCKERFILE: &str = "
         FROM scratch
         COPY enclave .
-        CMD ./enclave
+        CMD [\"./enclave\"]
     ";
     info!("Setting up docker directory");
     let docker_dir = TempDir::new("elf2eif_docker_dir")?;
@@ -79,7 +79,7 @@ fn main() {
     let mut logger = env_logger::Builder::from_default_env();
     let logger = logger.format(|buf, record| writeln!(buf, "{}", record.args()));
     if verbose {
-        logger.filter_level(LevelFilter::Info).init();
+        logger.filter_level(LevelFilter::Debug).init();
     } else {
         logger.filter_level(LevelFilter::Error).init();
     }
