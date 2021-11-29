@@ -1,6 +1,15 @@
-Bind to socket to 3400
+Server run #1
+Bind TCP socket to port 3400
 Listening for incoming connections...
 Waiting for connection 1
 Connection 1: Connected
 Waiting for connection 2
 Connection 2: Connected
+Server run #2
+Bind TCP socket to port 3400
+Listening for incoming connections...
+Waiting for connection 1
+Connection 1: Connected
+Waiting for connection 2
+Connection 2: Connected
+Bye bye
