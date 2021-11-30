@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 
 fn main() {
     match Server::run(SERVER_PORT) {
-        Ok((server_thread, _port))                   => server_thread.join().expect("Server panicked"),
+        Ok(handle)                                   => { handle.join().unwrap(); },
         Err(e) if e.kind() == ErrorKind::AddrInUse   => println!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e),
         Err(e)                                       => println!("Server failed. Error: {:?}", e),
     }
