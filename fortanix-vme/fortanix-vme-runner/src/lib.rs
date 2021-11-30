@@ -89,6 +89,56 @@ impl Listener {
     }
 }
 
+#[derive(Debug)]
+struct Connection {
+    // Preliminary work for PLAT-367
+    #[allow(dead_code)]
+    remote: Addr,
+    // Preliminary work for PLAT-367
+    #[allow(dead_code)]
+    runner: Addr,
+}
+
+impl Connection {
+    fn from_tcp_stream(stream: &TcpStream) -> Self {
+        let tcp_remote = stream.peer_addr().unwrap().into();
+        let tcp_runner = stream.local_addr().unwrap().into();
+        Connection {
+            remote: tcp_remote,
+            runner: tcp_runner,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ConnectionKey {
+    enclave: VsockAddr,
+    runner: VsockAddr,
+}
+
+impl ConnectionKey {
+    fn from_vsock_stream(runner_enclave: &VsockStream<Std>) -> Self {
+        let runner_cid = runner_enclave.local_addr().unwrap().cid();
+        let runner_port = runner_enclave.local_addr().unwrap().port();
+        let enclave_cid = runner_enclave.peer_addr().unwrap().cid();
+        let enclave_port = runner_enclave.peer_addr().unwrap().port();
+        Self::connection_key(enclave_cid, enclave_port, runner_cid, runner_port)
+    }
+
+    fn from_addresses(enclave: VsockAddr, runner: VsockAddr) -> Self {
+        ConnectionKey {
+            enclave,
+            runner,
+        }
+    }
+
+    fn connection_key(enclave_cid: u32, enclave_port: u32, runner_cid: u32, runner_port: u32) -> Self {
+        let enclave = VsockAddr::new(enclave_cid, enclave_port);
+        let runner = VsockAddr::new(runner_cid, runner_port);
+        Self::from_addresses(enclave, runner)
+    }
+}
+
 pub struct Server {
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
@@ -97,6 +147,7 @@ pub struct Server {
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
     listeners: Mutex<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>,
+    connections: Mutex<FnvHashMap<ConnectionKey, Arc<Mutex<Connection>>>>,
 }
 
 impl Server {
@@ -208,8 +259,14 @@ impl Server {
         // Wait for incoming connection from enclave
         let (mut proxy, _proxy_addr) = proxy_server.accept()?;
 
+        // Store connection info
+        let k = self.add_connection(&proxy, &remote_socket);
+
         // Pass messages between remote server <-> enclave
         Self::proxy_connection((&mut remote_socket, remote_name), (&mut proxy, "proxy"));
+
+        // Remove connection info
+        self.remove_connection(&k);
         Ok(())
     }
 
@@ -219,6 +276,31 @@ impl Server {
 
     fn listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
         self.listeners.lock().unwrap().get(&addr).cloned()
+    }
+
+    // Preliminary work for PLAT-367
+    #[allow(dead_code)]
+    fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<Arc<Mutex<Connection>>> {
+        let k = ConnectionKey::from_addresses(enclave, runner);
+        self.connections
+            .lock()
+            .unwrap()
+            .get(&k)
+            .cloned()
+    }
+
+    fn add_connection(&self, runner_enclave: &VsockStream<Std>, runner_remote: &TcpStream) -> ConnectionKey {
+        let k = ConnectionKey::from_vsock_stream(runner_enclave);
+        let info = Connection::from_tcp_stream(runner_remote);
+        self.connections.lock().unwrap().insert(k.clone(), Arc::new(Mutex::new(info)));
+        k
+    }
+
+    fn remove_connection(&self, k: &ConnectionKey) {
+        self.connections
+            .lock()
+            .unwrap()
+            .remove(&k);
     }
 
     /*
@@ -272,10 +354,11 @@ impl Server {
         match listener.listener.accept() {
             Ok((mut conn, peer)) => {
                 let vsock = Vsock::new::<Std>()?;
+                let runner_addr = vsock.addr::<Std>()?;
                 let response = Response::IncomingConnection{
                     local: conn.local_addr()?.into(),
                     peer: peer.into(),
-                    proxy_port: vsock.addr::<Std>()?.port(),
+                    proxy_port: runner_addr.port(),
                 };
                 Self::log_communication(
                     "runner",
@@ -288,7 +371,9 @@ impl Server {
                 enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
                 let _ = thread::Builder::new().spawn(move || {
                     let mut proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port()).unwrap();
+                    //let k = self.add_connection(&proxy, &conn);
                     Self::proxy_connection((&mut conn, "remote"), (&mut proxy, "proxy"));
+                    //self.remove_connection(&k);
                 });
                 Ok(())
             },
@@ -350,6 +435,7 @@ impl Server {
         Ok(Server {
             command_listener: Mutex::new(command_listener),
             listeners: Mutex::new(FnvHashMap::default()),
+            connections: Mutex::new(FnvHashMap::default()),
         })
     }
 

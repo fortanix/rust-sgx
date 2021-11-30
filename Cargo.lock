@@ -3863,7 +3863,7 @@ dependencies = [
 [[package]]
 name = "vsock"
 version = "0.2.4"
-source = "git+https://github.com/fortanix/vsock-rs.git?branch=fortanixvme#8c0a6b75e9e0c8f2ce68ad4b7b6d6898852810e7"
+source = "git+https://github.com/fortanix/vsock-rs.git?branch=fortanixvme#95834efa8f54a3c9c07544de8a561c028bd4fbcb"
 dependencies = [
  "getrandom 0.2.3",
  "libc",
