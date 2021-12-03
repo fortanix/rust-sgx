@@ -30,6 +30,10 @@ pub enum Request {
     Close {
         enclave_port: u32,
     },
+    Info {
+        enclave_port: u32,
+        runner_port: Option<u32>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +96,18 @@ pub enum Response {
         proxy_port: u32,
     },
     Closed,
+    Info {
+        /// The local address (as used by the runner)
+        local: Addr,
+        /// The address of the remote party for open connection, None for server sockets
+        peer: Option<Addr>,
+    },
+    Failed(Error),
+}
+
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Error {
+    ConnectionNotFound,
 }
 
 #[cfg(test)]
