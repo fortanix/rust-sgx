@@ -1,10 +1,15 @@
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener};
 use std::io::{Read, Write};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener};
+use std::os::unix::io::{AsRawFd, FromRawFd};
 
 fn server_run() {
     println!("Bind TCP socket to port 3400");
     let listener = TcpListener::bind("127.0.0.1:3400").expect("Bind failed");
     assert_eq!(listener.local_addr().unwrap(), SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3400));
+
+    let fd = listener.as_raw_fd();
+    let listener1 = unsafe { TcpListener::from_raw_fd(fd) };
+    assert_eq!(listener1.local_addr().unwrap(), SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3400));
 
     println!("Listening for incoming connections...");
     for id in 1..3 {
