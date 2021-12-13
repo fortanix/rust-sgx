@@ -96,8 +96,12 @@ struct Connection {
     remote_name: String,
 }
 
+#[derive(Clone, Debug)]
+struct ConnectionInfo {
+}
+
 impl Connection {
-    fn new(vsock_stream: VsockStream<Std>, tcp_stream: TcpStream, remote_name: String) -> Self {
+    pub fn new(vsock_stream: VsockStream<Std>, tcp_stream: TcpStream, remote_name: String) -> Self {
         Connection {
             tcp_stream,
             vsock_stream,
@@ -105,41 +109,44 @@ impl Connection {
         }
     }
 
-    fn close(&self) {
-        let _ = self.tcp_stream.shutdown(Shutdown::Both);
-        let _ = self.vsock_stream.shutdown(Shutdown::Both);
+    pub fn info(&self) -> ConnectionInfo {
+        ConnectionInfo{}
     }
 
-    /// Exchanges messages between the remote server and enclave. Returns `true` when the
-    /// connection should remain active, false otherwise
-    fn proxy(&mut self) -> bool {
-        fn exchange<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> bool {
-            // According to the `Read` threat documentation, reading 0 bytes
-            // indicates that the connection has been shutdown correctly. So we
-            // close the proxy service
-            // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
-            match Server::transfer_data(src, src_name, dst, dst_name) {
-                Ok(n) if n == 0 => false,
-                Ok(_)           => true,
-                Err(_)          => false,
+    /// Exchanges messages between the remote server and enclave. Returns on error, or when one of
+    /// the connections terminated
+    pub fn proxy(&mut self) -> Result<(), IoError> {
+        let remote = &mut self.tcp_stream;
+        let enclave = &mut self.vsock_stream;
+
+        let mut golden_set = FdSet::new();
+        golden_set.insert(remote.as_raw_fd());
+        golden_set.insert(enclave.as_raw_fd());
+
+        while golden_set != FdSet::new() {
+            let mut read_set = golden_set.clone();
+
+            if let Ok(_num) = select(None, Some(&mut read_set), None, None, None) {
+                if read_set.contains(remote.as_raw_fd()) {
+                    // According to the `Read` trait documentation, reading 0 bytes
+                    // indicates that the connection has been shutdown (for writes) correctly. We
+                    //  - reflect this change on the other connection
+                    //  - avoid reading from the socket again
+                    // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
+                    if Server::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
+                        enclave.shutdown(Shutdown::Write)?;
+                        golden_set.remove(remote.as_raw_fd());
+                    }
+                }
+                if read_set.contains(enclave.as_raw_fd()) {
+                    if Server::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
+                        remote.shutdown(Shutdown::Write)?;
+                        golden_set.remove(enclave.as_raw_fd());
+                    }
+                }
             }
         }
-        let remote = self.tcp_stream.as_raw_fd();
-        let proxy = self.vsock_stream.as_raw_fd();
-
-        let mut read_set = FdSet::new();
-        read_set.insert(remote);
-        read_set.insert(proxy);
-
-        if let Ok(_num) = select(None, Some(&mut read_set), None, None, None) {
-            if read_set.contains(remote) {
-                return exchange(&mut self.tcp_stream, &self.remote_name, &mut self.vsock_stream, "proxy");
-            }
-            if read_set.contains(proxy) {
-                return exchange(&mut self.vsock_stream, "proxy", &mut self.tcp_stream, &self.remote_name);
-            }
-        }
-        true
+        Ok(())
     }
 }
 
@@ -150,7 +157,7 @@ struct ConnectionKey {
 }
 
 impl ConnectionKey {
-    fn from_vsock_stream(runner_enclave: &VsockStream<Std>) -> Self {
+    pub fn from_vsock_stream(runner_enclave: &VsockStream<Std>) -> Self {
         let runner_cid = runner_enclave.local_addr().unwrap().cid();
         let runner_port = runner_enclave.local_addr().unwrap().port();
         let enclave_cid = runner_enclave.peer_addr().unwrap().cid();
@@ -158,7 +165,7 @@ impl ConnectionKey {
         Self::connection_key(enclave_cid, enclave_port, runner_cid, runner_port)
     }
 
-    fn from_addresses(enclave: VsockAddr, runner: VsockAddr) -> Self {
+    pub fn from_addresses(enclave: VsockAddr, runner: VsockAddr) -> Self {
         ConnectionKey {
             enclave,
             runner,
@@ -180,7 +187,7 @@ pub struct Server {
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
     listeners: RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>,
-    connections: RwLock<FnvHashMap<ConnectionKey, Arc<Mutex<Connection>>>>,
+    connections: RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>,
 }
 
 impl Server {
@@ -263,7 +270,7 @@ impl Server {
      *  [2] remote
      *  [3] proxy
      */
-    fn handle_request_connect(server: Arc<Self>, remote_addr: &String, enclave: &mut VsockStream) -> Result<(), IoError> {
+    fn handle_request_connect(self: Arc<Self>, remote_addr: &String, enclave: &mut VsockStream) -> Result<(), IoError> {
         // Connect to remote server
         let remote_socket = TcpStream::connect(remote_addr)?;
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
@@ -293,7 +300,7 @@ impl Server {
         let (proxy, _proxy_addr) = proxy_server.accept()?;
 
         // Store connection info
-        server.add_connection(proxy, remote_socket, remote_name.to_string());
+        self.add_connection(proxy, remote_socket, remote_name.to_string())?;
 
         Ok(())
     }
@@ -308,7 +315,7 @@ impl Server {
 
     // Preliminary work for PLAT-367
     #[allow(dead_code)]
-    fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<Arc<Mutex<Connection>>> {
+    fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<ConnectionInfo> {
         let k = ConnectionKey::from_addresses(enclave, runner);
         self.connections
             .read()
@@ -317,10 +324,17 @@ impl Server {
             .cloned()
     }
 
-    fn add_connection(&self, runner_enclave: VsockStream<Std>, runner_remote: TcpStream, remote_name: String) {
+    fn add_connection(self: Arc<Self>, runner_enclave: VsockStream<Std>, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
         let k = ConnectionKey::from_vsock_stream(&runner_enclave);
-        let info = Connection::new(runner_enclave, runner_remote, remote_name);
-        self.connections.write().unwrap().insert(k.clone(), Arc::new(Mutex::new(info)));
+        let mut connection = Connection::new(runner_enclave, runner_remote, remote_name);
+        self.connections.write().unwrap().insert(k.clone(), connection.info());
+
+        thread::Builder::new().spawn(move || {
+            if let Err(e) = connection.proxy() {
+                eprintln!("Connection failed: {}", e);
+            }
+            self.connections.write().unwrap().remove(&k);
+        })
     }
 
     /*
@@ -346,11 +360,11 @@ impl Server {
      *  runner
      *  `enclave`: The runner-enclave vsock connection
      */
-    fn handle_request_bind(server: Arc<Self>, addr: &String, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
+    fn handle_request_bind(self: Arc<Self>, addr: &String, enclave_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
         let cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
         let listener = TcpListener::bind(addr)?;
         let local: Addr = listener.local_addr()?.into();
-        server.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
+        self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
         let response = Response::Bound{ local };
         Self::log_communication(
             "runner",
@@ -364,10 +378,10 @@ impl Server {
         Ok(())
     }
 
-    fn handle_request_accept(server: Arc<Self>, vsock_listener_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
+    fn handle_request_accept(self: Arc<Self>, vsock_listener_port: u32, enclave: &mut VsockStream) -> Result<(), IoError> {
         let enclave_cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
-        let listener = server.listener(&enclave_addr)
+        let listener = self.listener(&enclave_addr)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
         let listener = listener.lock().unwrap();
 
@@ -391,7 +405,7 @@ impl Server {
                 enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
 
                 let proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port()).unwrap();
-                server.add_connection(proxy, conn, "remote".to_string());
+                self.add_connection(proxy, conn, "remote".to_string())?;
 
                 Ok(())
             },
@@ -399,45 +413,11 @@ impl Server {
         }
     }
 
-    fn proxy_connections(server: Arc<Server>) {
-        let mut closed_connections = Vec::new();
-
-        loop {
-            // Exchange messages on every proxy connection
-            // TODO: Store connections as a linked hash map so we don't need to keep a read lock
-            // over the HashMap while every connection is serviced
-            if let Ok(connections) = server.connections.read() {
-                for (key, connection) in connections.iter() {
-                    match connection.try_lock() {
-                        Ok(mut connection) => if !connection.proxy() {
-                                            connection.close();
-                                            closed_connections.push(key.clone());
-                                          }
-                        Err(_) => (),
-                    }
-                }
-            }
-
-            // Remove closed connections
-            let mut num_connections = None;
-            if let Ok(mut connections) = server.connections.try_write() {
-                while let Some(k) = closed_connections.pop() {
-                    connections.remove(&k);
-                }
-                num_connections = Some(connections.len());
-            }
-
-            if num_connections == Some(0) {
-                thread::yield_now();
-            }
-        }
-    }
-
-    fn handle_client(server: Arc<Self>, stream: &mut VsockStream) -> Result<(), IoError> {
+    fn handle_client(self: Arc<Self>, stream: &mut VsockStream) -> Result<(), IoError> {
         match Self::read_request(stream) {
-            Ok(Request::Connect{ addr })             => Self::handle_request_connect(server, &addr, stream)?,
-            Ok(Request::Bind{ addr, enclave_port })  => Self::handle_request_bind(server, &addr, enclave_port, stream)?,
-            Ok(Request::Accept{ enclave_port })      => Self::handle_request_accept(server, enclave_port, stream)?,
+            Ok(Request::Connect{ addr })             => self.handle_request_connect(&addr, stream)?,
+            Ok(Request::Bind{ addr, enclave_port })  => self.handle_request_bind(&addr, enclave_port, stream)?,
+            Ok(Request::Accept{ enclave_port })      => self.handle_request_accept(enclave_port, stream)?,
             Err(_e)                                  => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
         };
         Ok(())
@@ -452,22 +432,15 @@ impl Server {
         })
     }
 
-    fn start_proxy_server(server: Arc<Server>) -> Result<JoinHandle<()>, IoError> {
-        thread::Builder::new()
-            .spawn(move || {
-                Self::proxy_connections(server);
-            })
-    }
-
-    fn start_command_server(server: Arc<Server>) -> Result<JoinHandle<()>, IoError> {
+    fn start_command_server(self: Arc<Self>) -> Result<JoinHandle<()>, IoError> {
         thread::Builder::new().spawn(move || {
-            let command_listener = server.command_listener.lock().unwrap();
+            let command_listener = self.command_listener.lock().unwrap();
             for stream in command_listener.incoming() {
-            let server = server.clone();
+            let server = self.clone();
             let _ = thread::Builder::new()
                 .spawn(move || {
                     let mut stream = stream.unwrap();
-                    if let Err(e) = Self::handle_client(server, &mut stream) {
+                    if let Err(e) = server.handle_client(&mut stream) {
                         eprintln!("Error handling connection: {}, shutting connection down", e);
                         let _ = stream.shutdown(Shutdown::Both);
                     }
@@ -482,10 +455,7 @@ impl Server {
         let port = server.command_listener.lock().unwrap().local_addr()?.port();
         println!("Listening on vsock port {}...", port);
 
-        Server::start_proxy_server(server.clone())?;
-        let handle = Server::start_command_server(server.clone())?;
-
-        Ok(handle)
+        server.start_command_server()
     }
 }
 
