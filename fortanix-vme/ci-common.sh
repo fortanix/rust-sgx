@@ -110,7 +110,7 @@ function cargo_test {
         fi
 	RUST_BACKTRACE=full ${elf} -- --nocapture > ${out} 2> ${err}
 
-        out=$(cat ${out} | grep -v "#" || true)
+        out=$(cat ${out} | grep -v "^#" || true)
         expected=$(cat ./out.expected)
 
         if [ "${out}" == "${expected}" ]; then

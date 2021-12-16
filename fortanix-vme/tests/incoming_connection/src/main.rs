@@ -1,8 +1,8 @@
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener};
 use std::io::{Read, Write};
 
-fn main() {
-    println!("Bind to socket to 3400");
+fn server_run() {
+    println!("Bind TCP socket to port 3400");
     let listener = TcpListener::bind("127.0.0.1:3400").expect("Bind failed");
     assert_eq!(listener.local_addr().unwrap(), SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3400));
 
@@ -27,4 +27,12 @@ fn main() {
             Err(e)              => println!("Connection {}: Accept failed: {:?}", id, e),
         }
     }
+}
+
+fn main() {
+    for run in 1..=2 {
+        println!("Server run #{}", run);
+        server_run()
+    }
+    println!("Bye bye");
 }

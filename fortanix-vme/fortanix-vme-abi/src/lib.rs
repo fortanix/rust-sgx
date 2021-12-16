@@ -26,7 +26,10 @@ pub enum Request {
     Accept {
         /// The Vsock port the enclave is listening on
         enclave_port: u32,
-    }
+    },
+    Close {
+        enclave_port: u32,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,7 +90,8 @@ pub enum Response {
         /// The vsock port number the runner will connect to the enclave in order to forward the
         /// incoming connection
         proxy_port: u32,
-    }
+    },
+    Closed,
 }
 
 #[cfg(test)]
