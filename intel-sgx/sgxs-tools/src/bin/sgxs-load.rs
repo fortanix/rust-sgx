@@ -4,6 +4,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Will be fixed in https://github.com/fortanix/rust-sgx/pull/369
+#![allow(deprecated)]
 #![feature(llvm_asm)]
 extern crate aesm_client;
 extern crate clap;
