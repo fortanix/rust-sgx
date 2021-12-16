@@ -424,7 +424,7 @@ impl Server {
             // Close `TcpListener`
             drop(listener);
         } else {
-            // Info not found, possibly not a listener socket
+            println!("[warning] Can't close the connection as it can't be located.");
         }
         let response = Response::Closed;
         Self::log_communication(
