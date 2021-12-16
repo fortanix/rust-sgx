@@ -114,7 +114,7 @@ pub(crate) fn coenter<T: Tcs>(
                 user_handler: u64,
                 user_data: u64,
                 reserved: [u64; 27],
-            };
+            }
 
             impl fmt::Debug for SgxEnclaveRun {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

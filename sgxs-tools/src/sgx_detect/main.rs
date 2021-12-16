@@ -147,7 +147,7 @@ pub struct SgxSupport {
     aesm_service: Result<TimeoutHardError<AesmClient>, Rc<Error>>,
     aesm_status: Option<AesmStatus>,
     #[serde(skip, default)]
-    dcap_library: bool,
+    _dcap_library: bool,
     #[serde(skip, default = "no_deserialize")]
     loader_sgxdev: Result<Rc<RefCell<SgxDevice>>, Rc<Error>>,
     #[serde(skip, default = "no_deserialize")]
@@ -168,7 +168,7 @@ struct FailTrace<'a>(pub &'a Error);
 impl<'a> fmt::Display for FailTrace<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.0)?;
-        for cause in self.0.causes() {
+        for cause in self.0.iter_causes() {
             write!(fmt, "\ncause: {}", cause)?;
         }
         Ok(())
@@ -333,7 +333,7 @@ impl SgxSupport {
             efi_softwareguardstatus: rcerr(efi_softwareguardstatus),
             aesm_service: rcerr(aesm_service),
             aesm_status,
-            dcap_library,
+            _dcap_library: dcap_library,
             loader_sgxdev: rcerr(loader_sgxdev),
             sgxdev_status: rcerr(sgxdev_status),
             loader_encllib: rcerr(loader_encllib),

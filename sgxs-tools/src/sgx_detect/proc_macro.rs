@@ -220,7 +220,7 @@ pub fn dependency(
         panic = Some("Adding dependencies after `define_dependencies!` invocation".into());
     }
     if let Some(msg) = panic {
-        panic!(msg);
+        panic!("{}", msg);
     }
 
     item
