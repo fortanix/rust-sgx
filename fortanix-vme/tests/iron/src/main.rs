@@ -1,17 +1,15 @@
-#![feature(once_cell)]
 use iron::prelude::*;
 use iron::{BeforeMiddleware, AfterMiddleware, typemap};
-use std::lazy::SyncOnceCell;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU32, Ordering};
 use time;
 
-static NUM_SUCCEEDING_CONNECTIONS: SyncOnceCell<Mutex<u32>> = SyncOnceCell::new();
+static NUM_SUCCEEDING_CONNECTIONS: AtomicU32 = AtomicU32::new(0);
 
 fn signal_success() {
-    let mut count = NUM_SUCCEEDING_CONNECTIONS.get_or_init(|| Mutex::new(0)).lock().unwrap();
+    let mut count = NUM_SUCCEEDING_CONNECTIONS.fetch_add(1, Ordering::Relaxed);
     println!("count = {}", count);
-    *count = *count + 1;
-    if *count == 3 {
+    count = count + 1;
+    if count == 3 {
         std::process::exit(0);
     }
 }
