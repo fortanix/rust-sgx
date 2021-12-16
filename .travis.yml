@@ -23,19 +23,23 @@ matrix:
             - libclang-3.8-dev
             - musl-tools
       rust:
-        - nightly
+        - stable
       env:
         - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
       before_script:
         - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
+        - rustup toolchain add nightly
+        - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
         - cargo test --verbose --locked --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
-        - cargo test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose --locked -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
-        - cargo build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
-        - cargo build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+        # uses backtrace, which still requires nightly on SGX
+        - cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
+        # uses sgxstd feature
+        - cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+        - cargo +nightly test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
         # NOTE: linking glibc version of OpenSSL with musl binary.
         # Unlikely to produce a working binary, but at least the build succeeds.
         - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude cargo build --locked -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
