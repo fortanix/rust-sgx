@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![deny(warnings)]
-#![feature(asm)]
 #![doc(
     html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
     html_favicon_url = "https://edp.fortanix.com/favicon.ico",
