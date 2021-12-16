@@ -25,7 +25,7 @@ matrix:
             - clang-11
             - musl-tools
       rust:
-        - nightly
+        - nightly-2021-12-15
       env:
         - RUST_BACKTRACE=1
         - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
