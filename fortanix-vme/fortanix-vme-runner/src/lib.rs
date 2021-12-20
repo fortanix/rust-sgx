@@ -324,7 +324,7 @@ impl Server {
         self.listeners.write().unwrap().remove(&addr)
     }
 
-    fn connection(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
+    fn connection_info(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
         // There's an interesting vsock bug. When a new connection is created to the enclave in
         // the `handle_request_accept` function (from `ConnectionKey::from_vsock_stream`), the
         // local cid is different from the cid received when inspecting `enclave: VsockStream`.
@@ -457,10 +457,10 @@ impl Server {
         let enclave_addr = VsockAddr::new(enclave_cid, enclave_port);
         let response = if let Some(runner_port) = runner_port {
             // We're looking for a Connection
-            if let Some(connection) = self.connection(enclave_addr, runner_port) {
+            if let Some(ConnectionInfo{ local, peer }) = self.connection_info(enclave_addr, runner_port) {
                 Response::Info {
-                    local: connection.local.clone(),
-                    peer: Some(connection.peer.clone()),
+                    local,
+                    peer: Some(peer),
                 }
             } else {
                 // Connection not found
