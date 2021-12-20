@@ -324,9 +324,15 @@ impl Server {
         self.listeners.write().unwrap().remove(&addr)
     }
 
-    // Preliminary work for PLAT-367
-    #[allow(dead_code)]
-    fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<ConnectionInfo> {
+    fn connection(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
+        // There's an interesting vsock bug. When a new connection is created to the enclave in
+        // the `handle_request_accept` function (from `ConnectionKey::from_vsock_stream`), the
+        // local cid is different from the cid received when inspecting `enclave: VsockStream`.
+        // Locating the cid of the runner through the `get_local_cid` does give the same result.
+        // When PLAT-288 lands, the cid may also here be retrieved through the open runner-enclave
+        // connection
+        let runner_cid = vsock::get_local_cid().unwrap_or(vsock::VMADDR_CID_LOCAL);
+        let runner = VsockAddr::new(runner_cid, runner_port);
         let k = ConnectionKey::from_addresses(enclave, runner);
         self.connections
             .read()
@@ -451,9 +457,7 @@ impl Server {
         let enclave_addr = VsockAddr::new(enclave_cid, enclave_port);
         let response = if let Some(runner_port) = runner_port {
             // We're looking for a Connection
-            let runner_cid: u32 = enclave.local().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
-            let runner_addr = VsockAddr::new(runner_cid, runner_port);
-            if let Some(connection) = self.connection(enclave_addr, runner_addr) {
+            if let Some(connection) = self.connection(enclave_addr, runner_port) {
                 Response::Info {
                     local: connection.local.clone(),
                     peer: Some(connection.peer.clone()),
