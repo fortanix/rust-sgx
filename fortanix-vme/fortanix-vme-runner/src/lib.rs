@@ -9,7 +9,7 @@ use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Mutex, RwLock};
-use fortanix_vme_abi::{self, Addr, Response, Request};
+use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request};
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
 
 const PROXY_BUFF_SIZE: usize = 4192;
@@ -98,6 +98,10 @@ struct Connection {
 
 #[derive(Clone, Debug)]
 struct ConnectionInfo {
+    /// The local address (as used by the runner)
+    local: Addr,
+    /// The address of the remote party for open connection, None for server sockets
+    peer: Addr,
 }
 
 impl Connection {
@@ -110,7 +114,10 @@ impl Connection {
     }
 
     pub fn info(&self) -> ConnectionInfo {
-        ConnectionInfo{}
+        ConnectionInfo {
+            local: self.tcp_stream.local_addr().unwrap().into(),
+            peer: self.tcp_stream.peer_addr().unwrap().into(),
+        }
     }
 
     /// Exchanges messages between the remote server and enclave. Returns on error, or when one of
@@ -317,9 +324,15 @@ impl Server {
         self.listeners.write().unwrap().remove(&addr)
     }
 
-    // Preliminary work for PLAT-367
-    #[allow(dead_code)]
-    fn connection(&self, enclave: VsockAddr, runner: VsockAddr) -> Option<ConnectionInfo> {
+    fn connection_info(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
+        // There's an interesting vsock bug. When a new connection is created to the enclave in
+        // the `handle_request_accept` function (from `ConnectionKey::from_vsock_stream`), the
+        // local cid is different from the cid received when inspecting `enclave: VsockStream`.
+        // Locating the cid of the runner through the `get_local_cid` does give the same result.
+        // When PLAT-288 lands, the cid may also here be retrieved through the open runner-enclave
+        // connection
+        let runner_cid = vsock::get_local_cid().unwrap_or(vsock::VMADDR_CID_LOCAL);
+        let runner = VsockAddr::new(runner_cid, runner_port);
         let k = ConnectionKey::from_addresses(enclave, runner);
         self.connections
             .read()
@@ -439,11 +452,53 @@ impl Server {
         Ok(())
     }
 
+    fn handle_request_info(self: Arc<Self>, enclave_port: u32, runner_port: Option<u32>, enclave: &mut VsockStream) -> Result<(), IoError> {
+        let enclave_cid: u32 = enclave.peer().unwrap().parse().unwrap_or(vsock::VMADDR_CID_HYPERVISOR);
+        let enclave_addr = VsockAddr::new(enclave_cid, enclave_port);
+        let response = if let Some(runner_port) = runner_port {
+            // We're looking for a Connection
+            if let Some(ConnectionInfo{ local, peer }) = self.connection_info(enclave_addr, runner_port) {
+                Response::Info {
+                    local,
+                    peer: Some(peer),
+                }
+            } else {
+                // Connection not found
+                Response::Failed(VmeError::ConnectionNotFound)
+            }
+        } else {
+            // We're looking for a Listener
+            if let Some(listener) = self.listener(&enclave_addr) {
+                let listener = listener.lock().unwrap();
+                Response::Info {
+                    local: listener.listener.local_addr()?.into(),
+                    peer: None,
+                }
+            } else {
+                // Listener not found
+                Response::Failed(VmeError::ConnectionNotFound)
+            }
+        };
+        Self::log_communication(
+            "runner",
+            enclave.local_port().unwrap_or_default(),
+            "enclave",
+            enclave.peer_port().unwrap_or_default(),
+            &format!("{:?}", &response),
+            Direction::Right,
+            "vsock");
+        enclave.write(&serde_cbor::ser::to_vec(&response).unwrap())?;
+        Ok(())
+    }
+
     fn handle_client(self: Arc<Self>, stream: &mut VsockStream) -> Result<(), IoError> {
         match Self::read_request(stream) {
             Ok(Request::Connect{ addr })             => self.handle_request_connect(&addr, stream)?,
             Ok(Request::Bind{ addr, enclave_port })  => self.handle_request_bind(&addr, enclave_port, stream)?,
             Ok(Request::Accept{ enclave_port })      => self.handle_request_accept(enclave_port, stream)?,
+            Ok(Request::Info{
+                enclave_port,
+                runner_port })                       => self.handle_request_info(enclave_port, runner_port, stream)?,
             Ok(Request::Close{ enclave_port })       => self.handle_request_close(enclave_port, stream)?,
             Err(_e)                                  => return Err(IoError::new(IoErrorKind::InvalidData, "Failed to read request")),
         };
