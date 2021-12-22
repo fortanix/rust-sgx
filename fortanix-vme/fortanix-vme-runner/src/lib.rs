@@ -1,6 +1,7 @@
 #![deny(warnings)]
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
+use log::{error, info, warn};
 use serde_cbor::{self, StreamDeserializer};
 use serde_cbor::de::IoRead;
 use std::cmp;
@@ -214,7 +215,7 @@ impl<'de> ClientConnection<'de> {
             Direction::Left => format!("<{:-^width$}", prot, width = 10),
             Direction::Right => format!("{:-^width$}>", prot, width = 10),
         };
-        println!("{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
+        info!("{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
     }
 
     pub fn send(&mut self, response: &Response) -> Result<(), IoError> {
@@ -331,7 +332,7 @@ impl Server {
             Ok(())
         };
         if let Err(e) = accept_connection() {
-            println!("[error] Failed to accept connection from the enclave: {:?}", e);
+            error!("Failed to accept connection from the enclave: {:?}", e);
         }
         Ok(())
     }
@@ -372,7 +373,7 @@ impl Server {
 
         thread::Builder::new().spawn(move || {
             if let Err(e) = connection.proxy() {
-                eprintln!("Connection failed: {}", e);
+                error!("Connection failed: {}", e);
             }
             self.connections.write().unwrap().remove(&k);
         })
@@ -432,7 +433,7 @@ impl Server {
             Ok(())
         };
         if let Err(e) = connect() {
-            println!("[error] Failed to connect to the enclave after it requested an accept: {:?}", e);
+            error!("Failed to connect to the enclave after it requested an accept: {:?}", e);
         }
         Ok(())
     }
@@ -444,7 +445,7 @@ impl Server {
             // Close `TcpListener`
             drop(listener);
         } else {
-            println!("[warning] Can't close the connection as it can't be located.");
+            warn!("Can't close the connection as it can't be located.");
         }
         conn.send(&Response::Closed)?;
         Ok(())
@@ -519,10 +520,10 @@ impl Server {
     }
 
     pub fn run(port: u32) -> std::io::Result<JoinHandle<()>> {
-        println!("Starting enclave runner.");
+        info!("Starting enclave runner.");
         let server = Arc::new(Self::bind(port)?);
         let port = server.command_listener.lock().unwrap().local_addr()?.port();
-        println!("Listening on vsock port {}...", port);
+        info!("Listening on vsock port {}...", port);
 
         server.start_command_server()
     }

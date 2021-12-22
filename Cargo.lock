@@ -161,7 +161,7 @@ dependencies = [
  "env_logger 0.8.4",
  "lazy_static",
  "lazycell",
- "log 0.4.11",
+ "log 0.4.14",
  "peeking_take_while",
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -420,7 +420,7 @@ dependencies = [
  "cookie",
  "failure",
  "idna 0.1.5",
- "log 0.4.11",
+ "log 0.4.14",
  "publicsuffix",
  "serde",
  "serde_json",
@@ -599,7 +599,7 @@ dependencies = [
  "dcap-ql",
  "env_logger 0.6.2",
  "lazy_static",
- "log 0.4.11",
+ "log 0.4.14",
  "report-test",
  "reqwest",
  "rustc-serialize",
@@ -680,7 +680,7 @@ dependencies = [
  "clap",
  "elf",
  "env_logger 0.9.0",
- "log 0.4.11",
+ "log 0.4.14",
  "nitro-cli",
  "once_cell",
  "serde",
@@ -723,7 +723,7 @@ dependencies = [
  "crc",
  "eif_defs",
  "hex 0.3.2",
- "log 0.4.11",
+ "log 0.4.14",
  "openssl",
  "serde",
  "serde_cbor",
@@ -776,7 +776,7 @@ dependencies = [
  "eif_defs",
  "eif_utils",
  "futures 0.3.17",
- "log 0.4.11",
+ "log 0.4.14",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -804,7 +804,7 @@ checksum = "aafcde04e90a5226a6443b7aabdb016ba2f8307c847d524724bd9b346dd1a2d3"
 dependencies = [
  "atty",
  "humantime 1.3.0",
- "log 0.4.11",
+ "log 0.4.14",
  "regex",
  "termcolor",
 ]
@@ -817,7 +817,7 @@ checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
 dependencies = [
  "atty",
  "humantime 2.1.0",
- "log 0.4.11",
+ "log 0.4.14",
  "regex",
  "termcolor",
 ]
@@ -830,7 +830,7 @@ checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
 dependencies = [
  "atty",
  "humantime 2.1.0",
- "log 0.4.11",
+ "log 0.4.14",
  "regex",
  "termcolor",
 ]
@@ -926,7 +926,7 @@ dependencies = [
  "chrono",
  "glob",
  "lazy_static",
- "log 0.4.11",
+ "log 0.4.14",
  "regex",
  "thiserror",
  "yansi",
@@ -997,8 +997,10 @@ dependencies = [
 name = "fortanix-vme-runner"
 version = "0.1.0"
 dependencies = [
+ "env_logger 0.8.4",
  "fnv",
  "fortanix-vme-abi",
+ "log 0.4.14",
  "nix 0.22.2",
  "serde",
  "serde_cbor",
@@ -1215,7 +1217,7 @@ dependencies = [
  "futures 0.1.30",
  "http 0.1.21",
  "indexmap",
- "log 0.4.11",
+ "log 0.4.14",
  "slab",
  "string",
  "tokio-io",
@@ -1364,7 +1366,7 @@ dependencies = [
  "httparse",
  "iovec",
  "itoa",
- "log 0.4.11",
+ "log 0.4.14",
  "net2",
  "rustc_version",
  "time 0.1.44",
@@ -1663,16 +1665,16 @@ version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e19e8d5c34a3e0e2223db8e060f9e8264aeeb5c5fc64a4ee9965c062211c024b"
 dependencies = [
- "log 0.4.11",
+ "log 0.4.14",
 ]
 
 [[package]]
 name = "log"
-version = "0.4.11"
+version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
+checksum = "51b9bbe6c47d51fc3e1a9b945965946b4c44142ab8792c50835a980d362c2710"
 dependencies = [
- "cfg-if 0.1.10",
+ "cfg-if 1.0.0",
 ]
 
 [[package]]
@@ -1804,7 +1806,7 @@ dependencies = [
  "iovec",
  "kernel32-sys",
  "libc",
- "log 0.4.11",
+ "log 0.4.14",
  "miow 0.2.1",
  "net2",
  "slab",
@@ -1818,7 +1820,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8067b404fe97c70829f082dec8bcf4f71225d7eaea1d8645349cb76fa06205cc"
 dependencies = [
  "libc",
- "log 0.4.11",
+ "log 0.4.14",
  "miow 0.3.7",
  "ntapi",
  "winapi 0.3.9",
@@ -1830,7 +1832,7 @@ version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0840c1c50fd55e521b247f949c241c9997709f23bd7f023b9762cd561e935656"
 dependencies = [
- "log 0.4.11",
+ "log 0.4.14",
  "mio 0.6.22",
  "miow 0.3.7",
  "winapi 0.3.9",
@@ -1888,7 +1890,7 @@ checksum = "2b0d88c06fe90d5ee94048ba40409ef1d9315d86f6f38c2efdaad4fb50c58b2d"
 dependencies = [
  "lazy_static",
  "libc",
- "log 0.4.11",
+ "log 0.4.14",
  "openssl",
  "openssl-probe",
  "openssl-sys",
@@ -1927,7 +1929,7 @@ dependencies = [
  "inotify",
  "lazy_static",
  "libc",
- "log 0.4.11",
+ "log 0.4.14",
  "nix 0.15.0",
  "once_cell",
  "openssl",
@@ -2501,7 +2503,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.4.11",
+ "log 0.3.9",
  "which 4.0.2",
 ]
 
@@ -2791,7 +2793,7 @@ dependencies = [
  "http 0.1.21",
  "hyper 0.12.35",
  "hyper-tls",
- "log 0.4.11",
+ "log 0.4.14",
  "mime 0.3.16",
  "mime_guess 2.0.3",
  "native-tls",
@@ -3140,7 +3142,7 @@ dependencies = [
  "failure_derive",
  "fnv",
  "lazy_static",
- "log 0.4.11",
+ "log 0.4.14",
  "mopa",
  "num",
  "openssl",
@@ -3204,7 +3206,7 @@ dependencies = [
  "hyper 0.14.15",
  "hyper-openssl",
  "hyperlocal",
- "log 0.4.11",
+ "log 0.4.14",
  "mime 0.3.16",
  "openssl",
  "pin-project 1.0.8",
@@ -3542,7 +3544,7 @@ checksum = "57fc868aae093479e3131e3d165c93b1c7474109d13c90ec0dda2a1bbfff0674"
 dependencies = [
  "bytes 0.4.12",
  "futures 0.1.30",
- "log 0.4.11",
+ "log 0.4.14",
 ]
 
 [[package]]
@@ -3577,7 +3579,7 @@ dependencies = [
  "crossbeam-utils",
  "futures 0.1.30",
  "lazy_static",
- "log 0.4.11",
+ "log 0.4.14",
  "mio 0.6.22",
  "num_cpus",
  "parking_lot 0.9.0",
@@ -3622,7 +3624,7 @@ dependencies = [
  "crossbeam-utils",
  "futures 0.1.30",
  "lazy_static",
- "log 0.4.11",
+ "log 0.4.14",
  "num_cpus",
  "slab",
  "tokio-executor",
@@ -3902,7 +3904,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6395efa4784b027708f7451087e647ec73cc74f5d9bc2e418404248d679a230"
 dependencies = [
  "futures 0.1.30",
- "log 0.4.11",
+ "log 0.4.14",
  "try-lock",
 ]
 
@@ -3912,7 +3914,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ce8a968cb1cd110d136ff8b819a556d6fb6d919363c61534f6860c7eb172ba0"
 dependencies = [
- "log 0.4.11",
+ "log 0.4.14",
  "try-lock",
 ]
 
