@@ -418,23 +418,25 @@ impl Server {
         let listener = self.listener(&enclave_addr)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
         let listener = listener.lock().unwrap();
-        match listener.listener.accept() {
-            Ok((conn, peer)) => {
-                let vsock = Vsock::new::<Std>()?;
-                let runner_addr = vsock.addr::<Std>()?;
-                client_conn.send(&Response::IncomingConnection{
-                    local: conn.local_addr()?.into(),
-                    peer: peer.into(),
-                    proxy_port: runner_addr.port(),
-                })?;
+        let (conn, peer) = listener.listener.accept()?;
+        let vsock = Vsock::new::<Std>()?;
+        let runner_addr = vsock.addr::<Std>()?;
+        client_conn.send(&Response::IncomingConnection{
+            local: conn.local_addr()?.into(),
+            peer: peer.into(),
+            proxy_port: runner_addr.port(),
+        })?;
 
-                //TODO what to do with these errors?
-                let proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port()).unwrap();
-                self.add_connection(proxy, conn, "remote".to_string())?;
-                Ok(())
-            },
-            Err(e) => Err(e.into()),
+        let connect = || -> Result<(), VmeError> {
+            // Connect to enclave at the expected port
+            let proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port())?;
+            self.add_connection(proxy, conn, "remote".to_string())?;
+            Ok(())
+        };
+        if let Err(e) = connect() {
+            println!("[error] Failed to connect to the enclave after it requested an accept: {:?}", e);
         }
+        Ok(())
     }
 
     fn handle_request_close(self: Arc<Self>, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
@@ -511,7 +513,6 @@ impl Server {
                     .spawn(move || {
                         let mut conn = ClientConnection::new(stream.unwrap());
                         if let Err(e) = server.handle_client(&mut conn) {
-                            // TODO handle error
                             let _ = conn.send(&Response::Failed(e));
                         }
                     });
