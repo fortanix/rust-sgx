@@ -1,7 +1,7 @@
 #![deny(warnings)]
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
-use log::{error, info, warn};
+use log::{error, info, log, warn};
 use serde_cbor::{self, StreamDeserializer};
 use serde_cbor::de::IoRead;
 use std::cmp;
@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request};
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
 
+const MAX_MESSAGE_LEN: usize = 80;
 const PROXY_BUFF_SIZE: usize = 4192;
 
 enum Direction {
@@ -207,26 +208,32 @@ impl<'de> ClientConnection<'de> {
         self.sender.peer()?.parse().map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
     }
 
-    fn log_communication(src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: Direction, prot: &str) {
+    fn log_communication(level: log::Level, src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: Direction, prot: &str, max_len: Option<usize>) {
         let src = format!("{}:{}", src, src_port);
         let dst = format!("{}:{}", dst, dst_port);
-        let msg = &msg[0.. cmp::min(msg.len(), 80)];
+        let msg = if let Some(max) = max_len {
+            &msg[0.. cmp::min(msg.len(), max)]
+        } else {
+            &msg[..]
+        };
         let arrow = match arrow {
             Direction::Left => format!("<{:-^width$}", prot, width = 10),
             Direction::Right => format!("{:-^width$}>", prot, width = 10),
         };
-        info!("{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
+        log!(level, "{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
     }
 
     pub fn send(&mut self, response: &Response) -> Result<(), IoError> {
         Self::log_communication(
+            log::Level::Info,
             "runner",
             self.sender.local_port().unwrap_or_default(),
             "enclave",
             self.sender.peer_port().unwrap_or_default(),
             &format!("{:?}", response),
             Direction::Right,
-            "vsock");
+            "vsock",
+            None);
         let response: Vec<u8> = serde_cbor::ser::to_vec(response)
                                     .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Serialization failed"))?;
         self.sender.write(&response)?;
@@ -238,13 +245,15 @@ impl<'de> ClientConnection<'de> {
                     .ok_or(IoError::new(IoErrorKind::Other, "Failed to read request"))?
                     .map_err(|e| IoError::new(IoErrorKind::InvalidInput, e))?;
         Self::log_communication(
+            log::Level::Info,
             "runner",
             self.sender.local_port().unwrap_or_default(),
             "enclave",
             self.sender.peer_port().unwrap_or_default(),
             &format!("{:?}", &req),
             Direction::Left,
-            "vsock");
+            "vsock",
+            None);
         Ok(req)
     }
 }
