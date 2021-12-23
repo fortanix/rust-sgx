@@ -379,7 +379,7 @@ impl Server {
             .cloned()
     }
 
-    fn add_connection(self: Arc<Self>, runner_enclave: VsockStream<Std>, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
+    fn add_connection(self: Arc<Self>, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
         let k = ConnectionKey::from_vsock_stream(&runner_enclave)?;
         let mut connection = Connection::new(runner_enclave, runner_remote, remote_name);
         self.connections.write().unwrap().insert(k.clone(), connection.info()?);
@@ -523,7 +523,13 @@ impl Server {
                 let server = self.clone();
                 let _ = thread::Builder::new()
                     .spawn(move || {
-                        let mut conn = ClientConnection::new(stream.unwrap());
+                        let mut conn = match stream {
+                            Ok(stream) => ClientConnection::new(stream),
+                            Err(e) => {
+                                error!("Incoming connection failed: {:?}", e);
+                                return;
+                            }
+                        };
                         if let Err(e) = server.handle_client(&mut conn) {
                             if let Err(e) = conn.send(&Response::Failed(e)) {
                                 error!("Failed to send response to enclave: {:?}", e);
