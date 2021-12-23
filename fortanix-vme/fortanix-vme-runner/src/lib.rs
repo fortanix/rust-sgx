@@ -123,6 +123,35 @@ impl Connection {
         })
     }
 
+    fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
+        let mut buff = [0; PROXY_BUFF_SIZE];
+        let n = src.read(&mut buff[..])?;
+        if n > 0 {
+            ClientConnection::log_communication(
+                log::Level::Debug,
+                "runner",
+                src.local_port().unwrap_or_default(),
+                src_name,
+                src.peer_port().unwrap_or_default(),
+                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
+                Direction::Left,
+                S::protocol(),
+                Some(MAX_MESSAGE_LEN));
+            dst.write_all(&buff[0..n])?;
+            ClientConnection::log_communication(
+                log::Level::Debug,
+                dst_name,
+                dst.peer_port().unwrap_or_default(),
+                "runner",
+                dst.local_port().unwrap_or_default(),
+                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
+                Direction::Left,
+                D::protocol(),
+                Some(MAX_MESSAGE_LEN));
+        }
+        Ok(n)
+    }
+
     /// Exchanges messages between the remote server and enclave. Returns on error, or when one of
     /// the connections terminated
     pub fn proxy(&mut self) -> Result<(), IoError> {
@@ -143,13 +172,13 @@ impl Connection {
                     //  - reflect this change on the other connection
                     //  - avoid reading from the socket again
                     // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
-                    if Server::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
+                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
                         enclave.shutdown(Shutdown::Write)?;
                         golden_set.remove(remote.as_raw_fd());
                     }
                 }
                 if read_set.contains(enclave.as_raw_fd()) {
-                    if Server::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
+                    if Self::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
                         remote.shutdown(Shutdown::Write)?;
                         golden_set.remove(enclave.as_raw_fd());
                     }
@@ -270,31 +299,6 @@ pub struct Server {
 }
 
 impl Server {
-    fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
-        let mut buff = [0; PROXY_BUFF_SIZE];
-        let n = src.read(&mut buff[..])?;
-        if n > 0 {
-            ClientConnection::log_communication(
-                "runner",
-                src.local_port().unwrap_or_default(),
-                src_name,
-                src.peer_port().unwrap_or_default(),
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                S::protocol());
-            dst.write_all(&buff[0..n])?;
-            ClientConnection::log_communication(
-                dst_name,
-                dst.peer_port().unwrap_or_default(),
-                "runner",
-                dst.local_port().unwrap_or_default(),
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                D::protocol());
-        }
-        Ok(n)
-    }
-
     /*
      * +-----------+
      * |   remote  |
