@@ -525,7 +525,9 @@ impl Server {
                     .spawn(move || {
                         let mut conn = ClientConnection::new(stream.unwrap());
                         if let Err(e) = server.handle_client(&mut conn) {
-                            let _ = conn.send(&Response::Failed(e));
+                            if let Err(e) = conn.send(&Response::Failed(e)) {
+                                error!("Failed to send response to enclave: {:?}", e);
+                            }
                         }
                     });
             }
