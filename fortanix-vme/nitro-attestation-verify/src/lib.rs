@@ -8,7 +8,7 @@ use serde_bytes::ByteBuf;
 
 #[cfg(feature = "crypto_mbedtls")]
 use mbedtls8::{
-    x509::{Certificate, VerifyError},
+    x509::Certificate,
     alloc::{List as MbedtlsList}
 };
 
@@ -114,16 +114,16 @@ pub fn get_unverified_document(token_data: &[u8]) -> Result<AttestationDocument<
     serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))
 }
 
-pub fn get_verified_document(token_data: &[u8], root_certs_der: &[Vec<u8>], verify_type: VerifyType) -> Result<AttestationDocument<Verified>, NitroError> {
+pub fn get_verified_document(token_data: &[u8], root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument<Verified>, NitroError> {
     // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
     let cose = aws_nitro_enclaves_cose::sign::CoseSign1::from_bytes(token_data).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
     let payload = cose.get_payload(None).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
     let doc : AttestationDocument<Unverified> = serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
-    verify_signature(&cose, doc, root_certs_der, verify_type)
+    verify_signature(&cose, doc, root_certs_der)
 }
 
 #[cfg(feature = "crypto_mbedtls")]
-fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, doc: AttestationDocument<V>, root_certs_der: &[Vec<u8>], verify_type: VerifyType) -> Result<AttestationDocument<Verified>, NitroError> {
+fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, doc: AttestationDocument<V>, root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument<Verified>, NitroError> {
     let mut c_root = MbedtlsList::<Certificate>::new();
 
     
@@ -142,18 +142,8 @@ fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::C
 
 
     let mut err_str = String::new();
-
-    match verify_type {
-        VerifyType::Full => Certificate::verify(&chain, &c_root, Some(&mut err_str)).map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str))),
-        VerifyType::IgnoreExpiredCerts => {
-            let verify_callback = |_crt: &Certificate, _depth: i32, verify_flags: &mut VerifyError| {
-                verify_flags.remove(VerifyError::CERT_EXPIRED);
-                Ok(())
-            };
-            Certificate::verify_callback(&chain, &c_root, Some(&mut err_str), verify_callback).map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str)))
-        }
-    }?;
-
+    Certificate::verify(&chain, &c_root, Some(&mut err_str))
+        .map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str)))?;
     let certificate = chain.pop_front().ok_or(NitroError::CertificateInternalError)?;
     
     if !cose.verify_signature(certificate.public_key()).map_err(|err| NitroError::CertificateVerifyFailure(format!("failed to verify signature on sig_structure: {:?}", err)))? {
@@ -166,7 +156,7 @@ fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::C
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, TimeZone, Utc};
-    use crate::{get_verified_document, NitroError, VerifyType};
+    use crate::{get_verified_document, NitroError};
     use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
 
     lazy_static!{
@@ -193,16 +183,15 @@ mod tests {
     
     #[test]
     fn test_verify_proper() {
-        let doc = get_verified_document(&PROPER_TOKEN, &AWS_CA, VerifyType::Full);
+        let doc = get_verified_document(&PROPER_TOKEN, &AWS_CA);
         let now = Utc::now();
+        println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
             // Document not valid yet
             assert_eq!(doc.unwrap_err(), *NOT_VALID_YET_ERR);
-            // faketime '2021-09-08 11:00:00 GMT'
         } else if PROPER_VALIDITY.1 < now {
             // Document expired
             assert_eq!(doc.unwrap_err(), *EXPIRED_ERR);
-            // faketime '2021-09-10 11:00:00 GMT'
         } else {
             // Document valid
             let doc = doc.unwrap();
@@ -214,8 +203,9 @@ mod tests {
 
     #[test]
     fn test_verify_multiple_root_cas() {
-        let doc = get_verified_document(&PROPER_TOKEN, &BOTH_CAS, VerifyType::Full);
+        let doc = get_verified_document(&PROPER_TOKEN, &BOTH_CAS);
         let now = Utc::now();
+        println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
             // Document not valid yet
             assert_eq!(doc.unwrap_err(), *NOT_VALID_YET_ERR);
@@ -232,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_verify_invalid_root_cas() {
-        let res = get_verified_document(&PROPER_TOKEN, &INVALID_CA, VerifyType::Full);
+        let res = get_verified_document(&PROPER_TOKEN, &INVALID_CA);
         
         match res.unwrap_err() {
             NitroError::CertificateParsingError(_) => (),
@@ -242,7 +232,7 @@ mod tests {
     
     #[test]
     fn test_verify_attestation_invalid_leaf_certificate() {
-        let res = get_verified_document(&TAMPERED_CERTIFICATE, &AWS_CA, VerifyType::Full);
+        let res = get_verified_document(&TAMPERED_CERTIFICATE, &AWS_CA);
 
         match res.unwrap_err() {
             NitroError::CertificateParsingError(_) => (),
@@ -252,13 +242,14 @@ mod tests {
 
     #[test]
     fn test_verify_no_path_to_root_ca() {
-        let _ = get_verified_document(&PROPER_TOKEN, &UNKNOWN_CA, VerifyType::Full).unwrap_err();
+        let _ = get_verified_document(&PROPER_TOKEN, &UNKNOWN_CA).unwrap_err();
     }
 
     #[test]
     fn test_verify_attestation_not_signed_by_leaf_ca() {
-        let doc = get_verified_document(&TAMPERED_SIGNATURE, &AWS_CA, VerifyType::Full);
+        let doc = get_verified_document(&TAMPERED_SIGNATURE, &AWS_CA);
         let now = Utc::now();
+        println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
             // Document not valid yet
             assert_eq!(doc.unwrap_err(), *NOT_VALID_YET_ERR);
