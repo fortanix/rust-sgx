@@ -40,6 +40,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.3.0"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/mbedtls-support#d506ae1693ad97ad52c96081dfc5e8bbe4ccba03"
 dependencies = [
  "mbedtls",
  "serde",
@@ -48,6 +49,12 @@ dependencies = [
  "serde_repr",
  "serde_with",
 ]
+
+[[package]]
+name = "b64-ct"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac1e8deebfdca687fcef6fe024fc92cf8183f203075ce4fda263ae6ea13a8dc3"
 
 [[package]]
 name = "bindgen"
@@ -446,13 +453,15 @@ checksum = "8d31d11c69a6b52a174b42bdc0c30e5e11670f90788b2c471c31c1d17d449443"
 [[package]]
 name = "pkix"
 version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4aa65def990a905dd51e5f0fed8862ab0af4f7aba5fb0f1740fc872f04d7bc4"
 dependencies = [
+ "b64-ct",
  "bit-vec 0.6.3",
  "chrono",
  "lazy_static",
  "num-bigint",
  "num-integer",
- "rustc-serialize",
  "yasna 0.3.2",
 ]
 
@@ -505,12 +514,6 @@ name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-serialize"
-version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
 
 [[package]]
 name = "rustversion"

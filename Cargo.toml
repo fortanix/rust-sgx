@@ -4,6 +4,7 @@ members = [
     "fortanix-vme/eif-tools",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/nitro-attestation-verify",
     "fortanix-vme/tests/hello_world",
     "fortanix-vme/tests/outgoing_connection",
     "fortanix-vme/tests/incoming_connection",
