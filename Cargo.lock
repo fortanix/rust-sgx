@@ -2092,6 +2092,7 @@ name = "nitro-attestation-verify"
 version = "0.1.0"
 dependencies = [
  "aws-nitro-enclaves-cose 0.3.0",
+ "chrono",
  "lazy_static",
  "mbedtls 0.8.1 (git+https://github.com/fortanix/rust-mbedtls?branch=acruceru/port-async-support)",
  "pkix",
