@@ -1,6 +1,7 @@
 #[cfg(test)]
 #[macro_use] extern crate lazy_static;
 
+use aws_nitro_enclaves_cose::CoseSign1;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use serde::Deserialize;
@@ -38,24 +39,56 @@ pub struct AttestationDocument<V: VerificationType = Verified> {
     pub user_data: Option<ByteBuf>,
     pub nonce: Option<ByteBuf>,
     #[serde(skip)]
+    cose: Option<CoseSign1>,
+    #[serde(skip)]
     type_: PhantomData<V>,
 }
 
-impl<V: VerificationType> AttestationDocument<V> {
-    fn verified(self) -> AttestationDocument<Verified> {
+impl AttestationDocument<Unverified> {
+    pub fn from_slice(data: &[u8]) -> Result<Self, NitroError> {
+        // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
+        let cose = CoseSign1::from_bytes(data)
+                    .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
+        let payload = cose.get_payload(None)
+                        .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
+        let mut doc: AttestationDocument<Unverified> = serde_cbor::from_slice(&payload)
+                                                        .map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
+        doc.cose = Some(cose);
+        Ok(doc)
+    }
+
+    pub fn verify(self, root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
+        // By construction an AttestationDocument<Unverified> always has a `cose` field
+        let cose = self.cose.ok_or(NitroError::MissingValue("COSE value not present"))?;
+        let payload = cose.get_payload(None).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
+        let AttestationDocument::<Unverified> {
+            module_id,
+            timestamp,
+            digest,
+            pcrs,
+            certificate,
+            cabundle,
+            public_key,
+            user_data,
+            nonce,
+            cose: _,
+            type_: _ } = serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
+
+        verify_signature(&cose, &certificate, &cabundle, root_certs_der)?;
         // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
-        AttestationDocument {
-            module_id: self.module_id,
-            timestamp: self.timestamp,
-            digest: self.digest,
-            pcrs: self.pcrs,
-            certificate: self.certificate,
-            cabundle: self.cabundle,
-            public_key: self.public_key,
-            user_data: self.user_data,
-            nonce: self.nonce,
-            type_: Default::default(),
-        }
+        Ok(AttestationDocument {
+            module_id,
+            timestamp,
+            digest,
+            pcrs,
+            certificate,
+            cabundle,
+            public_key,
+            user_data,
+            nonce,
+            cose: None,
+            type_: PhantomData,
+            })
     }
 }
 
@@ -107,23 +140,8 @@ impl std::error::Error for NitroError {
     }
 }
 
-pub fn get_unverified_document(token_data: &[u8]) -> Result<AttestationDocument<Unverified>, NitroError> {
-    // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
-    let cose = aws_nitro_enclaves_cose::sign::CoseSign1::from_bytes(token_data).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-    let payload = cose.get_payload(None).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-    serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))
-}
-
-pub fn get_verified_document(token_data: &[u8], root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument<Verified>, NitroError> {
-    // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
-    let cose = aws_nitro_enclaves_cose::sign::CoseSign1::from_bytes(token_data).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-    let payload = cose.get_payload(None).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-    let doc : AttestationDocument<Unverified> = serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
-    verify_signature(&cose, doc, root_certs_der)
-}
-
 #[cfg(feature = "crypto_mbedtls")]
-fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, doc: AttestationDocument<V>, root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument<Verified>, NitroError> {
+fn verify_signature(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, certificate: &ByteBuf, cabundle: &Vec<ByteBuf>, root_certs_der: &[Vec<u8>]) -> Result<(), NitroError> {
     let mut c_root = MbedtlsList::<Certificate>::new();
 
     
@@ -133,10 +151,10 @@ fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::C
     }
 
     let mut chain = MbedtlsList::<Certificate>::new();
-    chain.push(Certificate::from_der(&doc.certificate).map_err(|e| NitroError::CertificateParsingError(format!("Certificate failure: {:?}", e)))?);
+    chain.push(Certificate::from_der(certificate).map_err(|e| NitroError::CertificateParsingError(format!("Certificate failure: {:?}", e)))?);
     
-    for i in (0..doc.cabundle.len()).rev() {
-        let cert = Certificate::from_der(&doc.cabundle[i]).map_err(|e| NitroError::CertificateParsingError(format!("Failed to parse doc.cabundle[{}] as x509 certificate: {:?}", i, e)))?;
+    for i in (0..cabundle.len()).rev() {
+        let cert = Certificate::from_der(&cabundle[i]).map_err(|e| NitroError::CertificateParsingError(format!("Failed to parse doc.cabundle[{}] as x509 certificate: {:?}", i, e)))?;
         chain.push(cert);
     }
 
@@ -149,14 +167,14 @@ fn verify_signature<V: VerificationType>(cose: &aws_nitro_enclaves_cose::sign::C
     if !cose.verify_signature(certificate.public_key()).map_err(|err| NitroError::CertificateVerifyFailure(format!("failed to verify signature on sig_structure: {:?}", err)))? {
         Err(NitroError::FailedValidation)
     } else {
-        Ok(doc.verified())
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::{DateTime, TimeZone, Utc};
-    use crate::{get_verified_document, NitroError};
+    use crate::{AttestationDocument, NitroError};
     use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
 
     lazy_static!{
@@ -183,7 +201,7 @@ mod tests {
     
     #[test]
     fn test_verify_proper() {
-        let doc = get_verified_document(&PROPER_TOKEN, &AWS_CA);
+        let doc = AttestationDocument::from_slice(&PROPER_TOKEN).unwrap().verify(&AWS_CA);
         let now = Utc::now();
         println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
@@ -197,13 +215,12 @@ mod tests {
             let doc = doc.unwrap();
             assert_eq!(doc.module_id, "i-02e3a660059b27d87-enc017bca11991e5083");
             assert_eq!(doc.timestamp, 1631182760215);
-            //faketime '2021-09-09 11:00:00 GMT'
         }
     }
 
     #[test]
     fn test_verify_multiple_root_cas() {
-        let doc = get_verified_document(&PROPER_TOKEN, &BOTH_CAS);
+        let doc = AttestationDocument::from_slice(&PROPER_TOKEN).unwrap().verify(&BOTH_CAS);
         let now = Utc::now();
         println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
@@ -222,7 +239,7 @@ mod tests {
 
     #[test]
     fn test_verify_invalid_root_cas() {
-        let res = get_verified_document(&PROPER_TOKEN, &INVALID_CA);
+        let res = AttestationDocument::from_slice(&PROPER_TOKEN).unwrap().verify(&INVALID_CA);
         
         match res.unwrap_err() {
             NitroError::CertificateParsingError(_) => (),
@@ -232,7 +249,7 @@ mod tests {
     
     #[test]
     fn test_verify_attestation_invalid_leaf_certificate() {
-        let res = get_verified_document(&TAMPERED_CERTIFICATE, &AWS_CA);
+        let res = AttestationDocument::from_slice(&TAMPERED_CERTIFICATE).unwrap().verify(&AWS_CA);
 
         match res.unwrap_err() {
             NitroError::CertificateParsingError(_) => (),
@@ -242,12 +259,12 @@ mod tests {
 
     #[test]
     fn test_verify_no_path_to_root_ca() {
-        let _ = get_verified_document(&PROPER_TOKEN, &UNKNOWN_CA).unwrap_err();
+        let _ = AttestationDocument::from_slice(&PROPER_TOKEN).unwrap().verify(&UNKNOWN_CA).unwrap_err();
     }
 
     #[test]
     fn test_verify_attestation_not_signed_by_leaf_ca() {
-        let doc = get_verified_document(&TAMPERED_SIGNATURE, &AWS_CA);
+        let doc = AttestationDocument::from_slice(&TAMPERED_SIGNATURE).unwrap().verify(&AWS_CA);
         let now = Utc::now();
         println!("now = {}", now);
         if now < PROPER_VALIDITY.0 {
