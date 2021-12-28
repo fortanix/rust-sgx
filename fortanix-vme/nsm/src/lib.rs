@@ -74,6 +74,34 @@ impl From<ErrorCode> for Error {
     }
 }
 
+#[derive(Debug, Eq, PartialEq)]
+pub struct Pcr {
+    pub locked: bool,
+    pub data: Vec<u8>,
+}
+
+impl Pcr {
+    fn new(locked: bool, data: Vec<u8>) -> Self {
+        Pcr {
+            locked,
+            data,
+        }
+    }
+}
+
+impl TryFrom<Response> for Pcr {
+    type Error = Error;
+
+    fn try_from(req: Response) -> Result<Self, Self::Error> {
+        match req {
+            Response::DescribePCR { lock, data } => Ok(Pcr::new(lock, data)),
+            Response::ExtendPCR { data }         => Ok(Pcr::new(false, data)) /* Only unlocked PCRs can get extended */,
+            Response::Error(code)                => Err(code.into()),
+            _                                    => Err(Error::InvalidResponse),
+        }
+    }
+}
+
 impl Nsm {
     pub fn new() -> Result<Self, Error> {
         let fd = nsm_driver::nsm_init();
@@ -96,6 +124,13 @@ impl Nsm {
             Response::Error(code) => Err(code.into()),
             _ => Err(Error::InvalidResponse),
         }
+    }
+
+    pub fn describe_pcr(&mut self, idx_pcr: u16) -> Result<Pcr, Error> {
+        let req = Request::DescribePCR {
+            index: idx_pcr,
+        };
+        nsm_driver::nsm_process_request(self.0, req).try_into()
     }
 }
 

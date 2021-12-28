@@ -21,4 +21,10 @@ fn main() {
     assert_eq!(doc.user_data.unwrap(), user_data);
     println!("nonce: {:?}", doc.nonce);
     assert_eq!(doc.nonce.unwrap(), nonce);
+
+    for idx in 0..32 {
+        let pcr = nsm.describe_pcr(idx).unwrap();
+        println!("# pcr{} = {:?}", idx, pcr);
+        assert_eq!(pcr.locked, idx <= 15);
+    }
 }
