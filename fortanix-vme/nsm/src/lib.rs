@@ -140,6 +140,17 @@ impl Nsm {
         };
         nsm_driver::nsm_process_request(self.0, req).try_into()
     }
+
+    pub fn lock_pcr(&mut self, idx_pcr: u16) -> Result<(), Error> {
+        let req = Request::LockPCR {
+            index: idx_pcr,
+        };
+        match nsm_driver::nsm_process_request(self.0, req) {
+            Response::LockPCR     => Ok(()),
+            Response::Error(code) => Err(code.into()),
+            _                     => Err(Error::InvalidResponse),
+        }
+    }
 }
 
 impl Drop for Nsm {

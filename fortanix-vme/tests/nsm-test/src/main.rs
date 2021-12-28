@@ -34,4 +34,8 @@ fn main() {
     println!("pcr16 = {:?}", pcr16);
     println!("pcr16 = {:?}", nsm.describe_pcr(16));
     assert_eq!(nsm.describe_pcr(16).unwrap().locked, false);
+
+    nsm.lock_pcr(16).unwrap();
+    println!("pcr16 = {:?}", nsm.describe_pcr(10));
+    assert_eq!(nsm.describe_pcr(16).unwrap().locked, true);
 }
