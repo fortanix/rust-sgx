@@ -38,4 +38,10 @@ fn main() {
     nsm.lock_pcr(16).unwrap();
     println!("pcr16 = {:?}", nsm.describe_pcr(10));
     assert_eq!(nsm.describe_pcr(16).unwrap().locked, true);
+
+    nsm.lock_pcrs(18).unwrap();
+    for pcr in 0..=18 {
+        println!("#pcr{} = {:?}", pcr, nsm.describe_pcr(pcr));
+        assert_eq!(nsm.describe_pcr(pcr).map(|val| val.locked), Ok(pcr < 18));
+    }
 }

@@ -4,7 +4,7 @@ pub use serde_bytes::ByteBuf;
 
 pub struct Nsm(i32);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     AttestationError(AttestationError),
     BufferTooSmall,
@@ -105,7 +105,6 @@ impl TryFrom<Response> for Pcr {
 impl Nsm {
     pub fn new() -> Result<Self, Error> {
         let fd = nsm_driver::nsm_init();
-
         if fd < 0 {
             Err(Error::CannotOpenDriver)
         } else {
@@ -147,6 +146,18 @@ impl Nsm {
         };
         match nsm_driver::nsm_process_request(self.0, req) {
             Response::LockPCR     => Ok(()),
+            Response::Error(code) => Err(code.into()),
+            _                     => Err(Error::InvalidResponse),
+        }
+    }
+
+    /// Lock PlatformConfigurationRegisters at indexes `[0, range)` from further modifications
+    pub fn lock_pcrs(&self, range: u16) -> Result<(), Error> {
+        let req = Request::LockPCRs {
+            range,
+        };
+        match nsm_driver::nsm_process_request(self.0, req) {
+            Response::LockPCRs    => Ok(()),
             Response::Error(code) => Err(code.into()),
             _                     => Err(Error::InvalidResponse),
         }
