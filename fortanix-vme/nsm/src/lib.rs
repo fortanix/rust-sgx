@@ -132,6 +132,14 @@ impl Nsm {
         };
         nsm_driver::nsm_process_request(self.0, req).try_into()
     }
+
+    pub fn extend_pcr(&mut self, idx_pcr: u16, data: Vec<u8>) -> Result<Pcr, Error> {
+        let req = Request::ExtendPCR {
+            index: idx_pcr,
+            data,
+        };
+        nsm_driver::nsm_process_request(self.0, req).try_into()
+    }
 }
 
 impl Drop for Nsm {

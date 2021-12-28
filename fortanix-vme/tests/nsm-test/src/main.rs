@@ -27,4 +27,11 @@ fn main() {
         println!("# pcr{} = {:?}", idx, pcr);
         assert_eq!(pcr.locked, idx <= 15);
     }
+
+    let pcr16 = nsm.extend_pcr(16, vec![41, 41, 41]);
+    println!("pcr16 = {:?}", pcr16);
+    let pcr16 = nsm.extend_pcr(16, vec![42, 42, 42]);
+    println!("pcr16 = {:?}", pcr16);
+    println!("pcr16 = {:?}", nsm.describe_pcr(16));
+    assert_eq!(nsm.describe_pcr(16).unwrap().locked, false);
 }
