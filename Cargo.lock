@@ -800,8 +800,8 @@ dependencies = [
  "em-node-agent-client",
  "hyper 0.10.16",
  "mbedtls",
- "nsm-driver",
- "nsm-io",
+ "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -2138,6 +2138,18 @@ dependencies = [
 
 [[package]]
 name = "nix"
+version = "0.20.2"
+source = "git+https://github.com/fortanix/nix.git?branch=raoul/fortanixvme_r0.20.2#6803aa84923d024a6106840acf2d12edb78825c0"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+ "memoffset 0.6.4",
+]
+
+[[package]]
+name = "nix"
 version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3bb9a13fa32bc5aeb64150cd3f32d6cf4c748f8f8a417cce5d2eb976a8370ba"
@@ -2160,6 +2172,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsm"
+version = "0.1.0"
+dependencies = [
+ "nitro-attestation-verify",
+ "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
+ "serde_bytes",
+]
+
+[[package]]
 name = "nsm-driver"
 version = "0.1.0"
 source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
@@ -2167,7 +2189,19 @@ dependencies = [
  "libc",
  "log 0.4.14",
  "nix 0.15.0",
- "nsm-io",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
+ "serde_cbor",
+]
+
+[[package]]
+name = "nsm-driver"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
+dependencies = [
+ "libc",
+ "log 0.4.14",
+ "nix 0.20.2",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
  "serde_cbor",
 ]
 
@@ -2182,6 +2216,25 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_cbor",
+]
+
+[[package]]
+name = "nsm-io"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
+dependencies = [
+ "log 0.4.14",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
+name = "nsm-test"
+version = "0.1.0"
+dependencies = [
+ "nsm",
+ "pkix",
 ]
 
 [[package]]
