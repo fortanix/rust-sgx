@@ -1,4 +1,4 @@
-use nsm::{ByteBuf, Nsm};
+use nsm::{ByteBuf, Digest, Nsm};
 
 fn main() {
     let mut nsm = Nsm::new().unwrap();
@@ -44,4 +44,13 @@ fn main() {
         println!("#pcr{} = {:?}", pcr, nsm.describe_pcr(pcr));
         assert_eq!(nsm.describe_pcr(pcr).map(|val| val.locked), Ok(pcr < 18));
     }
+
+    println!("# nsm description: {:#?}", nsm.describe().unwrap());
+    let description = nsm.describe().unwrap();
+    assert_eq!(description.version_major, 1);
+    assert_eq!(description.version_minor, 0);
+    assert_eq!(description.version_patch, 0);
+    assert_eq!(description.max_pcrs, 32);
+    assert_eq!(description.locked_pcrs.iter().count(), 18);
+    assert_eq!(description.digest, Digest::SHA384);
 }

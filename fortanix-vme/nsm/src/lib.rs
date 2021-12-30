@@ -1,6 +1,8 @@
 pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError};
 use nsm_io::{ErrorCode, Response, Request};
+pub use nsm_io::Digest;
 pub use serde_bytes::ByteBuf;
+use std::collections::BTreeSet;
 
 pub struct Nsm(i32);
 
@@ -102,6 +104,52 @@ impl TryFrom<Response> for Pcr {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Description {
+    /// Breaking API changes are denoted by `major_version`
+    pub version_major: u16,
+    /// Minor API changes are denoted by `minor_version`. Minor versions should be backwards compatible.
+    pub version_minor: u16,
+    /// Patch version. These are security and stability updates and do not affect API.
+    pub version_patch: u16,
+    /// `module_id` is an identifier for a singular NitroSecureModule
+    pub module_id: String,
+    /// The maximum number of PCRs exposed by the NitroSecureModule.
+    pub max_pcrs: u16,
+    /// The PCRs that are read-only.
+    pub locked_pcrs: BTreeSet<u16>,
+    /// The digest of the PCR Bank
+    pub digest: Digest,
+}
+
+impl TryFrom<Response> for Description {
+    type Error = Error;
+
+    fn try_from(response: Response) -> Result<Self, Self::Error> {
+        match response {
+            Response::DescribeNSM {
+                version_major,
+                version_minor,
+                version_patch,
+                module_id,
+                max_pcrs,
+                locked_pcrs,
+                digest,
+            } => Ok(Description {
+                    version_major,
+                    version_minor,
+                    version_patch,
+                    module_id,
+                    max_pcrs,
+                    locked_pcrs,
+                    digest,
+                  }),
+            Response::Error(code) => Err(code.into()),
+            _ => Err(Error::InvalidResponse),
+        }
+    }
+}
+
 impl Nsm {
     pub fn new() -> Result<Self, Error> {
         let fd = nsm_driver::nsm_init();
@@ -161,6 +209,10 @@ impl Nsm {
             Response::Error(code) => Err(code.into()),
             _                     => Err(Error::InvalidResponse),
         }
+    }
+
+    pub fn describe(&self) -> Result<Description, Error> {
+        nsm_driver::nsm_process_request(self.0, Request::DescribeNSM).try_into()
     }
 }
 
