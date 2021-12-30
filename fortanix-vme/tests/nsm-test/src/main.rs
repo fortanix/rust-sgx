@@ -53,4 +53,5 @@ fn main() {
     assert_eq!(description.max_pcrs, 32);
     assert_eq!(description.locked_pcrs.iter().count(), 18);
     assert_eq!(description.digest, Digest::SHA384);
+    assert!(nsm.get_random().is_ok());
 }

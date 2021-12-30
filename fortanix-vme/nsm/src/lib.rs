@@ -214,6 +214,14 @@ impl Nsm {
     pub fn describe(&self) -> Result<Description, Error> {
         nsm_driver::nsm_process_request(self.0, Request::DescribeNSM).try_into()
     }
+
+    pub fn get_random(&self) -> Result<Vec<u8>, Error> {
+        match nsm_driver::nsm_process_request(self.0, Request::GetRandom) {
+            Response::GetRandom{ random }    => Ok(random),
+            Response::Error(code)            => Err(code.into()),
+            _                                => Err(Error::InvalidResponse),
+        }
+    }
 }
 
 impl Drop for Nsm {
