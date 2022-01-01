@@ -279,6 +279,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4872d67bab6358e59559027aa3b9157c53d9358c51423c17554809a8858e0f8"
 
 [[package]]
+name = "cargo_toml"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "363c7cfaa15f101415c4ac9e68706ca4a2277773932828b33f96e59d28c68e62"
+dependencies = [
+ "serde",
+ "serde_derive 1.0.132",
+ "toml 0.5.8",
+]
+
+[[package]]
 name = "cc"
 version = "1.0.61"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -665,13 +676,17 @@ name = "eif-tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cargo_toml",
  "clap",
  "elf",
  "env_logger 0.9.0",
  "log 0.4.11",
  "nitro-cli",
+ "once_cell",
+ "serde",
  "sha2 0.9.8",
  "tempdir",
+ "thiserror",
 ]
 
 [[package]]
@@ -959,11 +974,11 @@ dependencies = [
  "nix 0.13.1",
  "num_cpus",
  "serde",
- "serde_derive 1.0.130 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.132",
  "sgx-isa 0.3.3",
  "sgxs",
  "sgxs-loaders",
- "toml",
+ "toml 0.4.10",
  "xmas-elf",
 ]
 
@@ -1685,7 +1700,7 @@ dependencies = [
  "mbedtls-sys-auto",
  "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
- "serde_derive 1.0.130 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.132",
  "yasna 0.2.2",
 ]
 
@@ -2101,9 +2116,9 @@ checksum = "37fd5004feb2ce328a52b0b3d01dbf4ffff72583493900ed15f22d4111c51693"
 
 [[package]]
 name = "once_cell"
-version = "1.8.0"
+version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
+checksum = "da32515d9f6e6e489d7bc9d84c71b060db7247dc035bbe44eac88cf87486d8d5"
 
 [[package]]
 name = "opaque-debug"
@@ -2933,7 +2948,7 @@ dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "serde_derive 1.0.130 (git+https://github.com/fortanix/serde.git?branch=master)",
+ "serde_derive 1.0.130",
 ]
 
 [[package]]
@@ -2958,8 +2973,7 @@ dependencies = [
 [[package]]
 name = "serde_derive"
 version = "1.0.130"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7bc1a1ab1961464eae040d96713baa5a724a8152c1222492465b54322ec508b"
+source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
 dependencies = [
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -2968,8 +2982,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.132"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc0db5cb2556c0e558887d9bbdcf6ac4471e83ff66cf696e5419024d1606276"
 dependencies = [
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -3137,7 +3152,7 @@ dependencies = [
  "report-test",
  "reqwest",
  "serde",
- "serde_derive 1.0.130 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.132",
  "serde_yaml",
  "sgx-isa 0.3.3",
  "sgxs",
@@ -3377,18 +3392,18 @@ dependencies = [
 
 [[package]]
 name = "thiserror"
-version = "1.0.21"
+version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "318234ffa22e0920fe9a40d7b8369b5f649d490980cf7aadcf1eb91594869b42"
+checksum = "854babe52e4df1653706b98fcfc05843010039b406875930a70e4d9644e5c417"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.21"
+version = "1.0.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cae2447b6282786c3493999f40a9be2a6ad20cb8bd268b0a0dbf5a065535c0ab"
+checksum = "aa32fd3f627f367fe16f893e2597ae3c05020f8bba2666a4e6ea73d377e5714b"
 dependencies = [
  "proc-macro2 1.0.32",
  "quote 1.0.10",
@@ -3629,6 +3644,15 @@ name = "toml"
 version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "758664fc71a3a69038656bee8b6be6477d2a6c315a6b81f7081f591bffa4111f"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "toml"
+version = "0.5.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
 dependencies = [
  "serde",
 ]
