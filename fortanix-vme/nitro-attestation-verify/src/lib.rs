@@ -30,19 +30,57 @@ impl SafeToDeserialize for Unverified{}
 #[derive(Debug, Deserialize)]
 #[serde(bound(deserialize = "V: SafeToDeserialize"))]
 pub struct AttestationDocument<V: VerificationType = Verified> {
-    pub module_id: String,
-    pub timestamp: u64,
-    pub digest: String,
-    pub pcrs: BTreeMap<u32, ByteBuf>,
-    pub certificate: ByteBuf,
-    pub cabundle: Vec<ByteBuf>,
-    pub public_key: Option<ByteBuf>,
-    pub user_data: Option<ByteBuf>,
-    pub nonce: Option<ByteBuf>,
+    module_id: String,
+    timestamp: u64,
+    digest: String,
+    pcrs: BTreeMap<u32, ByteBuf>,
+    certificate: ByteBuf,
+    cabundle: Vec<ByteBuf>,
+    public_key: Option<ByteBuf>,
+    user_data: Option<ByteBuf>,
+    nonce: Option<ByteBuf>,
     #[serde(skip)]
     cose: Option<CoseSign1>,
     #[serde(skip)]
     type_: PhantomData<V>,
+}
+
+impl<V: VerificationType> AttestationDocument<V> {
+    pub fn module_id(&self) -> &String {
+        &self.module_id
+    }
+
+    pub fn timestamp(&self) -> u64 {
+        self.timestamp
+    }
+
+    pub fn digest(&self) -> &String {
+        &self.digest
+    }
+
+    pub fn pcrs(&self) -> &BTreeMap<u32, ByteBuf> {
+        &self.pcrs
+    }
+
+    pub fn certificate(&self) -> &ByteBuf {
+        &self.certificate
+    }
+
+    pub fn cabundle(&self) -> &Vec<ByteBuf> {
+        &self.cabundle
+    }
+
+    pub fn public_key(&self) -> Option<&ByteBuf> {
+        self.public_key.as_ref()
+    }
+
+    pub fn user_data(&self) -> Option<&ByteBuf> {
+        self.user_data.as_ref()
+    }
+
+    pub fn nonce(&self) -> Option<&ByteBuf> {
+        self.nonce.as_ref()
+    }
 }
 
 impl AttestationDocument<Unverified> {
@@ -60,34 +98,22 @@ impl AttestationDocument<Unverified> {
 
     pub fn verify(self, root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
         // By construction an AttestationDocument<Unverified> always has a `cose` field
-        let cose = self.cose.ok_or(NitroError::MissingValue("COSE value not present"))?;
-        let payload = cose.get_payload(None).map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-        let AttestationDocument::<Unverified> {
-            module_id,
-            timestamp,
-            digest,
-            pcrs,
-            certificate,
-            cabundle,
-            public_key,
-            user_data,
-            nonce,
-            cose: _,
-            type_: _ } = serde_cbor::from_slice(&payload).map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
-
-        verify_signature(&cose, &certificate, &cabundle, root_certs_der)?;
+        verify_signature(self.cose.as_ref().ok_or(NitroError::MissingValue("COSE value not present"))?,
+                         &self.certificate,
+                         &self.cabundle,
+                         root_certs_der)?;
         // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
         Ok(AttestationDocument {
-            module_id,
-            timestamp,
-            digest,
-            pcrs,
-            certificate,
-            cabundle,
-            public_key,
-            user_data,
-            nonce,
-            cose: None,
+            module_id: self.module_id,
+            timestamp: self.timestamp,
+            digest: self.digest,
+            pcrs: self.pcrs,
+            certificate: self.certificate,
+            cabundle: self.cabundle,
+            public_key: self.public_key,
+            user_data: self.user_data,
+            nonce: self.nonce,
+            cose: self.cose,
             type_: PhantomData,
             })
     }
