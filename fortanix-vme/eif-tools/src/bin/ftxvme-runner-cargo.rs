@@ -151,16 +151,6 @@ struct FortanixVmeConfig {
 
     /// `true` by default. This enables debug mode of `nitro-cli run-enclave`.
     debug_mode: bool,
-
-    /// fortanix-vme-runner starts a vsock proxy server and
-    /// is needed if your edp application makes any call to
-    /// functions like `TcpStream::connect()`.
-    /// If your application calls `TcpStream::connect("<url:port>")`,
-    /// this proxy server acts as a bridge for request and responses.
-    ///
-    /// If this is set to true, this runner won't try to
-    /// start fortanix-vme-runner.
-    disable_fortanix_vme_runner_start: bool,
 }
 
 impl FortanixVmeConfig {
@@ -171,7 +161,6 @@ impl FortanixVmeConfig {
     fn default_eif_path() -> PathBuf {
         format!("{}.eif", ARGS[1]).into()
     }
-
 
     /// Tries to parse Cargo.toml for `package.metadata.fortanix-vme` and uses
     /// it if found. If some required values are missing in the the metadata,
@@ -211,7 +200,6 @@ impl FortanixVmeConfig {
 
         Ok(config)
     }
-
 }
 
 impl Default for FortanixVmeConfig {
@@ -228,7 +216,6 @@ impl Default for FortanixVmeConfig {
             resource_path: None,
             signing_certificate: None,
             private_key: None,
-            disable_fortanix_vme_runner_start: false,
         }
     }
 }
@@ -247,20 +234,16 @@ fn main() -> anyhow::Result<()> {
 
     run_command(ftxvme_elf2eif)?;
 
-    if !fortanix_vme_config.disable_fortanix_vme_runner_start {
-        // We just try to start fortanix-vme-runner and don't wait on it. So,
-        // we don't know if it errors out. I think this should be enough
-        // as purpose of the runner is to provide easy setup. If someone really wants to
-        // be sure, they can set `disable_fortanix_vme_runner_start` to true and start
-        // it manually.
-        //
-        // If required, other option can be to link fortanix-vme-runner as a library and spawn the
-        // proxy server in another thread. The thing here will be that if fortanix-vme-runner
-        // already running, it will error out will addr in use. To be sure, we could probably
-        // communicate with fortanix-vme-runner.
-        let mut fortanix_vme_runner = command!("fortanix-vme-runner");
-        fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
-    }
+    // We just try to start fortanix-vme-runner and don't wait on it. So,
+    // we don't know if it errors out.
+    //
+    // fortanix-vme-runner starts a vsock proxy server and
+    // is needed if your edp application makes any call to
+    // functions like `TcpStream::connect()`.
+    // If your application calls `TcpStream::connect("<url:port>")`,
+    // this proxy server acts as a bridge for request and responses.
+    let mut fortanix_vme_runner = command!("fortanix-vme-runner");
+    fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
 
     let nitro_cli_run_enclave = command! {
         "nitro-cli" => args(
