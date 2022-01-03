@@ -98,7 +98,7 @@ struct CargoTomlMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-#[serde(rename_all = "kebab-case", default)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 #[rustfmt::skip] // contains long lines because of links and they may wrapped by mistake
 /// This config is mainly intended for args of ftxvme-elf2eif and nitro-cli run-enclave.
 /// See their args documentation for more info about these opts:
