@@ -152,12 +152,6 @@ struct FortanixVmeConfig {
     /// `true` by default. This enables debug mode of `nitro-cli run-enclave`.
     debug_mode: bool,
 
-    /// The path to a .json configuration file that specifies the paramaters for the enclave
-    ///
-    /// If this is given, no other entry should be there in the table otherwise
-    /// this will error out.
-    nitro_cli_run_enclave_config: Option<PathBuf>,
-
     /// fortanix-vme-runner starts a vsock proxy server and
     /// is needed if your edp application makes any call to
     /// functions like `TcpStream::connect()`.
@@ -229,7 +223,6 @@ impl Default for FortanixVmeConfig {
             enclave_name: None,
             cpu_ids: None,
             enclave_cid: None,
-            nitro_cli_run_enclave_config: None,
             verbose: false,
             eif_file_path: FortanixVmeConfig::default_eif_path(),
             resource_path: None,
@@ -269,31 +262,17 @@ fn main() -> anyhow::Result<()> {
         fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
     }
 
-    // if config is specified, no other arg should be passed. Reference:
-    // https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-run-enclave.html#cmd-nitro-run-enclave-options
-    let nitro_cli_run_enclave = match fortanix_vme_config.nitro_cli_run_enclave_config {
-        Some(nitro_cli_run_enclave_config) => {
-            command! {
-                "nitro-cli" => args(
-                    "run-enclave",
-                    "--config" => nitro_cli_run_enclave_config
-                )
-            }
-        },
-        None => {
-            command! {
-                "nitro-cli" => args(
-                    "run-enclave",
-                    "--enclave-name" => ?is_some(fortanix_vme_config.enclave_name),
-                    "--cpu-count"    => ?is_some(fortanix_vme_config.cpu_count.map(|c| c.to_string())),
-                    "--cpu-ids"      => ?is_some(fortanix_vme_config.cpu_ids),
-                    "--eif-path"     => &fortanix_vme_config.eif_file_path,
-                    "--memory"       => fortanix_vme_config.memory.to_string(),
-                    "--enclave-cid"  => ?is_some(fortanix_vme_config.enclave_cid),
-                    "--debug-mode"   => ?is_true(fortanix_vme_config.debug_mode)
-                )
-            }
-        },
+    let nitro_cli_run_enclave = command! {
+        "nitro-cli" => args(
+            "run-enclave",
+            "--enclave-name" => ?is_some(fortanix_vme_config.enclave_name),
+            "--cpu-count"    => ?is_some(fortanix_vme_config.cpu_count.map(|c| c.to_string())),
+            "--cpu-ids"      => ?is_some(fortanix_vme_config.cpu_ids),
+            "--eif-path"     => &fortanix_vme_config.eif_file_path,
+            "--memory"       => fortanix_vme_config.memory.to_string(),
+            "--enclave-cid"  => ?is_some(fortanix_vme_config.enclave_cid),
+            "--debug-mode"   => ?is_true(fortanix_vme_config.debug_mode)
+        )
     };
 
     run_command(nitro_cli_run_enclave)?;
