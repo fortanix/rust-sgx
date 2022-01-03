@@ -149,14 +149,13 @@ struct FortanixVmeConfig {
     /// Vsock CID is analogous to an IP address.
     enclave_cid: Option<String>,
 
-    /// `true` by default. This enables debug mode of `nitro-cli run-enclave`.
+    /// `false` by default. This enables debug mode of `nitro-cli run-enclave`.
     debug_mode: bool,
 }
 
 impl FortanixVmeConfig {
     const DEFAULT_CPU_COUNT: isize = 2;
     const DEFAULT_MEMORY: isize = 512;
-    const DEFAULT_DEBUG_MODE: bool = true;
 
     fn default_eif_path() -> PathBuf {
         format!("{}.eif", ARGS[1]).into()
@@ -207,7 +206,7 @@ impl Default for FortanixVmeConfig {
         Self {
             cpu_count: Some(FortanixVmeConfig::DEFAULT_CPU_COUNT),
             memory: FortanixVmeConfig::DEFAULT_MEMORY,
-            debug_mode: FortanixVmeConfig::DEFAULT_DEBUG_MODE,
+            debug_mode: false,
             enclave_name: None,
             cpu_ids: None,
             enclave_cid: None,
