@@ -194,7 +194,7 @@ impl FortanixVmeConfig {
                 package.metadata
                     .map(|metadata| metadata.fortanix_vme)
             })
-        .flatten();
+            .flatten();
 
         let config = if let Some(fortanix_vme_metadata) = fortanix_vme_metadata {
 
