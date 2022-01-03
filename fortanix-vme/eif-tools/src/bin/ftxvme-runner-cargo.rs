@@ -128,26 +128,11 @@ struct FortanixVmeConfig {
     enclave_name: Option<String>,
 
     /// Specifies the number of vCPUs to allocate to the enclave.
-    /// Shouldn't coexist with `cpu_ids`.
-    cpu_count: Option<isize>,
-
-    /// Specifies the IDs of the vCPUs to allocate to the enclave.
-    /// Shouldn't coexist with `cpu_count`.
-    cpu_ids: Option<String>,
+    cpu_count: isize,
 
     /// Specifies the amount of memory (in MiB) to allocate to the enclave.
     /// Should be at least 64 MiB.
     memory: isize,
-
-    /// Basically this field represents the vsock address of
-    /// the enclave.
-    /// This field should always be greater than equal to 4.
-    ///
-    /// The CID of parent instance is always 3 as per:
-    /// https://docs.aws.amazon.com/enclaves/latest/user/nitro-enclave-concepts.html#term-socket
-    ///
-    /// Vsock CID is analogous to an IP address.
-    enclave_cid: Option<String>,
 
     /// `false` by default. This enables debug mode of `nitro-cli run-enclave`.
     debug_mode: bool,
@@ -176,40 +161,20 @@ impl FortanixVmeConfig {
                 package.metadata
                     .map(|metadata| metadata.fortanix_vme)
             })
-            .flatten();
+            .flatten()
+            .unwrap_or_default();
 
-        let config = if let Some(fortanix_vme_metadata) = fortanix_vme_metadata {
-
-            // Use default cpu count if metadata doesn't specify cpu_ids or cpu_count.
-            // Also, specifying both cpu_count and cpu_ids is invalid but we don't handle it here
-            // because nitro-cli will anyway error out if that's the case.
-            let (cpu_ids, cpu_count) = match (fortanix_vme_metadata.cpu_ids, fortanix_vme_metadata.cpu_count) {
-                (None, None) => (None, Some(FortanixVmeConfig::DEFAULT_CPU_COUNT)),
-                val => val,
-            };
-
-            FortanixVmeConfig {
-                cpu_count,
-                cpu_ids,
-                .. fortanix_vme_metadata
-            }
-        } else {
-            Default::default()
-        };
-
-        Ok(config)
+        Ok(fortanix_vme_metadata)
     }
 }
 
 impl Default for FortanixVmeConfig {
     fn default() -> Self {
         Self {
-            cpu_count: Some(FortanixVmeConfig::DEFAULT_CPU_COUNT),
+            cpu_count: FortanixVmeConfig::DEFAULT_CPU_COUNT,
             memory: FortanixVmeConfig::DEFAULT_MEMORY,
             debug_mode: false,
             enclave_name: None,
-            cpu_ids: None,
-            enclave_cid: None,
             verbose: false,
             eif_file_path: FortanixVmeConfig::default_eif_path(),
             resource_path: None,
@@ -248,11 +213,9 @@ fn main() -> anyhow::Result<()> {
         "nitro-cli" => args(
             "run-enclave",
             "--enclave-name" => ?is_some(fortanix_vme_config.enclave_name),
-            "--cpu-count"    => ?is_some(fortanix_vme_config.cpu_count.map(|c| c.to_string())),
-            "--cpu-ids"      => ?is_some(fortanix_vme_config.cpu_ids),
+            "--cpu-count"    => fortanix_vme_config.cpu_count.to_string(),
             "--eif-path"     => &fortanix_vme_config.eif_file_path,
             "--memory"       => fortanix_vme_config.memory.to_string(),
-            "--enclave-cid"  => ?is_some(fortanix_vme_config.enclave_cid),
             "--debug-mode"   => ?is_true(fortanix_vme_config.debug_mode)
         )
     };
