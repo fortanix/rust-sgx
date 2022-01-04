@@ -3,16 +3,20 @@
 #[macro_use] extern crate lazy_static;
 
 use aws_nitro_enclaves_cose::CoseSign1;
+use mbedtls8::pk::Pk as MbedtlsPk;
+use mbedtls8::alloc::Box as MbedtlsBox;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 
-#[cfg(feature = "crypto_mbedtls")]
 use mbedtls8::{
     x509::Certificate,
     alloc::{List as MbedtlsList}
 };
+
+mod mbedtls;
+use crate::mbedtls::Mbedtls;
 
 pub trait VerificationType {}
 
@@ -88,7 +92,7 @@ impl AttestationDocument<Unverified> {
         // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
         let cose = CoseSign1::from_bytes(data)
                     .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
-        let payload = cose.get_payload(None)
+        let payload = cose.get_payload::<Mbedtls>(None)
                         .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
         let mut doc: AttestationDocument<Unverified> = serde_cbor::from_slice(&payload)
                                                         .map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
@@ -96,12 +100,25 @@ impl AttestationDocument<Unverified> {
         Ok(doc)
     }
 
-    pub fn verify(self, root_certs_der: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
+    /// Verifies the `AttestationDocument` given `root_certs` as DER-encoded trusted root CAs
+    pub fn verify(self, root_certs: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
+        self.verify_ex(root_certs, verify_certificates)
+    }
+
+    /// Expert version of the `verify` function. Verifies the `AttestationDocument` given `root_certs` as
+    /// DER-encoded trusted root CAs and a `verify_certs` function that takes the signing
+    /// certificate, CA bundle and root certificates as input.
+    pub fn verify_ex<F>(self, root_certs_der: &[Vec<u8>], verify_certs: F) -> Result<AttestationDocument, NitroError>
+        where
+        F: FnOnce(&ByteBuf, &Vec<ByteBuf>, &[Vec<u8>]) -> Result<MbedtlsBox<Certificate>, NitroError>
+    {
         // By construction an AttestationDocument<Unverified> always has a `cose` field
-        verify_signature(self.cose.as_ref().ok_or(NitroError::MissingValue("COSE value not present"))?,
+        let signing_cert = verify_certs(
                          &self.certificate,
                          &self.cabundle,
                          root_certs_der)?;
+        let cose = self.cose.as_ref().ok_or(NitroError::MissingValue("COSE value not present"))?;
+        verify_signature(cose, signing_cert.public_key())?;
         // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
         Ok(AttestationDocument {
             module_id: self.module_id,
@@ -167,11 +184,9 @@ impl std::error::Error for NitroError {
     }
 }
 
-#[cfg(feature = "crypto_mbedtls")]
-fn verify_signature(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, certificate: &ByteBuf, cabundle: &Vec<ByteBuf>, root_certs_der: &[Vec<u8>]) -> Result<(), NitroError> {
+fn verify_certificates(certificate: &ByteBuf, cabundle: &Vec<ByteBuf>, root_certs_der: &[Vec<u8>]) -> Result<MbedtlsBox<Certificate>, NitroError> {
     let mut c_root = MbedtlsList::<Certificate>::new();
 
-    
     for i in 0..root_certs_der.len() {
         let cert = Certificate::from_der(&root_certs_der[i]).map_err(|e| NitroError::CertificateParsingError(format!("Failed to parse root certificate[{}] as x509 certificate: {:?}", i, e)))?;
         c_root.push(cert);
@@ -189,9 +204,15 @@ fn verify_signature(cose: &aws_nitro_enclaves_cose::sign::CoseSign1, certificate
     let mut err_str = String::new();
     Certificate::verify(&chain, &c_root, Some(&mut err_str))
         .map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str)))?;
+
+
     let certificate = chain.pop_front().ok_or(NitroError::CertificateInternalError)?;
-    
-    if !cose.verify_signature(certificate.public_key()).map_err(|err| NitroError::CertificateVerifyFailure(format!("failed to verify signature on sig_structure: {:?}", err)))? {
+    Ok(certificate)
+}
+
+fn verify_signature(cose: &CoseSign1, key: &MbedtlsPk) -> Result<(), NitroError> {
+    let key = mbedtls::Pk::from(key);
+    if !cose.verify_signature::<Mbedtls>(&key).map_err(|err| NitroError::CertificateVerifyFailure(format!("failed to verify signature on sig_structure: {:?}", err)))? {
         Err(NitroError::FailedValidation)
     } else {
         Ok(())

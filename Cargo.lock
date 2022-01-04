@@ -99,10 +99,9 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-enclaves-cose"
-version = "0.3.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/mbedtls-support#d506ae1693ad97ad52c96081dfc5e8bbe4ccba03"
+version = "0.5.0"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction#e5f667501ec19f21adf1b1ed056792afcfc50419"
 dependencies = [
- "mbedtls 0.8.1 (git+https://github.com/fortanix/rust-mbedtls?branch=acruceru/port-async-support)",
  "serde",
  "serde_bytes",
  "serde_cbor",
@@ -1878,7 +1877,7 @@ dependencies = [
  "num-bigint",
  "rs-libc 0.1.0",
  "serde",
- "serde_derive 1.0.130 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.132",
  "tokio 0.3.7",
  "yasna 0.2.2",
 ]
@@ -2091,7 +2090,7 @@ dependencies = [
 name = "nitro-attestation-verify"
 version = "0.1.0"
 dependencies = [
- "aws-nitro-enclaves-cose 0.3.0",
+ "aws-nitro-enclaves-cose 0.5.0",
  "chrono",
  "lazy_static",
  "mbedtls 0.8.1 (git+https://github.com/fortanix/rust-mbedtls?branch=acruceru/port-async-support)",
