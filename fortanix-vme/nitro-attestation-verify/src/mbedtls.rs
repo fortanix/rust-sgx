@@ -32,7 +32,8 @@ impl Hash for Mbedtls {
         let md = MdType::from(digest);
 
         let mut output = vec![0u8; 64]; // biggest in SHA-512
-        let len = Md::hash(*md, data, &mut output).map_err(|e| CoseError::HashingError(Box::new(e)))?;
+        let len =
+            Md::hash(*md, data, &mut output).map_err(|e| CoseError::HashingError(Box::new(e)))?;
         output.truncate(len);
         Ok(output)
     }
@@ -79,26 +80,30 @@ pub fn ec_curve_to_parameters(
     ))
 }
 
-impl<'a> SigningPublicKey for Pk<'a>
-{
+impl<'a> SigningPublicKey for Pk<'a> {
     fn get_parameters(&self) -> Result<(SignatureAlgorithm, MessageDigest), CoseError> {
-        let curve_name = self.curve().map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
+        let curve_name = self
+            .curve()
+            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
         let curve_parameters = ec_curve_to_parameters(curve_name)?;
 
         Ok((curve_parameters.0, curve_parameters.1))
     }
 
     fn verify(&self, digest: &[u8], signature: &[u8]) -> Result<bool, CoseError> {
-        let curve_name = self.curve().map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
+        let curve_name = self
+            .curve()
+            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
         let (_, mdtype, key_length) = ec_curve_to_parameters(curve_name)?;
 
         // Recover the R and S factors from the signature contained in the object
         let (bytes_r, bytes_s) = signature.split_at(key_length);
 
-        let sig = dsa::serialize_signature(bytes_r, bytes_s).map_err(|e| CoseError::SignatureError(Box::new(e)))?;
-        
+        let sig = dsa::serialize_signature(bytes_r, bytes_s)
+            .map_err(|e| CoseError::SignatureError(Box::new(e)))?;
+
         let md = MdType::from(mdtype);
-        
+
         // We'll throw error if signature verify does not work
         match self.0.verify(*md, &digest, &sig) {
             Ok(_) => Ok(true),
