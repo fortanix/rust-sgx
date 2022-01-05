@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request};
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
 
-const MAX_MESSAGE_LEN: usize = 80;
+const MAX_LOG_MESSAGE_LEN: usize = 80;
 const PROXY_BUFF_SIZE: usize = 4192;
 
 enum Direction {
@@ -136,7 +136,7 @@ impl Connection {
                 &str::from_utf8(&buff[0..n]).unwrap_or_default(),
                 Direction::Left,
                 S::protocol(),
-                Some(MAX_MESSAGE_LEN));
+                Some(MAX_LOG_MESSAGE_LEN));
             dst.write_all(&buff[0..n])?;
             ClientConnection::log_communication(
                 log::Level::Debug,
@@ -147,7 +147,7 @@ impl Connection {
                 &str::from_utf8(&buff[0..n]).unwrap_or_default(),
                 Direction::Left,
                 D::protocol(),
-                Some(MAX_MESSAGE_LEN));
+                Some(MAX_LOG_MESSAGE_LEN));
         }
         Ok(n)
     }
