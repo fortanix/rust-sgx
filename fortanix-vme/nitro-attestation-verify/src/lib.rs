@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
 #[cfg(feature = "mbedtls")]
-use ::mbedtls::{alloc::List as MbedtlsList, x509::Certificate};
+use ::mbedtls::{alloc::List as MbedtlsList, x509::{Certificate, VerifyError}};
 
 #[cfg(feature = "mbedtls")]
 mod mbedtls;
@@ -28,6 +28,10 @@ impl VerificationType for Verified {}
 #[derive(Clone, Debug)]
 pub struct Unverified;
 impl VerificationType for Unverified {}
+
+#[derive(Clone, Debug)]
+pub struct Expired;
+impl VerificationType for Expired {}
 
 pub trait SafeToDeserialize {}
 impl SafeToDeserialize for Unverified {}
@@ -105,29 +109,7 @@ impl AttestationDocument<Unverified> {
     /// Verifies the `AttestationDocument` given `root_certs` as DER-encoded trusted root CAs
     #[cfg(feature = "mbedtls")]
     pub fn verify(self, root_certs: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
-        self.verify_ex::<_, Mbedtls, _>(root_certs, verify_certificates)
-    }
-
-    /// Expert version of the `verify` function. Verifies the `AttestationDocument` given `root_certs` as
-    /// DER-encoded trusted root CAs and a `verify_certs` function that takes the signing
-    /// certificate, CA bundle and root certificates as input.
-    pub fn verify_ex<K, H, F>(
-        self,
-        root_certs_der: &[Vec<u8>],
-        verify_certs: F,
-    ) -> Result<AttestationDocument, NitroError>
-    where
-        K: SigningPublicKey,
-        H: Hash,
-        F: FnOnce(&ByteBuf, &Vec<ByteBuf>, &[Vec<u8>]) -> Result<K, NitroError>,
-    {
-        // By construction an AttestationDocument<Unverified> always has a `cose` field
-        let signing_cert = verify_certs(&self.certificate, &self.cabundle, root_certs_der)?;
-        let cose = self
-            .cose
-            .as_ref()
-            .ok_or(NitroError::MissingValue("COSE value not present"))?;
-        verify_signature::<H>(cose, &signing_cert)?;
+        self.verify_ex::<_, Mbedtls, _>(root_certs, verify_certificates, false)?;
         // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
         Ok(AttestationDocument {
             module_id: self.module_id,
@@ -142,6 +124,49 @@ impl AttestationDocument<Unverified> {
             cose: self.cose,
             type_: PhantomData,
         })
+    }
+
+    #[cfg(feature = "mbedtls")]
+    pub fn verify_expired(self, root_certs: &[Vec<u8>]) -> Result<AttestationDocument<Expired>, NitroError> {
+        self.verify_ex::<_, Mbedtls, _>(root_certs, verify_certificates, true)?;
+        // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
+        Ok(AttestationDocument {
+            module_id: self.module_id,
+            timestamp: self.timestamp,
+            digest: self.digest,
+            pcrs: self.pcrs,
+            certificate: self.certificate,
+            cabundle: self.cabundle,
+            public_key: self.public_key,
+            user_data: self.user_data,
+            nonce: self.nonce,
+            cose: self.cose,
+            type_: PhantomData,
+        })
+    }
+
+    /// Expert version of the `verify` function. Verifies the `AttestationDocument` given `root_certs` as
+    /// DER-encoded trusted root CAs and a `verify_certs` function that takes as input the signing
+    /// certificate, CA bundle, root certificates, and whether certificate expiration dates should be ignored
+    pub fn verify_ex<K, H, F>(
+        &self,
+        root_certs_der: &[Vec<u8>],
+        verify_certs: F,
+        ignore_expiration: bool,
+    ) -> Result<(), NitroError>
+    where
+        K: SigningPublicKey,
+        H: Hash,
+        F: FnOnce(&ByteBuf, &Vec<ByteBuf>, &[Vec<u8>], bool) -> Result<K, NitroError>,
+    {
+        let signing_cert = verify_certs(&self.certificate, &self.cabundle, root_certs_der, ignore_expiration)?;
+        // By construction an AttestationDocument<Unverified> always has a `cose` field
+        let cose = self
+            .cose
+            .as_ref()
+            .ok_or(NitroError::MissingValue("COSE value not present"))?;
+        verify_signature::<H>(cose, &signing_cert)?;
+        Ok(())
     }
 }
 
@@ -206,6 +231,7 @@ fn verify_certificates(
     certificate: &ByteBuf,
     cabundle: &Vec<ByteBuf>,
     root_certs_der: &[Vec<u8>],
+    ignore_expiration: bool,
 ) -> Result<mbedtls::WrappedCert, NitroError> {
     let mut c_root = MbedtlsList::<Certificate>::new();
 
@@ -234,13 +260,15 @@ fn verify_certificates(
         chain.push(cert);
     }
 
+    let verify_callback = move |_crt: &Certificate, _depth: i32, verify_flags: &mut VerifyError| {
+        if ignore_expiration {
+            verify_flags.remove(VerifyError::CERT_EXPIRED);
+        }
+        Ok(())
+    };
     let mut err_str = String::new();
-    Certificate::verify(&chain, &c_root, Some(&mut err_str)).map_err(|e| {
-        NitroError::CertificateVerifyFailure(format!(
-            "Certificate verify failure: {:?}, {}",
-            e, err_str
-        ))
-    })?;
+    Certificate::verify_callback(&chain, &c_root, Some(&mut err_str), verify_callback)
+        .map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str)))?;
 
     let certificate = chain
         .pop_front()
@@ -311,6 +339,17 @@ mod tests {
             assert_eq!(doc.module_id, "i-02e3a660059b27d87-enc017bca11991e5083");
             assert_eq!(doc.timestamp, 1631182760215);
         }
+    }
+
+    #[test]
+    fn test_verify_expired() {
+        let doc = AttestationDocument::from_slice::<Mbedtls>(&PROPER_TOKEN)
+            .unwrap()
+            .verify_expired(&AWS_CA);
+        // Document valid
+        let doc = doc.unwrap();
+        assert_eq!(doc.module_id, "i-02e3a660059b27d87-enc017bca11991e5083");
+        assert_eq!(doc.timestamp, 1631182760215);
     }
 
     #[test]
