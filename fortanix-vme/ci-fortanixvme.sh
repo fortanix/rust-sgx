@@ -29,7 +29,8 @@ function setup_environment {
 function start_runner {
     pushd fortanix-vme-runner
     cargo +${toolchain_version} --locked build
-    cargo +${toolchain_version} --locked run &
+    log=$(mktemp /tmp/ci-fortanixvme.log.XXXXX)
+    RUST_LOG=debug cargo +${toolchain_version} --locked run 2> ${log} &
 
     if [[ -v AWS_VM ]]; then
         ssh ubuntu@${AWS_VM} 'mkdir -p /home/ubuntu/ci-fortanixvme'

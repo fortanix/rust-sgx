@@ -7,7 +7,11 @@ extern crate std;
 use alloc::string::String;
 use serde::{Deserialize, Serialize};
 #[cfg(feature="std")]
-use std::net::SocketAddr;
+use {
+    std::io,
+    std::net::SocketAddr,
+    vsock::Error as VsockError,
+};
 
 pub const SERVER_PORT: u32 = 10000;
 
@@ -108,6 +112,33 @@ pub enum Response {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Error {
     ConnectionNotFound,
+    SystemError(i32),
+    Unknown,
+    VsockError,
+}
+
+#[cfg(feature="std")]
+impl From<io::Error> for Error {
+    fn from(error: io::Error) -> Error {
+        if let Some(errno) = error.raw_os_error() {
+            Error::SystemError(errno)
+        } else {
+            Error::Unknown
+        }
+    }
+}
+
+#[cfg(feature="std")]
+impl From<VsockError> for Error {
+    fn from(error: VsockError) -> Error {
+        match error {
+            VsockError::EntropyError        => Error::VsockError,
+            VsockError::SystemError(errno)  => Error::SystemError(errno),
+            VsockError::WrongAddressType    => Error::VsockError,
+            VsockError::ZeroDurationTimeout => Error::VsockError,
+            VsockError::ReservedPort        => Error::VsockError,
+        }
+    }
 }
 
 #[cfg(test)]
