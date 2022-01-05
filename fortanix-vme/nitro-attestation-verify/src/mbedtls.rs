@@ -5,6 +5,7 @@ use mbedtls::hash::{self, Md};
 use mbedtls::pk::dsa;
 use mbedtls::pk::EcGroupId;
 use mbedtls::x509::Certificate;
+use std::sync::Mutex;
 use std::ops::Deref;
 
 pub(crate) struct Mbedtls;
@@ -41,17 +42,18 @@ impl Hash for Mbedtls {
     }
 }
 
-pub(crate) struct WrappedCert(MbedtlsBox<Certificate>);
+pub(crate) struct WrappedCert(Mutex<MbedtlsBox<Certificate>>);
 
 impl WrappedCert {
     pub(crate) fn new(cert: MbedtlsBox<Certificate>) -> Self {
-        WrappedCert(cert)
+        WrappedCert(Mutex::new(cert))
     }
 }
 
 impl SigningPublicKey for WrappedCert {
     fn get_parameters(&self) -> Result<(SignatureAlgorithm, MessageDigest), CoseError> {
-        let pk = self.0.public_key();
+        let pk = self.0.lock().unwrap();
+        let pk = pk.public_key();
         let curve_name = pk
             .curve()
             .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
@@ -61,7 +63,8 @@ impl SigningPublicKey for WrappedCert {
     }
 
     fn verify(&self, digest: &[u8], signature: &[u8]) -> Result<bool, CoseError> {
-        let pk = self.0.public_key();
+        let mut pk = self.0.lock().unwrap();
+        let pk = pk.public_key_mut();
         let curve_name = pk
             .curve()
             .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
