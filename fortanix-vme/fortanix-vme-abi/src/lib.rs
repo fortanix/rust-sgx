@@ -114,6 +114,7 @@ pub enum Error {
     ConnectionNotFound,
     SystemError(i32),
     Unknown,
+    VsockError,
 }
 
 #[cfg(feature="std")]
@@ -131,11 +132,11 @@ impl From<io::Error> for Error {
 impl From<VsockError> for Error {
     fn from(error: VsockError) -> Error {
         match error {
-            VsockError::EntropyError        => Error::Unknown,
+            VsockError::EntropyError        => Error::VsockError,
             VsockError::SystemError(errno)  => Error::SystemError(errno),
-            VsockError::WrongAddressType    => Error::Unknown,
-            VsockError::ZeroDurationTimeout => Error::Unknown,
-            VsockError::ReservedPort        => Error::Unknown,
+            VsockError::WrongAddressType    => Error::VsockError,
+            VsockError::ZeroDurationTimeout => Error::VsockError,
+            VsockError::ReservedPort        => Error::VsockError,
         }
     }
 }
