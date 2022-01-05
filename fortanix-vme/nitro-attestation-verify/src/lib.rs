@@ -1,4 +1,4 @@
-#[deny(warnings)]
+#![deny(warnings)]
 #[cfg(test)]
 #[macro_use] extern crate lazy_static;
 
