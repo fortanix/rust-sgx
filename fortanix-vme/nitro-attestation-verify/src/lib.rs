@@ -1,19 +1,22 @@
 #![deny(warnings)]
-#[cfg(test)]
+#[cfg(all(test, feature = "mbedtls"))]
 #[macro_use]
 extern crate lazy_static;
 
+pub use aws_nitro_enclaves_cose::crypto::{Hash, SigningPublicKey};
 use aws_nitro_enclaves_cose::CoseSign1;
-use mbedtls8::alloc::Box as MbedtlsBox;
-use mbedtls8::pk::Pk as MbedtlsPk;
 use serde::Deserialize;
 use serde_bytes::ByteBuf;
 use std::collections::BTreeMap;
 use std::marker::PhantomData;
 
-use mbedtls8::{alloc::List as MbedtlsList, x509::Certificate};
+#[cfg(feature = "mbedtls")]
+use ::mbedtls::{alloc::List as MbedtlsList, x509::Certificate};
 
+#[cfg(feature = "mbedtls")]
 mod mbedtls;
+
+#[cfg(feature = "mbedtls")]
 use crate::mbedtls::Mbedtls;
 
 pub trait VerificationType {}
@@ -86,12 +89,12 @@ impl<V: VerificationType> AttestationDocument<V> {
 }
 
 impl AttestationDocument<Unverified> {
-    pub fn from_slice(data: &[u8]) -> Result<Self, NitroError> {
+    pub fn from_slice<H: Hash>(data: &[u8]) -> Result<Self, NitroError> {
         // https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
         let cose = CoseSign1::from_bytes(data)
             .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
         let payload = cose
-            .get_payload::<Mbedtls>(None)
+            .get_payload::<H>(None)
             .map_err(|err| NitroError::CoseParsingFailure(format!("cose error: {:?}", err)))?;
         let mut doc: AttestationDocument<Unverified> = serde_cbor::from_slice(&payload)
             .map_err(|e| NitroError::PayloadParsingFailure(format!("payload error: {}", e)))?;
@@ -100,24 +103,23 @@ impl AttestationDocument<Unverified> {
     }
 
     /// Verifies the `AttestationDocument` given `root_certs` as DER-encoded trusted root CAs
+    #[cfg(feature = "mbedtls")]
     pub fn verify(self, root_certs: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
-        self.verify_ex(root_certs, verify_certificates)
+        self.verify_ex::<_, Mbedtls, _>(root_certs, verify_certificates)
     }
 
     /// Expert version of the `verify` function. Verifies the `AttestationDocument` given `root_certs` as
     /// DER-encoded trusted root CAs and a `verify_certs` function that takes the signing
     /// certificate, CA bundle and root certificates as input.
-    pub fn verify_ex<F>(
+    pub fn verify_ex<K, H, F>(
         self,
         root_certs_der: &[Vec<u8>],
         verify_certs: F,
     ) -> Result<AttestationDocument, NitroError>
     where
-        F: FnOnce(
-            &ByteBuf,
-            &Vec<ByteBuf>,
-            &[Vec<u8>],
-        ) -> Result<MbedtlsBox<Certificate>, NitroError>,
+        K: SigningPublicKey,
+        H: Hash,
+        F: FnOnce(&ByteBuf, &Vec<ByteBuf>, &[Vec<u8>]) -> Result<K, NitroError>,
     {
         // By construction an AttestationDocument<Unverified> always has a `cose` field
         let signing_cert = verify_certs(&self.certificate, &self.cabundle, root_certs_der)?;
@@ -125,7 +127,7 @@ impl AttestationDocument<Unverified> {
             .cose
             .as_ref()
             .ok_or(NitroError::MissingValue("COSE value not present"))?;
-        verify_signature(cose, signing_cert.public_key())?;
+        verify_signature::<H>(cose, &signing_cert)?;
         // TODO: can be simplified once we have https://github.com/rust-lang/rust/issues/86555
         Ok(AttestationDocument {
             module_id: self.module_id,
@@ -199,11 +201,12 @@ impl std::error::Error for NitroError {
     }
 }
 
+#[cfg(feature = "mbedtls")]
 fn verify_certificates(
     certificate: &ByteBuf,
     cabundle: &Vec<ByteBuf>,
     root_certs_der: &[Vec<u8>],
-) -> Result<MbedtlsBox<Certificate>, NitroError> {
+) -> Result<mbedtls::WrappedCert, NitroError> {
     let mut c_root = MbedtlsList::<Certificate>::new();
 
     for i in 0..root_certs_der.len() {
@@ -242,12 +245,14 @@ fn verify_certificates(
     let certificate = chain
         .pop_front()
         .ok_or(NitroError::CertificateInternalError)?;
-    Ok(certificate)
+    Ok(mbedtls::WrappedCert::new(certificate))
 }
 
-fn verify_signature(cose: &CoseSign1, key: &MbedtlsPk) -> Result<(), NitroError> {
-    let key = mbedtls::Pk::from(key);
-    if !cose.verify_signature::<Mbedtls>(&key).map_err(|err| {
+fn verify_signature<H: Hash>(
+    cose: &CoseSign1,
+    key: &dyn SigningPublicKey,
+) -> Result<(), NitroError> {
+    if !cose.verify_signature::<H>(key).map_err(|err| {
         NitroError::CertificateVerifyFailure(format!(
             "failed to verify signature on sig_structure: {:?}",
             err
@@ -259,9 +264,9 @@ fn verify_signature(cose: &CoseSign1, key: &MbedtlsPk) -> Result<(), NitroError>
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "mbedtls"))]
 mod tests {
-    use crate::{AttestationDocument, NitroError};
+    use crate::{AttestationDocument, Mbedtls, NitroError};
     use chrono::{DateTime, TimeZone, Utc};
     use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
 
@@ -289,7 +294,7 @@ mod tests {
 
     #[test]
     fn test_verify_proper() {
-        let doc = AttestationDocument::from_slice(&PROPER_TOKEN)
+        let doc = AttestationDocument::from_slice::<Mbedtls>(&PROPER_TOKEN)
             .unwrap()
             .verify(&AWS_CA);
         let now = Utc::now();
@@ -310,7 +315,7 @@ mod tests {
 
     #[test]
     fn test_verify_multiple_root_cas() {
-        let doc = AttestationDocument::from_slice(&PROPER_TOKEN)
+        let doc = AttestationDocument::from_slice::<Mbedtls>(&PROPER_TOKEN)
             .unwrap()
             .verify(&BOTH_CAS);
         let now = Utc::now();
@@ -331,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_verify_invalid_root_cas() {
-        let res = AttestationDocument::from_slice(&PROPER_TOKEN)
+        let res = AttestationDocument::from_slice::<Mbedtls>(&PROPER_TOKEN)
             .unwrap()
             .verify(&INVALID_CA);
 
@@ -343,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_verify_attestation_invalid_leaf_certificate() {
-        let res = AttestationDocument::from_slice(&TAMPERED_CERTIFICATE)
+        let res = AttestationDocument::from_slice::<Mbedtls>(&TAMPERED_CERTIFICATE)
             .unwrap()
             .verify(&AWS_CA);
 
@@ -355,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_verify_no_path_to_root_ca() {
-        let _ = AttestationDocument::from_slice(&PROPER_TOKEN)
+        let _ = AttestationDocument::from_slice::<Mbedtls>(&PROPER_TOKEN)
             .unwrap()
             .verify(&UNKNOWN_CA)
             .unwrap_err();
@@ -363,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_verify_attestation_not_signed_by_leaf_ca() {
-        let doc = AttestationDocument::from_slice(&TAMPERED_SIGNATURE)
+        let doc = AttestationDocument::from_slice::<Mbedtls>(&TAMPERED_SIGNATURE)
             .unwrap()
             .verify(&AWS_CA);
         let now = Utc::now();

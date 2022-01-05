@@ -1,8 +1,10 @@
 use aws_nitro_enclaves_cose::crypto::{Hash, MessageDigest, SignatureAlgorithm, SigningPublicKey};
 use aws_nitro_enclaves_cose::error::CoseError;
-use mbedtls8::hash::{self, Md};
-use mbedtls8::pk::dsa;
-use mbedtls8::pk::{EcGroupId, Pk as MbedtlsPk};
+use mbedtls::alloc::Box as MbedtlsBox;
+use mbedtls::hash::{self, Md};
+use mbedtls::pk::dsa;
+use mbedtls::pk::EcGroupId;
+use mbedtls::x509::Certificate;
 use std::ops::Deref;
 
 pub(crate) struct Mbedtls;
@@ -39,19 +41,46 @@ impl Hash for Mbedtls {
     }
 }
 
-pub(crate) struct Pk<'a>(&'a MbedtlsPk);
+pub(crate) struct WrappedCert(MbedtlsBox<Certificate>);
 
-impl<'a> From<&'a MbedtlsPk> for Pk<'a> {
-    fn from(pk: &'a MbedtlsPk) -> Pk<'a> {
-        Pk(pk)
+impl WrappedCert {
+    pub(crate) fn new(cert: MbedtlsBox<Certificate>) -> Self {
+        WrappedCert(cert)
     }
 }
 
-impl Deref for Pk<'_> {
-    type Target = MbedtlsPk;
+impl SigningPublicKey for WrappedCert {
+    fn get_parameters(&self) -> Result<(SignatureAlgorithm, MessageDigest), CoseError> {
+        let pk = self.0.public_key();
+        let curve_name = pk
+            .curve()
+            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
+        let curve_parameters = ec_curve_to_parameters(curve_name)?;
 
-    fn deref(&self) -> &Self::Target {
-        self.0
+        Ok((curve_parameters.0, curve_parameters.1))
+    }
+
+    fn verify(&self, digest: &[u8], signature: &[u8]) -> Result<bool, CoseError> {
+        let pk = self.0.public_key();
+        let curve_name = pk
+            .curve()
+            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
+        let (_, mdtype, key_length) = ec_curve_to_parameters(curve_name)?;
+
+        // Recover the R and S factors from the signature contained in the object
+        let (bytes_r, bytes_s) = signature.split_at(key_length);
+
+        let sig = dsa::serialize_signature(bytes_r, bytes_s)
+            .map_err(|e| CoseError::SignatureError(Box::new(e)))?;
+
+        let md = MdType::from(mdtype);
+
+        // We'll throw error if signature verify does not work
+        match pk.verify(*md, &digest, &sig) {
+            Ok(_) => Ok(true),
+            Err(mbedtls::Error::EcpVerifyFailed) => Ok(false),
+            Err(e) => Err(CoseError::SignatureError(Box::new(e))),
+        }
     }
 }
 
@@ -78,37 +107,4 @@ pub fn ec_curve_to_parameters(
         sig_alg.suggested_message_digest(),
         sig_alg.key_length(),
     ))
-}
-
-impl<'a> SigningPublicKey for Pk<'a> {
-    fn get_parameters(&self) -> Result<(SignatureAlgorithm, MessageDigest), CoseError> {
-        let curve_name = self
-            .curve()
-            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
-        let curve_parameters = ec_curve_to_parameters(curve_name)?;
-
-        Ok((curve_parameters.0, curve_parameters.1))
-    }
-
-    fn verify(&self, digest: &[u8], signature: &[u8]) -> Result<bool, CoseError> {
-        let curve_name = self
-            .curve()
-            .map_err(|_| CoseError::UnsupportedError("Unsupported key".to_string()))?;
-        let (_, mdtype, key_length) = ec_curve_to_parameters(curve_name)?;
-
-        // Recover the R and S factors from the signature contained in the object
-        let (bytes_r, bytes_s) = signature.split_at(key_length);
-
-        let sig = dsa::serialize_signature(bytes_r, bytes_s)
-            .map_err(|e| CoseError::SignatureError(Box::new(e)))?;
-
-        let md = MdType::from(mdtype);
-
-        // We'll throw error if signature verify does not work
-        match self.0.verify(*md, &digest, &sig) {
-            Ok(_) => Ok(true),
-            Err(mbedtls8::Error::EcpVerifyFailed) => Ok(false),
-            Err(e) => Err(CoseError::SignatureError(Box::new(e))),
-        }
-    }
 }
