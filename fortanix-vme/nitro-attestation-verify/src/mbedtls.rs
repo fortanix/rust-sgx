@@ -2,9 +2,9 @@ use aws_nitro_enclaves_cose::crypto::{Hash, MessageDigest, SignatureAlgorithm, S
 use aws_nitro_enclaves_cose::error::CoseError;
 use mbedtls::alloc::Box as MbedtlsBox;
 use mbedtls::hash::{self, Md};
-use mbedtls::pk::dsa;
 use mbedtls::pk::EcGroupId;
 use mbedtls::x509::Certificate;
+use num_bigint::BigUint;
 use std::sync::Mutex;
 use std::ops::Deref;
 
@@ -50,6 +50,18 @@ impl WrappedCert {
     }
 }
 
+fn serialize_signature(r: &[u8], s: &[u8]) -> Vec<u8> {
+    let r = BigUint::from_bytes_be(r);
+    let s = BigUint::from_bytes_be(s);
+
+    yasna::construct_der(|w| {
+        w.write_sequence(|w| {
+            w.next().write_biguint(&r);
+            w.next().write_biguint(&s);
+        })
+    })
+}
+
 impl SigningPublicKey for WrappedCert {
     fn get_parameters(&self) -> Result<(SignatureAlgorithm, MessageDigest), CoseError> {
         let pk = self.0.lock().unwrap();
@@ -73,8 +85,7 @@ impl SigningPublicKey for WrappedCert {
         // Recover the R and S factors from the signature contained in the object
         let (bytes_r, bytes_s) = signature.split_at(key_length);
 
-        let sig = dsa::serialize_signature(bytes_r, bytes_s)
-            .map_err(|e| CoseError::SignatureError(Box::new(e)))?;
+        let sig = serialize_signature(bytes_r, bytes_s);
 
         let md = MdType::from(mdtype);
 

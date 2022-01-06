@@ -9,9 +9,11 @@ chrono = "0.4"
 serde_cbor = "0.11"
 aws-nitro-enclaves-cose = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "raoul/crypto_abstraction", default-features = false }
 mbedtls = { version = "0.8.2", features = ["rdrand", "std", "dsa", "time"], default-features = false, optional = true }
+num-bigint = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 pkix = "0.1"
+yasna = { version = "0.4", features = ["num-bigint"] }
 
 [dev-dependencies]
 chrono = "0.4.0"

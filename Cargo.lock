@@ -1841,7 +1841,7 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 [[package]]
 name = "mbedtls"
 version = "0.8.2"
-source = "git+https://github.com/fortanix/rust-mbedtls?branch=raoul/encode_signature#87e240b1209a125fa70f74fc510cc6d9bdef7738"
+source = "git+https://github.com/fortanix/rust-mbedtls?branch=raoul/encode_signature#90e1652b63dda912771c0844194b2c99c989779b"
 dependencies = [
  "bit-vec 0.5.1",
  "bitflags 1.2.1",
@@ -1850,7 +1850,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "chrono",
  "mbedtls-sys-auto",
- "num-bigint",
+ "num-bigint 0.2.6",
  "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_derive 1.0.132",
@@ -1860,7 +1860,7 @@ dependencies = [
 [[package]]
 name = "mbedtls-sys-auto"
 version = "2.26.1"
-source = "git+https://github.com/fortanix/rust-mbedtls?branch=raoul/encode_signature#87e240b1209a125fa70f74fc510cc6d9bdef7738"
+source = "git+https://github.com/fortanix/rust-mbedtls?branch=raoul/encode_signature#90e1652b63dda912771c0844194b2c99c989779b"
 dependencies = [
  "bindgen",
  "cc",
@@ -2068,10 +2068,12 @@ dependencies = [
  "chrono",
  "lazy_static",
  "mbedtls",
+ "num-bigint 0.4.3",
  "pkix",
  "serde",
  "serde_bytes",
  "serde_cbor",
+ "yasna 0.4.0",
 ]
 
 [[package]]
@@ -2196,7 +2198,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8536030f9fea7127f841b45bb6243b27255787fb4eb83958aa1ef9d2fdc0c36"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-complex",
  "num-integer",
  "num-iter",
@@ -2209,6 +2211,17 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg 1.0.1",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93ab6289c7b344a8a9f60f88d80aa20032336fe78da341afc91c8a2341fc75f"
 dependencies = [
  "autocfg 1.0.1",
  "num-integer",
@@ -2275,7 +2288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
 dependencies = [
  "autocfg 1.0.1",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
 ]
@@ -2586,7 +2599,7 @@ dependencies = [
  "bit-vec 0.6.2",
  "chrono",
  "lazy_static",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "yasna 0.3.2",
 ]
@@ -4304,7 +4317,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79af3189e6b0484c9fd54208f8eeb8818cadee00ec81438b67a64c8e6f2f3694"
 dependencies = [
  "bit-vec 0.5.1",
- "num-bigint",
+ "num-bigint 0.2.6",
 ]
 
 [[package]]
@@ -4314,7 +4327,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de7bff972b4f2a06c85f6d8454b09df153af7e3a4ec2aac81db1b105b684ddb"
 dependencies = [
  "bit-vec 0.6.2",
- "num-bigint",
+ "num-bigint 0.2.6",
+]
+
+[[package]]
+name = "yasna"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e262a29d0e61ccf2b6190d7050d4b237535fc76ce4c1210d9caa316f71dffa75"
+dependencies = [
+ "num-bigint 0.4.3",
 ]
 
 [[package]]
