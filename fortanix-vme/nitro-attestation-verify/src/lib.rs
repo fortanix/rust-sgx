@@ -90,6 +90,11 @@ impl<V: VerificationType> AttestationDocument<V> {
     pub fn nonce(&self) -> Option<&ByteBuf> {
         self.nonce.as_ref()
     }
+
+    /// Returns whether the enclave is executing in debug mode.
+    pub fn debug(&self) -> bool {
+        self.pcrs.range(0..=2).any(|(_idx, pcr)| pcr.iter().all(|v| *v == 0))
+    }
 }
 
 impl AttestationDocument<Unverified> {
@@ -350,6 +355,8 @@ mod tests {
         let doc = doc.unwrap();
         assert_eq!(doc.module_id, "i-02e3a660059b27d87-enc017bca11991e5083");
         assert_eq!(doc.timestamp, 1631182760215);
+        println!("pcrs: {:?}", doc.pcrs());
+        assert!(doc.debug());
     }
 
     #[test]
