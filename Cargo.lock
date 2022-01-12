@@ -232,6 +232,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb214f702da3cc6aa1666520f40ea66f506644db5e1065be4bbc972f7ec3750b"
 
 [[package]]
+name = "bstr"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a40b47ad93e1a5404e6c18dec46b628214fee441c70f4ab5d6942142cc268a3d"
+dependencies = [
+ "lazy_static",
+ "memchr",
+ "regex-automata",
+ "serde",
+]
+
+[[package]]
 name = "build_const"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -557,6 +569,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "csv"
+version = "1.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22813a6dc45b335f9bade10bf7271dc477e81113e89eb251a0bc2a8a81c536e1"
+dependencies = [
+ "bstr",
+ "csv-core",
+ "itoa 0.4.6",
+ "ryu",
+ "serde",
+]
+
+[[package]]
+name = "csv-core"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b2466559f260f48ad25fe6317b3c8dac77b5bdb5763ac7d9d6103530663bc90"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "darling"
 version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -743,6 +777,75 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4841de15dbe0e49b9b62a417589299e3be0d557e0900d36acb87e6dae47197f5"
 dependencies = [
  "byteorder 0.5.3",
+]
+
+[[package]]
+name = "em-app"
+version = "0.4.0"
+dependencies = [
+ "b64-ct",
+ "em-client",
+ "em-node-agent-client",
+ "hyper 0.10.16",
+ "mbedtls",
+ "nsm-driver",
+ "nsm-io",
+ "pkix",
+ "rustc-serialize",
+ "sdkms",
+ "serde",
+ "serde_bytes",
+ "serde_derive 1.0.132",
+ "serde_json",
+ "sgx-isa 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sgx_pkix 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "url 1.7.2",
+ "uuid 0.6.5",
+ "uuid 0.7.4",
+ "vme-pkix",
+ "yasna 0.3.2",
+]
+
+[[package]]
+name = "em-client"
+version = "3.0.0"
+source = "git+https://github.com/fortanix/em-client-rust?rev=3117ec9404a9657fd0409f07a2d54211c526f77e#3117ec9404a9657fd0409f07a2d54211c526f77e"
+dependencies = [
+ "base64 0.10.1",
+ "bitflags 1.2.1",
+ "chrono",
+ "futures 0.1.30",
+ "hyper 0.10.16",
+ "lazy_static",
+ "log 0.3.9",
+ "mime 0.2.6",
+ "serde",
+ "serde_derive 1.0.132",
+ "serde_ignored",
+ "serde_json",
+ "url 1.7.2",
+ "uuid 0.6.5",
+]
+
+[[package]]
+name = "em-node-agent-client"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df22360a06e34189c0899e6fc1814a9ff0869bd973d3a65c97287b5c4e910364"
+dependencies = [
+ "base64 0.10.1",
+ "chrono",
+ "futures 0.1.30",
+ "hyper 0.10.16",
+ "lazy_static",
+ "log 0.3.9",
+ "mime 0.2.6",
+ "serde",
+ "serde_derive 1.0.132",
+ "serde_ignored",
+ "serde_json",
+ "url 1.7.2",
+ "uuid 0.6.5",
 ]
 
 [[package]]
@@ -1173,6 +1276,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "get-certificate"
+version = "0.1.0"
+dependencies = [
+ "em-app",
+ "mbedtls",
+ "serde_json",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.1.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1230,6 +1342,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 
 [[package]]
+name = "harmonize"
+version = "0.1.0"
+dependencies = [
+ "b64-ct",
+ "csv",
+ "em-app",
+ "hyper 0.10.16",
+ "mbedtls",
+ "pkix",
+ "rustc-serialize",
+ "sdkms",
+ "serde",
+ "serde_derive 1.0.132",
+ "serde_json",
+ "url 1.7.2",
+ "uuid 0.6.5",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1268,7 +1399,7 @@ checksum = "d6ccf5ede3a895d8856620237b2f02972c1bbc78d2965ad7fe8838d4a0ed41f0"
 dependencies = [
  "bytes 0.4.12",
  "fnv",
- "itoa",
+ "itoa 0.4.6",
 ]
 
 [[package]]
@@ -1279,7 +1410,7 @@ checksum = "1323096b05d41827dadeaee54c9981958c0f94e670bc94ed80037d1a7b8b186b"
 dependencies = [
  "bytes 1.1.0",
  "fnv",
- "itoa",
+ "itoa 0.4.6",
 ]
 
 [[package]]
@@ -1365,7 +1496,7 @@ dependencies = [
  "http-body 0.1.0",
  "httparse",
  "iovec",
- "itoa",
+ "itoa 0.4.6",
  "log 0.4.14",
  "net2",
  "rustc_version",
@@ -1395,7 +1526,7 @@ dependencies = [
  "http-body 0.4.4",
  "httparse",
  "httpdate",
- "itoa",
+ "itoa 0.4.6",
  "pin-project-lite 0.2.7",
  "socket2",
  "tokio 1.14.0",
@@ -1569,6 +1700,12 @@ name = "itoa"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc6f3ad7b9d11a0c00842ff8de1b60ee58661048eb8049ed33c73594f359d7e6"
+
+[[package]]
+name = "itoa"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aab8fc367588b89dcee83ab0fd66b72b50b72fa1904d7095045ace2b0c81c35"
 
 [[package]]
 name = "kernel32-sys"
@@ -1994,6 +2131,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsm-driver"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
+dependencies = [
+ "libc",
+ "log 0.4.14",
+ "nix 0.15.0",
+ "nsm-io",
+ "serde_cbor",
+]
+
+[[package]]
+name = "nsm-io"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
+dependencies = [
+ "libc",
+ "log 0.4.14",
+ "nix 0.15.0",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2390,9 +2552,9 @@ checksum = "3831453b3449ceb48b6d9c7ad7c96d5ea673e9b470a1dc578c2ce6521230884c"
 
 [[package]]
 name = "pkix"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4aa65def990a905dd51e5f0fed8862ab0af4f7aba5fb0f1740fc872f04d7bc4"
+checksum = "643768328ce074b546bc11af4581bc3e8f1242706be53946eb7b30f686194fba"
 dependencies = [
  "b64-ct",
  "bit-vec 0.6.2",
@@ -2503,7 +2665,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.3.9",
+ "log 0.4.14",
  "which 4.0.2",
 ]
 
@@ -2753,6 +2915,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex-automata"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
+
+[[package]]
 name = "regex-syntax"
 version = "0.6.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2807,7 +2975,7 @@ dependencies = [
  "tokio-threadpool",
  "tokio-timer",
  "url 1.7.2",
- "uuid",
+ "uuid 0.7.4",
  "winreg",
 ]
 
@@ -2842,8 +3010,7 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 [[package]]
 name = "rustc-serialize"
 version = "0.3.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcf128d1287d2ea9d80910b5f1120d0b8eede3fbf1abe91c40d39ea7d51e6fda"
+source = "git+https://github.com/jethrogb/rustc-serialize.git?branch=portability#9800ee078b22e2aa9886a6751f9778fda80a16b6"
 
 [[package]]
 name = "rustc-std-workspace-alloc"
@@ -2904,6 +3071,24 @@ name = "scopeguard"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
+
+[[package]]
+name = "sdkms"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c843377a2ed87d63e487c7b41b1a82446ab7dc836addd66d63010ea05b14aaf7"
+dependencies = [
+ "bitflags 1.2.1",
+ "chrono",
+ "hyper 0.10.16",
+ "log 0.4.14",
+ "rustc-serialize",
+ "serde",
+ "serde_derive 1.0.132",
+ "serde_json",
+ "url 1.7.2",
+ "uuid 0.7.4",
+]
 
 [[package]]
 name = "security-framework"
@@ -2995,12 +3180,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_json"
-version = "1.0.59"
+name = "serde_ignored"
+version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcac07dbffa1c65e7f816ab9eba78eb142c6d44410f4eeba1e26e4f5dfa56b95"
+checksum = "190e9765dcedb56be63b6e0993a006c7e3b071a016a304736e4a315dc01fb142"
 dependencies = [
- "itoa",
+ "serde",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.74"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee2bb9cd061c5865d345bb02ca49fcef1391741b672b54a0bf7b679badec3142"
+dependencies = [
+ "itoa 1.0.1",
  "ryu",
  "serde",
 ]
@@ -3023,7 +3217,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "642dd69105886af2efd227f75a520ec9b44a820d65bc133a9131f7d229fd165a"
 dependencies = [
  "dtoa",
- "itoa",
+ "itoa 0.4.6",
  "serde",
  "url 1.7.2",
 ]
@@ -3084,6 +3278,19 @@ dependencies = [
 [[package]]
 name = "sgx_pkix"
 version = "0.1.1"
+dependencies = [
+ "byteorder 1.3.4",
+ "lazy_static",
+ "pkix",
+ "quick-error",
+ "sgx-isa 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sgx_pkix"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdf3793cb22f01be29fd8ac1f97df9b4685156ec6e9ddea6573b8b1819a7802b"
 dependencies = [
  "byteorder 1.3.4",
  "lazy_static",
@@ -3830,11 +4037,23 @@ dependencies = [
 
 [[package]]
 name = "uuid"
+version = "0.6.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1436e58182935dcd9ce0add9ea0b558e8a87befe01c1a301e6020aeb0876363"
+dependencies = [
+ "cfg-if 0.1.10",
+ "rand 0.4.6",
+ "serde",
+]
+
+[[package]]
+name = "uuid"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbc611eb48397705a6b0f6e917da23ae517e4d127123d2cf7674206627d32a"
 dependencies = [
  "rand 0.6.5",
+ "serde",
 ]
 
 [[package]]
@@ -3860,6 +4079,14 @@ name = "version_check"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
+
+[[package]]
+name = "vme-pkix"
+version = "0.1.0"
+dependencies = [
+ "lazy_static",
+ "pkix",
+]
 
 [[package]]
 name = "vmm-sys-util"
