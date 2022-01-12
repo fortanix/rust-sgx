@@ -117,6 +117,10 @@ impl AttestationDocument<Unverified> {
     }
 
     /// Verifies the `AttestationDocument` given `root_certs` as DER-encoded trusted root CAs
+    /// This only indicates that the `AttestationDocument` was ultimately signed by a root cert. It
+    /// doesn't say anything about the trustworthyness of the `AttestationDocument`. Users should:
+    ///  - Verify that the `AttestationDocument` is not a debug document
+    ///  - Verify the contents of the enclosed PCRs
     #[cfg(feature = "mbedtls")]
     pub fn verify(self, root_certs: &[Vec<u8>]) -> Result<AttestationDocument, NitroError> {
         self.verify_ex::<_, Mbedtls, _>(root_certs, verify_certificates, false)?;
