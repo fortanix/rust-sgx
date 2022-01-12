@@ -100,7 +100,7 @@ dependencies = [
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.5.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction#e5f667501ec19f21adf1b1ed056792afcfc50419"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction#002ca568754d169e1bfcfa94735092dfe3c41ad2"
 dependencies = [
  "serde",
  "serde_bytes",
