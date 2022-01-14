@@ -37,4 +37,3 @@ mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" 
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
-em-client = { git = "https://github.com/fortanix/em-client-rust", rev = "3117ec9404a9657fd0409f07a2d54211c526f77e" }
