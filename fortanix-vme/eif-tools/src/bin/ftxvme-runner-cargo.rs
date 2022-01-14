@@ -207,7 +207,7 @@ fn main() -> anyhow::Result<()> {
     // If your application calls `TcpStream::connect("<url:port>")`,
     // this proxy server acts as a bridge for request and responses.
     let mut fortanix_vme_runner = command!("fortanix-vme-runner");
-    fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
+    let mut fortanix_vme_runner = fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
 
     let nitro_cli_run_enclave = command! {
         "nitro-cli" => args(
@@ -221,6 +221,6 @@ fn main() -> anyhow::Result<()> {
     };
 
     run_command(nitro_cli_run_enclave)?;
-
+    fortanix_vme_runner.wait()?;
     Ok(())
 }
