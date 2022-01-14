@@ -98,6 +98,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-nitro-enclaves-cose"
+version = "0.5.0"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#1021a397acc56d4d3ed935991f205754e5a2d2c5"
+dependencies = [
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+ "serde_repr",
+ "serde_with",
+]
+
+[[package]]
 name = "b64-ct"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -752,7 +764,7 @@ name = "eif_utils"
 version = "0.1.0"
 source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
 dependencies = [
- "aws-nitro-enclaves-cose",
+ "aws-nitro-enclaves-cose 0.1.0",
  "clap",
  "crc",
  "eif_defs",
@@ -1828,16 +1840,17 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "mbedtls"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6720f243c44d3cc5fd557c96c2538ec184fa0de28651002211b5a196e251b87f"
+version = "0.8.2"
+source = "git+https://github.com/fortanix/rust-mbedtls?branch=master#aa500d0e6e0a28117e9e62d932ed6d0341acab06"
 dependencies = [
+ "bit-vec 0.5.1",
  "bitflags 1.2.1",
  "byteorder 1.3.4",
  "cc",
  "cfg-if 1.0.0",
  "chrono",
  "mbedtls-sys-auto",
+ "num-bigint 0.2.6",
  "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_derive 1.0.132",
@@ -1847,8 +1860,7 @@ dependencies = [
 [[package]]
 name = "mbedtls-sys-auto"
 version = "2.26.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7da15d923e6a393dd8bfab2111cee366a995723fbaa8a0c3ff6bfe324e39291a"
+source = "git+https://github.com/fortanix/rust-mbedtls?branch=master#aa500d0e6e0a28117e9e62d932ed6d0341acab06"
 dependencies = [
  "bindgen",
  "cc",
@@ -2049,11 +2061,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "nitro-attestation-verify"
+version = "0.1.0"
+dependencies = [
+ "aws-nitro-enclaves-cose 0.5.0",
+ "chrono",
+ "lazy_static",
+ "mbedtls",
+ "num-bigint 0.4.3",
+ "pkix",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+ "yasna 0.4.0",
+]
+
+[[package]]
 name = "nitro-cli"
 version = "1.1.0"
 source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
 dependencies = [
- "aws-nitro-enclaves-cose",
+ "aws-nitro-enclaves-cose 0.1.0",
  "bindgen",
  "chrono",
  "clap",
@@ -2170,7 +2198,7 @@ version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8536030f9fea7127f841b45bb6243b27255787fb4eb83958aa1ef9d2fdc0c36"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-complex",
  "num-integer",
  "num-iter",
@@ -2183,6 +2211,17 @@ name = "num-bigint"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
+dependencies = [
+ "autocfg 1.0.1",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f93ab6289c7b344a8a9f60f88d80aa20032336fe78da341afc91c8a2341fc75f"
 dependencies = [
  "autocfg 1.0.1",
  "num-integer",
@@ -2249,7 +2288,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
 dependencies = [
  "autocfg 1.0.1",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "num-traits",
 ]
@@ -2560,7 +2599,7 @@ dependencies = [
  "bit-vec 0.6.2",
  "chrono",
  "lazy_static",
- "num-bigint",
+ "num-bigint 0.2.6",
  "num-integer",
  "yasna 0.3.2",
 ]
@@ -2665,7 +2704,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.4.14",
+ "log 0.3.9",
  "which 4.0.2",
 ]
 
@@ -4278,7 +4317,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79af3189e6b0484c9fd54208f8eeb8818cadee00ec81438b67a64c8e6f2f3694"
 dependencies = [
  "bit-vec 0.5.1",
- "num-bigint",
+ "num-bigint 0.2.6",
 ]
 
 [[package]]
@@ -4288,7 +4327,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de7bff972b4f2a06c85f6d8454b09df153af7e3a4ec2aac81db1b105b684ddb"
 dependencies = [
  "bit-vec 0.6.2",
- "num-bigint",
+ "num-bigint 0.2.6",
+]
+
+[[package]]
+name = "yasna"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e262a29d0e61ccf2b6190d7050d4b237535fc76ce4c1210d9caa316f71dffa75"
+dependencies = [
+ "num-bigint 0.4.3",
 ]
 
 [[package]]

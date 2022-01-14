@@ -20,6 +20,7 @@ matrix:
             - sourceline: "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main"
               key_url: "https://apt.llvm.org/llvm-snapshot.gpg.key"
           packages:
+            - faketime
             - protobuf-compiler
             - libsgx-dcap-ql-dev
             - clang-11
@@ -40,6 +41,11 @@ matrix:
         - cargo test --verbose --locked -p dcap-ql --features verify
         - cargo build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
         - cargo build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+        - cargo test --locked -p nitro-attestation-verify
+        # Unfortunately running `faketime '2021-09-10 11:00:00 GMT' cargo test -p nitro-attestation-verify` causes a segmentation
+        #  fault while compiling. We only execute `faketime` during the tests
+        - cargo test --locked -p nitro-attestation-verify --no-run && faketime '2021-09-08 11:00:00 GMT' $(find ./target/debug/deps -name "nitro_attestation_verify*" -executable)
+        - cargo test --locked -p nitro-attestation-verify --no-run && faketime '2021-09-10 11:00:00 GMT' $(find ./target/debug/deps -name "nitro_attestation_verify*" -executable)
         # NOTE: linking glibc version of OpenSSL with musl binary.
         # Unlikely to produce a working binary, but at least the build succeeds.
         - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude cargo build --locked -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
