@@ -173,9 +173,9 @@ impl Default for FortanixVmeConfig {
         Self {
             cpu_count: FortanixVmeConfig::DEFAULT_CPU_COUNT,
             memory: FortanixVmeConfig::DEFAULT_MEMORY,
-            debug_mode: false,
+            debug_mode: true,
             enclave_name: None,
-            verbose: false,
+            verbose: true,
             eif_file_path: FortanixVmeConfig::default_eif_path(),
             resource_path: None,
             signing_certificate: None,
