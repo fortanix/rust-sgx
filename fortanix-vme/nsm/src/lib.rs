@@ -1,4 +1,4 @@
-pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError};
+pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError, Mbedtls};
 use nsm_io::{ErrorCode, Response, Request};
 pub use nsm_io::Digest;
 pub use serde_bytes::ByteBuf;
@@ -78,8 +78,8 @@ impl From<ErrorCode> for Error {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Pcr {
-    pub locked: bool,
-    pub data: Vec<u8>,
+    locked: bool,
+    data: Vec<u8>,
 }
 
 impl Pcr {
@@ -88,6 +88,14 @@ impl Pcr {
             locked,
             data,
         }
+    }
+
+    pub fn locked(&self) -> bool {
+        self.locked
+    }
+
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
     }
 }
 
@@ -120,6 +128,42 @@ pub struct Description {
     pub locked_pcrs: BTreeSet<u16>,
     /// The digest of the PCR Bank
     pub digest: Digest,
+}
+
+impl Description {
+    pub fn version_major(&self) -> u16 {
+        self.version_major
+    }
+
+    /// Minor API changes are denoted by `minor_version`. Minor versions should be backwards compatible.
+    pub fn version_minor(&self) -> u16 {
+        self.version_minor
+    }
+
+    /// Patch version. These are security and stability updates and do not affect API.
+    pub fn version_patch(&self) -> u16 {
+        self.version_patch
+    }
+
+    /// `module_id` is an identifier for a singular NitroSecureModule
+    pub fn module_id(&self) -> &String {
+        &self.module_id
+    }
+
+    /// The maximum number of PCRs exposed by the NitroSecureModule.
+    pub fn max_pcrs(&self) -> u16 {
+        self.max_pcrs
+    }
+
+    /// The PCRs that are read-only.
+    pub fn locked_pcrs(&self) -> &BTreeSet<u16> {
+        &self.locked_pcrs
+    }
+
+    /// The digest of the PCR Bank
+    pub fn digest(&self) -> Digest {
+        self.digest
+    }
 }
 
 impl TryFrom<Response> for Description {
@@ -167,7 +211,7 @@ impl Nsm {
             public_key,
         };
         match nsm_driver::nsm_process_request(self.0, req) {
-            Response::Attestation { document } => Ok(AttestationDocument::from_slice(document.as_slice())?),
+            Response::Attestation { document } => Ok(AttestationDocument::from_slice::<Mbedtls>(document.as_slice())?),
             Response::Error(code) => Err(code.into()),
             _ => Err(Error::InvalidResponse),
         }

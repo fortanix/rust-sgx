@@ -13,7 +13,7 @@ use num_bigint::BigUint;
 use std::sync::Mutex;
 use std::ops::Deref;
 
-pub(crate) struct Mbedtls;
+pub struct Mbedtls;
 
 struct MdType(hash::Type);
 

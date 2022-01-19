@@ -22,7 +22,7 @@ use ::mbedtls::{alloc::List as MbedtlsList, x509::{Certificate, VerifyError}};
 mod mbedtls;
 
 #[cfg(feature = "mbedtls")]
-use crate::mbedtls::Mbedtls;
+pub use crate::mbedtls::Mbedtls;
 
 pub trait VerificationType {}
 
