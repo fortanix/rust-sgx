@@ -50,12 +50,15 @@ LIBS_SORTED=$(
 )
 
 for LIB in $LIBS_SORTED; do
+    echo ${LIB}
     LIB_DIR=$(find . -maxdepth 2 -name ${LIB} -type d)
-    cd ${LIB_DIR}
-    ARGS=""
-    if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
-        ARGS="--features $FEATURES"
+    if [[ -d "${LIB_DIR}" ]]; then
+        pushd ${LIB_DIR}
+        ARGS=""
+        if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
+            ARGS="--features $FEATURES"
+        fi
+        cargo doc --no-deps --lib $ARGS
+        popd
     fi
-    cargo doc --no-deps --lib $ARGS
-    cd -
 done
