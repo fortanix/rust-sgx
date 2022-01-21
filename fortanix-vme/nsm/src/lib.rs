@@ -1,3 +1,6 @@
+//! The nsm_io library provides an interface to the AWS Nitro Security Module (nsm). Unfortunately,
+//! the interface of that crate is not very Rust friendly. To avoid clients of `nsm_io` having to
+//! write the same wrapper code over and over again, this crate does this once.
 pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError, Mbedtls};
 use nsm_io::{ErrorCode, Response, Request};
 pub use nsm_io::Digest;
@@ -22,18 +25,7 @@ pub enum Error {
 
 impl std::fmt::Display for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Error::AttestationError(ref msg) => write!(fmt, "Attestation error: {}", msg),
-            Error::BufferTooSmall => write!(fmt, "Buffer too small"),
-            Error::CannotOpenDriver => write!(fmt, "CannotOpenDriver"),
-            Error::InputTooLarge => write!(fmt, "InputTooLarge"),
-            Error::InternalError => write!(fmt, "InternalError"),
-            Error::InvalidArgument => write!(fmt, "InvalidArgument"),
-            Error::InvalidOperation => write!(fmt, "InvalidOperation"),
-            Error::InvalidPcrIndex => write!(fmt, "InvalidPcrIndex"),
-            Error::InvalidResponse => write!(fmt, "InvalidResponse"),
-            Error::ReadOnlyPcrIndex => write!(fmt, "ReadOnlyPcrIndex"),
-        }
+        std::fmt::Debug::fmt(self, fmt)
     }
 }
 
@@ -99,35 +91,22 @@ impl Pcr {
     }
 }
 
-impl TryFrom<Response> for Pcr {
-    type Error = Error;
-
-    fn try_from(req: Response) -> Result<Self, Self::Error> {
-        match req {
-            Response::DescribePCR { lock, data } => Ok(Pcr::new(lock, data)),
-            Response::ExtendPCR { data }         => Ok(Pcr::new(false, data)) /* Only unlocked PCRs can get extended */,
-            Response::Error(code)                => Err(code.into()),
-            _                                    => Err(Error::InvalidResponse),
-        }
-    }
-}
-
 #[derive(Debug, PartialEq)]
 pub struct Description {
     /// Breaking API changes are denoted by `major_version`
-    pub version_major: u16,
+    version_major: u16,
     /// Minor API changes are denoted by `minor_version`. Minor versions should be backwards compatible.
-    pub version_minor: u16,
+    version_minor: u16,
     /// Patch version. These are security and stability updates and do not affect API.
-    pub version_patch: u16,
+    version_patch: u16,
     /// `module_id` is an identifier for a singular NitroSecureModule
-    pub module_id: String,
+    module_id: String,
     /// The maximum number of PCRs exposed by the NitroSecureModule.
-    pub max_pcrs: u16,
+    max_pcrs: u16,
     /// The PCRs that are read-only.
-    pub locked_pcrs: BTreeSet<u16>,
+    locked_pcrs: BTreeSet<u16>,
     /// The digest of the PCR Bank
-    pub digest: Digest,
+    digest: Digest,
 }
 
 impl Description {
@@ -221,7 +200,11 @@ impl Nsm {
         let req = Request::DescribePCR {
             index: idx_pcr,
         };
-        nsm_driver::nsm_process_request(self.0, req).try_into()
+        if let Response::DescribePCR { lock, data } = nsm_driver::nsm_process_request(self.0, req) {
+            Ok(Pcr::new(lock, data))
+        } else {
+            Err(Error::InvalidResponse)
+        }
     }
 
     pub fn extend_pcr(&mut self, idx_pcr: u16, data: Vec<u8>) -> Result<Pcr, Error> {
@@ -229,7 +212,12 @@ impl Nsm {
             index: idx_pcr,
             data,
         };
-        nsm_driver::nsm_process_request(self.0, req).try_into()
+        if let Response::ExtendPCR { data } = nsm_driver::nsm_process_request(self.0, req) {
+            let locked = false; /* Only unlocked PCRs can get extended */
+            Ok(Pcr::new(locked, data))
+        } else {
+            Err(Error::InvalidResponse)
+        }
     }
 
     pub fn lock_pcr(&mut self, idx_pcr: u16) -> Result<(), Error> {
