@@ -1,16 +1,41 @@
 //! The nsm_io library provides an interface to the AWS Nitro Security Module (nsm). Unfortunately,
 //! the interface of this crate is not very Rust friendly. To avoid clients of this crate having to
 //! write the same wrapper code over and over again, this crate does this once.
+#![cfg_attr(feature = "rustc-dep-of-std", no_std)]
+#[cfg(feature = "attestation")]
 pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError, Mbedtls};
 use nsm_io::{ErrorCode, Response, Request};
+#[cfg(feature = "std")]
+use nsm_driver::Nix;
+use nsm_driver::Platform;
 pub use nsm_io::Digest;
+#[cfg(feature = "attestation")]
 pub use serde_bytes::ByteBuf;
-use std::collections::BTreeSet;
+#[cfg(feature = "alloc")]
+use {
+    alloc::collections::BTreeSet,
+    alloc::string::String,
+    alloc::vec::Vec,
+};
+#[cfg(not(feature = "alloc"))]
+use {
+    std::collections::BTreeSet,
+    std::string::String,
+    std::vec::Vec,
+};
+#[cfg(feature = "core")]
+use core::marker::PhantomData;
+#[cfg(not(feature = "core"))]
+use std::marker::PhantomData;
 
-pub struct Nsm(i32);
+pub struct Nsm<P: Platform> {
+    fd: i32,
+    type_: PhantomData<P>,
+}
 
-#[derive(Debug, PartialEq)]
+#[cfg_attr(feature = "std", derive(Debug, PartialEq))]
 pub enum Error {
+    #[cfg(feature = "attestation")]
     AttestationError(AttestationError),
     BufferTooSmall,
     CannotOpenDriver,
@@ -23,15 +48,18 @@ pub enum Error {
     ReadOnlyPcrIndex,
 }
 
+#[cfg(feature = "std")]
 impl std::fmt::Display for Error {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         std::fmt::Debug::fmt(self, fmt)
     }
 }
 
+#[cfg(feature = "std")]
 impl std::error::Error for Error {
     fn description(&self) -> &str {
         match self {
+            #[cfg(feature = "attestation")]
             Error::AttestationError(_e) => "Attestation error",
             Error::BufferTooSmall => "Provided output buffer too small",
             Error::CannotOpenDriver => "Failed to open driver",
@@ -46,6 +74,7 @@ impl std::error::Error for Error {
     }
 }
 
+#[cfg(feature = "attestation")]
 impl From<AttestationError> for Error {
     fn from(e: AttestationError) -> Self {
         Error::AttestationError(e)
@@ -173,23 +202,27 @@ impl TryFrom<Response> for Description {
     }
 }
 
-impl Nsm {
+impl<P: Platform> Nsm<P> {
     pub fn new() -> Result<Self, Error> {
-        let fd = nsm_driver::nsm_init();
+        let fd = P::open_dev();
         if fd < 0 {
             Err(Error::CannotOpenDriver)
         } else {
-            Ok(Nsm(fd))
+            Ok(Nsm {
+                fd,
+                type_: PhantomData::default(),
+            })
         }
     }
 
+    #[cfg(feature = "attestation")]
     pub fn attest(&mut self, user_data: Option<ByteBuf>, nonce: Option<ByteBuf>, public_key: Option<ByteBuf>) -> Result<AttestationDocument<Unverified>, Error> {
         let req = Request::Attestation {
             user_data,
             nonce,
             public_key,
         };
-        match nsm_driver::nsm_process_request(self.0, req) {
+        match nsm_driver::nsm_process_request::<Nix>(self.fd, req) {
             Response::Attestation { document } => Ok(AttestationDocument::from_slice::<Mbedtls>(document.as_slice())?),
             Response::Error(code) => Err(code.into()),
             _ => Err(Error::InvalidResponse),
@@ -200,7 +233,7 @@ impl Nsm {
         let req = Request::DescribePCR {
             index: idx_pcr,
         };
-        if let Response::DescribePCR { lock, data } = nsm_driver::nsm_process_request(self.0, req) {
+        if let Response::DescribePCR { lock, data } = nsm_driver::nsm_process_request::<P>(self.fd, req) {
             Ok(Pcr::new(lock, data))
         } else {
             Err(Error::InvalidResponse)
@@ -212,7 +245,7 @@ impl Nsm {
             index: idx_pcr,
             data,
         };
-        if let Response::ExtendPCR { data } = nsm_driver::nsm_process_request(self.0, req) {
+        if let Response::ExtendPCR { data } = nsm_driver::nsm_process_request::<P>(self.fd, req) {
             let locked = false; /* Only unlocked PCRs can get extended */
             Ok(Pcr::new(locked, data))
         } else {
@@ -224,7 +257,7 @@ impl Nsm {
         let req = Request::LockPCR {
             index: idx_pcr,
         };
-        match nsm_driver::nsm_process_request(self.0, req) {
+        match nsm_driver::nsm_process_request::<P>(self.fd, req) {
             Response::LockPCR     => Ok(()),
             Response::Error(code) => Err(code.into()),
             _                     => Err(Error::InvalidResponse),
@@ -236,7 +269,7 @@ impl Nsm {
         let req = Request::LockPCRs {
             range,
         };
-        match nsm_driver::nsm_process_request(self.0, req) {
+        match nsm_driver::nsm_process_request::<P>(self.fd, req) {
             Response::LockPCRs    => Ok(()),
             Response::Error(code) => Err(code.into()),
             _                     => Err(Error::InvalidResponse),
@@ -244,11 +277,11 @@ impl Nsm {
     }
 
     pub fn describe(&self) -> Result<Description, Error> {
-        nsm_driver::nsm_process_request(self.0, Request::DescribeNSM).try_into()
+        nsm_driver::nsm_process_request::<P>(self.fd, Request::DescribeNSM).try_into()
     }
 
     pub fn get_random(&self) -> Result<Vec<u8>, Error> {
-        match nsm_driver::nsm_process_request(self.0, Request::GetRandom) {
+        match nsm_driver::nsm_process_request::<P>(self.fd, Request::GetRandom) {
             Response::GetRandom{ random }    => Ok(random),
             Response::Error(code)            => Err(code.into()),
             _                                => Err(Error::InvalidResponse),
@@ -256,8 +289,8 @@ impl Nsm {
     }
 }
 
-impl Drop for Nsm {
+impl<P: Platform> Drop for Nsm<P> {
     fn drop(&mut self) {
-        nsm_driver::nsm_exit(self.0);
+        P::close_dev(self.fd);
     }
 }

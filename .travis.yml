@@ -58,4 +58,6 @@ matrix:
         - cargo build --verbose --locked -p harmonize --target=x86_64-fortanix-unknown-sgx
         - cargo build --verbose --locked -p harmonize --target=x86_64-unknown-linux-gnu
         - cargo build --verbose --locked -p harmonize --target=x86_64-unknown-linux-musl
+        - cargo build --verbose --locked -p nsm
+        - cargo build --verbose --locked -p nsm --no-default-features
         - ./doc/generate-api-docs.sh

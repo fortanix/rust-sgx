@@ -38,5 +38,9 @@ libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
 nix   = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
+serde_cbor = { git = "https://github.com/fortanix/cbor.git", branch = "fortanixvme" }
+serde_bytes = { git = "https://github.com/fortanix/bytes.git", branch = "raoul/no_std_compatibility" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
+nsm-driver = { git = "https://github.com/fortanix/aws-nitro-enclaves-nsm-api", branch = "raoul/no_std_compatible" }
+nsm-io = { git = "https://github.com/fortanix/aws-nitro-enclaves-nsm-api", branch = "raoul/no_std_compatible" }
