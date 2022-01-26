@@ -70,7 +70,8 @@ run_tests\
     hello_world \
     outgoing_connection \
     incoming_connection \
-    iron
+    iron \
+    nsm-test
 
 echo "********************************"
 echo "**    All tests succeeded!    **"

@@ -108,18 +108,20 @@ function cargo_test {
                 scp ./test_interaction.sh ubuntu@${AWS_VM}:/home/ubuntu/ci-fortanixvme/${name}/
             fi
         fi
-	RUST_BACKTRACE=full ${elf} -- --nocapture > ${out} 2> ${err}
+	if [ ! -f ./skip_on_dev_platform ]; then
+            RUST_BACKTRACE=full ${elf} -- --nocapture > ${out} 2> ${err}
 
-        out=$(cat ${out} | grep -v "^#" || true)
-        expected=$(cat ./out.expected)
+            out=$(cat ${out} | grep -v "^#" || true)
+            expected=$(cat ./out.expected)
 
-        if [ "${out}" == "${expected}" ]; then
-            echo "Test ${name}: Success"
-        else
-            echo "Test ${name}: Failed"
-	    echo "Got: ${out}"
-            echo "Expected: ${expected}"
-            exit -1
+            if [ "${out}" == "${expected}" ]; then
+                echo "Test ${name}: Success"
+            else
+                echo "Test ${name}: Failed"
+	        echo "Got: ${out}"
+                echo "Expected: ${expected}"
+                exit -1
+            fi
         fi
     fi
 

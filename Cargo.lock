@@ -800,8 +800,8 @@ dependencies = [
  "em-node-agent-client",
  "hyper 0.10.16",
  "mbedtls",
- "nsm-driver",
- "nsm-io",
+ "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -1844,14 +1844,12 @@ name = "mbedtls"
 version = "0.8.2"
 source = "git+https://github.com/fortanix/rust-mbedtls?branch=master#aa500d0e6e0a28117e9e62d932ed6d0341acab06"
 dependencies = [
- "bit-vec 0.5.1",
  "bitflags 1.2.1",
  "byteorder 1.3.4",
  "cc",
  "cfg-if 1.0.0",
  "chrono",
  "mbedtls-sys-auto",
- "num-bigint 0.2.6",
  "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
  "serde_derive 1.0.132",
@@ -2138,6 +2136,18 @@ dependencies = [
 
 [[package]]
 name = "nix"
+version = "0.20.2"
+source = "git+https://github.com/fortanix/nix.git?branch=raoul/fortanixvme_r0.20.2#6803aa84923d024a6106840acf2d12edb78825c0"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+ "memoffset 0.6.4",
+]
+
+[[package]]
+name = "nix"
 version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3bb9a13fa32bc5aeb64150cd3f32d6cf4c748f8f8a417cce5d2eb976a8370ba"
@@ -2160,6 +2170,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nsm"
+version = "0.1.0"
+dependencies = [
+ "nitro-attestation-verify",
+ "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
+ "serde_bytes",
+]
+
+[[package]]
 name = "nsm-driver"
 version = "0.1.0"
 source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
@@ -2167,7 +2187,19 @@ dependencies = [
  "libc",
  "log 0.4.14",
  "nix 0.15.0",
- "nsm-io",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
+ "serde_cbor",
+]
+
+[[package]]
+name = "nsm-driver"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
+dependencies = [
+ "libc",
+ "log 0.4.14",
+ "nix 0.20.2",
+ "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
  "serde_cbor",
 ]
 
@@ -2182,6 +2214,25 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_cbor",
+]
+
+[[package]]
+name = "nsm-io"
+version = "0.1.0"
+source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
+dependencies = [
+ "log 0.4.14",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
+name = "nsm-test"
+version = "0.1.0"
+dependencies = [
+ "nsm",
+ "pkix",
 ]
 
 [[package]]
@@ -2263,9 +2314,9 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d59457e662d541ba17869cf51cf177c0b5f0cbf476c66bdc90bf1edac4f875b"
+checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg 1.0.1",
  "num-traits",
@@ -2296,9 +2347,9 @@ dependencies = [
 
 [[package]]
 name = "num-traits"
-version = "0.2.12"
+version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac267bcc07f48ee5f8935ab0d24f316fb722d7a1292e2913f0cc196b29ffd611"
+checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
 dependencies = [
  "autocfg 1.0.1",
 ]

@@ -1,0 +1,13 @@
+[package]
+name = "nsm"
+version = "0.1.0"
+authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nitro-attestation-verify = { path = "../nitro-attestation-verify" }
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api" }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api" }
+serde_bytes = "0.11"

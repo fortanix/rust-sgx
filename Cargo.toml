@@ -4,11 +4,13 @@ members = [
     "fortanix-vme/eif-tools",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/nsm",
     "fortanix-vme/nitro-attestation-verify",
     "fortanix-vme/tests/hello_world",
     "fortanix-vme/tests/outgoing_connection",
     "fortanix-vme/tests/incoming_connection",
     "fortanix-vme/tests/iron",
+    "fortanix-vme/tests/nsm-test",
     "intel-sgx/aesm-client",
     "intel-sgx/dcap-provider",
     "intel-sgx/dcap-ql-sys",
@@ -34,6 +36,7 @@ exclude = ["examples"]
 [patch.crates-io]
 libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
+nix   = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
