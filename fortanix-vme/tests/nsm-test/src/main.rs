@@ -1,7 +1,7 @@
-use nsm::{ByteBuf, Digest, Nsm};
+use nsm::{ByteBuf, Digest, Nix, Nsm};
 
 fn main() {
-    let mut nsm = Nsm::new().unwrap();
+    let mut nsm = Nsm::<Nix>::new().unwrap();
     let user_data = ByteBuf::from(vec![0, 1, 2]);
     let nonce = ByteBuf::from(vec![3, 4, 5]);
     let pub_key = ByteBuf::from(vec![6, 7, 8]);
@@ -47,11 +47,11 @@ fn main() {
 
     println!("# nsm description: {:#?}", nsm.describe().unwrap());
     let description = nsm.describe().unwrap();
-    assert_eq!(description.version_major, 1);
-    assert_eq!(description.version_minor, 0);
-    assert_eq!(description.version_patch, 0);
-    assert_eq!(description.max_pcrs, 32);
+    assert_eq!(description.version_major(), 1);
+    assert_eq!(description.version_minor(), 0);
+    assert_eq!(description.version_patch(), 0);
+    assert_eq!(description.max_pcrs(), 32);
     assert_eq!(description.locked_pcrs().iter().count(), 18);
-    assert_eq!(description.digest, Digest::SHA384);
+    assert_eq!(description.digest(), Digest::SHA384);
     assert!(nsm.get_random().is_ok());
 }

@@ -6,7 +6,7 @@
 pub use nitro_attestation_verify::{AttestationDocument, Unverified, NitroError as AttestationError, Mbedtls};
 use nsm_io::{ErrorCode, Response, Request};
 #[cfg(feature = "std")]
-use nsm_driver::Nix;
+pub use nsm_driver::Nix;
 use nsm_driver::Platform;
 pub use nsm_io::Digest;
 #[cfg(feature = "attestation")]
@@ -33,7 +33,8 @@ pub struct Nsm<P: Platform> {
     type_: PhantomData<P>,
 }
 
-#[cfg_attr(feature = "std", derive(Debug, PartialEq))]
+//#[cfg_attr(feature = "std", derive(Debug, PartialEq))]
+#[derive(Debug, PartialEq)]
 pub enum Error {
     #[cfg(feature = "attestation")]
     AttestationError(AttestationError),
@@ -47,6 +48,14 @@ pub enum Error {
     InvalidResponse,
     ReadOnlyPcrIndex,
 }
+
+/*
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        std::fmt::Debug::fmt(self, fmt)
+    }
+}
+*/
 
 #[cfg(feature = "std")]
 impl std::fmt::Display for Error {

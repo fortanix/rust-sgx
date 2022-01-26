@@ -37,8 +37,8 @@ exclude = ["examples"]
 libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
 nix   = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
-serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
-serde_cbor = { git = "https://github.com/fortanix/cbor.git", branch = "fortanixvme" }
+serde = { git = "https://github.com/fortanix/serde.git", branch = "raoul/stdlib_1.0.136" }
+serde_cbor = { git = "https://github.com/fortanix/cbor.git", branch = "raoul/stdlib_serde_1.0.136" }
 serde_bytes = { git = "https://github.com/fortanix/bytes.git", branch = "raoul/no_std_compatibility" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
