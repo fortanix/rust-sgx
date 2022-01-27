@@ -5,7 +5,11 @@ extern crate alloc;
 extern crate std;
 
 use alloc::string::String;
-use serde::{Deserialize, Serialize, Serializer};
+use core::fmt::{self, Formatter};
+use core::marker::PhantomData;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{EnumAccess, Error as SerdeError, VariantAccess, Visitor};
+
 #[cfg(feature="std")]
 use {
     std::io,
@@ -109,7 +113,7 @@ pub enum Response {
     Failed(Error),
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     ConnectionNotFound,
     SystemError(i32),
@@ -138,6 +142,100 @@ impl Serialize for Error {
                 Serializer::serialize_unit_variant(serializer, "Error", 3u32, "VsockError")
             }
         }
+    }
+}
+
+/// Deserializes an `Error` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+impl<'de> Deserialize<'de> for Error {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        pub enum ErrorVariant {
+            ConnectionNotFound,
+            SystemError,
+            Unknown,
+            VsockError,
+        }
+        struct ErrorVariantVisitor;
+        impl<'de> Visitor<'de> for ErrorVariantVisitor {
+            type Value = ErrorVariant;
+
+            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(fmt, "Error variant identifier")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match value {
+                    "ConnectionNotFound" => Ok(ErrorVariant::ConnectionNotFound),
+                    "SystemError" => Ok(ErrorVariant::SystemError),
+                    "Unknown" => Ok(ErrorVariant::Unknown),
+                    "VsockError" => Ok(ErrorVariant::VsockError),
+                    _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for ErrorVariant {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Deserializer::deserialize_identifier(deserializer, ErrorVariantVisitor)
+            }
+        }
+
+        struct ErrorVisitor<'de> {
+            marker: PhantomData<Error>,
+            lifetime: PhantomData<&'de ()>,
+        }
+
+        impl<'de> Visitor<'de> for ErrorVisitor<'de> {
+            type Value = Error;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "enum Error")
+            }
+
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (ErrorVariant::ConnectionNotFound, val) => {
+                        VariantAccess::unit_variant(val)?;
+                        Ok(Error::ConnectionNotFound)
+                    }
+                    (ErrorVariant::SystemError, val) =>
+                        VariantAccess::newtype_variant::<i32>(val).map(Error::SystemError),
+                    (ErrorVariant::Unknown, val) => {
+                        VariantAccess::unit_variant(val)?;
+                        Ok(Error::Unknown)
+                    }
+                    (ErrorVariant::VsockError, val) => {
+                        VariantAccess::unit_variant(val)?;
+                        Ok(Error::VsockError)
+                    }
+                }
+            }
+        }
+
+        const VARIANTS: &'static [&'static str] =
+            &["ConnectionNotFound", "SystemError", "Unknown", "VsockError"];
+
+        Deserializer::deserialize_enum(
+            deserializer,
+            "Error",
+            VARIANTS,
+            ErrorVisitor {
+                marker: PhantomData::<Error>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 
