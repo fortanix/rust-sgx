@@ -66,7 +66,7 @@ function compile {
 
 function cargo_test {
     name=$1
-    pushd ${repo_root}/fortanix-vme/tests/$name
+    pushd ${repo_root}/fortanix-vme/aws-nitro-enclaves/tests/$name
     out=$(mktemp /tmp/$name.out.XXXXX)
     err=$(mktemp /tmp/$name.err.XXXXX)
 
@@ -148,7 +148,7 @@ function elf2eif {
     fi
 
     # Newly compiled ftxvme-elf2eif from this repo
-    pushd ${repo_root}/fortanix-vme
+    pushd ${repo_root}/fortanix-vme/aws-nitro-enclaves/eif-tools
     cargo run --bin ftxvme-elf2eif -- --input-file ${enclave_elf} --output-file ${enclave_eif} --resource-path ${resources} --verbose
     ls -lh ${enclave_eif}
     popd
