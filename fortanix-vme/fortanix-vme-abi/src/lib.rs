@@ -9,7 +9,7 @@ use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeStructVariant;
-use serde::de::{EnumAccess, Error as SerdeError, VariantAccess, Visitor};
+use serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, VariantAccess, Visitor};
 
 #[cfg(feature="std")]
 use {
@@ -45,7 +45,7 @@ pub enum Request {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Addr {
     IPv4 {
         ip: [u8; 4],
@@ -91,6 +91,263 @@ impl Serialize for Addr {
                 SerializeStructVariant::end(serde_state)
             }
         }
+    }
+}
+
+/// Deserializes an `Addr` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Deserialize` macro.
+impl<'de> Deserialize<'de> for Addr {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        enum AddrVariant {
+            IPv4,
+            IPv6,
+        }
+        struct AddrVariantVisitor;
+        impl<'de> Visitor<'de> for AddrVariantVisitor {
+            type Value = AddrVariant;
+            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(fmt, "Addr variant identifier")
+            }
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match value {
+                    "IPv4" => Ok(AddrVariant::IPv4),
+                    "IPv6" => Ok(AddrVariant::IPv6),
+                    _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for AddrVariant {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Deserializer::deserialize_identifier(deserializer, AddrVariantVisitor)
+            }
+        }
+        struct AddrVisitor<'de> {
+            marker: PhantomData<Addr>,
+            lifetime: PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for AddrVisitor<'de> {
+            type Value = Addr;
+            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(fmt, "enum Addr")
+            }
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (AddrVariant::IPv4, variant) => {
+                        enum IPv4Field {
+                            Ip,
+                            Port,
+                            Ignore,
+                        }
+                        struct IPv4FieldVisitor;
+                        impl<'de> Visitor<'de> for IPv4FieldVisitor {
+                            type Value = IPv4Field;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "ip" => Ok(IPv4Field::Ip),
+                                    "port" => Ok(IPv4Field::Port),
+                                    _ => Ok(IPv4Field::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for IPv4Field {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                Deserializer::deserialize_identifier(deserializer, IPv4FieldVisitor)
+                            }
+                        }
+                        struct IPv4Visitor<'de> {
+                            marker: PhantomData<Addr>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for IPv4Visitor<'de> {
+                            type Value = Addr;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Addr::IPv4")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut ip: Option<[u8; 4]> = None;
+                                let mut port: Option<u16> = None;
+                                while let Some(key) = map.next_key()? {
+                                    match key {
+                                        IPv4Field::Ip => {
+                                            if ip.is_some() {
+                                                return Err(SerdeError::duplicate_field("ip"));
+                                            }
+                                            ip = Some(MapAccess::next_value::<[u8; 4]>(&mut map)?);
+                                        }
+                                        IPv4Field::Port => {
+                                            if Option::is_some(&port) {
+                                                return Err(SerdeError::duplicate_field("port"));
+                                            }
+                                            port = Some(MapAccess::next_value::<u16>(&mut map)?);
+                                        }
+                                        _ => {
+                                            map.next_value()?;
+                                        }
+                                    }
+                                }
+                                Ok(Addr::IPv4 {
+                                    ip: ip.ok_or(SerdeError::missing_field("ip"))?,
+                                    port: port.ok_or(SerdeError::missing_field("port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["ip", "port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            IPv4Visitor {
+                                marker: PhantomData::<Addr>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (AddrVariant::IPv6, variant) => {
+                        enum IPv6Field {
+                            Ip,
+                            Port,
+                            Flowinfo,
+                            ScopeId,
+                            Ignore,
+                        }
+                        struct IPv6FieldVisitor;
+                        impl<'de> Visitor<'de> for IPv6FieldVisitor {
+                            type Value = IPv6Field;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "ip" => Ok(IPv6Field::Ip),
+                                    "port" => Ok(IPv6Field::Port),
+                                    "flowinfo" => Ok(IPv6Field::Flowinfo),
+                                    "scope_id" => Ok(IPv6Field::ScopeId),
+                                    _ => Ok(IPv6Field::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for IPv6Field {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                Deserializer::deserialize_identifier(deserializer, IPv6FieldVisitor)
+                            }
+                        }
+
+                        struct IPv6Visitor<'de> {
+                            marker: PhantomData<Addr>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for IPv6Visitor<'de> {
+                            type Value = Addr;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Addr::IPv6")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut ip: Option<[u8; 16]> = None;
+                                let mut port: Option<u16> = None;
+                                let mut flowinfo: Option<u32> = None;
+                                let mut scope_id: Option<u32> = None;
+                                while let Some(key) = MapAccess::next_key::<IPv6Field>(&mut map)? {
+                                    match key {
+                                        IPv6Field::Ip => {
+                                            if ip.is_some() {
+                                                return Err(SerdeError::duplicate_field("ip"));
+                                            }
+                                            ip = Some(MapAccess::next_value::<[u8; 16]>(&mut map)?);
+                                        }
+                                        IPv6Field::Port => {
+                                            if port.is_some() {
+                                                return Err(SerdeError::duplicate_field("port"));
+                                            }
+                                            port = Some(MapAccess::next_value::<u16>(&mut map)?);
+                                        }
+                                        IPv6Field::Flowinfo => {
+                                            if flowinfo.is_some() {
+                                                return Err(SerdeError::duplicate_field("flowinfo"));
+                                            }
+                                            flowinfo = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        IPv6Field::ScopeId => {
+                                            if scope_id.is_some() {
+                                                return Err(SerdeError::duplicate_field("scope_id"));
+                                            }
+                                            scope_id = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Addr::IPv6 {
+                                    ip: ip.ok_or(SerdeError::missing_field("ip"))?,
+                                    port: port.ok_or(SerdeError::missing_field("port"))?,
+                                    flowinfo: flowinfo.ok_or(SerdeError::missing_field("flowinfo"))?,
+                                    scope_id: scope_id.ok_or(SerdeError::missing_field("scop_id"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] =
+                            &["ip", "port", "flowinfo", "scope_id"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            IPv6Visitor {
+                                marker: PhantomData::<Addr>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        const VARIANTS: &'static [&'static str] = &["IPv4", "IPv6"];
+        Deserializer::deserialize_enum(
+            deserializer,
+            "Addr",
+            VARIANTS,
+            AddrVisitor {
+                marker: PhantomData::<Addr>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 
