@@ -9,7 +9,7 @@ use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeStructVariant;
-use serde::de::{EnumAccess, Error as SerdeError, Unexpected, VariantAccess, Visitor};
+use serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, SeqAccess, Unexpected, VariantAccess, Visitor};
 
 #[cfg(feature="std")]
 use {
@@ -45,7 +45,7 @@ pub enum Request {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Addr {
     IPv4 {
         ip: [u8; 4],
@@ -91,6 +91,623 @@ impl Serialize for Addr {
                 SerializeStructVariant::end(__serde_state)
             }
         }
+    }
+}
+
+/// Deserializes an `Addr` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Deserialize` macro.
+impl<'de> Deserialize<'de> for Addr {
+    fn deserialize<__D>(__deserializer: __D) -> Result<Self, __D::Error>
+    where
+        __D: Deserializer<'de>,
+    {
+        #[allow(non_camel_case_types)]
+        enum __Field {
+            __field0,
+            __field1,
+        }
+        struct __FieldVisitor;
+        impl<'de> Visitor<'de> for __FieldVisitor {
+            type Value = __Field;
+            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(__formatter, "variant identifier")
+            }
+            fn visit_u64<__E>(self, __value: u64) -> Result<Self::Value, __E>
+            where
+                __E: SerdeError,
+            {
+                match __value {
+                    0u64 => Ok(__Field::__field0),
+                    1u64 => Ok(__Field::__field1),
+                    _ => Err(SerdeError::invalid_value(
+                        Unexpected::Unsigned(__value),
+                        &"variant index 0 <= i < 2",
+                    )),
+                }
+            }
+            fn visit_str<__E>(self, __value: &str) -> Result<Self::Value, __E>
+            where
+                __E: SerdeError,
+            {
+                match __value {
+                    "IPv4" => Ok(__Field::__field0),
+                    "IPv6" => Ok(__Field::__field1),
+                    _ => Err(SerdeError::unknown_variant(__value, VARIANTS)),
+                }
+            }
+            fn visit_bytes<__E>(self, __value: &[u8]) -> Result<Self::Value, __E>
+            where
+                __E: SerdeError,
+            {
+                match __value {
+                    b"IPv4" => Ok(__Field::__field0),
+                    b"IPv6" => Ok(__Field::__field1),
+                    _ => {
+                        let __value = &String::from_utf8_lossy(__value);
+                        Err(SerdeError::unknown_variant(__value, VARIANTS))
+                    }
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for __Field {
+            #[inline]
+            fn deserialize<__D>(__deserializer: __D) -> Result<Self, __D::Error>
+            where
+                __D: Deserializer<'de>,
+            {
+                Deserializer::deserialize_identifier(__deserializer, __FieldVisitor)
+            }
+        }
+        struct __Visitor<'de> {
+            marker: PhantomData<Addr>,
+            lifetime: PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for __Visitor<'de> {
+            type Value = Addr;
+            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(__formatter, "enum Addr")
+            }
+            fn visit_enum<__A>(self, __data: __A) -> Result<Self::Value, __A::Error>
+            where
+                __A: EnumAccess<'de>,
+            {
+                match match EnumAccess::variant(__data) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                } {
+                    (__Field::__field0, __variant) => {
+                        #[allow(non_camel_case_types)]
+                        enum __Field {
+                            __field0,
+                            __field1,
+                            __ignore,
+                        }
+                        struct __FieldVisitor;
+                        impl<'de> Visitor<'de> for __FieldVisitor {
+                            type Value = __Field;
+                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(__formatter, "field identifier")
+                            }
+                            fn visit_u64<__E>(self, __value: u64) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    0u64 => Ok(__Field::__field0),
+                                    1u64 => Ok(__Field::__field1),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                            fn visit_str<__E>(self, __value: &str) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    "ip" => Ok(__Field::__field0),
+                                    "port" => Ok(__Field::__field1),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                            fn visit_bytes<__E>(self, __value: &[u8]) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    b"ip" => Ok(__Field::__field0),
+                                    b"port" => Ok(__Field::__field1),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for __Field {
+                            #[inline]
+                            fn deserialize<__D>(__deserializer: __D) -> Result<Self, __D::Error>
+                            where
+                                __D: Deserializer<'de>,
+                            {
+                                Deserializer::deserialize_identifier(__deserializer, __FieldVisitor)
+                            }
+                        }
+                        struct __Visitor<'de> {
+                            marker: PhantomData<Addr>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for __Visitor<'de> {
+                            type Value = Addr;
+                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(__formatter, "struct variant Addr::IPv4")
+                            }
+                            #[inline]
+                            fn visit_seq<__A>(
+                                self,
+                                mut __seq: __A,
+                            ) -> Result<Self::Value, __A::Error>
+                            where
+                                __A: SeqAccess<'de>,
+                            {
+                                let __field0 =
+                                    match match SeqAccess::next_element::<[u8; 4]>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                0usize,
+                                                &"struct variant Addr::IPv4 with 2 elements",
+                                            ));
+                                        }
+                                    };
+                                let __field1 =
+                                    match match SeqAccess::next_element::<u16>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                1usize,
+                                                &"struct variant Addr::IPv4 with 2 elements",
+                                            ));
+                                        }
+                                    };
+                                Ok(Addr::IPv4 {
+                                    ip: __field0,
+                                    port: __field1,
+                                })
+                            }
+                            #[inline]
+                            fn visit_map<__A>(
+                                self,
+                                mut __map: __A,
+                            ) -> Result<Self::Value, __A::Error>
+                            where
+                                __A: MapAccess<'de>,
+                            {
+                                let mut __field0: Option<[u8; 4]> = None;
+                                let mut __field1: Option<u16> = None;
+                                while let Some(__key) =
+                                    match MapAccess::next_key::<__Field>(&mut __map) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    }
+                                {
+                                    match __key {
+                                        __Field::__field0 => {
+                                            if Option::is_some(&__field0) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "ip",
+                                                    ),
+                                                );
+                                            }
+                                            __field0 = Some(
+                                                match MapAccess::next_value::<[u8; 4]>(&mut __map) {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        __Field::__field1 => {
+                                            if Option::is_some(&__field1) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "port",
+                                                    ),
+                                                );
+                                            }
+                                            __field1 = Some(
+                                                match MapAccess::next_value::<u16>(&mut __map) {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        _ => {
+                                            let _ = match MapAccess::next_value::<IgnoredAny>(
+                                                &mut __map,
+                                            ) {
+                                                Ok(__val) => __val,
+                                                Err(__err) => {
+                                                    return Err(__err);
+                                                }
+                                            };
+                                        }
+                                    }
+                                }
+                                let __field0 = match __field0 {
+                                    Some(__field0) => __field0,
+                                    None => /*match de::missing_field("ip") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    }*/
+                                        return Err(SerdeError::missing_field("ip")),
+                                };
+                                let __field1 = match __field1 {
+                                    Some(__field1) => __field1,
+                                    None => /*match de::missing_field("port") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    },*/
+
+                                        return Err(SerdeError::missing_field("port")),
+                                };
+                                Ok(Addr::IPv4 {
+                                    ip: __field0,
+                                    port: __field1,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["ip", "port"];
+                        VariantAccess::struct_variant(
+                            __variant,
+                            FIELDS,
+                            __Visitor {
+                                marker: PhantomData::<Addr>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (__Field::__field1, __variant) => {
+                        #[allow(non_camel_case_types)]
+                        enum __Field {
+                            __field0,
+                            __field1,
+                            __field2,
+                            __field3,
+                            __ignore,
+                        }
+                        struct __FieldVisitor;
+                        impl<'de> Visitor<'de> for __FieldVisitor {
+                            type Value = __Field;
+                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(__formatter, "field identifier")
+                            }
+                            fn visit_u64<__E>(self, __value: u64) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    0u64 => Ok(__Field::__field0),
+                                    1u64 => Ok(__Field::__field1),
+                                    2u64 => Ok(__Field::__field2),
+                                    3u64 => Ok(__Field::__field3),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                            fn visit_str<__E>(self, __value: &str) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    "ip" => Ok(__Field::__field0),
+                                    "port" => Ok(__Field::__field1),
+                                    "flowinfo" => Ok(__Field::__field2),
+                                    "scope_id" => Ok(__Field::__field3),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                            fn visit_bytes<__E>(self, __value: &[u8]) -> Result<Self::Value, __E>
+                            where
+                                __E: SerdeError,
+                            {
+                                match __value {
+                                    b"ip" => Ok(__Field::__field0),
+                                    b"port" => Ok(__Field::__field1),
+                                    b"flowinfo" => Ok(__Field::__field2),
+                                    b"scope_id" => Ok(__Field::__field3),
+                                    _ => Ok(__Field::__ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for __Field {
+                            #[inline]
+                            fn deserialize<__D>(__deserializer: __D) -> Result<Self, __D::Error>
+                            where
+                                __D: Deserializer<'de>,
+                            {
+                                Deserializer::deserialize_identifier(__deserializer, __FieldVisitor)
+                            }
+                        }
+                        struct __Visitor<'de> {
+                            marker: PhantomData<Addr>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for __Visitor<'de> {
+                            type Value = Addr;
+                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(__formatter, "struct variant Addr::IPv6")
+                            }
+                            #[inline]
+                            fn visit_seq<__A>(
+                                self,
+                                mut __seq: __A,
+                            ) -> Result<Self::Value, __A::Error>
+                            where
+                                __A: SeqAccess<'de>,
+                            {
+                                let __field0 =
+                                    match match SeqAccess::next_element::<[u8; 16]>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                0usize,
+                                                &"struct variant Addr::IPv6 with 4 elements",
+                                            ));
+                                        }
+                                    };
+                                let __field1 =
+                                    match match SeqAccess::next_element::<u16>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                1usize,
+                                                &"struct variant Addr::IPv6 with 4 elements",
+                                            ));
+                                        }
+                                    };
+                                let __field2 =
+                                    match match SeqAccess::next_element::<u32>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                2usize,
+                                                &"struct variant Addr::IPv6 with 4 elements",
+                                            ));
+                                        }
+                                    };
+                                let __field3 =
+                                    match match SeqAccess::next_element::<u32>(&mut __seq) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    } {
+                                        Some(__value) => __value,
+                                        None => {
+                                            return Err(SerdeError::invalid_length(
+                                                3usize,
+                                                &"struct variant Addr::IPv6 with 4 elements",
+                                            ));
+                                        }
+                                    };
+                                Ok(Addr::IPv6 {
+                                    ip: __field0,
+                                    port: __field1,
+                                    flowinfo: __field2,
+                                    scope_id: __field3,
+                                })
+                            }
+                            #[inline]
+                            fn visit_map<__A>(
+                                self,
+                                mut __map: __A,
+                            ) -> Result<Self::Value, __A::Error>
+                            where
+                                __A: MapAccess<'de>,
+                            {
+                                let mut __field0: Option<[u8; 16]> = None;
+                                let mut __field1: Option<u16> = None;
+                                let mut __field2: Option<u32> = None;
+                                let mut __field3: Option<u32> = None;
+                                while let Some(__key) =
+                                    match MapAccess::next_key::<__Field>(&mut __map) {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    }
+                                {
+                                    match __key {
+                                        __Field::__field0 => {
+                                            if Option::is_some(&__field0) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "ip",
+                                                    ),
+                                                );
+                                            }
+                                            __field0 = Some(
+                                                match MapAccess::next_value::<[u8; 16]>(&mut __map)
+                                                {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        __Field::__field1 => {
+                                            if Option::is_some(&__field1) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "port",
+                                                    ),
+                                                );
+                                            }
+                                            __field1 = Some(
+                                                match MapAccess::next_value::<u16>(&mut __map) {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        __Field::__field2 => {
+                                            if Option::is_some(&__field2) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "flowinfo",
+                                                    ),
+                                                );
+                                            }
+                                            __field2 = Some(
+                                                match MapAccess::next_value::<u32>(&mut __map) {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        __Field::__field3 => {
+                                            if Option::is_some(&__field3) {
+                                                return Err(
+                                                    <__A::Error as SerdeError>::duplicate_field(
+                                                        "scope_id",
+                                                    ),
+                                                );
+                                            }
+                                            __field3 = Some(
+                                                match MapAccess::next_value::<u32>(&mut __map) {
+                                                    Ok(__val) => __val,
+                                                    Err(__err) => {
+                                                        return Err(__err);
+                                                    }
+                                                },
+                                            );
+                                        }
+                                        _ => {
+                                            let _ = match MapAccess::next_value::<IgnoredAny>(
+                                                &mut __map,
+                                            ) {
+                                                Ok(__val) => __val,
+                                                Err(__err) => {
+                                                    return Err(__err);
+                                                }
+                                            };
+                                        }
+                                    }
+                                }
+                                let __field0 = match __field0 {
+                                    Some(__field0) => __field0,
+                                    None => /*match de::missing_field("ip") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    },*/
+
+                                    return Err(SerdeError::missing_field("ip")),
+                                };
+                                let __field1 = match __field1 {
+                                    Some(__field1) => __field1,
+                                    None => /*match de::missing_field("port") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    },*/
+
+                                        return Err(SerdeError::missing_field("port")),
+                                };
+                                let __field2 = match __field2 {
+                                    Some(__field2) => __field2,
+                                    None => /*match de::missing_field("flowinfo") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    },*/
+                                        return Err(SerdeError::missing_field("flowinfo")),
+                                };
+                                let __field3 = match __field3 {
+                                    Some(__field3) => __field3,
+                                    None => /*match de::missing_field("scope_id") {
+                                        Ok(__val) => __val,
+                                        Err(__err) => {
+                                            return Err(__err);
+                                        }
+                                    },*/
+
+                                        return Err(SerdeError::missing_field("scop_id")),
+                                };
+                                Ok(Addr::IPv6 {
+                                    ip: __field0,
+                                    port: __field1,
+                                    flowinfo: __field2,
+                                    scope_id: __field3,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] =
+                            &["ip", "port", "flowinfo", "scope_id"];
+                        VariantAccess::struct_variant(
+                            __variant,
+                            FIELDS,
+                            __Visitor {
+                                marker: PhantomData::<Addr>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        const VARIANTS: &'static [&'static str] = &["IPv4", "IPv6"];
+        Deserializer::deserialize_enum(
+            __deserializer,
+            "Addr",
+            VARIANTS,
+            __Visitor {
+                marker: PhantomData::<Addr>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 
