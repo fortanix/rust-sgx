@@ -8,6 +8,7 @@ use alloc::string::String;
 use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::ser::SerializeStructVariant;
 use serde::de::{EnumAccess, Error as SerdeError, VariantAccess, Visitor};
 
 #[cfg(feature="std")]
@@ -44,7 +45,7 @@ pub enum Request {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub enum Addr {
     IPv4 {
         ip: [u8; 4],
@@ -56,6 +57,41 @@ pub enum Addr {
         flowinfo: u32,
         scope_id: u32,
     },
+}
+
+/// Serializes an `Addr` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Addr {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Addr::IPv4 { ref ip, ref port } => {
+                let mut serde_state =
+                    Serializer::serialize_struct_variant(serializer, "Addr", 0u32, "IPv4", 2)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "ip", ip)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "port", port)?;
+                SerializeStructVariant::end(serde_state)
+            }
+            Addr::IPv6 {
+                ref ip,
+                ref port,
+                ref flowinfo,
+                ref scope_id,
+            } => {
+                let mut serde_state =
+                    Serializer::serialize_struct_variant(serializer, "Addr", 1u32, "IPv6", 4)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "ip", ip)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "port", port)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "flowinfo", flowinfo)?;
+                SerializeStructVariant::serialize_field(&mut serde_state, "scope_id", scope_id)?;
+                SerializeStructVariant::end(serde_state)
+            }
+        }
+    }
 }
 
 #[cfg(feature="std")]
@@ -329,5 +365,7 @@ mod test {
             assert_eq!(serde_cbor::ser::to_vec(&addr).unwrap(), *bin);
             assert_eq!(serde_cbor::de::from_slice::<Addr>(&bin).unwrap(), *addr);
         }
+        std::println!("{:#02x?}", serde_cbor::ser::to_vec(&Addr::IPv6{ip: [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8], port: 3458, flowinfo: 1, scope_id: 2}).unwrap());
+        //std::println!("{:#02x?}", serde_cbor::ser::to_vec(&Addr::IPv4{ip: [1, 2, 3, 4], port: 2}).unwrap());
     }
 }
