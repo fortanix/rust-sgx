@@ -145,7 +145,8 @@ impl From<VsockError> for Error {
 mod test {
     use std::net::{IpAddr, SocketAddr};
     use std::str::FromStr;
-    use crate::Addr;
+    use std::vec::Vec;
+    use crate::{Addr, Error};
 
     #[test]
     fn test_addr() {
@@ -156,6 +157,27 @@ mod test {
             assert_eq!(port, 4567);
         } else {
             panic!("Not IPv4")
+        }
+    }
+
+    #[test]
+    fn test_error() {
+        let data: Vec<(Error, Vec<u8>)> = Vec::from([
+            (Error::ConnectionNotFound, Vec::from([0x72, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f,
+                                                   0x6e, 0x4e, 0x6f, 0x74, 0x46, 0x6f, 0x75, 0x6e, 0x64])),
+            (Error::SystemError(0), Vec::from([0xa1, 0x6b, 0x53, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x45, 0x72,
+                                               0x72, 0x6f, 0x72, 0x0])),
+            (Error::SystemError(42), Vec::from([0xa1, 0x6b, 0x53, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x45, 0x72,
+                                                0x72, 0x6f, 0x72, 0x18, 0x2a])),
+            (Error::SystemError(i32::MAX), Vec::from([0xa1, 0x6b, 0x53, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x45, 0x72,
+                                                      0x72, 0x6f, 0x72, 0x1a, 0x7f, 0xff, 0xff, 0xff])),
+            (Error::Unknown, Vec::from([0x67, 0x55, 0x6e, 0x6b, 0x6e, 0x6f, 0x77, 0x6e])),
+            (Error::VsockError, Vec::from([0x6a, 0x56, 0x73, 0x6f, 0x63, 0x6b, 0x45, 0x72, 0x72, 0x6f, 0x72])),
+        ]);
+
+        for (err, bin) in data.iter() {
+            assert_eq!(serde_cbor::ser::to_vec(&err).unwrap(), *bin);
+            assert_eq!(serde_cbor::de::from_slice::<Error>(&bin).unwrap(), *err);
         }
     }
 }
