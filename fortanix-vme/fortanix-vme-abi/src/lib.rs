@@ -5,7 +5,7 @@ extern crate alloc;
 extern crate std;
 
 use alloc::string::String;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 #[cfg(feature="std")]
 use {
     std::io,
@@ -109,12 +109,42 @@ pub enum Response {
     Failed(Error),
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub enum Error {
     ConnectionNotFound,
     SystemError(i32),
     Unknown,
     VsockError,
+}
+
+/// Serializes an `Error` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Error {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Error::ConnectionNotFound => {
+                Serializer::serialize_unit_variant(serializer, "Error", 0u32, "ConnectionNotFound")
+            }
+            Error::SystemError(ref errno) => Serializer::serialize_newtype_variant(
+                serializer,
+                "Error",
+                1u32,
+                "SystemError",
+                errno,
+            ),
+            Error::Unknown => {
+                Serializer::serialize_unit_variant(serializer, "Error", 2u32, "Unknown")
+            }
+            Error::VsockError => {
+                Serializer::serialize_unit_variant(serializer, "Error", 3u32, "VsockError")
+            }
+        }
+    }
 }
 
 #[cfg(feature="std")]
