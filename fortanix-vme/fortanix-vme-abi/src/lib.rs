@@ -5,7 +5,11 @@ extern crate alloc;
 extern crate std;
 
 use alloc::string::String;
-use serde::{Deserialize, Serialize, Serializer};
+use core::fmt::{self, Formatter};
+use core::marker::PhantomData;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::{EnumAccess, Error as SerdeError, Unexpected, VariantAccess, Visitor};
+
 #[cfg(feature="std")]
 use {
     std::io,
@@ -109,7 +113,7 @@ pub enum Response {
     Failed(Error),
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     ConnectionNotFound,
     SystemError(i32),
@@ -144,6 +148,142 @@ impl Serialize for Error {
                 Serializer::serialize_unit_variant(serializer, "Error", 3u32, "VsockError")
             }
         }
+    }
+}
+
+/// Deserializes an `Error` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Deserialize` macro.
+impl<'de> Deserialize<'de> for Error {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[allow(non_camel_case_types)]
+        enum __Field {
+            __field0,
+            __field1,
+            __field2,
+            __field3,
+        }
+        struct __FieldVisitor;
+        impl<'de> Visitor<'de> for __FieldVisitor {
+            type Value = __Field;
+            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(__formatter, "variant identifier")
+            }
+            fn visit_u64<E>(self, __value: u64) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match __value {
+                    0u64 => Ok(__Field::__field0),
+                    1u64 => Ok(__Field::__field1),
+                    2u64 => Ok(__Field::__field2),
+                    3u64 => Ok(__Field::__field3),
+                    _ => Err(SerdeError::invalid_value(
+                        Unexpected::Unsigned(__value),
+                        &"variant index 0 <= i < 4",
+                    )),
+                }
+            }
+            fn visit_str<E>(self, __value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match __value {
+                    "ConnectionNotFound" => Ok(__Field::__field0),
+                    "SystemError" => Ok(__Field::__field1),
+                    "Unknown" => Ok(__Field::__field2),
+                    "VsockError" => Ok(__Field::__field3),
+                    _ => Err(SerdeError::unknown_variant(__value, VARIANTS)),
+                }
+            }
+            fn visit_bytes<E>(self, __value: &[u8]) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match __value {
+                    b"ConnectionNotFound" => Ok(__Field::__field0),
+                    b"SystemError" => Ok(__Field::__field1),
+                    b"Unknown" => Ok(__Field::__field2),
+                    b"VsockError" => Ok(__Field::__field3),
+                    _ => {
+                        let __value = &String::from_utf8_lossy(__value);
+                        Err(SerdeError::unknown_variant(__value, VARIANTS))
+                    }
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for __Field {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Deserializer::deserialize_identifier(deserializer, __FieldVisitor)
+            }
+        }
+        struct ErrorVisitor<'de> {
+            marker: PhantomData<Error>,
+            lifetime: PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for ErrorVisitor<'de> {
+            type Value = Error;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "enum Error")
+            }
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (__Field::__field0, __variant) => {
+                        match VariantAccess::unit_variant(__variant) {
+                            Ok(__val) => __val,
+                            Err(__err) => {
+                                return Err(__err);
+                            }
+                        };
+                        Ok(Error::ConnectionNotFound)
+                    }
+                    (__Field::__field1, __variant) => Result::map(
+                        VariantAccess::newtype_variant::<i32>(__variant),
+                        Error::SystemError,
+                    ),
+                    (__Field::__field2, __variant) => {
+                        match VariantAccess::unit_variant(__variant) {
+                            Ok(__val) => __val,
+                            Err(__err) => {
+                                return Err(__err);
+                            }
+                        };
+                        Ok(Error::Unknown)
+                    }
+                    (__Field::__field3, __variant) => {
+                        match VariantAccess::unit_variant(__variant) {
+                            Ok(__val) => __val,
+                            Err(__err) => {
+                                return Err(__err);
+                            }
+                        };
+                        Ok(Error::VsockError)
+                    }
+                }
+            }
+        }
+        const VARIANTS: &'static [&'static str] =
+            &["ConnectionNotFound", "SystemError", "Unknown", "VsockError"];
+        Deserializer::deserialize_enum(
+            deserializer,
+            "Error",
+            VARIANTS,
+            ErrorVisitor {
+                marker: PhantomData::<Error>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 

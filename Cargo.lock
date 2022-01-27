@@ -1106,6 +1106,7 @@ dependencies = [
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "serde",
+ "serde_cbor",
  "vsock 0.2.4",
 ]
 
