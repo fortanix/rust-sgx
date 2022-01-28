@@ -20,7 +20,7 @@ use {
 
 pub const SERVER_PORT: u32 = 10000;
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub enum Request {
     Connect {
         addr: String,
@@ -43,6 +43,163 @@ pub enum Request {
         enclave_port: u32,
         runner_port: Option<u32>,
     },
+}
+
+/// Serializes a `Request` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Request {
+    fn serialize<__S>(&self, __serializer: __S) -> Result<__S::Ok, __S::Error>
+    where
+        __S: Serializer,
+    {
+        match *self {
+            Request::Connect { ref addr } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Request",
+                    0u32,
+                    "Connect",
+                    0 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "addr", addr) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Request::Bind {
+                ref addr,
+                ref enclave_port,
+            } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Request",
+                    1u32,
+                    "Bind",
+                    0 + 1 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "addr", addr) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "enclave_port",
+                    enclave_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Request::Accept { ref enclave_port } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Request",
+                    2u32,
+                    "Accept",
+                    0 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "enclave_port",
+                    enclave_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Request::Close { ref enclave_port } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Request",
+                    3u32,
+                    "Close",
+                    0 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "enclave_port",
+                    enclave_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Request::Info {
+                ref enclave_port,
+                ref runner_port,
+            } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Request",
+                    4u32,
+                    "Info",
+                    0 + 1 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "enclave_port",
+                    enclave_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "runner_port",
+                    runner_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
