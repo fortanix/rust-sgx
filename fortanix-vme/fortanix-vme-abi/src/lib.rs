@@ -881,7 +881,7 @@ impl From<SocketAddr> for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
@@ -912,6 +912,64 @@ pub enum Response {
         peer: Option<Addr>,
     },
     Failed(Error),
+}
+
+/// Serializes a `Response` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Response {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Response::Connected {
+                ref proxy_port,
+                ref local,
+                ref peer,
+            } => {
+                let mut state =
+                    Serializer::serialize_struct_variant(serializer, "Response", 0u32, "Connected", 3)?;
+                SerializeStructVariant::serialize_field(&mut state, "proxy_port", proxy_port)?;
+                SerializeStructVariant::serialize_field(&mut state, "local", local)?;
+                SerializeStructVariant::serialize_field(&mut state, "peer", peer)?;
+                SerializeStructVariant::end(state)
+            }
+            Response::Bound { ref local } => {
+                let mut state =
+                    Serializer::serialize_struct_variant(serializer, "Response", 1u32, "Bound", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "local", local)?;
+                SerializeStructVariant::end(state)
+            }
+            Response::IncomingConnection {
+                ref local,
+                ref peer,
+                ref proxy_port,
+            } => {
+                let mut state =
+                    Serializer::serialize_struct_variant(serializer, "Response", 2u32, "IncomingConnection", 3)?;
+                SerializeStructVariant::serialize_field(&mut state, "local", local)?;
+                SerializeStructVariant::serialize_field(&mut state, "peer", peer)?;
+                SerializeStructVariant::serialize_field(&mut state, "proxy_port", proxy_port)?;
+                SerializeStructVariant::end(state)
+            }
+            Response::Closed => {
+                Serializer::serialize_unit_variant(serializer, "Response", 3u32, "Closed")
+            }
+            Response::Info {
+                ref local,
+                ref peer,
+            } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Response", 4u32, "Info", 2)?;
+                SerializeStructVariant::serialize_field(&mut state, "local", local)?;
+                SerializeStructVariant::serialize_field(&mut state, "peer", peer)?;
+                SerializeStructVariant::end(state)
+            }
+            Response::Failed(ref __field0) =>
+                Serializer::serialize_newtype_variant(serializer, "Response", 5u32, "Failed", __field0),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
