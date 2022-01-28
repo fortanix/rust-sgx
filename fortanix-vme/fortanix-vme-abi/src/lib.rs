@@ -638,7 +638,7 @@ impl<'de> Deserialize<'de> for Addr {
             where
                 D: Deserializer<'de>,
             {
-                Deserializer::deserialize_identifier(deserializer, AddrVariantVisitor)
+                deserializer.deserialize_identifier(AddrVariantVisitor)
             }
         }
         struct AddrVisitor<'de> {
@@ -684,7 +684,7 @@ impl<'de> Deserialize<'de> for Addr {
                             where
                                 D: Deserializer<'de>,
                             {
-                                Deserializer::deserialize_identifier(deserializer, IPv4FieldVisitor)
+                                deserializer.deserialize_identifier(IPv4FieldVisitor)
                             }
                         }
                         struct IPv4Visitor<'de> {
@@ -771,7 +771,7 @@ impl<'de> Deserialize<'de> for Addr {
                             where
                                 D: Deserializer<'de>,
                             {
-                                Deserializer::deserialize_identifier(deserializer, IPv6FieldVisitor)
+                                deserializer.deserialize_identifier(IPv6FieldVisitor)
                             }
                         }
 
@@ -881,7 +881,7 @@ impl From<SocketAddr> for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
@@ -969,6 +969,444 @@ impl Serialize for Response {
             Response::Failed(ref __field0) =>
                 Serializer::serialize_newtype_variant(serializer, "Response", 5u32, "Failed", __field0),
         }
+    }
+}
+
+/// Deserializes a `Response` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Deserialize` macro.
+impl<'de> Deserialize<'de> for Response {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[allow(non_camel_case_types)]
+        enum ResponseField {
+            Connected,
+            Bound,
+            IncomingConnection,
+            Closed,
+            Info,
+            Failed,
+        }
+        struct ResponseFieldVisitor;
+        impl<'de> Visitor<'de> for ResponseFieldVisitor {
+            type Value = ResponseField;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "variant identifier")
+            }
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match value {
+                    "Connected" => Ok(ResponseField::Connected),
+                    "Bound" => Ok(ResponseField::Bound),
+                    "IncomingConnection" => Ok(ResponseField::IncomingConnection),
+                    "Closed" => Ok(ResponseField::Closed),
+                    "Info" => Ok(ResponseField::Info),
+                    "Failed" => Ok(ResponseField::Failed),
+                    _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for ResponseField {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_identifier(ResponseFieldVisitor)
+            }
+        }
+        struct ResponseValueVisitor<'de> {
+            marker: PhantomData<Response>,
+            lifetime: PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for ResponseValueVisitor<'de> {
+            type Value = Response;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "enum Response")
+            }
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (ResponseField::Connected, variant) => {
+                        enum ConnectedField {
+                            ProxyPort,
+                            Local,
+                            Peer,
+                            Ignore,
+                        }
+                        struct ConnectedFieldVisitor;
+                        impl<'de> Visitor<'de> for ConnectedFieldVisitor {
+                            type Value = ConnectedField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "proxy_port" => Ok(ConnectedField::ProxyPort),
+                                    "local" => Ok(ConnectedField::Local),
+                                    "peer" => Ok(ConnectedField::Peer),
+                                    _ => Ok(ConnectedField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for ConnectedField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(ConnectedFieldVisitor)
+                            }
+                        }
+                        struct ConnectedValueVisitor<'de> {
+                            marker: PhantomData<Response>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for ConnectedValueVisitor<'de> {
+                            type Value = Response;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Response::Connected")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A,) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut proxy_port: Option<u32> = None;
+                                let mut local: Option<Addr> = None;
+                                let mut peer: Option<Addr> = None;
+                                while let Some(key) = MapAccess::next_key::<ConnectedField>(&mut map)? {
+                                    match key {
+                                        ConnectedField::ProxyPort => {
+                                            if proxy_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("proxy_port"));
+                                            }
+                                            proxy_port = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        ConnectedField::Local => {
+                                            if local.is_some() {
+                                                return Err(SerdeError::duplicate_field("local"));
+                                            }
+                                            local = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        ConnectedField::Peer => {
+                                            if peer.is_some() {
+                                                return Err(SerdeError::duplicate_field("peer"));
+                                            }
+                                            peer = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Response::Connected {
+                                    proxy_port: proxy_port.ok_or(SerdeError::missing_field("proxy_port"))?,
+                                    local: local.ok_or(SerdeError::missing_field("local"))?,
+                                    peer: peer.ok_or(SerdeError::missing_field("peer"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["proxy_port", "local", "peer"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            ConnectedValueVisitor {
+                                marker: PhantomData::<Response>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (ResponseField::Bound, variant) => {
+                        #[allow(non_camel_case_types)]
+                        enum BoundField {
+                            Local,
+                            Ignore,
+                        }
+                        struct BoundFieldVisitor;
+                        impl<'de> Visitor<'de> for BoundFieldVisitor {
+                            type Value = BoundField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "local" => Ok(BoundField::Local),
+                                    _ => Ok(BoundField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for BoundField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(BoundFieldVisitor)
+                            }
+                        }
+                        struct BoundValueVisitor<'de> {
+                            marker: PhantomData<Response>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for BoundValueVisitor<'de> {
+                            type Value = Response;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Response::Bound")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut local: Option<Addr> = None;
+                                while let Some(key) = MapAccess::next_key::<BoundField>(&mut map)? {
+                                    match key {
+                                        BoundField::Local => {
+                                            if local.is_some() {
+                                                return Err(SerdeError::duplicate_field("local"));
+                                            }
+                                            local = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Response::Bound {
+                                    local: local.ok_or(SerdeError::missing_field("local"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["local"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            BoundValueVisitor {
+                                marker: PhantomData::<Response>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (ResponseField::IncomingConnection, variant) => {
+                        #[allow(non_camel_case_types)]
+                        enum IncomingConnectionField {
+                            Local,
+                            Peer,
+                            ProxyPort,
+                            Ignore,
+                        }
+                        struct IncomingConnectionFieldVisitor;
+                        impl<'de> Visitor<'de> for IncomingConnectionFieldVisitor {
+                            type Value = IncomingConnectionField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "local" => Ok(IncomingConnectionField::Local),
+                                    "peer" => Ok(IncomingConnectionField::Peer),
+                                    "proxy_port" => Ok(IncomingConnectionField::ProxyPort),
+                                    _ => Ok(IncomingConnectionField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for IncomingConnectionField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(IncomingConnectionFieldVisitor)
+                            }
+                        }
+                        struct IncomingConnectionValueVisitor<'de> {
+                            marker: PhantomData<Response>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for IncomingConnectionValueVisitor<'de> {
+                            type Value = Response;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Response::IncomingConnection")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut local: Option<Addr> = None;
+                                let mut peer: Option<Addr> = None;
+                                let mut proxy_port: Option<u32> = None;
+                                while let Some(key) = MapAccess::next_key::<IncomingConnectionField>(&mut map)?
+                                {
+                                    match key {
+                                        IncomingConnectionField::Local => {
+                                            if local.is_some() {
+                                                return Err(SerdeError::duplicate_field("local"));
+                                            }
+                                            local = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        IncomingConnectionField::Peer => {
+                                            if peer.is_some() {
+                                                return Err(SerdeError::duplicate_field("peer"));
+                                            }
+                                            peer = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        IncomingConnectionField::ProxyPort => {
+                                            if proxy_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("proxy_port"));
+                                            }
+                                            proxy_port = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Response::IncomingConnection {
+                                    local: local.ok_or(SerdeError::missing_field("local"))?,
+                                    peer: peer.ok_or(SerdeError::missing_field("peer"))?,
+                                    proxy_port: proxy_port.ok_or(SerdeError::missing_field("proxy_port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["local", "peer", "proxy_port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            IncomingConnectionValueVisitor {
+                                marker: PhantomData::<Response>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (ResponseField::Closed, variant) => {
+                        VariantAccess::unit_variant(variant)?;
+                        Ok(Response::Closed)
+                    }
+                    (ResponseField::Info, variant) => {
+                        enum InfoField {
+                            Local,
+                            Peer,
+                            Ignore,
+                        }
+                        struct InfoFieldVisitor;
+                        impl<'de> Visitor<'de> for InfoFieldVisitor {
+                            type Value = InfoField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "local" => Ok(InfoField::Local),
+                                    "peer" => Ok(InfoField::Peer),
+                                    _ => Ok(InfoField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for InfoField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(InfoFieldVisitor)
+                            }
+                        }
+                        struct InfoVisitor<'de> {
+                            marker: PhantomData<Response>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for InfoVisitor<'de> {
+                            type Value = Response;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Response::Info")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut local: Option<Addr> = None;
+                                let mut peer: Option<Option<Addr>> = None;
+                                while let Some(key) = MapAccess::next_key::<InfoField>(&mut map)? {
+                                    match key {
+                                        InfoField::Local => {
+                                            if local.is_some() {
+                                                return Err(SerdeError::duplicate_field("local"));
+                                            }
+                                            local = Some(MapAccess::next_value::<Addr>(&mut map)?);
+                                        }
+                                        InfoField::Peer => {
+                                            if peer.is_some() {
+                                                return Err(SerdeError::duplicate_field("peer"));
+                                            }
+                                            peer = Some(MapAccess::next_value::<Option<Addr>>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Response::Info {
+                                    local: local.ok_or(SerdeError::missing_field("local"))?,
+                                    peer: peer.ok_or(SerdeError::missing_field("peer"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["local", "peer"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            InfoVisitor {
+                                marker: PhantomData::<Response>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (ResponseField::Failed, variant) => {
+                        variant.newtype_variant()
+                            .map(|e| Response::Failed(e))
+                    }
+                }
+            }
+        }
+        const VARIANTS: &'static [&'static str] = &[
+            "Connected",
+            "Bound",
+            "IncomingConnection",
+            "Closed",
+            "Info",
+            "Failed",
+        ];
+        Deserializer::deserialize_enum(
+            deserializer,
+            "Response",
+            VARIANTS,
+            ResponseValueVisitor {
+                marker: PhantomData::<Response>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 
