@@ -1924,7 +1924,7 @@ impl From<SocketAddr> for Addr {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub enum Response {
     Connected {
         /// The vsock port the proxy is listening on for an incoming connection
@@ -1955,6 +1955,163 @@ pub enum Response {
         peer: Option<Addr>,
     },
     Failed(Error),
+}
+
+/// Serializes a `Response` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Response {
+    fn serialize<__S>(&self, __serializer: __S) -> Result<__S::Ok, __S::Error>
+    where
+        __S: Serializer,
+    {
+        match *self {
+            Response::Connected {
+                ref proxy_port,
+                ref local,
+                ref peer,
+            } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Response",
+                    0u32,
+                    "Connected",
+                    0 + 1 + 1 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "proxy_port",
+                    proxy_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "local", local) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "peer", peer) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Response::Bound { ref local } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Response",
+                    1u32,
+                    "Bound",
+                    0 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "local", local) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Response::IncomingConnection {
+                ref local,
+                ref peer,
+                ref proxy_port,
+            } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Response",
+                    2u32,
+                    "IncomingConnection",
+                    0 + 1 + 1 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "local", local) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "peer", peer) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(
+                    &mut __serde_state,
+                    "proxy_port",
+                    proxy_port,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Response::Closed => {
+                Serializer::serialize_unit_variant(__serializer, "Response", 3u32, "Closed")
+            }
+            Response::Info {
+                ref local,
+                ref peer,
+            } => {
+                let mut __serde_state = match Serializer::serialize_struct_variant(
+                    __serializer,
+                    "Response",
+                    4u32,
+                    "Info",
+                    0 + 1 + 1,
+                ) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "local", local) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                match SerializeStructVariant::serialize_field(&mut __serde_state, "peer", peer) {
+                    Ok(__val) => __val,
+                    Err(__err) => {
+                        return Err(__err);
+                    }
+                };
+                SerializeStructVariant::end(__serde_state)
+            }
+            Response::Failed(ref __field0) => Serializer::serialize_newtype_variant(
+                __serializer,
+                "Response",
+                5u32,
+                "Failed",
+                __field0,
+            ),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
