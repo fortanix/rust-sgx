@@ -20,7 +20,7 @@ use {
 
 pub const SERVER_PORT: u32 = 10000;
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub enum Request {
     Connect {
         addr: String,
@@ -43,6 +43,47 @@ pub enum Request {
         enclave_port: u32,
         runner_port: Option<u32>,
     },
+}
+
+/// Serializes a `Request` value. We can't rely on the `serde` `Serialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Serialize` macro.
+impl Serialize for Request {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            Request::Connect { ref addr } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 0u32, "Connect", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "addr", addr)?;
+                SerializeStructVariant::end(state)
+            }
+            Request::Bind { ref addr, ref enclave_port } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 1u32, "Bind", 2)?;
+                SerializeStructVariant::serialize_field(&mut state, "addr", addr)?;
+                SerializeStructVariant::serialize_field(&mut state, "enclave_port", enclave_port)?;
+                SerializeStructVariant::end(state)
+            }
+            Request::Accept { ref enclave_port } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 2u32, "Accept", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "enclave_port", enclave_port)?;
+                SerializeStructVariant::end(state)
+            }
+            Request::Close { ref enclave_port } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 3u32, "Close", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "enclave_port", enclave_port)?;
+                SerializeStructVariant::end(state)
+            }
+            Request::Info { ref enclave_port, ref runner_port } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 4u32, "Info", 2)?;
+                SerializeStructVariant::serialize_field(&mut state, "enclave_port", enclave_port)?;
+                SerializeStructVariant::serialize_field(&mut state, "runner_port", runner_port)?;
+                SerializeStructVariant::end(state)
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
