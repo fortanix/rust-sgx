@@ -20,7 +20,7 @@ use {
 
 pub const SERVER_PORT: u32 = 10000;
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Request {
     Connect {
         addr: String,
@@ -83,6 +83,473 @@ impl Serialize for Request {
                 SerializeStructVariant::end(state)
             }
         }
+    }
+}
+
+/// Deserializes a `Request` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
+/// this crate in the standard library.
+/// See <https://github.com/rust-lang/rust/issues/64671>
+/// This implementation is based on the expanded `Deserialize` macro.
+impl<'de> Deserialize<'de> for Request {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        enum RequestField {
+            Connect,
+            Bind,
+            Accept,
+            Close,
+            Info,
+        }
+        struct RequestFieldVisitor;
+        impl<'de> Visitor<'de> for RequestFieldVisitor {
+            type Value = RequestField;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "variant identifier")
+            }
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match value {
+                    "Connect" => Ok(RequestField::Connect),
+                    "Bind" => Ok(RequestField::Bind),
+                    "Accept" => Ok(RequestField::Accept),
+                    "Close" => Ok(RequestField::Close),
+                    "Info" => Ok(RequestField::Info),
+                    _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for RequestField {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                deserializer.deserialize_identifier(RequestFieldVisitor)
+            }
+        }
+        struct RequestValueVisitor<'de> {
+            marker: PhantomData<Request>,
+            lifetime: PhantomData<&'de ()>,
+        }
+        impl<'de> Visitor<'de> for RequestValueVisitor<'de> {
+            type Value = Request;
+            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(__formatter, "enum Request")
+            }
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (RequestField::Connect, variant) => {
+                        enum ConnectField {
+                            Addr,
+                            Ignore,
+                        }
+                        struct ConnectFieldVisitor;
+                        impl<'de> Visitor<'de> for ConnectFieldVisitor {
+                            type Value = ConnectField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "addr" => Ok(ConnectField::Addr),
+                                    _ => Ok(ConnectField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for ConnectField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(ConnectFieldVisitor)
+                            }
+                        }
+                        struct ConnectValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for ConnectValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Connect")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut addr: Option<String> = None;
+                                while let Some(key) =
+                                    MapAccess::next_key::<ConnectField>(&mut map)?
+                                {
+                                    match key {
+                                        ConnectField::Addr => {
+                                            if addr.is_some() {
+                                                return Err(SerdeError::duplicate_field("addr"));
+                                            }
+                                            addr = Some(MapAccess::next_value::<String>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Connect {
+                                    addr: addr.ok_or(SerdeError::missing_field("addr"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["addr"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            ConnectValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (RequestField::Bind, variant) => {
+                        enum BindField {
+                            Addr,
+                            EnclavePort,
+                            Ignore,
+                        }
+                        struct BindFieldVisitor;
+                        impl<'de> Visitor<'de> for BindFieldVisitor {
+                            type Value = BindField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "addr" => Ok(BindField::Addr),
+                                    "enclave_port" => Ok(BindField::EnclavePort),
+                                    _ => Ok(BindField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for BindField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(BindFieldVisitor)
+                            }
+                        }
+                        struct BindValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for BindValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Bind")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut addr: Option<String> = None;
+                                let mut enclave_port: Option<u32> = None;
+                                while let Some(key) = MapAccess::next_key::<BindField>(&mut map)? {
+                                    match key {
+                                        BindField::Addr => {
+                                            if addr.is_some() {
+                                                return Err(SerdeError::duplicate_field("addr"));
+                                            }
+                                            addr = Some(MapAccess::next_value::<String>(&mut map)?);
+                                        }
+                                        BindField::EnclavePort => {
+                                            if enclave_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("enclave_port"));
+                                            }
+                                            enclave_port = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Bind {
+                                    addr: addr.ok_or(SerdeError::missing_field("addr"))?,
+                                    enclave_port: enclave_port.ok_or(SerdeError::missing_field("enclave_port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["addr", "enclave_port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            BindValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (RequestField::Accept, variant) => {
+                        enum AcceptField {
+                            EnclavePort,
+                            Ignore,
+                        }
+                        struct AcceptFieldVisitor;
+                        impl<'de> Visitor<'de> for AcceptFieldVisitor {
+                            type Value = AcceptField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "enclave_port" => Ok(AcceptField::EnclavePort),
+                                    _ => Ok(AcceptField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for AcceptField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(AcceptFieldVisitor)
+                            }
+                        }
+                        struct AcceptValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for AcceptValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Accept")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut enclave_port: Option<u32> = None;
+                                while let Some(key) = MapAccess::next_key::<AcceptField>(&mut map)? {
+                                    match key {
+                                        AcceptField::EnclavePort => {
+                                            if enclave_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("enclave_port"));
+                                            }
+                                            enclave_port = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Accept {
+                                    enclave_port: enclave_port.ok_or(SerdeError::missing_field("enclave_port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["enclave_port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            AcceptValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (RequestField::Close, variant) => {
+                        enum CloseField {
+                            EnclavePort,
+                            Ignore,
+                        }
+                        struct CloseFieldVisitor;
+                        impl<'de> Visitor<'de> for CloseFieldVisitor {
+                            type Value = CloseField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "enclave_port" => Ok(CloseField::EnclavePort),
+                                    _ => Ok(CloseField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for CloseField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(CloseFieldVisitor)
+                            }
+                        }
+                        struct CloseVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for CloseVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(__formatter, "struct variant Request::Close")
+                            }
+                            #[inline]
+                            fn visit_map<A>(
+                                self,
+                                mut map: A,
+                            ) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut enclave_port: Option<u32> = None;
+                                while let Some(key) = MapAccess::next_key::<CloseField>(&mut map)? {
+                                    match key {
+                                        CloseField::EnclavePort => {
+                                            if enclave_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("enclave_port"));
+                                            }
+                                            enclave_port = Some(
+                                                MapAccess::next_value::<u32>(&mut map)?
+                                            );
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Close {
+                                    enclave_port: enclave_port.ok_or(SerdeError::missing_field("enclave_port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["enclave_port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            CloseVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                    (RequestField::Info, variant) => {
+                        enum InfoField {
+                            EnclavePort,
+                            RunnerPort,
+                            Ignore,
+                        }
+                        struct InfoFieldVisitor;
+                        impl<'de> Visitor<'de> for InfoFieldVisitor {
+                            type Value = InfoField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "enclave_port" => Ok(InfoField::EnclavePort),
+                                    "runner_port" => Ok(InfoField::RunnerPort),
+                                    _ => Ok(InfoField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for InfoField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(InfoFieldVisitor)
+                            }
+                        }
+                        struct InfoValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for InfoValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Info")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut enclave_port: Option<u32> = None;
+                                let mut runner_port: Option<Option<u32>> = None;
+                                while let Some(key) = MapAccess::next_key::<InfoField>(&mut map)? {
+                                    match key {
+                                        InfoField::EnclavePort => {
+                                            if enclave_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("enclave_port"));
+                                            }
+                                            enclave_port = Some(MapAccess::next_value::<u32>(&mut map)?);
+                                        }
+                                        InfoField::RunnerPort => {
+                                            if runner_port.is_some() {
+                                                return Err(SerdeError::duplicate_field("runner_port"));
+                                            }
+                                            runner_port = Some(MapAccess::next_value::<Option<u32>>(&mut map,)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Info {
+                                    enclave_port: enclave_port.ok_or(SerdeError::missing_field("enclave_port"))?,
+                                    runner_port: runner_port.ok_or(SerdeError::missing_field("runner_port"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["enclave_port", "runner_port"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            InfoValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        const VARIANTS: &'static [&'static str] = &["Connect", "Bind", "Accept", "Close", "Info"];
+        Deserializer::deserialize_enum(
+            deserializer,
+            "Request",
+            VARIANTS,
+            RequestValueVisitor {
+                marker: PhantomData::<Request>,
+                lifetime: PhantomData,
+            },
+        )
     }
 }
 
