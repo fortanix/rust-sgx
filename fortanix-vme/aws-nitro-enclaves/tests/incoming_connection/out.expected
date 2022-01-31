@@ -1,11 +1,11 @@
-Server run #1
+Running server on 127.0.0.1:3400
 Bind TCP socket to port 3400
 Listening for incoming connections...
 Waiting for connection 1
 Connection 1: Connected
 Waiting for connection 2
 Connection 2: Connected
-Server run #2
+Running server on localhost:3400
 Bind TCP socket to port 3400
 Listening for incoming connections...
 Waiting for connection 1

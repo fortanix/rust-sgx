@@ -1,15 +1,11 @@
 #![feature(io_error_uncategorized)]
 use std::io::{ErrorKind, Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::unix::io::{AsRawFd, FromRawFd};
 
-fn server_run(run: u32) {
+fn server_run<A: ToSocketAddrs>(addr: A) {
     println!("Bind TCP socket to port 3400");
-    let listener = if run == 1 {
-        TcpListener::bind("127.0.0.1:3400").expect("Bind failed")
-    } else {
-        TcpListener::bind("localhost:3400").expect("Bind failed")
-    };
+    let listener = TcpListener::bind(addr).expect("Bind failed");
     assert_eq!(listener.local_addr().unwrap(), SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 3400));
 
     let fd = listener.as_raw_fd();
@@ -51,9 +47,9 @@ fn server_run(run: u32) {
 }
 
 fn main() {
-    for run in 1..=2 {
-        println!("Server run #{}", run);
-        server_run(run)
+    for addr in &["127.0.0.1:3400", "localhost:3400"] {
+        println!("Running server on {}", addr);
+        server_run(addr)
     }
     println!("Bye bye");
 }
