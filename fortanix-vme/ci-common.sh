@@ -126,7 +126,7 @@ function cargo_test {
     fi
 
     if [ -f ./test_interaction.sh ]; then
-        kill ${test_interaction}
+        kill ${test_interaction} || true
     fi
 
     popd
