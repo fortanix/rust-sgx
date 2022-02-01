@@ -66,7 +66,7 @@ function compile {
 
 function cargo_test {
     name=$1
-    pushd ${repo_root}/fortanix-vme/aws-nitro-enclaves/tests/$name
+    pushd $(find ${repo_root} -type d -wholename "*/tests/${name}")
     out=$(mktemp /tmp/$name.out.XXXXX)
     err=$(mktemp /tmp/$name.err.XXXXX)
 
