@@ -4,8 +4,11 @@ extern crate alloc;
 #[cfg(feature="std")]
 extern crate std;
 
+#[no_link]
+extern crate serde_derive;
+
 use alloc::string::String;
-use serde::{Deserialize, Serialize};
+use serde_derive::{Deserialize, Serialize};
 #[cfg(feature="std")]
 use {
     std::io,
