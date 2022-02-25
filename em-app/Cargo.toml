@@ -30,8 +30,8 @@ uuid_sdkms = { package = "uuid", version = "0.7.4", features = ["v4", "serde"] }
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 
 [target.x86_64-fortanix-unknown-sgx.dependencies]
-sgx_pkix = { version = "0.1.0" }
-sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
+sgx_pkix = { version = "0.1.0", path = "../intel-sgx/sgx_pkix" }
+sgx-isa = { version = "0.3", path = "../intel-sgx/sgx-isa", default-features = false }
 
 [target.x86_64-unknown-linux-musl.dependencies]
 nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", package = "nsm-driver", rev = "6745598d0e0e8af57e9b96ee2bf3d11b216fe649" }

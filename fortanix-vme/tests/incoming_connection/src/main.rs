@@ -1,4 +1,3 @@
-#![feature(io_error_uncategorized)]
 use std::io::{ErrorKind, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::os::unix::io::{AsRawFd, FromRawFd};
@@ -31,7 +30,7 @@ fn server_run<A: ToSocketAddrs>(addr: A) {
                 assert_eq!(stream.local_addr().unwrap().port(), 3400);
 
                 let no_stream = unsafe { TcpStream::from_raw_fd(666.into()) };
-                assert_eq!(no_stream.peer_addr().unwrap_err().kind(), ErrorKind::Uncategorized);
+                no_stream.peer_addr().unwrap_err();
 
                 println!("Connection {}: Connected", id);
                 let mut buff_in = [0u8; 4192];

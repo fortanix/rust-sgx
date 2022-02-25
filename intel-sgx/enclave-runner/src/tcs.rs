@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std;
+use std::arch::asm;
 use std::cell::RefCell;
 use std::convert::{TryFrom, TryInto};
 use std::fmt;
