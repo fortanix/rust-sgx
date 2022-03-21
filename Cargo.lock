@@ -110,6 +110,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-nitro-enclaves-nsm-api"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9138ac237191fcb830a6c5fb45b93573ee670956bef2b2dd1ee8609daa59a4a"
+dependencies = [
+ "libc",
+ "log 0.4.14",
+ "nix 0.20.2",
+ "serde",
+ "serde_bytes",
+ "serde_cbor",
+]
+
+[[package]]
 name = "b64-ct"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -795,13 +809,12 @@ dependencies = [
 name = "em-app"
 version = "0.4.0"
 dependencies = [
+ "aws-nitro-enclaves-nsm-api",
  "b64-ct",
  "em-client",
  "em-node-agent-client",
  "hyper 0.10.16",
  "mbedtls",
- "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
- "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -2174,21 +2187,9 @@ name = "nsm"
 version = "0.1.0"
 dependencies = [
  "nitro-attestation-verify",
- "nsm-driver 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
- "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
+ "nsm-driver",
+ "nsm-io",
  "serde_bytes",
-]
-
-[[package]]
-name = "nsm-driver"
-version = "0.1.0"
-source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
-dependencies = [
- "libc",
- "log 0.4.14",
- "nix 0.15.0",
- "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649)",
- "serde_cbor",
 ]
 
 [[package]]
@@ -2199,20 +2200,7 @@ dependencies = [
  "libc",
  "log 0.4.14",
  "nix 0.20.2",
- "nsm-io 0.1.0 (git+https://github.com/aws/aws-nitro-enclaves-nsm-api)",
- "serde_cbor",
-]
-
-[[package]]
-name = "nsm-io"
-version = "0.1.0"
-source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api?rev=6745598d0e0e8af57e9b96ee2bf3d11b216fe649#6745598d0e0e8af57e9b96ee2bf3d11b216fe649"
-dependencies = [
- "libc",
- "log 0.4.14",
- "nix 0.15.0",
- "serde",
- "serde_bytes",
+ "nsm-io",
  "serde_cbor",
 ]
 
