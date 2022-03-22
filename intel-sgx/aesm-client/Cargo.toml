@@ -27,7 +27,7 @@ test-sgx = []
 [dependencies]
 # Project dependencies
 sgxs = { version = "0.7.0", path = "../sgxs", optional = true }
-sgx-isa = { version = "0.3.0", path = "../sgx-isa"}
+sgx-isa = { version = "0.4.0", path = "../sgx-isa"}
 
 # External dependencies
 byteorder = "1.0"          # Unlicense/MIT
@@ -53,6 +53,6 @@ libloading = "0.5.2"
 protoc-rust = "2.8.0" # MIT/Apache-2.0
 
 [dev-dependencies]
-sgx-isa = { version = "0.3.0", path = "../sgx-isa" }
+sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 "report-test" = { version = "0.3.1", path = "../report-test" }
 "sgxs-loaders" = { version = "0.3.0", path = "../sgxs-loaders" }
