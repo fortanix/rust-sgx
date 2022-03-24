@@ -1084,7 +1084,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fortanix-sgx-abi"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
