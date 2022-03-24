@@ -6,7 +6,8 @@
 use std::borrow::Cow;
 
 use mbedtls::rng::{Rdrand, Random};
-use nsm_io::{Response};
+use aws_nitro_enclaves_nsm_api::api::{Response, Request};
+use aws_nitro_enclaves_nsm_api::driver;
 use pkix::types::{ObjectIdentifier};
 use pkix::x509::DnsAltNames;
 use pkix::{DerWrite, ToDer};
@@ -40,20 +41,20 @@ pub(crate) fn get_nitro_attestation(user_data: &[u8;64]) -> Result<Vec<(ObjectId
     let mut nonce = [0; NONCE_SIZE];
     Rdrand.random(&mut nonce[..]).map_err(|e| Error::NonceGeneration(Box::new(e)))?;
 
-    let nsm_fd = nsm_driver::nsm_init();
+    let nsm_fd = driver::nsm_init();
     
     let user_data = serde_bytes::ByteBuf::from(user_data.to_vec());
     let nonce = serde_bytes::ByteBuf::from(nonce);
 
-    let request = nsm_io::Request::Attestation {
+    let request = Request::Attestation {
         public_key: None,
         user_data: Some(user_data),
         nonce: Some(nonce),
     };
 
-    let response = nsm_driver::nsm_process_request(nsm_fd, request);
+    let response = driver::nsm_process_request(nsm_fd, request);
 
-    nsm_driver::nsm_exit(nsm_fd);
+    driver::nsm_exit(nsm_fd);
 
     let buffer = match response {
         Response::Attestation { document: attestation_doc } => Ok(attestation_doc),
