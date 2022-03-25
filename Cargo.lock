@@ -19,7 +19,7 @@ checksum = "ee2a4ec343196209d6594e19543ae87a39f96d5534d7174822a3ad825dd6ed7e"
 
 [[package]]
 name = "aesm-client"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "byteorder 1.3.4",
  "failure",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "byteorder 1.3.4",
  "dcap-ql-sys",
@@ -689,7 +689,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql-sys"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "num-derive 0.2.5",
  "num-traits",
@@ -698,7 +698,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aesm-client",
  "dcap-ql",
@@ -876,7 +876,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "crossbeam",
  "failure",
@@ -1084,7 +1084,7 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fortanix-sgx-abi"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -1092,7 +1092,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "aesm-client",
  "clap",
@@ -1689,7 +1689,7 @@ dependencies = [
 
 [[package]]
 name = "ipc-queue"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "fortanix-sgx-abi",
  "futures 0.3.17",
@@ -3016,7 +3016,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "enclave-runner",
  "failure",
@@ -3338,7 +3338,7 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "bitflags 1.2.1",
  "mbedtls",
@@ -3347,7 +3347,7 @@ dependencies = [
 
 [[package]]
 name = "sgx_pkix"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "byteorder 1.3.4",
  "lazy_static",
@@ -3358,7 +3358,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "byteorder 1.3.4",
  "crypto-hash",
@@ -3374,7 +3374,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "aesm-client",
  "bitflags 1.2.1",
@@ -3391,7 +3391,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "aesm-client",
  "atty",

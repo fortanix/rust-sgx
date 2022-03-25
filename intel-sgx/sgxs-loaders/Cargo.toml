@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-loaders"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -26,7 +26,7 @@ no_sgx_enclave_common = []
 [dependencies]
 # Project dependencies
 "sgxs" = { version = "0.7.0", path = "../sgxs" }
-"sgx-isa" = { version = "0.3.0", path = "../sgx-isa" }
+"sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
 bitflags = "1"           # MIT/Apache-2.0
