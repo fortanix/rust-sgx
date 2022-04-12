@@ -50,7 +50,7 @@ impl AesmClient {
         let mut res_bytes = vec![0; res_len as usize];
         sock.read_exact(&mut res_bytes)?;
 
-        let res = T::Response::from_response(protobuf::parse_from_bytes(&res_bytes))?;
+        let res = T::Response::from_response(Message::parse_from_bytes(&res_bytes))?;
         Ok(res)
     }
 
