@@ -100,7 +100,7 @@ impl<T: Transmittable> Fifo<T> {
             "Fifo len should be a power of two"
         );
         #[cfg(target_env = "sgx")] {
-            use std::os::fortanix_sgx::usercalls::alloc::User;
+            use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef};
 
             // `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
             // This type has the same memory layout but is `Copy` and can be marked as
@@ -118,9 +118,15 @@ impl<T: Transmittable> Fifo<T> {
                 let _: [u8; size_of::<fortanix_sgx_abi::WithId<()>>()] = [0u8; size_of::<WithId<()>>()];
             }
 
+            #[repr(transparent)]
+            #[derive(Copy, Clone)]
+            struct WrapUsize(usize);
+            unsafe impl UserSafeSized for WrapUsize{}
+
             // check pointers are outside enclave range, etc.
             let data = User::<[WithId<T>]>::from_raw_parts(descriptor.data as _, descriptor.len);
             mem::forget(data);
+            UserRef::from_ptr(descriptor.offsets as *const WrapUsize);
         }
         let data_slice = std::slice::from_raw_parts(descriptor.data, descriptor.len);
         Self {
