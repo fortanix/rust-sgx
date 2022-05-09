@@ -4,6 +4,7 @@ use fortanix_sgx_abi::FifoDescriptor;
 use std::num::NonZeroU64;
 use std::os::fortanix_sgx::usercalls;
 use std::os::fortanix_sgx::usercalls::raw;
+use std::os::fortanix_sgx::usercalls::alloc::{UserSafeSized, User};
 use std::{mem, ptr};
 
 // TODO: remove these once support for cancel queue is added in `std::os::fortanix_sgx`
@@ -26,12 +27,13 @@ pub unsafe fn async_queues(
     )
 }
 
-pub unsafe fn alloc_descriptor<T>() -> *mut FifoDescriptor<T> {
-    usercalls::alloc(
-        mem::size_of::<FifoDescriptor<T>>(),
-        mem::align_of::<FifoDescriptor<T>>(),
-    )
-    .expect("failed to allocate userspace memory") as _
+pub unsafe fn alloc_descriptor<T: Copy>() -> *mut FifoDescriptor<T> {
+    #[repr(transparent)]
+    #[derive(Copy, Clone)]
+    struct WrappedFifoDescriptor<T: Copy>(FifoDescriptor<T>);
+    unsafe impl<T: Copy> UserSafeSized for WrappedFifoDescriptor<T>{}
+
+    User::<WrappedFifoDescriptor<T>>::uninitialized().into_raw() as _
 }
 
 pub unsafe fn to_enclave<T>(ptr: *mut FifoDescriptor<T>) -> FifoDescriptor<T> {
