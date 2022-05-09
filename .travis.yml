@@ -23,7 +23,7 @@ matrix:
             - libclang-3.8-dev
             - musl-tools
       rust:
-        - nightly
+        - nightly-2021-01-14
       env:
         - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
       before_script:
