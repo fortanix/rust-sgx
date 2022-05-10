@@ -10,8 +10,7 @@ use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
-use crate::usercalls::EnclaveState;
-use crate::usercalls::UsercallExtension;
+use crate::usercalls::{EnclaveState, EnclaveStdio, UsercallExtension};
 use std::os::raw::c_void;
 
 #[derive(Debug)]
@@ -21,6 +20,7 @@ pub struct Command {
     address: usize,
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
+    stdio: EnclaveStdio,
     forward_panics: bool,
     cmd_args: Vec<Vec<u8>>,
 }
@@ -43,6 +43,7 @@ impl Command {
         address: *mut c_void,
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        stdio: EnclaveStdio,
         forward_panics: bool,
         cmd_args: Vec<Vec<u8>>,
     ) -> Command {
@@ -53,6 +54,7 @@ impl Command {
             address: address as _,
             size,
             usercall_ext,
+            stdio,
             forward_panics,
             cmd_args,
         }
@@ -63,6 +65,13 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args)
+        EnclaveState::main_entry(
+            self.main,
+            self.threads,
+            self.usercall_ext,
+            self.stdio,
+            self.forward_panics,
+            self.cmd_args,
+        )
     }
 }
