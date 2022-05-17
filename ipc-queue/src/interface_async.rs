@@ -41,6 +41,7 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncSender<T, S> {
     /// Consumes `self` and returns a DescriptorGuard.
     /// The returned guard can be used to make `FifoDescriptor`s that remain
     /// valid as long as the guard is not dropped.
+    #[cfg(not(target_env = "sgx"))]
     pub fn into_descriptor_guard(self) -> DescriptorGuard<T> {
         self.inner.into_descriptor_guard()
     }
@@ -71,6 +72,7 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
     /// Consumes `self` and returns a DescriptorGuard.
     /// The returned guard can be used to make `FifoDescriptor`s that remain
     /// valid as long as the guard is not dropped.
+    #[cfg(not(target_env = "sgx"))]
     pub fn into_descriptor_guard(self) -> DescriptorGuard<T> {
         self.inner.into_descriptor_guard()
     }

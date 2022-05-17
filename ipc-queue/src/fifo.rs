@@ -5,14 +5,48 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std::cell::UnsafeCell;
+use std::marker::PhantomData;
 use std::mem;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, Ordering::SeqCst};
-use std::sync::Arc;
+#[cfg(not(target_env = "sgx"))]
+use {
+    std::sync::atomic::AtomicU64,
+    std::sync::Arc,
+};
+use std::sync::atomic::{AtomicUsize, Ordering, Ordering::SeqCst};
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
 
 use super::*;
 
+// `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
+// This type has the same memory layout but is `Copy` and can be marked as
+// `UserSafeSized` which is needed for the `User::from_raw_parts()` below.
+#[cfg(target_env = "sgx")]
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct UserSafeWithId<T> {
+    pub id: u64,
+    pub data: T,
+}
+
+#[cfg(target_env = "sgx")]
+unsafe impl<T: UserSafeSized> UserSafeSized for UserSafeWithId<T> {}
+
+#[cfg(target_env = "sgx")]
+unsafe fn _sanity_check_with_id() {
+    use std::mem::size_of;
+    let _: [u8; size_of::<fortanix_sgx_abi::WithId<()>>()] = [0u8; size_of::<UserSafeWithId<()>>()];
+}
+
+#[cfg(target_env = "sgx")]
+#[repr(transparent)]
+#[derive(Copy, Clone)]
+struct WrapUsize(usize);
+
+#[cfg(target_env = "sgx")]
+unsafe impl UserSafeSized for WrapUsize{}
+
+#[cfg(not(target_env = "sgx"))]
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where
     T: Transmittable,
@@ -25,6 +59,7 @@ where
     (tx, rx)
 }
 
+#[cfg(not(target_env = "sgx"))]
 pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
 where
     T: Transmittable,
@@ -37,11 +72,43 @@ where
     (tx, rx)
 }
 
+#[cfg(all(test, target_env = "sgx"))]
+pub(crate) fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
+where
+    T: Transmittable,
+    S: Synchronizer,
+{
+    use std::ops::DerefMut;
+    use std::os::fortanix_sgx::usercalls::alloc::User;
+
+    // Allocate [WithId<T>; len] in userspace
+    // WARNING: This creates dangling memory in userspace, use in tests only!
+    let mut data = User::<[UserSafeWithId<T>]>::uninitialized(len);
+    data.deref_mut().iter_mut().for_each(|v| v.copy_from_enclave(&UserSafeWithId::default()));
+
+    // WARNING: This creates dangling memory in userspace, use in tests only!
+    let offsets = User::<WrapUsize>::new_from_enclave(&WrapUsize(0));
+    let offsets = offsets.into_raw() as *const AtomicUsize;
+
+    let descriptor = FifoDescriptor {
+        data: data.into_raw() as _,
+        len,
+        offsets,
+    };
+
+    let inner = unsafe { Fifo::from_descriptor(descriptor) };
+    let tx = Sender { inner: inner.clone(), synchronizer: s.clone() };
+    let rx = Receiver { inner, synchronizer: s };
+    (tx, rx)
+}
+
+#[cfg(not(target_env = "sgx"))]
 pub(crate) struct FifoBuffer<T> {
     data: Box<[WithId<T>]>,
     offsets: Box<AtomicUsize>,
 }
 
+#[cfg(not(target_env = "sgx"))]
 impl<T: Transmittable> FifoBuffer<T> {
     fn new(len: usize) -> Self {
         assert!(
@@ -57,16 +124,18 @@ impl<T: Transmittable> FifoBuffer<T> {
     }
 }
 
-enum Storage<T> {
+enum Storage<T: 'static> {
+    #[cfg(not(target_env = "sgx"))]
     Shared(Arc<FifoBuffer<T>>),
-    Static,
+    Static(PhantomData<&'static T>),
 }
 
 impl<T> Clone for Storage<T> {
     fn clone(&self) -> Self {
         match self {
+            #[cfg(not(target_env = "sgx"))]
             Storage::Shared(arc) => Storage::Shared(arc.clone()),
-            Storage::Static => Storage::Static,
+            Storage::Static(p) => Storage::Static(*p),
         }
     }
 }
@@ -94,42 +163,23 @@ impl<T: Transmittable> Fifo<T> {
             "Fifo len should be a power of two"
         );
         #[cfg(target_env = "sgx")] {
-            use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef};
-
-            // `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
-            // This type has the same memory layout but is `Copy` and can be marked as
-            // `UserSafeSized` which is needed for the `User::from_raw_parts()` below.
-            #[repr(C)]
-            #[derive(Clone, Copy)]
-            pub struct WithId<T> {
-                pub id: u64,
-                pub data: T,
-            }
-            unsafe impl<T: UserSafeSized> UserSafeSized for WithId<T> {}
-
-            unsafe fn _sanity_check_with_id() {
-                use std::mem::size_of;
-                let _: [u8; size_of::<fortanix_sgx_abi::WithId<()>>()] = [0u8; size_of::<WithId<()>>()];
-            }
-
-            #[repr(transparent)]
-            #[derive(Copy, Clone)]
-            struct WrapUsize(usize);
-            unsafe impl UserSafeSized for WrapUsize{}
+            use std::os::fortanix_sgx::usercalls::alloc::User;
 
             // check pointers are outside enclave range, etc.
-            let data = User::<[WithId<T>]>::from_raw_parts(descriptor.data as _, descriptor.len);
+            let data = User::<[UserSafeWithId<T>]>::from_raw_parts(descriptor.data as _, descriptor.len);
             mem::forget(data);
             UserRef::from_ptr(descriptor.offsets as *const WrapUsize);
+
         }
         let data_slice = std::slice::from_raw_parts(descriptor.data, descriptor.len);
         Self {
             data: &*(data_slice as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
             offsets: &*descriptor.offsets,
-            storage: Storage::Static,
+            storage: Storage::Static(PhantomData::default()),
         }
     }
 
+    #[cfg(not(target_env = "sgx"))]
     fn from_arc(fifo: Arc<FifoBuffer<T>>) -> Self {
         unsafe {
             Self {
@@ -142,10 +192,11 @@ impl<T: Transmittable> Fifo<T> {
 
     /// Consumes `self` and returns a DescriptorGuard.
     /// Panics if `self` was created using `from_descriptor`.
+    #[cfg(not(target_env = "sgx"))]
     pub(crate) fn into_descriptor_guard(self) -> DescriptorGuard<T> {
         let arc = match self.storage {
             Storage::Shared(arc) => arc,
-            Storage::Static => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
+            Storage::Static(_) => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
         };
         let descriptor = FifoDescriptor {
             data: self.data.as_ptr() as _,
@@ -176,9 +227,11 @@ impl<T: Transmittable> Fifo<T> {
         };
 
         // 4. Write the data, then the `id`.
-        let slot = unsafe { &mut *self.data[new.write_offset()].get() };
-        slot.data = val.data;
-        slot.id.store(val.id, SeqCst);
+        unsafe {
+            let slot = &mut *self.data[new.write_offset()].get();
+            T::write(&mut slot.data, &val.data);
+            slot.id.store(val.id, SeqCst);
+        }
 
         // 5. If the queue was empty in step 1, signal the reader to wake up.
         Ok(was_empty)
@@ -209,7 +262,8 @@ impl<T: Transmittable> Fifo<T> {
         };
 
         // 6. Read the data, then store `0` in the `id`.
-        let val = Identified { id, data: slot.data };
+        let data = unsafe { T::read(&slot.data) };
+        let val = Identified { id, data };
         slot.id.store(0, SeqCst);
 
         // 7. Store the new read offset, retrieving the old offsets.
