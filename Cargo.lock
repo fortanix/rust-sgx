@@ -3380,7 +3380,6 @@ dependencies = [
  "bitflags 1.2.1",
  "failure",
  "failure_derive",
- "libc",
  "libloading 0.5.2",
  "nix 0.15.0",
  "report-test",

@@ -56,6 +56,9 @@ pub const LIBRARY: &str = "libsgx_enclave_common.so.1";
 #[cfg(windows)]
 pub const LIBRARY: &str = "sgx_enclave_common.dll";
 
+#[repr(align(4096))]
+pub struct Align4096<T>(pub T);
+
 pub const SYM_ENCLAVE_CREATE: &[u8] = b"enclave_create\0";
 pub type EnclaveCreateFn = unsafe extern "C" fn(
     base_address: *mut c_void,
@@ -71,7 +74,7 @@ pub const SYM_ENCLAVE_LOAD_DATA: &[u8] = b"enclave_load_data\0";
 pub type EnclaveLoadDataFn = unsafe extern "C" fn(
     target_address: *mut c_void,
     target_size: usize,
-    source_buffer: *const u8,
+    source_buffer: *const Align4096<[u8; 4096]>,
     data_properties: PageProperties,
     enclave_error: Option<&mut u32>,
 ) -> usize;

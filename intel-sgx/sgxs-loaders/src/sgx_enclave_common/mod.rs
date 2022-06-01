@@ -11,8 +11,6 @@ use std::io::{Result as IoResult, Error as IoError};
 use std::os::raw::c_void;
 use std::sync::Arc;
 use std::{fmt, mem, ptr};
-#[cfg(unix)]
-use libc;
 
 use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, Sigstruct};
 use sgxs::einittoken::EinittokenProvider;
@@ -175,6 +173,7 @@ impl EnclaveLoad for InnerLibrary {
         page: (MeasEAdd, PageChunks, [u8; 4096]),
     ) -> Result<(), Self::Error> {
         let (eadd, chunks, data) = page;
+        let data = Align4096(data);
 
         let mut flags = PageProperties::empty();
         if eadd
@@ -209,7 +208,7 @@ impl EnclaveLoad for InnerLibrary {
             if (mapping.device.enclave_load_data)(
                 (mapping.base + eadd.offset) as _,
                 0x1000,
-                data.as_ptr(),
+                &data,
                 flags,
                 Some(&mut error),
             ) != 0x1000
@@ -252,17 +251,6 @@ impl EnclaveLoad for InnerLibrary {
                 Some(&mut error),
             ) {
                 return Err(Error::Init(error.into()));
-            }
-
-            #[cfg(unix)]
-            {
-                if libc::mprotect(
-                    mapping.base as _,
-                    mapping.size as _,
-                    libc::PROT_READ | libc::PROT_WRITE | libc::PROT_EXEC,
-                ) == -1 {
-                    return Err(Error::Init(LibraryError::PageTableFailure(IoError::last_os_error())));
-                }
             }
 
             Ok(())
