@@ -173,6 +173,7 @@ impl EnclaveLoad for InnerLibrary {
         page: (MeasEAdd, PageChunks, [u8; 4096]),
     ) -> Result<(), Self::Error> {
         let (eadd, chunks, data) = page;
+        let data = Align4096(data);
 
         let mut flags = PageProperties::empty();
         if eadd
@@ -207,7 +208,7 @@ impl EnclaveLoad for InnerLibrary {
             if (mapping.device.enclave_load_data)(
                 (mapping.base + eadd.offset) as _,
                 0x1000,
-                data.as_ptr(),
+                &data,
                 flags,
                 Some(&mut error),
             ) != 0x1000
