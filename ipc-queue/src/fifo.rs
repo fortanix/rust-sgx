@@ -68,7 +68,7 @@ where
     let arc = Arc::new(FifoBuffer::new(len));
     let inner = Fifo::from_arc(arc);
     let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
-    let rx = AsyncReceiver { inner, synchronizer: s, read_epoch: Arc::new(AtomicU32::new(0)) };
+    let rx = AsyncReceiver { inner, synchronizer: s, read_epoch: Arc::new(AtomicU64::new(0)) };
     (tx, rx)
 }
 

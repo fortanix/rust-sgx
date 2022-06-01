@@ -10,7 +10,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use fortanix_sgx_abi::FifoDescriptor;
@@ -154,7 +154,7 @@ pub struct AsyncSender<T: 'static, S> {
 pub struct AsyncReceiver<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
-    read_epoch: Arc<AtomicU32>,
+    read_epoch: Arc<AtomicU64>,
 }
 
 /// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
@@ -177,7 +177,7 @@ impl<T> DescriptorGuard<T> {
 /// read to/from the queue. This is useful in case we want to know whether or
 /// not a particular value written to the queue has been read.
 pub struct PositionMonitor<T: 'static> {
-    read_epoch: Arc<AtomicU32>,
+    read_epoch: Arc<AtomicU64>,
     fifo: Fifo<T>,
 }
 
