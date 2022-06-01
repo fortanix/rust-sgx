@@ -6,7 +6,6 @@
 
 mod ioctl;
 
-use libc;
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error as IoError, Result as IoResult};
@@ -17,6 +16,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use nix::sys::mman::{mmap, munmap, ProtFlags as Prot, MapFlags as Map};
+use nix::errno::Errno;
 
 use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigstruct, PageType, SecinfoFlags};
 use sgxs::einittoken::EinittokenProvider;
@@ -309,7 +309,7 @@ impl EnclaveLoad for InnerDevice {
         fn is_enotty(result: &Result<(), Error>) -> bool {
             match result {
                 Err(Error::Init(SgxIoctlError::Io(ref err))) => {
-                    err.raw_os_error() == Some(libc::ENOTTY)
+                    err.raw_os_error() == Some(Errno::ENOTTY as _)
                 }
                 _ => false,
             }
@@ -351,7 +351,7 @@ impl EnclaveLoad for InnerDevice {
                     )
                 },
                 Augusta => {
-                    Err(Error::Init(SgxIoctlError::Io(IoError::from_raw_os_error(libc::ENOTTY))))
+                    Err(Error::Init(SgxIoctlError::Io(Errno::ENOTTY.into())))
                 }
             }
         }
@@ -382,7 +382,7 @@ impl EnclaveLoad for InnerDevice {
     }
 
     fn destroy(mapping: &mut Mapping<Self>) {
-        unsafe { libc::munmap(mapping.base as usize as *mut _, mapping.size as usize) };
+        unsafe { let _ = munmap(mapping.base as usize as *mut _, mapping.size as usize); }
     }
 }
 
@@ -450,7 +450,7 @@ impl Device {
         for &(path, family) in DEFAULT_DEVICE_PATHS {
             match Self::open(path, family) {
                 Err(ref e) if e.kind() == io::ErrorKind::NotFound => continue,
-                Err(ref e) if e.raw_os_error() == Some(libc::ENOTDIR as _) => continue,
+                Err(ref e) if e.raw_os_error() == Some(Errno::ENOTDIR as _) => continue,
                 result => return result,
             }
         }
