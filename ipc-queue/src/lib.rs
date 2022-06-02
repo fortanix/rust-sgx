@@ -7,15 +7,22 @@
 #![cfg_attr(target_env = "sgx", feature(sgx_platform))]
 
 use std::future::Future;
-#[cfg(target_env = "sgx")]
-use std::os::fortanix_sgx::usercalls::alloc::UserSafeSized;
 use std::pin::Pin;
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use fortanix_sgx_abi::FifoDescriptor;
 
-use self::fifo::{Fifo, FifoBuffer};
+use self::fifo::Fifo;
+
+#[cfg(target_env = "sgx")]
+use std::os::fortanix_sgx::usercalls::alloc::{UserRef, UserSafeSized};
+
+#[cfg(not(target_env = "sgx"))]
+use {
+    std::ptr,
+    self::fifo::FifoBuffer,
+};
 
 mod fifo;
 mod interface_sync;
@@ -25,17 +32,36 @@ mod position;
 mod test_support;
 
 #[cfg(target_env = "sgx")]
-pub trait Transmittable: UserSafeSized + Default {}
+pub trait Transmittable: UserSafeSized + Default {
+    unsafe fn write(ptr: *mut Self, val: &Self) {
+        UserRef::<Self>::from_mut_ptr(ptr).copy_from_enclave(val)
+    }
+
+    unsafe fn read(ptr: *const Self) -> Self {
+        let mut data = Default::default();
+        UserRef::<Self>::from_ptr(ptr).copy_to_enclave(&mut data);
+        data
+    }
+}
 
 #[cfg(target_env = "sgx")]
 impl<T> Transmittable for T where T: UserSafeSized + Default {}
 
 #[cfg(not(target_env = "sgx"))]
-pub trait Transmittable: Copy + Sized + Default {}
+pub trait Transmittable: Copy + Sized + Default {
+    unsafe fn write(ptr: *mut Self, val: &Self) {
+        ptr::write(ptr, *val);
+    }
+
+    unsafe fn read(ptr: *const Self) -> Self {
+        ptr::read(ptr)
+    }
+}
 
 #[cfg(not(target_env = "sgx"))]
 impl<T> Transmittable for T where T: Copy + Sized + Default {}
 
+#[cfg(not(target_env = "sgx"))]
 pub fn bounded<T, S>(len: usize, s: S) -> (Sender<T, S>, Receiver<T, S>)
 where
     T: Transmittable,
@@ -44,6 +70,7 @@ where
     self::fifo::bounded(len, s)
 }
 
+#[cfg(not(target_env = "sgx"))]
 pub fn bounded_async<T, S>(len: usize, s: S) -> (AsyncSender<T, S>, AsyncReceiver<T, S>)
 where
     T: Transmittable,
@@ -125,13 +152,14 @@ pub struct AsyncSender<T: 'static, S> {
 pub struct AsyncReceiver<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
-    read_epoch: Arc<AtomicU32>,
+    read_epoch: Arc<AtomicU64>,
 }
 
 /// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
 /// to remain valid as long as the DescriptorGuard is not dropped.
 pub struct DescriptorGuard<T> {
     descriptor: FifoDescriptor<T>,
+    #[cfg(not(target_env = "sgx"))]
     _fifo: Arc<FifoBuffer<T>>,
 }
 
@@ -147,7 +175,7 @@ impl<T> DescriptorGuard<T> {
 /// read to/from the queue. This is useful in case we want to know whether or
 /// not a particular value written to the queue has been read.
 pub struct PositionMonitor<T: 'static> {
-    read_epoch: Arc<AtomicU32>,
+    read_epoch: Arc<AtomicU64>,
     fifo: Fifo<T>,
 }
 

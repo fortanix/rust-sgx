@@ -156,6 +156,7 @@ impl<'r, T: Transmittable, S: Synchronizer> Iterator for TryIter<'r, T, S> {
 
 #[cfg(test)]
 mod tests {
+    use crate::fifo::bounded;
     use crate::test_support::pubsub::{Channel, Subscription};
     use crate::test_support::TestValue;
     use crate::*;
