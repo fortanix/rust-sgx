@@ -227,8 +227,7 @@ impl<T: Transmittable> Fifo<T> {
             //    with the current offsets. If the CAS was not succesful, go to step 1.
             let new = current.increment_write_offset();
             let current = current.as_usize();
-            let prev = self.offsets.compare_and_swap(current, new.as_usize(), Ordering::SeqCst);
-            if prev == current {
+            if let Ok(_) = self.offsets.compare_exchange(current, new.as_usize(), Ordering::SeqCst, Ordering::SeqCst) {
                 break (new, was_empty);
             }
         };

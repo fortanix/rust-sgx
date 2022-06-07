@@ -1318,7 +1318,7 @@ async fn trap_attached_debugger(tcs: usize, debug_buf: *const u8) {
     // Synchronized
     unsafe {
         let old = signal::sigaction(signal::SIGTRAP, &sig_action).unwrap();
-        asm!("
+        std::arch::asm!("
             xchg %rbx, {0}
             int3
             xchg {0}, %rbx

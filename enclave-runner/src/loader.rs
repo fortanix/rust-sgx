@@ -102,6 +102,7 @@ impl From<DebugBuffer> for EnclavePanic {
 #[derive(Debug)]
 pub(crate) struct ErasedTcs {
     address: *mut c_void,
+    #[allow(dead_code)]
     tcs: Box<dyn Tcs>,
 }
 
