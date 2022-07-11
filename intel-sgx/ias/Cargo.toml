@@ -12,10 +12,11 @@ base64 = { version = "0.13", optional = true }
 bitflags = "1"
 byteorder = "1.0"
 log = "0.4"
+once_cell = "1.13.0"
 percent-encoding = "2.1"
 serde_bytes = "0.11"
 serde-bytes-repr = { version = "0.1", optional = true }
-serde_json = { version = "1", optional = true }
+serde_json = { version = "1" }
 serde = { version = "1.0.7", features = ["derive"] }
 url = "2.2"
 
@@ -25,12 +26,20 @@ pkix = "0.1"
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.1", path = "../sgx_pkix" }
 
+[build-dependencies]
+rustc_version = "0.4.0"
+
 [target.'cfg(not(target_env="sgx"))'.dependencies]
 reqwest = { version = "0.11", features = ["json"], optional = true }
 
 [features]
-client = ["reqwest", "base64", "serde-bytes-repr", "serde_json"]
+client = ["reqwest", "base64", "serde-bytes-repr"]
 client-certificate = ["reqwest/native-tls"]
+default = ["ias_versions"]
+ias_versions = ["ias_version_v4", "ias_version_v3"]
+ias_version_v4 = []
+ias_version_v3 = []
+
 
 [dev-dependencies]
 lazy_static = "1"

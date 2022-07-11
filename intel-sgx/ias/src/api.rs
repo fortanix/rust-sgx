@@ -4,12 +4,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use sgx_isa::{Attributes, Miscselect, Report};
-use std::str;
-use std::fmt;
 use byteorder::{BigEndian, ReadBytesExt};
 use serde::{Serialize, Deserialize};
+use sgx_isa::{Attributes, Miscselect, Report};
+use std::convert::TryFrom;
+use std::str;
+use std::fmt;
+use once_cell::sync::Lazy;
 
+// The values for this enum should correspond to IAS API version numbers
+// as specified in https://www.intel.com/content/dam/develop/public/us/en/documents/sgx-attestation-api-spec.pdf.
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum IasVersion {
     V2 = 2,
@@ -18,6 +22,31 @@ pub enum IasVersion {
 }
 
 pub const LATEST_IAS_VERSION: IasVersion = IasVersion::V4;
+
+impl TryFrom<u64> for IasVersion {
+    type Error = ();
+
+    fn try_from(v: u64) -> Result<Self, Self::Error> {
+        match v {
+            2 => Ok(IasVersion::V2),
+            3 => Ok(IasVersion::V3),
+            4 => Ok(IasVersion::V4),
+            _ => Err(())
+        }
+    }
+}
+
+pub(crate) static SUPPORTED_IAS_VERSIONS: Lazy<Vec<IasVersion>> = Lazy::new(|| {
+
+    let mut v: Vec<IasVersion> = Vec::new();
+    #[cfg(feature = "ias_version_v4")]
+    v.push(IasVersion::V4);
+
+    #[cfg(feature = "ias_version_v3")]
+    v.push(IasVersion::V3);
+
+    v
+});
 
 /// Adapts `serde_bytes` for `Option<T: AsRef<[u8]>>` and `Option<T: From<Vec<u8>>>`
 mod serde_option_bytes {
@@ -130,7 +159,7 @@ impl EnclaveQuoteBody {
 
     // Report of the Enclave being attested.
     // key_id and mac are required parameter hence have to pass default value for them
-    // as these value are not present in EnclaveQuoteBody
+    // as these values are not present in EnclaveQuoteBody
     pub fn get_report(self) -> Report {
         let EnclaveQuoteBody{cpusvn, miscselect, _reserved1, attributes, mrenclave, _reserved2, mrsigner, _reserved3, isvprodid, isvsvn, _reserved4, reportdata, ..} = self;
         Report {
@@ -158,6 +187,27 @@ fn two() -> u64 {
 
 fn less_than_three(&v: &u64) -> bool {
     v < 3
+}
+
+// Intel security advisory ids are strings of the form "INTEL-SA-ddddd".
+// https://www.intel.com/content/www/us/en/security-center/default.html has more details.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IasAdvisoryId(String);
+
+impl From<&str> for IasAdvisoryId {
+    fn from(s: &str) -> Self {
+        IasAdvisoryId::new(s)
+    }
+}
+
+impl IasAdvisoryId {
+    fn new(s: &str) -> Self {
+        IasAdvisoryId(s.trim().to_owned().to_uppercase())
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
 /// A response body for the IAS "verify attestation evidence" endpoint.  Refer
@@ -200,7 +250,7 @@ pub struct VerifyAttestationEvidenceResponse {
     pub advisory_url: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryIDs")]
-    pub advisory_ids: Option<Vec<String>>,
+    pub advisory_ids: Option<Vec<IasAdvisoryId>>,
 }
 
 /// Attestation verification status enum. Refer to "Attestation Verification

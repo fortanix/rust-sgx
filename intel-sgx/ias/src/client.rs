@@ -9,11 +9,12 @@ use std::str;
 
 use url::Url;
 use percent_encoding::percent_decode_str as urldecode;
-use reqwest::{header::HeaderValue, IntoUrl, RequestBuilder};
+use reqwest::{header::HeaderValue, RequestBuilder};
+pub use reqwest::IntoUrl;
 use serde::{Serialize, Deserialize};
 
 use pkix::pem::{PEM_CERTIFICATE, PemBlock, pem_to_der};
-use sgx_pkix::attestation::AttestationEmbeddedIasReport;
+pub use sgx_pkix::attestation::AttestationEmbeddedIasReport;
 
 use crate::HexPrint;
 use crate::api::{IasVersion, VerifyAttestationEvidenceRequest, VerifyAttestationEvidenceResponse};
@@ -341,7 +342,16 @@ impl Client {
         }
 
         match (&advisory_ids, &report.advisory_ids) {
-            (None, Some(new_advisory_ids)) => advisory_ids = Some(new_advisory_ids.join(",")),
+            (None, Some(new_advisory_ids)) => {
+                let new_advisory_ids = new_advisory_ids.iter().fold(String::new(), |mut s: String, id| {
+                    if !s.is_empty() {
+                        s.push_str(",");
+                    }
+                    s.push_str(id.as_str());
+                    s
+                });
+                advisory_ids = Some(new_advisory_ids);
+            },
             _ => {}
         }
 

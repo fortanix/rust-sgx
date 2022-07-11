@@ -9,7 +9,7 @@
 //! `client::ClientBuilder::build()`, call the `get_sig_rl` and `verify_quote`
 //! APIs, then call `verifier::verify_report`.
 
-#[cfg(all(test,target_env = "sgx"))]
+#[cfg(test)]
 #[macro_use]
 extern crate lazy_static;
 #[macro_use]
