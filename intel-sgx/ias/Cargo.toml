@@ -1,6 +1,6 @@
 [package]
 name = "ias"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -20,7 +20,7 @@ serde_json = { version = "1" }
 serde = { version = "1.0.7", features = ["derive"] }
 url = "2.2"
 
-mbedtls = { version = "0.7.0", features = ["rdrand", "std", "force_aesni_support"], default-features = false, optional = true }
+mbedtls = { version = "0.8.0", features = ["std"], default-features = false, optional = true }
 pkix = "0.1"
 
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
