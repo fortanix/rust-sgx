@@ -10,5 +10,5 @@ aesm-client = { version = "0.5.0", features = ["sgxs"], path="../../../intel-sgx
 enclave-runner = { version = "0.5.0", path="../../../intel-sgx/enclave-runner"}
 sgxs-loaders = { version = "0.3.0",   path="../../../intel-sgx/sgxs-loaders"}
 futures = "0.3"
-tokio = { version = "0.2", features = ["process"] }
+tokio = { version = "1.20", features = ["process"] }
 pin-utils = "0.1"

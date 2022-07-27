@@ -11,7 +11,7 @@ use std::process::Stdio;
 use std::task::{Context, Poll};
 
 use futures::FutureExt;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 
 use aesm_client::AesmClient;
@@ -49,8 +49,8 @@ impl AsyncRead for CatService {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context,
-        buf: &mut [u8]
-    ) -> Poll<IoResult<usize>> {
+        buf: &mut ReadBuf,
+    ) -> Poll<IoResult<()>> {
         self.stdout().poll_read(cx, buf)
     }
 }

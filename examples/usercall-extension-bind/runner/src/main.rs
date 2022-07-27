@@ -17,6 +17,7 @@ use std::task::{Context, Poll};
 use futures::{FutureExt, Stream, StreamExt, TryStreamExt};
 use tokio::io::{self, AsyncRead, AsyncReadExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio_stream::wrappers::TcpListenerStream;
 
 use aesm_client::AesmClient;
 use enclave_runner::usercalls::{AsyncListener, AsyncStream, UsercallExtension};
@@ -210,7 +211,7 @@ impl ProxyProtocol {
                 Ok(local_address) => local_address.to_string(),
                 Err(_) => "error".to_string(),
             };
-            let listen_stream = listener.and_then(|mut stream| { async {
+            let listen_stream = TcpListenerStream::new(listener).and_then(|mut stream| { async {
                 let proxied_addrs = read_proxy_protocol_header(&mut stream).await?;
                 Ok((stream, proxied_addrs))
             }}).boxed();

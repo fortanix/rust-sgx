@@ -10,4 +10,5 @@ aesm-client = { version = "0.5.0", features = ["sgxs"], path="../../../intel-sgx
 enclave-runner = { version = "0.5.0", path="../../../intel-sgx/enclave-runner"}
 sgxs-loaders = { version = "0.3.0",   path="../../../intel-sgx/sgxs-loaders"}
 futures = "0.3"
-tokio = { version = "0.2", features = ["net", "io-util"] }
+tokio = { version = "1.20", features = ["net", "io-util"] }
+tokio-stream = { version = "0.1.9", features = ["net"] }
