@@ -501,7 +501,7 @@ struct StoppedTcs {
 struct IOHandlerInput<'tcs> {
     tcs: Option<&'tcs mut RunningTcs>,
     enclave: Arc<EnclaveState>,
-    work_sender: &'tcs crossbeam::crossbeam_channel::Sender<Work>,
+    work_sender: &'tcs crossbeam::channel::Sender<Work>,
 }
 
 struct PendingEvents {
@@ -773,7 +773,7 @@ impl EnclaveState {
 
     async fn handle_usercall(
         enclave: Arc<EnclaveState>,
-        work_sender: crossbeam::crossbeam_channel::Sender<Work>,
+        work_sender: crossbeam::channel::Sender<Work>,
         tx_return_channel: tokio::sync::mpsc::UnboundedSender<(EnclaveResult, ReturnSource)>,
         mut handle_data: UsercallHandleData,
     ) {
@@ -865,7 +865,7 @@ impl EnclaveState {
         enclave: Arc<EnclaveState>,
         io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
-        work_sender: crossbeam::crossbeam_channel::Sender<Work>,
+        work_sender: crossbeam::channel::Sender<Work>,
     ) -> EnclaveResult {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
@@ -1054,7 +1054,7 @@ impl EnclaveState {
     ) -> EnclaveResult {
         fn create_worker_threads(
             num_of_worker_threads: usize,
-            work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
+            work_receiver: crossbeam::channel::Receiver<Work>,
             io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
         ) -> Vec<JoinHandle<()>> {
             let mut thread_handles = vec![];
@@ -1073,7 +1073,7 @@ impl EnclaveState {
 
         let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::unbounded_channel();
 
-        let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
+        let (work_sender, work_receiver) = crossbeam::channel::unbounded();
         work_sender
             .send(start_work)
             .expect("Work sender couldn't send data to receiver");
@@ -1147,7 +1147,7 @@ impl EnclaveState {
         rt.block_on(async move {
             enclave.abort_all_threads();
             //clear the threads_queue
-            while enclave.threads_queue.pop().is_ok() {}
+            while enclave.threads_queue.pop().is_some() {}
 
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.panic_reason.lock().await;
@@ -1537,8 +1537,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
             .as_command()
             .ok_or(IoErrorKind::InvalidInput)?;
         let new_tcs = match self.enclave.threads_queue.pop() {
-            Ok(tcs) => tcs,
-            Err(_) => {
+            Some(tcs) => tcs,
+            None => {
                 return Err(IoErrorKind::WouldBlock.into());
             }
         };

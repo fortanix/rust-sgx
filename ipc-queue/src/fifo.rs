@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 use std::mem;
 #[cfg(not(target_env = "sgx"))]
 use {
-    std::sync::atomic::{AtomicU32, AtomicU64},
+    std::sync::atomic::AtomicU64,
     std::sync::Arc,
 };
 use std::sync::atomic::{AtomicUsize, Ordering, Ordering::SeqCst};

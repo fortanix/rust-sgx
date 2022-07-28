@@ -58,6 +58,9 @@ for LIB in $LIBS_SORTED; do
         if FEATURES="$(cargo read-manifest|jq -r '.metadata.docs.rs.features | join(",")' 2> /dev/null)"; then
             ARGS="--features $FEATURES"
         fi
+        if grep -q 'feature(sgx_platform)' ./src/lib.rs; then
+            ARGS="$ARGS --target x86_64-fortanix-unknown-sgx"
+        fi
         cargo doc --no-deps --lib $ARGS
         popd
     fi

@@ -1,5 +1,5 @@
 use crate::batch_drop;
-use crate::hacks::{new_std_listener, new_std_stream, MakeSend};
+use crate::hacks::MakeSend;
 use crate::io_bufs::UserBuf;
 use crate::raw::RawApi;
 use crate::{AsyncUsercallProvider, CancelHandle};
@@ -7,6 +7,7 @@ use fortanix_sgx_abi::Fd;
 use std::io;
 use std::mem::{self, ManuallyDrop};
 use std::net::{TcpListener, TcpStream};
+use std::os::fortanix_sgx::io::{FromRawFd, TcpListenerMetadata, TcpStreamMetadata};
 use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef, UserSafe};
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -93,18 +94,18 @@ impl AsyncUsercallProvider {
         F: FnOnce(io::Result<TcpListener>) + Send + 'static,
     {
         let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
         addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
         let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
-        let local_addr_ptr = local_addr.as_raw_mut_ptr();
+        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
             let _addr_buf = ManuallyDrop::into_inner(addr_buf);
-            let local_addr = ManuallyDrop::into_inner(local_addr);
+            let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
 
-            let local = string_from_bytebuffer(&local_addr, "bind_stream", "local_addr");
-            let res = res.map(|fd| unsafe { new_std_listener(fd, Some(local)) });
+            let local_addr = Some(string_from_bytebuffer(&local_addr_buf, "bind_stream", "local_addr"));
+            let res = res.map(|fd| unsafe { TcpListener::from_raw_fd(fd, TcpListenerMetadata { local_addr }) });
             callback(res);
         };
         unsafe { self.raw_bind_stream(addr_buf_ptr, addr.len(), local_addr_ptr, Some(cb.into())) }
@@ -120,19 +121,19 @@ impl AsyncUsercallProvider {
     where
         F: FnOnce(io::Result<TcpStream>) + Send + 'static,
     {
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
-        let mut peer_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut peer_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
-        let local_addr_ptr = local_addr.as_raw_mut_ptr();
-        let peer_addr_ptr = peer_addr.as_raw_mut_ptr();
+        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
+        let peer_addr_ptr = peer_addr_buf.as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
-            let local_addr = ManuallyDrop::into_inner(local_addr);
-            let peer_addr = ManuallyDrop::into_inner(peer_addr);
+            let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
+            let peer_addr_buf = ManuallyDrop::into_inner(peer_addr_buf);
 
-            let local = string_from_bytebuffer(&*local_addr, "accept_stream", "local_addr");
-            let peer = string_from_bytebuffer(&*peer_addr, "accept_stream", "peer_addr");
-            let res = res.map(|fd| unsafe { new_std_stream(fd, Some(local), Some(peer)) });
+            let local_addr = Some(string_from_bytebuffer(&*local_addr_buf, "accept_stream", "local_addr"));
+            let peer_addr = Some(string_from_bytebuffer(&*peer_addr_buf, "accept_stream", "peer_addr"));
+            let res = res.map(|fd| unsafe { TcpStream::from_raw_fd(fd, TcpStreamMetadata { local_addr, peer_addr }) });
             callback(res);
         };
         unsafe { self.raw_accept_stream(fd, local_addr_ptr, peer_addr_ptr, Some(cb.into())) }
@@ -149,22 +150,22 @@ impl AsyncUsercallProvider {
         F: FnOnce(io::Result<TcpStream>) + Send + 'static,
     {
         let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
-        let mut local_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
-        let mut peer_addr = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
+        let mut peer_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
         addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
         let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
-        let local_addr_ptr = local_addr.as_raw_mut_ptr();
-        let peer_addr_ptr = peer_addr.as_raw_mut_ptr();
+        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
+        let peer_addr_ptr = peer_addr_buf.as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
             let _addr_buf = ManuallyDrop::into_inner(addr_buf);
-            let local_addr = ManuallyDrop::into_inner(local_addr);
-            let peer_addr = ManuallyDrop::into_inner(peer_addr);
+            let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
+            let peer_addr_buf = ManuallyDrop::into_inner(peer_addr_buf);
 
-            let local = string_from_bytebuffer(&local_addr, "connect_stream", "local_addr");
-            let peer = string_from_bytebuffer(&peer_addr, "connect_stream", "peer_addr");
-            let res = res.map(|fd| unsafe { new_std_stream(fd, Some(local), Some(peer)) });
+            let local_addr = Some(string_from_bytebuffer(&local_addr_buf, "connect_stream", "local_addr"));
+            let peer_addr = Some(string_from_bytebuffer(&peer_addr_buf, "connect_stream", "peer_addr"));
+            let res = res.map(|fd| unsafe { TcpStream::from_raw_fd(fd, TcpStreamMetadata { local_addr, peer_addr }) });
             callback(res);
         };
         unsafe { self.raw_connect_stream(addr_buf_ptr, addr.len(), local_addr_ptr, peer_addr_ptr, Some(cb.into())) }
