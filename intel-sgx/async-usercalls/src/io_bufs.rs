@@ -166,9 +166,9 @@ impl WriteBuffer {
         assert!(n <= buf.len());
         const PANIC_MESSAGE: &'static str = "`buf` not produced by self.consumable_chunk()";
         let buf = buf.into_shared().expect(PANIC_MESSAGE);
-        assert!(Arc::ptr_eq(&self.userbuf, &buf), PANIC_MESSAGE);
+        assert!(Arc::ptr_eq(&self.userbuf, &buf), "{}", PANIC_MESSAGE);
         drop(buf);
-        assert!(Arc::strong_count(&self.userbuf) == 1, PANIC_MESSAGE);
+        assert!(Arc::strong_count(&self.userbuf) == 1, "{}", PANIC_MESSAGE);
         self.advance_read(n);
     }
 

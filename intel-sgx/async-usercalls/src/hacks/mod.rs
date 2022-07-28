@@ -3,10 +3,8 @@ use std::os::fortanix_sgx::usercalls::alloc::{User, UserSafeSized};
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 
 mod async_queues;
-mod unsafe_typecasts;
 
 pub use self::async_queues::{alloc_descriptor, async_queues, to_enclave};
-pub use self::unsafe_typecasts::{new_std_listener, new_std_stream};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -26,10 +24,12 @@ pub struct Cancel;
 
 unsafe impl UserSafeSized for Cancel {}
 
-// Interim solution until we mark the target types appropriately
-pub(crate) struct MakeSend<T>(T);
+pub(crate) trait MakeSendMarker {}
 
-impl<T> MakeSend<T> {
+// Interim solution until we mark the target types appropriately
+pub(crate) struct MakeSend<T: MakeSendMarker>(T);
+
+impl<T: MakeSendMarker> MakeSend<T> {
     pub fn new(t: T) -> Self {
         Self(t)
     }
@@ -40,7 +40,7 @@ impl<T> MakeSend<T> {
     }
 }
 
-impl<T> Deref for MakeSend<T> {
+impl<T: MakeSendMarker> Deref for MakeSend<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -48,12 +48,14 @@ impl<T> Deref for MakeSend<T> {
     }
 }
 
-impl<T> DerefMut for MakeSend<T> {
+impl<T: MakeSendMarker> DerefMut for MakeSend<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
 }
 
-unsafe impl Send for MakeSend<ByteBuffer> {}
-unsafe impl Send for MakeSend<User<ByteBuffer>> {}
-unsafe impl Send for MakeSend<User<[u8]>> {}
+unsafe impl<T: MakeSendMarker> Send for MakeSend<T> {}
+
+impl MakeSendMarker for ByteBuffer {}
+impl MakeSendMarker for User<ByteBuffer> {}
+impl MakeSendMarker for User<[u8]> {}
