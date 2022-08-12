@@ -14,7 +14,7 @@ keywords = ["sgx", "fifo", "queue", "ipc"]
 categories = ["asynchronous"]
 
 [dependencies]
-fortanix-sgx-abi = { version = "0.4.0", path = "../intel-sgx/fortanix-sgx-abi" }
+fortanix-sgx-abi = { version = "0.4.0" } # TODO: add back `path = "../intel-sgx/fortanix-sgx-abi"`
 
 [dev-dependencies]
 static_assertions = "1.1.0"
