@@ -26,6 +26,9 @@ pkix = "0.1"
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.1", path = "../sgx_pkix" }
 
+[build-dependencies]
+rustc_version = "0.4.0"
+
 [target.'cfg(not(target_env="sgx"))'.dependencies]
 reqwest = { version = "0.11", features = ["json"], optional = true }
 
