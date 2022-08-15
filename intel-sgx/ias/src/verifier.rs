@@ -10,6 +10,7 @@ use serde::Deserialize;
 use serde_bytes_repr::ByteFmtDeserializer;
 use std::convert::TryInto;
 use std::marker::PhantomData;
+use once_cell::sync::Lazy;
 use pkix::{ASN1Result, DerWrite, FromDer};
 use pkix::derives::{BERDecodable, BERReader, DERWriter};
 use pkix::x509::GenericCertificate;
@@ -22,6 +23,19 @@ use std::result::Result;
 
 pub mod crypto;
 pub use self::crypto::private::Crypto;
+
+pub static MITIGATED_SECURITY_ADVISORIES: Lazy<Vec<IasAdvisoryId>> = Lazy::new(|| {
+    #[allow(unused_mut)]
+    let mut v: Vec<IasAdvisoryId> = Vec::new();
+
+    #[cfg(intel_sa_00334)]
+    v.push(IasAdvisoryId::from("INTEL-SA-00334"));
+
+    #[cfg(intel_sa_00615)]
+    v.push(IasAdvisoryId::from("INTEL-SA-00615"));
+
+    v
+});
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EnclavePeer {
@@ -298,6 +312,59 @@ pub struct AutoDetect;
 impl AutoDetect {
     pub fn new() -> AutoDetect {
         AutoDetect {}
+    }
+}
+
+impl Platform for AutoDetect {
+    fn verify(&self, for_self: bool, _nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
+        // The report must be for a valid quote.
+        match (for_self, isv_enclave_quote_status) {
+            (false, QuoteStatus::SwHardeningNeeded) => {
+                /* We don't know how the enclave peer has been compiled. Enclaves may verify their own
+                 * attestations, so we can ignore `QuoteStatus::SwHardeningNeeded` here and rely on the
+                 * logic of enclave versions. It is of paramount importance that we only ignore
+                 * `QuoteStatus::SwHardeningNeeded` cases.
+                 * `QuoteStatus::ConfigurationAndSwHardeningNeeded` means that the platform itself
+                 * needs to be updated as well. (Advisory IDs on how to do this will be included in the
+                 * `report.advisory_ids`) Such attestations should *always* be rejected. */
+                Ok(())
+            },
+            (true, QuoteStatus::SwHardeningNeeded) => {
+                /* Lets the enclave verify its own attestation. This enables us to inspect the compiler
+                 * used, and verify all software mitigations are in place. Quotes with status
+                 * `QuoteStatus::ConfigurationAndSwHardeningNeeded` represent insecure platforms and
+                 * should always be rejected. */
+                if advisories
+                    .iter()
+                    .any(|adv| !MITIGATED_SECURITY_ADVISORIES.contains(adv)) {
+                    let missing_ids = advisories
+                        .iter()
+                        .filter_map(|id|
+                            if MITIGATED_SECURITY_ADVISORIES.contains(id) {
+                                None
+                            } else {
+                                Some(id.as_str().to_string())
+                            })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    Err(Error{
+                        error_kind: ErrorKind::ReportBadQuoteStatus(isv_enclave_quote_status, None),
+                        cause: Some(format!("Not all security advisories are mitigated. Missing mitigations: {}", missing_ids).into()),
+                    })
+                } else {
+                    Ok(())
+                }
+            },
+            (_, QuoteStatus::Ok) => {
+                Ok(())
+            },
+            _ => {
+                Err(Error{
+                    error_kind: ErrorKind::ReportBadQuoteStatus(isv_enclave_quote_status, None),
+                    cause: Some(format!("Quote status of {:?} is not trustworthy", isv_enclave_quote_status).into()),
+                })
+            },
+        }
     }
 }
 
