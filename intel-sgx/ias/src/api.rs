@@ -8,6 +8,8 @@ use byteorder::{BigEndian, ReadBytesExt};
 use serde::{Serialize, Deserialize, Deserializer};
 use sgx_isa::{Attributes, Miscselect, Report};
 use std::convert::TryFrom;
+#[cfg(feature = "manipulate_attestation")]
+use std::str::FromStr;
 use std::str;
 use std::fmt;
 use std::marker::PhantomData;
@@ -461,6 +463,27 @@ pub enum QuoteStatus {
     ConfigurationNeeded,
     SwHardeningNeeded,
     ConfigurationAndSwHardeningNeeded,
+}
+
+#[cfg(feature = "manipulate_attestation")]
+impl FromStr for QuoteStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<QuoteStatus, String> {
+        match s {
+            "OK" => Ok(QuoteStatus::Ok),
+            "SIGNATURE_INVALID" => Ok(QuoteStatus::SignatureInvalid),
+            "GROUP_REVOKED" => Ok(QuoteStatus::GroupRevoked),
+            "SIGNATURE_REVOKED" => Ok(QuoteStatus::SignatureRevoked),
+            "KEY_REVOKED" => Ok(QuoteStatus::KeyRevoked),
+            "SIG_RL_VERSION_MISMATCH" => Ok(QuoteStatus::SigRlVersionMismatch),
+            "GROUP_OUT_OF_DATE" => Ok(QuoteStatus::GroupOutOfDate),
+            "CONFIGURATION_NEEDED" => Ok(QuoteStatus::ConfigurationNeeded),
+            "SW_HARDENING_NEEDED" => Ok(QuoteStatus::SwHardeningNeeded),
+            "CONFIGURATION_AND_SW_HARDENING_NEEDED" => Ok(QuoteStatus::ConfigurationAndSwHardeningNeeded),
+            _ => Err(format!("Failed to parse \"{}\" as a QuoteStatus", s)),
+        }
+    }
 }
 
 macro_rules! pif_v2_bitflags {

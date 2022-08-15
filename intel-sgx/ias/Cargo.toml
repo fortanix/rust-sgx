@@ -39,6 +39,7 @@ default = ["ias_versions"]
 ias_versions = ["ias_version_v4", "ias_version_v3"]
 ias_version_v4 = []
 ias_version_v3 = []
+manipulate_attestation = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros"] }

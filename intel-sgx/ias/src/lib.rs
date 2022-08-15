@@ -21,6 +21,9 @@ pub mod verifier;
 
 use std::fmt;
 
+#[cfg(all(feature = "manipulate_attestation", not(debug_assertions)))]
+compile_error!("The 'manipulate_attestation' feature is only available in debug mode.");
+
 struct HexPrint<'a>(&'a [u8]);
 impl<'a> fmt::Display for HexPrint<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
