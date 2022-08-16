@@ -882,7 +882,7 @@ dependencies = [
  "failure",
  "failure_derive",
  "fnv",
- "fortanix-sgx-abi",
+ "fortanix-sgx-abi 0.4.1",
  "futures 0.3.17",
  "ipc-queue",
  "lazy_static",
@@ -1085,6 +1085,12 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 [[package]]
 name = "fortanix-sgx-abi"
 version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "816a38bd53bd5c87dd7edf4f15a2ee6b989ad7a5b5e616b75d70de64ad2a1329"
+
+[[package]]
+name = "fortanix-sgx-abi"
+version = "0.5.0"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-core",
@@ -1691,7 +1697,7 @@ dependencies = [
 name = "ipc-queue"
 version = "0.2.0"
 dependencies = [
- "fortanix-sgx-abi",
+ "fortanix-sgx-abi 0.4.1",
  "futures 0.3.17",
  "static_assertions",
  "tokio 0.2.22",
