@@ -1,3 +1,39 @@
+//! This crate provides an interface for performing asynchronous usercalls in
+//! SGX enclaves. The motivation behind asynchronous usercalls and ABI
+//! documentation can be found
+//! [here](https://edp.fortanix.com/docs/api/fortanix_sgx_abi/async/index.html).
+//! The API provided here is fairly low level and is not meant for general use.
+//! These APIs can be used to implement [mio] abstractions which in turn
+//! allows us to use [tokio] in SGX enclaves!
+//!
+//! The main interface is provided through `AsyncUsercallProvider` which works
+//! in tandem with `CallbackHandler`:
+//! ```
+//! use async_usercalls::AsyncUsercallProvider;
+//! use std::{io::Result, net::TcpStream, sync::mpsc, time::Duration};
+//!
+//! let (provider, callback_handler) = AsyncUsercallProvider::new();
+//! let (tx, rx) = mpsc::sync_channel(1);
+//! // The closure is called when userspace sends back the result of the
+//! // usercall.
+//! let cancel_handle = provider.connect_stream("www.example.com:80", move |res| {
+//!     tx.send(res).unwrap();
+//! });
+//! // We can cancel the connect usercall using `cancel_handle.cancel()`, but
+//! // note that we may still get a successful result.
+//! // We need to poll `callback_handler` to make progress.
+//! loop {
+//!     let n = callback_handler.poll(Some(Duration::from_millis(100)));
+//!     if n > 0 {
+//!         break; // at least 1 callback function was executed!
+//!     }
+//! }
+//! let connect_result: Result<TcpStream> = rx.recv().unwrap();
+//! ```
+//!
+//! [mio]: https://docs.rs/mio/latest/mio/
+//! [tokio]: https://docs.rs/tokio/latest/tokio/
+
 #![feature(sgx_platform)]
 #![feature(never_type)]
 #![cfg_attr(test, feature(unboxed_closures))]
