@@ -64,3 +64,13 @@ impl Drop for ProviderCore {
         PROVIDERS.remove_provider(self.provider_id);
     }
 }
+
+pub trait ProviderId {
+    fn provider_id(&self) -> u32;
+}
+
+impl<T> ProviderId for Identified<T> {
+    fn provider_id(&self) -> u32 {
+        (self.id >> 32) as u32
+    }
+}

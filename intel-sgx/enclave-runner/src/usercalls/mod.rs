@@ -47,6 +47,10 @@ lazy_static! {
     static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
 }
 
+// This is not an event in the sense that it could be passed to `send()` or
+// `wait()` usercalls in enclave code. However, it's easier for the enclave
+// runner implementation to lump it in with events. Also note that this constant
+// is not public.
 const EV_ABORT: u64 = 0b0000_0000_0001_0000;
 
 const USERCALL_QUEUE_SIZE: usize = 16;

@@ -1,4 +1,5 @@
 use crate::hacks::{alloc_descriptor, async_queues, to_enclave, Cancel, Return, Usercall};
+use crate::provider_core::ProviderId;
 use crossbeam_channel as mpmc;
 use fortanix_sgx_abi::{EV_CANCELQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, EV_USERCALLQ_NOT_FULL};
 use ipc_queue::{self, Identified, QueueEvent, RecvError, SynchronizationError, Synchronizer};
@@ -89,10 +90,9 @@ impl ReturnHandler {
         // taking the lock should be fast.
         let provider_map = self.provider_map.lock().unwrap();
         for ret in returns {
-            let provider_id = (ret.id >> 32) as u32;
             // NOTE: some providers might decide not to receive results of usercalls they send
             // because the results are not interesting, e.g. BatchDropProvider.
-            if let Some(sender) = provider_map.get(provider_id).and_then(|entry| entry.as_ref()) {
+            if let Some(sender) = provider_map.get(ret.provider_id()).and_then(|entry| entry.as_ref()) {
                 let _ = sender.send(*ret);
             }
         }
@@ -101,6 +101,8 @@ impl ReturnHandler {
     fn run(self) {
         let mut returns = [Identified::default(); Self::RECV_BATCH_SIZE];
         loop {
+            // Block until there is a return. Then we receive any other values
+            // from the return queue **without** blocking using `try_iter()`.
             let first = match self.return_queue_rx.recv() {
                 Ok(ret) => ret,
                 Err(RecvError::Closed) => break,
