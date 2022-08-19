@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use byteorder::{BigEndian, ReadBytesExt};
+use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize, Deserializer};
 use sgx_isa::{Attributes, Miscselect, Report};
 use std::convert::TryFrom;
@@ -13,7 +14,6 @@ use std::str::FromStr;
 use std::str;
 use std::fmt;
 use std::marker::PhantomData;
-use once_cell::sync::Lazy;
 
 // The values for this enum should correspond to IAS API version numbers
 // as specified in https://www.intel.com/content/dam/develop/public/us/en/documents/sgx-attestation-api-spec.pdf.
