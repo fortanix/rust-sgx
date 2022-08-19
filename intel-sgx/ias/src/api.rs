@@ -6,7 +6,7 @@
 
 use byteorder::{BigEndian, ReadBytesExt};
 use once_cell::sync::Lazy;
-use serde::{Serialize, Deserialize, Deserializer};
+use serde::{Serialize, Deserialize};
 use sgx_isa::{Attributes, Miscselect, Report};
 use std::convert::TryFrom;
 #[cfg(feature = "manipulate_attestation")]
@@ -224,9 +224,13 @@ impl VerificationType for Verified {}
 pub struct Unverified {}
 impl VerificationType for Unverified {}
 
+trait SafeToDeserializeInto {}
+impl SafeToDeserializeInto for Unverified {}
+
 /// A response body for the IAS "verify attestation evidence" endpoint.  Refer
 /// to the IAS API Specification.
-#[derive(Serialize, Clone, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(bound(deserialize = "V: SafeToDeserializeInto"))]
 #[serde(rename_all = "camelCase")]
 pub struct VerifyAttestationEvidenceResponse<V: VerificationType = Verified> {
     pub(crate) id: String, // TODO: decimal big integer
@@ -268,74 +272,6 @@ pub struct VerifyAttestationEvidenceResponse<V: VerificationType = Verified> {
 
     #[serde(skip)]
     pub(crate) type_: PhantomData<V>
-}
-
-impl<'de> Deserialize<'de> for VerifyAttestationEvidenceResponse<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<VerifyAttestationEvidenceResponse<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            id: String, // TODO: decimal big integer
-            timestamp: String, // TODO: DateTime<UTC>, but DateTime serde doesn't
-                               // like the IAS timestamp format.
-            #[serde(default = "two", skip_serializing_if = "less_than_three")]
-            version: u64,
-            isv_enclave_quote_status: QuoteStatus,
-            #[serde(with = "serde_bytes")]
-            isv_enclave_quote_body: Vec<u8>,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            revocation_reason: Option<u32>, // TODO: enum RFC5280 CRLReason
-            #[serde(skip_serializing_if = "Option::is_none")]
-            pse_manifest_status: Option<String>, // TODO: enum per IAS spec
-            #[serde(skip_serializing_if = "Option::is_none")]
-            pse_manifest_hash: Option<String>, // TODO: base16 blob
-            #[serde(skip_serializing_if = "Option::is_none")]
-            platform_info_blob: Option<String>, // TODO: base16 blob
-            #[serde(skip_serializing_if = "Option::is_none")]
-            nonce: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none", with = "self::serde_option_bytes")]
-            epid_pseudonym: Option<Vec<u8>>, // base64
-            #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryURL")]
-            advisory_url: Option<String>,
-            #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryIDs")]
-            advisory_ids: Option<Vec<IasAdvisoryId>>,
-        }
-
-        let Dummy{
-            id,
-            timestamp,
-            version,
-            isv_enclave_quote_status,
-            isv_enclave_quote_body,
-            revocation_reason,
-            pse_manifest_status,
-            pse_manifest_hash,
-            platform_info_blob,
-            nonce,
-            epid_pseudonym,
-            advisory_url,
-            advisory_ids,
-        } = Dummy::deserialize(deserializer)?;
-        Ok(VerifyAttestationEvidenceResponse::<Unverified>{
-            id,
-            timestamp,
-            version,
-            isv_enclave_quote_status,
-            isv_enclave_quote_body,
-            revocation_reason,
-            pse_manifest_status,
-            pse_manifest_hash,
-            platform_info_blob,
-            nonce,
-            epid_pseudonym,
-            advisory_url,
-            advisory_ids,
-            type_: PhantomData
-        })
-    }
 }
 
 impl<V: VerificationType> VerifyAttestationEvidenceResponse<V> {
