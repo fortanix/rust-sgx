@@ -202,10 +202,10 @@ impl BERDecodable for AttestationEmbeddedIasReport<'static, 'static, 'static, Un
 }
 
 impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
-    /// Verify that `report` is correctly signed by a key that chains to one of the
-    /// trusted certificates in `ca_certificates`.
+    /// Verify that the ias report is correctly signed by one of the keys belonging to the certificates in `ca_certificates`
     ///
-    /// Does NOT verify the report contents.
+    /// This function only verifies that the report itself is signed by one of the CAs. It does NOT verify the report contents.
+    /// The report may indicated that the platform is out of date, or even relate to a different than the expected enclave.
     pub fn verify<C: Crypto>(self, ca_certificates: &[&[u8]]) -> Result<AttestationEmbeddedIasReport<'a, 'b, 'c>, Error> {
         // TODO: check the validity of the chain, and use the CA as the trust
         // anchor rather than the leaf. Chain verification outside the context
@@ -223,8 +223,6 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
                 .map_err(|e| Error::enclave_certificate(ErrorKind::ReportInvalidCertificate, Some(e)))?,
         };
 
-        // This could be checked in the constructor, but we don't do that so that it's possible to
-        // configure an empty cert list in no-attestation deployments.
         if ca_certificates.len() == 0 {
             return Err(Error::enclave_certificate(ErrorKind::CaNotConfigured, None::<Error>));
         }
