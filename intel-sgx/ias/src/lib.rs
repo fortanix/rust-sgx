@@ -5,9 +5,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![deny(warnings)]
+//! The ability to attest that an enclave is executing on a trustworthy platform, is a key feature
+//! of Intel SGX. This crate enables users to communicate with the IAS service to verify (EPID)
+//! attestations.
 //! The normal flow for using IAS is to create an IAS client with
 //! `client::ClientBuilder::build()`, call the `get_sig_rl` and `verify_quote`
-//! APIs, then call `verifier::verify_report`.
+//! APIs, then call `verifier::quote`.
+//!
+//! ## Feature flags
+#![doc = document_features::document_features!()]
 
 #[macro_use]
 extern crate log;

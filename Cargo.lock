@@ -732,6 +732,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-features"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d99bbe945402eb228b85cdfc7020cf7422574976861c642b28255d0a49606d79"
+
+[[package]]
 name = "dtoa"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,6 +1675,7 @@ dependencies = [
  "bitflags 1.2.1",
  "byteorder 1.3.4",
  "clap",
+ "document-features",
  "env_logger 0.9.0",
  "log 0.4.14",
  "mbedtls",
