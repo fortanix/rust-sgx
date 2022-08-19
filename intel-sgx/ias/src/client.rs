@@ -46,7 +46,7 @@ trait Header: Sized {
     fn from_value(v: &HeaderValue) -> std::result::Result<Self, Box<dyn std::error::Error>>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct IasVerificationResult {
     /// The raw report, used for signature verification
     pub raw_report: Vec<u8>,
