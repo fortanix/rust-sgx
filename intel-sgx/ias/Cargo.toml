@@ -7,31 +7,41 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[build-dependencies]
+rustc_version = "0.4.0"
+
 [dependencies]
 base64 = "0.13"
 bitflags = "1"
 byteorder = "1.0"
 document-features = "0.2.3"
 log = "0.4"
+mbedtls = { version = "0.8.0", features = ["std"], default-features = false, optional = true }
 once_cell = "1.13.0"
 percent-encoding = "2.1"
+pkix = "0.1"
 serde_bytes = "0.11"
 serde-bytes-repr = "0.1"
 serde_json = "1"
 serde = { version = "1.0.7", features = ["derive"] }
-url = "2.2"
-
-mbedtls = { version = "0.8.0", features = ["std"], default-features = false, optional = true }
-pkix = "0.1"
-
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.1", path = "../sgx_pkix" }
-
-[build-dependencies]
-rustc_version = "0.4.0"
+url = "2.2"
 
 [target.'cfg(not(target_env="sgx"))'.dependencies]
 reqwest = { version = "0.11", features = ["json"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros"] }
+
+[target.'cfg(not(target_env="sgx"))'.dev-dependencies]
+clap = "2.23.3"
+env_logger = "0.9.0"
+
+report-test = { version = "0.3", path = "../report-test" }
+aesm-client = { version = "0.5", features = ["sgxs"], path = "../aesm-client" }
+sgxs = { version = "0.7", path = "../sgxs" }
+sgxs-loaders = { version = "0.3", path = "../sgxs-loaders" }
 
 [features]
 ## Enables building a client to contact the IAS service
@@ -50,18 +60,6 @@ ias_version_v3 = []
 ##   SW_HARDENING_NEEDED, CONFIGURATION_AND_SW_HARDENING_NEEDED
 ## This feature is only available in debug mode
 manipulate_attestation = []
-
-[dev-dependencies]
-tokio = { version = "1", features = ["macros"] }
-
-[target.'cfg(not(target_env="sgx"))'.dev-dependencies]
-clap = "2.23.3"
-env_logger = "0.9.0"
-
-report-test = { version = "0.3", path = "../report-test" }
-aesm-client = { version = "0.5", features = ["sgxs"], path = "../aesm-client" }
-sgxs = { version = "0.7", path = "../sgxs" }
-sgxs-loaders = { version = "0.3", path = "../sgxs-loaders" }
 
 [[example]]
 name = "attestation-tool"
