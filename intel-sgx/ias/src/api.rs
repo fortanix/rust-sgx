@@ -9,9 +9,7 @@ use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use sgx_isa::{Attributes, Miscselect, Report};
 use std::convert::TryFrom;
-#[cfg(feature = "manipulate_attestation")]
-use std::str::FromStr;
-use std::str;
+use std::str::{self, FromStr};
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -478,7 +476,7 @@ impl fmt::Display for PlatformStatus {
     }
 }
 
-impl str::FromStr for PlatformStatus {
+impl FromStr for PlatformStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, ()> {
