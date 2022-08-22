@@ -527,47 +527,47 @@ mod tests {
 
     // This is a report from IAS obtained using `sdkms-cli node attest`.
     #[cfg(feature="mbedtls")]
-    const TEST_REPORT_BODY: &'static str = include_str!("../tests/data/test_report_body");
+    const TEST_REPORT_BODY: &'static str = include_str!("../../tests/data/test_report_body");
 
     // This is the IAS-issued signature on TEST_REPORT_BODY.
     #[cfg(feature="mbedtls")]
-    const TEST_REPORT_SIG: &'static [u8] = include_bytes!("../tests/data/test_report_sig");
+    const TEST_REPORT_SIG: &'static [u8] = include_bytes!("../../tests/data/test_report_sig");
 
     // This is a report from IAS obtained using `sdkms-cli node attest` with a quote status of
     // INVALID_SIGNATURE. The backend was modified to corrupt byte 112 of the QE quote output
     // (first byte of mrenclave) in the SGX attester.
     #[cfg(feature="mbedtls")]
-    const _INVALID_SIGNATURE_REPORT_BODY: &'static str = include_str!("../tests/data/invalid_signature_report_body");
+    const _INVALID_SIGNATURE_REPORT_BODY: &'static str = include_str!("../../tests/data/invalid_signature_report_body");
 
     // This is the IAS-issued signature on INVALID_SIGNATURE_REPORT_BODY.
     #[cfg(feature="mbedtls")]
-    const _INVALID_SIGNATURE_REPORT_SIG: &'static [u8] = include_bytes!("../tests/data/invalid_signature_report_sig");
+    const _INVALID_SIGNATURE_REPORT_SIG: &'static [u8] = include_bytes!("../../tests/data/invalid_signature_report_sig");
 
     // This is the IAS report signing certificate.
     #[cfg(feature="mbedtls")]
     static TEST_REPORT_SIGNING_CERT: Lazy<Vec<u8>> = Lazy::new(|| {
-        pem::pem_to_der(include_str!("../tests/data/test_report_signing_cert"),
+        pem::pem_to_der(include_str!("../../tests/data/test_report_signing_cert"),
                    Some(PEM_CERTIFICATE)).unwrap()
     });
 
     // This is a test_ca certificate with the above test report embedded.
     #[cfg(all(target_env = "sgx", feature = "mbedtls"))]
     static TEST_ENCLAVE_CERT: Lazy<Vec<u8>> = Lazy::new(|| {
-        pem::pem_to_der(include_str!("../tests/data/test_enclave_cert"),
+        pem::pem_to_der(include_str!("../../tests/data/test_enclave_cert"),
                    Some(PEM_CERTIFICATE)).unwrap()
     });
 
     // This is a test_ca certificate with the INVALID_SIGNATURE report embedded
     #[cfg(all(target_env = "sgx", feature = "mbedtls"))]
     static INVALID_SIGNATURE_ENCLAVE_CERT: Lazy<Vec<u8>> = Lazy::new(|| {
-        pem::pem_to_der(include_str!("../tests/data/invalid_signature_enclave_cert"),
+        pem::pem_to_der(include_str!("../../tests/data/invalid_signature_enclave_cert"),
                     Some(PEM_CERTIFICATE)).unwrap()
     });
 
     // This is a test_ca certificate with an IAS v2 report embedded
     #[cfg(all(target_env = "sgx", feature = "mbedtls"))]
     static WRONG_VERSION_ENCLAVE_CERT: Lazy<Vec<u8>> = Lazy::new(|| {
-        pem::pem_to_der(include_str!("../tests/data/wrong_version_enclave_cert"),
+        pem::pem_to_der(include_str!("../../tests/data/wrong_version_enclave_cert"),
                    Some(PEM_CERTIFICATE)).unwrap()
     });
 
