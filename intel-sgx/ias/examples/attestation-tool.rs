@@ -159,7 +159,7 @@ async fn main() {
                 .verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CERTIFICATE.as_slice()])
                 .and_then(|rep| {
                     rep
-                        .attestation_evidence_reponse()?
+                        .to_attestation_evidence_reponse()?
                         .verify(&IgnorePlatformState::new())
                 });
 

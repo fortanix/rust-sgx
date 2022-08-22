@@ -247,14 +247,14 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
 
     pub fn quote<C: Crypto, P: Platform>(self, ca_certificates: &[&[u8]], platform_verifier: &P) -> Result<EnclaveQuoteBody, Error> {
         Ok(self.verify::<C>(ca_certificates)?
-            .attestation_evidence_reponse()?
+            .to_attestation_evidence_reponse()?
             .verify(platform_verifier)?
             .isv_enclave_quote_body())
     }
 }
 
 impl<'a, 'b, 'c, V: VerificationType> AttestationEmbeddedIasReport<'a, 'b, 'c, V> {
-    pub fn attestation_evidence_reponse(&self) -> Result<VerifyAttestationEvidenceResponse<Unverified>, Error> {
+    pub fn to_attestation_evidence_reponse(&self) -> Result<VerifyAttestationEvidenceResponse<Unverified>, Error> {
         let mut json_de = serde_json::Deserializer::from_slice(&self.report.http_body);
         let base64_config = base64::Config::new(base64::CharacterSet::Standard, true);
         let bytefmt_json_de = ByteFmtDeserializer::new_base64(&mut json_de, base64_config);
