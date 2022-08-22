@@ -323,10 +323,12 @@ impl Platform for AutoDetect {
         // The report must be for a valid quote.
         match (for_self, isv_enclave_quote_status) {
             (false, QuoteStatus::SwHardeningNeeded) => {
-                /* We don't know how the enclave peer has been compiled. Enclaves may verify their own
-                 * attestations, so we can ignore `QuoteStatus::SwHardeningNeeded` here and rely on the
-                 * logic of enclave versions. It is of paramount importance that we only ignore
-                 * `QuoteStatus::SwHardeningNeeded` cases.
+                /* We don't know with which mitigations the enclave has been compiled. We ignore
+                 * `QuoteStatus::SwHardeningNeeded` here. When this is undesirable, the enclave logic
+                 * should make sure that enclaves always self-attest first. If need be, a new enclave
+                 * can always be compiled with the correct mitigations in place. Existing sealed data
+                 * remains accessible to the new enclave.
+                 * It is of paramount importance that we only ignore `QuoteStatus::SwHardeningNeeded` cases.
                  * `QuoteStatus::ConfigurationAndSwHardeningNeeded` means that the platform itself
                  * needs to be updated as well. (Advisory IDs on how to do this will be included in the
                  * `report.advisory_ids`) Such attestations should *always* be rejected. */
