@@ -202,11 +202,11 @@ impl BERDecodable for AttestationEmbeddedIasReport<'static, 'static, 'static, Un
 }
 
 impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
-    /// Verify that the ias report is correctly signed by one of the keys belonging to the certificates in `ca_certificates`
+    /// Verify that the ias report is correctly signed by one of the keys belonging to the certificates in `report_signing_ca`
     ///
-    /// This function only verifies that the report itself is signed by one of the CAs. It does NOT verify the report contents.
+    /// This function only verifies that the report itself is signed directly by one of the CAs. It does NOT verify the report contents.
     /// The report may indicated that the platform is out of date, or even relate to a different than the expected enclave.
-    pub fn verify<C: Crypto>(self, ca_certificates: &[&[u8]]) -> Result<AttestationEmbeddedIasReport<'a, 'b, 'c>, Error> {
+    pub fn verify<C: Crypto>(self, report_signing_ca: &[&[u8]]) -> Result<AttestationEmbeddedIasReport<'a, 'b, 'c>, Error> {
         // TODO: check the validity of the chain, and use the CA as the trust
         // anchor rather than the leaf. Chain verification outside the context
         // of TLS connection establishment does not seem to be exposed by
@@ -223,12 +223,12 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
                 .map_err(|e| Error::enclave_certificate(ErrorKind::ReportInvalidCertificate, Some(e)))?,
         };
 
-        if ca_certificates.len() == 0 {
+        if report_signing_ca.len() == 0 {
             return Err(Error::enclave_certificate(ErrorKind::CaNotConfigured, None::<Error>));
         }
 
         // Verify that the leaf cert appears in our list of trusted certificates
-        if !ca_certificates.iter().map(GenericCertificate::from_der)
+        if !report_signing_ca.iter().map(GenericCertificate::from_der)
             .any(|c| match c {
                 Ok(ref c) if c == &leaf_cert => true,
                 _ => false
@@ -245,8 +245,8 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
         })
     }
 
-    pub fn quote<C: Crypto, P: Platform>(self, ca_certificates: &[&[u8]], platform_verifier: &P) -> Result<EnclaveQuoteBody, Error> {
-        Ok(self.verify::<C>(ca_certificates)?
+    pub fn quote<C: Crypto, P: Platform>(self, report_signing_ca: &[&[u8]], platform_verifier: &P) -> Result<EnclaveQuoteBody, Error> {
+        Ok(self.verify::<C>(report_signing_ca)?
             .to_attestation_evidence_reponse()?
             .verify(platform_verifier)?
             .isv_enclave_quote_body())
@@ -271,18 +271,22 @@ impl<'a, 'b, 'c, V: VerificationType> AttestationEmbeddedIasReport<'a, 'b, 'c, V
 ///  * had REPORTDATA containing the hash of `cert`'s SubjectPublicKeyInfo
 ///
 /// If the checks pass, returns `Ok(EnclaveIdentity { ... })` with the enclave identity from the
-/// validated report. If the checks do not pass, returns an error.
+/// validated report. This proves that the enclave identified by the result of this function owns
+/// the key belonging to the certificate `cert`. If the checks do not pass, returns an error.
+///
+/// `report_signing_ca` is a list of certificates trusted to directly sign the embedded IAS report, not the
+/// certificates trusted to sign `cert`.
 ///
 /// CAUTION: This routine does not verify the certificate signature nor the standard X.509
 /// attributes. The caller is responsible for that.
-pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(ca_certificates: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclaveIdentity, Error> {
+pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(report_signing_ca: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclaveIdentity, Error> {
     let extn = cert.tbscert.get_extension(&oid::attestationEmbeddedIasReport)
         .ok_or_else(|| Error::enclave_certificate(ErrorKind::MissingIasReport, None::<Error>))?;
 
     // The extension is stored as a DER octetstring
     let quote = AttestationEmbeddedIasReport::from_der(&extn.value)
         .map_err(|e| Error::enclave_certificate(ErrorKind::ReportAsn1Parse, Some(e)))?
-        .quote::<C, _>(ca_certificates, platform_verifier)?;
+        .quote::<C, _>(report_signing_ca, platform_verifier)?;
 
     // The SGX report data must contain the SPKI hash.
     let mut expected_reportdata = [0; crypto::SHA256_DIGEST_LEN];
