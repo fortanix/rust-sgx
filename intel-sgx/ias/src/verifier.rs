@@ -303,8 +303,7 @@ pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(report_sign
 }
 
 pub fn is_supported(ias_version: IasVersion) -> bool {
-    let supported = SUPPORTED_IAS_VERSIONS.to_vec();
-    supported.contains(&ias_version)
+    SUPPORTED_IAS_VERSIONS.contains(&ias_version)
 }
 
 pub trait Platform {
