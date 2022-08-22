@@ -40,7 +40,7 @@ pub static MITIGATED_SECURITY_ADVISORIES: Lazy<Vec<IasAdvisoryId>> = Lazy::new(|
 });
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct EnclavePeer {
+pub struct EnclaveIdentity {
     pub mrenclave: Vec<u8>,
     pub mrsigner: Vec<u8>,
     pub isvprodid: u16,
@@ -49,9 +49,9 @@ pub struct EnclavePeer {
     pub miscselect: Miscselect,
 }
 
-impl From<EnclaveQuoteBody> for EnclavePeer {
-    fn from(quote: EnclaveQuoteBody) -> EnclavePeer {
-        EnclavePeer {
+impl From<EnclaveQuoteBody> for EnclaveIdentity {
+    fn from(quote: EnclaveQuoteBody) -> EnclaveIdentity {
+        EnclaveIdentity {
             mrenclave: quote.mrenclave.to_vec(),
             mrsigner: quote.mrsigner.to_vec(),
             isvprodid: quote.isvprodid,
@@ -270,12 +270,12 @@ impl<'a, 'b, 'c, V: VerificationType> AttestationEmbeddedIasReport<'a, 'b, 'c, V
 ///  * reports a valid attestation
 ///  * had REPORTDATA containing the hash of `cert`'s SubjectPublicKeyInfo
 ///
-/// If the checks pass, returns `Ok(EnclavePeer { ... })` with the enclave identity from the
+/// If the checks pass, returns `Ok(EnclaveIdentity { ... })` with the enclave identity from the
 /// validated report. If the checks do not pass, returns an error.
 ///
 /// CAUTION: This routine does not verify the certificate signature nor the standard X.509
 /// attributes. The caller is responsible for that.
-pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(ca_certificates: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclavePeer, Error> {
+pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(ca_certificates: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclaveIdentity, Error> {
     let extn = cert.tbscert.get_extension(&oid::attestationEmbeddedIasReport)
         .ok_or_else(|| Error::enclave_certificate(ErrorKind::MissingIasReport, None::<Error>))?;
 
@@ -678,7 +678,7 @@ mod tests {
         let ca_certs: Vec<&[u8]> = vec![&TEST_REPORT_SIGNING_CERT];
         let cert = GenericCertificate::from_der(TEST_ENCLAVE_CERT.as_slice()).unwrap();
         assert_eq!(verify_epid_cert_embedded_attestation::<Mbedtls, _>(&ca_certs, &cert, &IgnoreSwMitigationNeeded::new()).unwrap(),
-            EnclavePeer {
+            EnclaveIdentity {
                 mrenclave: vec![84, 7, 136, 241, 61, 74, 186, 244, 61, 186, 244, 63, 77, 70, 128, 217,
                                 38, 75, 168, 32, 172, 162, 70, 138, 135, 115, 74, 133, 78, 30, 198, 253],
                 mrsigner: vec![138, 17, 127, 251, 136, 251, 103, 211, 223, 231, 174, 57, 69, 173, 52, 191,
