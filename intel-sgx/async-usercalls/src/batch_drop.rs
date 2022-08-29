@@ -1,10 +1,9 @@
-use crate::hacks::Usercall;
 use crate::provider_core::ProviderCore;
 use ipc_queue::Identified;
 use std::cell::RefCell;
 use std::mem;
 use std::os::fortanix_sgx::usercalls::alloc::{User, UserSafe};
-use std::os::fortanix_sgx::usercalls::raw::UsercallNrs;
+use std::os::fortanix_sgx::usercalls::raw::{Usercall, UsercallNrs};
 
 pub trait BatchDroppable: private::BatchDroppable {}
 impl<T: private::BatchDroppable> BatchDroppable for T {}

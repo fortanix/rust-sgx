@@ -1,7 +1,7 @@
 use crate::batch_drop;
-use crate::hacks::MakeSend;
 use crate::io_bufs::UserBuf;
 use crate::raw::RawApi;
+use crate::utils::MakeSend;
 use crate::{AsyncUsercallProvider, CancelHandle};
 use fortanix_sgx_abi::Fd;
 use std::io;
