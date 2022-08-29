@@ -1,10 +1,9 @@
 use crate::callback::*;
-use crate::hacks::Usercall;
 use crate::{AsyncUsercallProvider, CancelHandle};
 use fortanix_sgx_abi::Fd;
 use std::io;
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
-use std::os::fortanix_sgx::usercalls::raw::UsercallNrs;
+use std::os::fortanix_sgx::usercalls::raw::{Usercall, UsercallNrs};
 
 pub trait RawApi {
     unsafe fn raw_read(

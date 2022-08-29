@@ -1,7 +1,7 @@
-use crate::duplicated::{FromSgxResult, ReturnValue};
-use crate::hacks::Return;
 use fortanix_sgx_abi::{invoke_with_usercalls, Fd, Result};
 use std::io;
+use std::os::fortanix_sgx::usercalls::raw::{Return, ReturnValue};
+use std::os::fortanix_sgx::usercalls::FromSgxResult;
 
 pub struct CbFn<T>(Box<dyn FnOnce(T) + Send + 'static>);
 

@@ -1,10 +1,12 @@
-use crate::hacks::{alloc_descriptor, async_queues, to_enclave, Cancel, Return, Usercall};
 use crate::provider_core::ProviderId;
 use crossbeam_channel as mpmc;
 use fortanix_sgx_abi::{EV_CANCELQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, EV_USERCALLQ_NOT_FULL};
 use ipc_queue::{self, Identified, QueueEvent, RecvError, SynchronizationError, Synchronizer};
 use lazy_static::lazy_static;
-use std::os::fortanix_sgx::usercalls::raw;
+use std::os::fortanix_sgx::usercalls::alloc::User;
+use std::os::fortanix_sgx::usercalls::raw::{
+    self, async_queues, Cancel, FifoDescriptor, Return, Usercall,
+};
 use std::sync::{Arc, Mutex};
 use std::{io, iter, thread};
 
@@ -54,24 +56,24 @@ lazy_static! {
 }
 
 fn init_async_queues() -> io::Result<(Sender<Usercall>, Sender<Cancel>, Receiver<Return>)> {
-    // FIXME: this is just a hack. Replace these with `User::<FifoDescriptor<T>>::uninitialized().into_raw()`
-    let usercall_q = unsafe { alloc_descriptor::<Usercall>() };
-    let cancel_q = unsafe { alloc_descriptor::<Cancel>() };
-    let return_q = unsafe { alloc_descriptor::<Return>() };
+    let usercall_q = User::<FifoDescriptor<Usercall>>::uninitialized().into_raw();
+    let cancel_q = User::<FifoDescriptor<Cancel>>::uninitialized().into_raw();
+    let return_q = User::<FifoDescriptor<Return>>::uninitialized().into_raw();
 
     let r = unsafe { async_queues(usercall_q, return_q, cancel_q) };
     if r != 0 {
         return Err(io::Error::from_raw_os_error(r));
     }
 
-    // FIXME: this is another hack, replace with `unsafe { User::<FifoDescriptor<T>>::from_raw(q) }.to_enclave()`
-    let usercall_queue = unsafe { to_enclave(usercall_q) };
-    let cancel_queue = unsafe { to_enclave(cancel_q) };
-    let return_queue = unsafe { to_enclave(return_q) };
+    let usercall_queue = unsafe { User::<FifoDescriptor<Usercall>>::from_raw(usercall_q) }.to_enclave();
+    let cancel_queue = unsafe { User::<FifoDescriptor<Cancel>>::from_raw(cancel_q) }.to_enclave();
+    let return_queue = unsafe { User::<FifoDescriptor<Return>>::from_raw(return_q) }.to_enclave();
 
-    let utx = unsafe { Sender::from_descriptor(usercall_queue, QueueSynchronizer { queue: Queue::Usercall }) };
-    let ctx = unsafe { Sender::from_descriptor(cancel_queue, QueueSynchronizer { queue: Queue::Cancel }) };
-    let rx = unsafe { Receiver::from_descriptor(return_queue, QueueSynchronizer { queue: Queue::Return }) };
+    // FIXME: once `WithId` is exported from `std::os::fortanix_sgx::usercalls::raw`, we can remove
+    // `transmute` calls here and use FifoDescriptor/WithId from std everywhere including in ipc-queue.
+    let utx = unsafe { Sender::from_descriptor(std::mem::transmute(usercall_queue), QueueSynchronizer { queue: Queue::Usercall }) };
+    let ctx = unsafe { Sender::from_descriptor(std::mem::transmute(cancel_queue), QueueSynchronizer { queue: Queue::Cancel }) };
+    let rx = unsafe { Receiver::from_descriptor(std::mem::transmute(return_queue), QueueSynchronizer { queue: Queue::Return }) };
     Ok((utx, ctx, rx))
 }
 

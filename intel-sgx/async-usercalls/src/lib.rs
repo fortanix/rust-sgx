@@ -42,13 +42,12 @@
 use crossbeam_channel as mpmc;
 use ipc_queue::Identified;
 use std::collections::HashMap;
+use std::os::fortanix_sgx::usercalls::raw::{Cancel, Return, Usercall};
 use std::sync::Mutex;
 use std::time::Duration;
 
 mod batch_drop;
 mod callback;
-mod duplicated;
-mod hacks;
 mod io_bufs;
 mod provider_api;
 mod provider_core;
@@ -56,6 +55,7 @@ mod queues;
 mod raw;
 #[cfg(test)]
 mod test_support;
+mod utils;
 
 pub use self::batch_drop::batch_drop;
 pub use self::callback::CbFn;
@@ -63,7 +63,6 @@ pub use self::io_bufs::{ReadBuffer, UserBuf, WriteBuffer};
 pub use self::raw::RawApi;
 
 use self::callback::*;
-use self::hacks::{Cancel, Return, Usercall};
 use self::provider_core::ProviderCore;
 use self::queues::*;
 
@@ -235,8 +234,8 @@ impl CallbackHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hacks::MakeSend;
     use crate::test_support::*;
+    use crate::utils::MakeSend;
     use crossbeam_channel as mpmc;
     use std::io;
     use std::net::{TcpListener, TcpStream};

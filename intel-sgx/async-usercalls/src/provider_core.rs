@@ -1,8 +1,8 @@
-use crate::hacks::{Cancel, Return, Usercall};
 use crate::queues::*;
 use crate::CancelHandle;
 use crossbeam_channel as mpmc;
 use ipc_queue::Identified;
+use std::os::fortanix_sgx::usercalls::raw::{Cancel, Return, Usercall};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 pub(crate) struct ProviderCore {
