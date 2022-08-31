@@ -205,7 +205,7 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
     /// Verify that the ias report is correctly signed by one of the keys belonging to the certificates in `report_signing_ca`
     ///
     /// This function only verifies that the report itself is signed directly by one of the CAs. It does NOT verify the report contents.
-    /// The report may indicated that the platform is out of date, or even relate to a different than the expected enclave.
+    /// The report may indicate that the platform is out of date, or even relate to a different than the expected enclave.
     pub fn verify<C: Crypto>(self, report_signing_ca: &[&[u8]]) -> Result<AttestationEmbeddedIasReport<'a, 'b, 'c>, Error> {
         // TODO: check the validity of the chain, and use the CA as the trust
         // anchor rather than the leaf. Chain verification outside the context
