@@ -245,7 +245,7 @@ impl<'a, 'b, 'c> AttestationEmbeddedIasReport<'a, 'b, 'c, Unverified> {
         })
     }
 
-    pub fn quote<C: Crypto, P: Platform>(self, report_signing_ca: &[&[u8]], platform_verifier: &P) -> Result<EnclaveQuoteBody, Error> {
+    pub fn quote<C: Crypto, P: PlatformVerifier>(self, report_signing_ca: &[&[u8]], platform_verifier: &P) -> Result<EnclaveQuoteBody, Error> {
         Ok(self.verify::<C>(report_signing_ca)?
             .to_attestation_evidence_reponse()?
             .verify(platform_verifier)?
@@ -279,7 +279,7 @@ impl<'a, 'b, 'c, V: VerificationType> AttestationEmbeddedIasReport<'a, 'b, 'c, V
 ///
 /// CAUTION: This routine does not verify the certificate signature nor the standard X.509
 /// attributes. The caller is responsible for that.
-pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: Platform>(report_signing_ca: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclaveIdentity, Error> {
+pub fn verify_epid_cert_embedded_attestation<C: Crypto, P: PlatformVerifier>(report_signing_ca: &[&[u8]], cert: &GenericCertificate, platform_verifier: &P) -> Result<EnclaveIdentity, Error> {
     let extn = cert.tbscert.get_extension(&oid::attestationEmbeddedIasReport)
         .ok_or_else(|| Error::enclave_certificate(ErrorKind::MissingIasReport, None::<Error>))?;
 
@@ -306,7 +306,7 @@ pub fn is_supported(ias_version: IasVersion) -> bool {
     SUPPORTED_IAS_VERSIONS.contains(&ias_version)
 }
 
-pub trait Platform {
+pub trait PlatformVerifier {
     fn verify(&self, for_self: bool, nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, advisories: &Vec<IasAdvisoryId>) -> Result<(), Error>;
 }
 
@@ -318,7 +318,7 @@ impl AutoDetect {
     }
 }
 
-impl Platform for AutoDetect {
+impl PlatformVerifier for AutoDetect {
     fn verify(&self, for_self: bool, _nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
         // The report must be for a valid quote.
         match (for_self, isv_enclave_quote_status) {
@@ -398,7 +398,7 @@ impl VerifyAttestationEvidenceResponse<Unverified> {
         resp
     }
 
-    pub fn verify<P: Platform>(self, platform_verifier: &P) -> Result<VerifyAttestationEvidenceResponse, Error> {
+    pub fn verify<P: PlatformVerifier>(self, platform_verifier: &P) -> Result<VerifyAttestationEvidenceResponse, Error> {
         #[cfg(feature = "manipulate_attestation")]
         let resp = self.manipulate_attestation();
 
@@ -489,7 +489,7 @@ mod tests {
         }
     }
 
-    impl Platform for NoSwMitigationInPlace {
+    impl PlatformVerifier for NoSwMitigationInPlace {
         fn verify(&self, _for_self: bool, _nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, _advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
             match isv_enclave_quote_status {
                 QuoteStatus::Ok => Ok(()),
@@ -514,7 +514,7 @@ mod tests {
         }
     }
 
-    impl Platform for IgnoreSwMitigationNeeded {
+    impl PlatformVerifier for IgnoreSwMitigationNeeded {
         fn verify(&self, _for_self: bool, _nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, _advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
             match isv_enclave_quote_status {
                 QuoteStatus::Ok | QuoteStatus::SwHardeningNeeded => Ok(()),

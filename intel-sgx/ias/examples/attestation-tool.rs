@@ -12,7 +12,7 @@ use std::mem;
 use std::str;
 
 use ias::api::{ENCLAVE_QUOTE_BODY_LEN, IasAdvisoryId, IasVersion, LATEST_IAS_VERSION, PlatformStatus, QuoteStatus, Unverified, VerifyAttestationEvidenceRequest};
-use ias::verifier::{AttestationEmbeddedIasReport, Error, Platform};
+use ias::verifier::{AttestationEmbeddedIasReport, Error, PlatformVerifier};
 use ias::verifier::crypto::Mbedtls;
 use ias::client::ClientBuilder;
 use aesm_client::{AesmClient, QuoteType};
@@ -43,7 +43,7 @@ impl IgnorePlatformState {
     }
 }
 
-impl Platform for IgnorePlatformState {
+impl PlatformVerifier for IgnorePlatformState {
     fn verify(&self, _for_self: bool, _nonce: &Option<String>, _isv_enclave_quote_status: QuoteStatus, _advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
         Ok(())
     }
