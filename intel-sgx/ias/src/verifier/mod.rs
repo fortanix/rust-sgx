@@ -26,7 +26,17 @@ use std::result::Result;
 pub mod crypto;
 pub use self::crypto::private::Crypto;
 
-pub static MITIGATED_SECURITY_ADVISORIES: Lazy<Vec<IasAdvisoryId>> = Lazy::new(|| {
+/// Collection of software hardening techniques applied based on the Rust compiler used to compile
+/// this crate. Note that this may paint an incomplete picture. Additional security measures may be
+/// required. For example:
+///  - INTEL-SA-00334 (LVI): All software within the enclave needs to be compiled with LVI
+///  mitigations enabled. This includes for example C source code linked in. This crate cannot
+///  detect which C compiler would be used nor whether LVI mitigations would be applied.
+///  - INTEL-SA-00615 (MMIO Stale Data): Enclaves must take additional security measures when
+///  writing data to userspace. Recent Rust compilers do this automatically when the proper
+///  abstractions are being used. When enclaves access userspace directly, breaking these
+///  abstractions, additional security measures may need to be taken.
+pub static SW_MITIGATED_SECURITY_ADVISORIES: Lazy<Vec<IasAdvisoryId>> = Lazy::new(|| {
     #[allow(unused_mut)]
     let mut v: Vec<IasAdvisoryId> = Vec::new();
 
