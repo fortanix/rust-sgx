@@ -310,69 +310,6 @@ pub trait PlatformVerifier {
     fn verify(&self, for_self: bool, nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, advisories: &Vec<IasAdvisoryId>) -> Result<(), Error>;
 }
 
-pub struct AutoDetect;
-
-impl AutoDetect {
-    pub fn new() -> AutoDetect {
-        AutoDetect {}
-    }
-}
-
-impl PlatformVerifier for AutoDetect {
-    fn verify(&self, for_self: bool, _nonce: &Option<String>, isv_enclave_quote_status: QuoteStatus, advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
-        // The report must be for a valid quote.
-        match (for_self, isv_enclave_quote_status) {
-            (false, QuoteStatus::SwHardeningNeeded) => {
-                /* We don't know with which mitigations the enclave has been compiled. We ignore
-                 * `QuoteStatus::SwHardeningNeeded` here. When this is undesirable, the enclave logic
-                 * should make sure that enclaves always self-attest first. If need be, a new enclave
-                 * can always be compiled with the correct mitigations in place. Existing sealed data
-                 * remains accessible to the new enclave.
-                 * It is of paramount importance that we only ignore `QuoteStatus::SwHardeningNeeded` cases.
-                 * `QuoteStatus::ConfigurationAndSwHardeningNeeded` means that the platform itself
-                 * needs to be updated as well. (Advisory IDs on how to do this will be included in the
-                 * `report.advisory_ids`) Such attestations should *always* be rejected. */
-                Ok(())
-            },
-            (true, QuoteStatus::SwHardeningNeeded) => {
-                /* Lets the enclave verify its own attestation. This enables us to inspect the compiler
-                 * used, and verify all software mitigations are in place. Quotes with status
-                 * `QuoteStatus::ConfigurationAndSwHardeningNeeded` represent insecure platforms and
-                 * should always be rejected. */
-                if advisories
-                    .iter()
-                    .any(|adv| !MITIGATED_SECURITY_ADVISORIES.contains(adv)) {
-                    let missing_ids = advisories
-                        .iter()
-                        .filter_map(|id|
-                            if MITIGATED_SECURITY_ADVISORIES.contains(id) {
-                                None
-                            } else {
-                                Some(id.as_str().to_string())
-                            })
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    Err(Error{
-                        error_kind: ErrorKind::ReportBadQuoteStatus(isv_enclave_quote_status, None),
-                        cause: Some(format!("Not all security advisories are mitigated. Missing mitigations: {}", missing_ids).into()),
-                    })
-                } else {
-                    Ok(())
-                }
-            },
-            (_, QuoteStatus::Ok) => {
-                Ok(())
-            },
-            _ => {
-                Err(Error{
-                    error_kind: ErrorKind::ReportBadQuoteStatus(isv_enclave_quote_status, None),
-                    cause: Some(format!("Quote status of {:?} is not trustworthy", isv_enclave_quote_status).into()),
-                })
-            },
-        }
-    }
-}
-
 impl VerifyAttestationEvidenceResponse<Unverified> {
     #[cfg(feature = "manipulate_attestation")]
     fn manipulate_attestation(self) -> Self {
