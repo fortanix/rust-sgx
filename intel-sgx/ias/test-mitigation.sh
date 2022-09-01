@@ -23,34 +23,51 @@ function remove_toolchain {
 
 function test_load_value_injection {
     elf=$1
+    toolchain=$2
     if objdump --disassemble=main ${elf} | grep -q lfence; then
-        echo "Load value injection (LVI):                   [Ok]"
+        out="mitigated"
+        echo "Load value injection (LVI):                   [Ok] ${toolchain}"
     else
-        echo "Load value injection (LVI):                 [FAIL]"
+        out="not mitigated"
+        echo "Load value injection (LVI):                 [FAIL] ${toolchain}"
     fi
 }
 
 function test_stale_data_reads_from_apic {
     elf=$1
+    toolchain=$2
     if readelf -s --wide ${elf} | grep -q copy_from_userspace; then
-        echo "Stale Data reads from xAPIC (AEPIC Leak):     [Ok]"
+        echo "Stale Data reads from xAPIC (AEPIC Leak):     [Ok] ${toolchain}"
     else
-        echo "Stale Data reads from xAPIC (AEPIC Leak):   [FAIL]"
+        echo "Stale Data reads from xAPIC (AEPIC Leak):   [FAIL] ${toolchain}"
     fi
 }
 
 function test_stale_data_reads {
     elf=$1
+    toolchain=$2
     if readelf -s --wide ${elf} | grep -q copy_to_userspace; then
-        echo "MMIO Stale Data reads:                        [Ok]"
+        echo "MMIO Stale Data reads:                        [Ok] ${toolchain}"
     else
-        echo "MMIO Stale Data reads:                      [FAIL]"
+        echo "MMIO Stale Data reads:                      [FAIL] ${toolchain}"
     fi
+}
+
+function build_enclave {
+    toolchain=$1
+
+    dir=`mktemp -d`
+    pushd ${dir} >> /dev/null
+    cargo +${toolchain} new app >> /dev/null 2> /dev/null
+    pushd app >> /dev/null
+    cargo +${toolchain} build --target x86_64-fortanix-unknown-sgx >> /dev/null 2> /dev/null
+    popd >> /dev/null
+    popd >> /dev/null
+    out=${dir}/app/target/x86_64-fortanix-unknown-sgx/debug/app
 }
 
 function test_mitigations {
     toolchain=$1
-    cd `mktemp -d`
 
     echo "Testing toolchain ${toolchain}"
 
@@ -58,38 +75,51 @@ function test_mitigations {
     install_toolchain ${toolchain}
 
     # Create enclave
-    cargo +${toolchain} new app >> /dev/null 2> /dev/null
-    cd app
-    cargo +${toolchain} build --target x86_64-fortanix-unknown-sgx >> /dev/null 2> /dev/null
+    build_enclave ${toolchain}
+    enclave_path=${out}
 
     # Test mitigations
-    test_load_value_injection target/x86_64-fortanix-unknown-sgx/debug/app
-    test_stale_data_reads target/x86_64-fortanix-unknown-sgx/debug/app
-    test_stale_data_reads_from_apic target/x86_64-fortanix-unknown-sgx/debug/app
+    test_load_value_injection ${enclave_path}
+    test_stale_data_reads ${enclave_path}
+    test_stale_data_reads_from_apic ${enclave_path}
 
     # Remove toolchain (if freshly installed)
     remove_toolchain ${toolchain}
 }
 
+function verify_mitigation {
+    vuln=$1
+    toolchain=$2
+
+    build_enclave ${toolchain}
+    enclave_path=${out}
+    vers=`rustc +${toolchain} -V`
+    ${vuln} ${enclave_path} "${toolchain} ($vers)"
+}
+
 function list_mitigations {
     echo "List mitigations"
+    echo "Installing toolchains"
+    install_toolchain nightly-2020-06-08
+    install_toolchain nightly-2020-06-09
+    install_toolchain nightly-2022-06-25
+    install_toolchain nightly-2022-06-26
+    install_toolchain nightly-2022-08-20
+    install_toolchain nightly-2022-08-21
 
-    # Last toolchain without LVI
-    test_mitigations nightly-2020-06-08
-    # First toolchain with LVI
-    test_mitigations nightly-2020-06-09
+    echo "[ Load Value Injection ]"
+    verify_mitigation test_load_value_injection nightly-2020-06-08
+    verify_mitigation test_load_value_injection nightly-2020-06-09
     echo ""
 
-    # Last toolchain without MMIO Stale Data Reads
-    test_mitigations nightly-2022-06-25
-    # First toolchain with MMIO Stale Data Reads
-    test_mitigations nightly-2022-06-26
+    echo "[ MMIO Stale Data Reads ]"
+    verify_mitigation test_stale_data_reads nightly-2022-06-25
+    verify_mitigation test_stale_data_reads nightly-2022-06-26
     echo ""
 
-    # Last toolchain with Stale Data Reads for xAPIC
-    test_mitigations nightly-2022-08-20
-    # First toolchain with Stale Data Reads for xAPIC
-    test_mitigations nightly-2022-08-21
+    echo "[ Stale Data Reads for xAPIC ]"
+    verify_mitigation test_stale_data_reads_from_apic nightly-2022-08-20
+    verify_mitigation test_stale_data_reads_from_apic nightly-2022-08-21
 }
 
 if (( $# == 0 )); then
