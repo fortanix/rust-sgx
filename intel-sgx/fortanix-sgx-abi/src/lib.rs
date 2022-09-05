@@ -441,6 +441,9 @@ impl Usercalls {
 }
 
 /// The absolute address of a TCS in the current enclave.
+///
+/// To ensure a TCS struct will never be located at address 0, a TCS struct should not be located
+/// at the beginning of an enclave.
 // FIXME: `u8` should be some `extern type` instead.
 #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 pub type Tcs = NonNull<u8>;
