@@ -181,7 +181,7 @@ macro_rules! check_size {
 }
 
 impl<'a> LayoutInfo<'a> {
-    // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/src/libstd/sys/sgx/abi/entry.S
+    // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S
     fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
         let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
             .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
