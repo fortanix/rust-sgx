@@ -169,11 +169,11 @@ mod tests {
             }
         }
 
-        fn send(&self, val: T) -> Result<(), broadcast::SendError<T>> {
+        fn send(&self, val: T) -> Result<(), broadcast::error::SendError<T>> {
             self.tx.send(val).map(|_| ())
         }
 
-        async fn recv(&self) -> Result<T, broadcast::RecvError> {
+        async fn recv(&self) -> Result<T, broadcast::error::RecvError> {
             let mut rx = self.rx.lock().await;
             rx.recv().await
         }

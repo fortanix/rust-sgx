@@ -21,7 +21,7 @@ static_assertions = "1.1.0"
 
 [target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
 futures = { version = "0.3", features = ["compat", "io-compat"] }
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
 
 [package.metadata.fortanix-sgx]
 # set number of threads so tests can run properly
