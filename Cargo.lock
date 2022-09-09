@@ -1572,7 +1572,7 @@ dependencies = [
  "itoa 0.4.6",
  "log 0.4.14",
  "net2",
- "rustc_version 0.2.3",
+ "rustc_version",
  "time 0.1.44",
  "tokio 0.1.22",
  "tokio-buf",
@@ -1684,7 +1684,6 @@ dependencies = [
  "pkix",
  "report-test",
  "reqwest 0.11.11",
- "rustc_version 0.4.0",
  "serde",
  "serde-bytes-repr",
  "serde_bytes",
@@ -2544,7 +2543,7 @@ checksum = "f842b1982eb6c2fe34036a4fbfb06dd185a3f5c8edfaacdf7d1ea10b07de6252"
 dependencies = [
  "lock_api 0.3.4",
  "parking_lot_core 0.6.2",
- "rustc_version 0.2.3",
+ "rustc_version",
 ]
 
 [[package]]
@@ -2568,7 +2567,7 @@ dependencies = [
  "cloudabi",
  "libc",
  "redox_syscall 0.1.57",
- "rustc_version 0.2.3",
+ "rustc_version",
  "smallvec 0.6.13",
  "winapi 0.3.9",
 ]
@@ -3253,16 +3252,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
 dependencies = [
- "semver 0.9.0",
-]
-
-[[package]]
-name = "rustc_version"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
-dependencies = [
- "semver 1.0.13",
+ "semver",
 ]
 
 [[package]]
@@ -3353,12 +3343,6 @@ checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 dependencies = [
  "semver-parser",
 ]
-
-[[package]]
-name = "semver"
-version = "1.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93f6841e709003d68bb2deee8c343572bf446003ec20a583e76f7b15cebf3711"
 
 [[package]]
 name = "semver-parser"
