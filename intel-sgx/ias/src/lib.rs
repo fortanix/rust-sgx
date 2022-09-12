@@ -23,6 +23,7 @@ extern crate bitflags;
 pub mod api;
 #[cfg(feature = "client")]
 pub mod client;
+pub mod sgx_isa;
 pub mod verifier;
 
 use std::fmt;
