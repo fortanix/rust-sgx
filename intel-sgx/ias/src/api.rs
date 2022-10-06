@@ -130,7 +130,7 @@ impl EnclaveQuoteBody {
 
     // Report of the Enclave being attested.
     // key_id and mac are required parameter hence have to pass default value for them
-    // as these value are not present in EnclaveQuoteBody
+    // as these values are not present in EnclaveQuoteBody
     pub fn get_report(self) -> Report {
         let EnclaveQuoteBody{cpusvn, miscselect, _reserved1, attributes, mrenclave, _reserved2, mrsigner, _reserved3, isvprodid, isvsvn, _reserved4, reportdata, ..} = self;
         Report {
