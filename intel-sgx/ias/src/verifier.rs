@@ -6,6 +6,7 @@
 
 use crate::api::{QuoteStatus, PlatformStatus};
 use pkix::FromDer;
+use pkix::types::DerSequence;
 use pkix::x509::GenericCertificate;
 use sgx_pkix::attestation::AttestationEmbeddedIasReport;
 use sgx_isa::{AttributesFlags, Miscselect};
@@ -120,13 +121,13 @@ impl fmt::Display for ErrorKind {
 /// trusted certificates in `ca_certificates`.
 ///
 /// Does NOT verify the report contents.
-pub fn verify_report<'a, C: Crypto>(ca_certificates: &[&[u8]], report: &AttestationEmbeddedIasReport<'a, 'a, 'a>) -> Result<(), Error> {
+pub(crate) fn verify_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8], cert_chain: &Vec<DerSequence>, ca_certificates: &[&[u8]]) -> Result<(), Error> {
     // TODO: check the validity of the chain, and use the CA as the trust
     // anchor rather than the leaf. Chain verification outside the context
     // of TLS connection establishment does not seem to be exposed by
     // either the rust openssl or mbedtls bindings.
 
-    let leaf_cert = match report.certificates.first() {
+    let leaf_cert = match cert_chain.first() {
         None => return Err(Error::enclave_certificate(ErrorKind::ReportNoCertificate, None::<Error>)),
         Some(cert) => GenericCertificate::from_der(cert)
             .map_err(|e| Error::enclave_certificate(ErrorKind::ReportInvalidCertificate, Some(e)))?,
@@ -147,10 +148,14 @@ pub fn verify_report<'a, C: Crypto>(ca_certificates: &[&[u8]], report: &Attestat
         return Err(Error::enclave_certificate(ErrorKind::ReportUntrustedCertificate, None::<Error>));
     }
 
-    C::rsa_sha256_verify(leaf_cert.tbscert.spki.as_ref(), &report.http_body, &report.report_sig)
+    C::rsa_sha256_verify(leaf_cert.tbscert.spki.as_ref(), &raw_report, report_sig)
         .map_err(|e| Error::enclave_certificate(ErrorKind::ReportBadSignature, Some(e)))?;
 
     Ok(())
+}
+
+pub fn verify_report<'a, C: Crypto>(ca_certificates: &[&[u8]], report: &AttestationEmbeddedIasReport<'a, 'a, 'a>) -> Result<(), Error> {
+    verify_raw_report::<C>(&report.http_body, &report.report_sig, &report.certificates, ca_certificates)
 }
 
 #[cfg(all(test, feature = "mbedtls"))]

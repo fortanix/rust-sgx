@@ -47,4 +47,4 @@ sgxs-loaders = { version = "0.3", path = "../sgxs-loaders" }
 
 [[example]]
 name = "attestation-tool"
-required-features = ["client"]
+required-features = ["client", "mbedtls"]

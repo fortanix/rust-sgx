@@ -10,9 +10,11 @@ extern crate clap;
 use std::fmt;
 use std::str;
 
+use aesm_client::{AesmClient, QuoteType};
 use ias::api::{IasVersion, LATEST_IAS_VERSION, PlatformStatus, VerifyAttestationEvidenceRequest};
 use ias::client::ClientBuilder;
-use aesm_client::{AesmClient, QuoteType};
+use ias::verifier::crypto::Mbedtls;
+use pkix::pem::{self, PEM_CERTIFICATE};
 use sgxs_loaders::isgx::Device as IsgxDevice;
 use sgx_isa::Targetinfo;
 
@@ -22,8 +24,14 @@ const IAS_DEV_OLD_URL: &'static str = "https://test-as.sgx.trustedservices.intel
 const IAS_PROD_URL: &'static str = "https://api.trustedservices.intel.com/sgx/";
 const IAS_DEV_URL: &'static str = "https://api.trustedservices.intel.com/sgx/dev/";
 
-const REPORT_BODY_HEADER_SIZE: usize = 48; // the part not from enclave's REPORT
 const REPORT_SIZE_TRUNCATED: usize = 384; // without KEYID, MAC
+
+lazy_static::lazy_static!{
+    // This is the IAS report signing certificate.
+    static ref TEST_REPORT_SIGNING_CERT: Vec<u8> =
+        pem::pem_to_der(include_str!("../tests/data/reports/test_report_signing_cert"),
+                Some(PEM_CERTIFICATE)).unwrap();
+}
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -128,25 +136,33 @@ async fn main() {
 
     match ias_client.verify_quote(quote.quote()).await {
         Ok(response) => {
-            let report = response.report;
+            let report = response
+                .report::<Mbedtls>(&[TEST_REPORT_SIGNING_CERT.as_slice()])
+                .expect("Corrupt report");
 
-            let pstatus = report.platform_info_blob.as_ref()
+            let pstatus = report.platform_info_blob().as_ref()
                 .map(|v| v.parse::<PlatformStatus>().map_err(|_| v.to_owned()));
 
             println!("");
             println!("IAS report contents:");
-            println!("  id: {}", report.id);
-            println!("  version: {}", report.version);
-            println!("  isv_enclave_quote_status: {:?}", report.isv_enclave_quote_status);
-            println!("  isv_enclave_quote_body header: {}", HexPrint(&report.isv_enclave_quote_body[0..REPORT_BODY_HEADER_SIZE]));
-            println!("  revocation_resason: {:?}", report.revocation_reason);
-            println!("  pse_manifest_status: {:?}", report.pse_manifest_status);
-            println!("  pse_manifest_hash: {:?}", report.pse_manifest_hash);
-            println!("  platform_info_blob: {:?}", report.platform_info_blob);
-            println!("  nonce: {:?}", report.nonce);
-            println!("  epid_pseudonym: {}", report.epid_pseudonym.as_ref().map_or_else(|| Box::new("None") as Box<dyn fmt::Display>, |v| Box::new(HexPrint(&v))));
+            println!("  id: {}", report.id());
+            println!("  version: {}", report.version());
+            println!("  isv_enclave_quote_status: {:?}", report.isv_enclave_quote_status());
+            println!("  isv_enclave_quote_body header");
+            println!("    version: {}", report.isv_enclave_quote_body().version);
+            println!("    signature type: {}", report.isv_enclave_quote_body().signature_type);
+            println!("    gid: {}", HexPrint(&report.isv_enclave_quote_body().gid));
+            println!("    isvsvn qe: {}", report.isv_enclave_quote_body().isvsvn_qe);
+            println!("    isvsvn pce: {}", report.isv_enclave_quote_body().isvsvn_pce);
+            println!("    basename: {}", HexPrint(&report.isv_enclave_quote_body().basename));
+            println!("  revocation_resason: {:?}", report.revocation_reason());
+            println!("  pse_manifest_status: {:?}", report.pse_manifest_status());
+            println!("  pse_manifest_hash: {:?}", report.pse_manifest_hash());
+            println!("  platform_info_blob: {:?}", report.platform_info_blob());
+            println!("  nonce: {:?}", report.nonce());
+            println!("  epid_pseudonym: {}", report.epid_pseudonym().as_ref().map_or_else(|| Box::new("None") as Box<dyn fmt::Display>, |v| Box::new(HexPrint(&v))));
 
-            if pstatus.is_some() || response.advisory_url.is_some() || response.advisory_ids.is_some() {
+            if pstatus.is_some() || response.advisory_url.is_some() || response.advisory_ids.is_empty() {
                 println!("");
             }
 
@@ -159,8 +175,8 @@ async fn main() {
                 println!("Advisory URL: {}", s);
             }
 
-            if let Some(ref s) = response.advisory_ids {
-                println!("Advisory IDs: {}", s);
+            if !response.advisory_ids.is_empty() {
+                println!("Advisory IDs: {}", response.advisory_ids.iter().map(|adv| adv.as_str().to_string()).collect::<Vec<String>>().join(", "));
             }
 
             if matches.is_present("DUMP") {

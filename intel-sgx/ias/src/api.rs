@@ -4,11 +4,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use byteorder::{BigEndian, ReadBytesExt};
+use serde::{Serialize, Deserialize};
 use sgx_isa::{Attributes, Miscselect, Report};
 use std::str;
 use std::fmt;
-use byteorder::{BigEndian, ReadBytesExt};
-use serde::{Serialize, Deserialize};
+use std::marker::PhantomData;
+
+#[cfg(feature = "client")]
+use {
+    super::verifier::{self, Crypto, Error, ErrorKind},
+    pkix::types::DerSequence,
+};
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum IasVersion {
@@ -163,9 +170,9 @@ fn less_than_three(&v: &u64) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IasAdvisoryId(pub String);
 
-impl From<String> for IasAdvisoryId {
-    fn from(s: String) -> Self {
-        IasAdvisoryId(s)
+impl From<&str> for IasAdvisoryId {
+    fn from(s: &str) -> Self {
+        IasAdvisoryId(s.to_owned())
     }
 }
 
@@ -184,48 +191,172 @@ impl std::cmp::PartialEq for IasAdvisoryId {
 
 impl std::cmp::Eq for IasAdvisoryId {}
 
+impl IasAdvisoryId {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+}
+
+pub trait VerificationType {}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct VerifiedSig {}
+impl VerificationType for VerifiedSig {}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub(crate) struct Unverified {}
+impl VerificationType for Unverified {}
+
+trait SafeToDeserializeInto {}
+impl SafeToDeserializeInto for Unverified {}
+
 /// A response body for the IAS "verify attestation evidence" endpoint.  Refer
 /// to the IAS API Specification.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
+#[serde(bound(deserialize = "V: SafeToDeserializeInto"))]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAttestationEvidenceResponse {
-    pub id: String, // TODO: decimal big integer
+pub struct VerifyAttestationEvidenceResponse<V: VerificationType = VerifiedSig> {
+    id: String, // TODO: decimal big integer
 
-    pub timestamp: String, // TODO: DateTime<UTC>, but DateTime serde doesn't
+    timestamp: String, // TODO: DateTime<UTC>, but DateTime serde doesn't
                            // like the IAS timestamp format.
 
     #[serde(default = "two", skip_serializing_if = "less_than_three")]
-    pub version: u64,
+    version: u64,
 
-    pub isv_enclave_quote_status: QuoteStatus,
+    isv_enclave_quote_status: QuoteStatus,
 
     #[serde(with = "serde_bytes")]
-    pub isv_enclave_quote_body: Vec<u8>,
+    isv_enclave_quote_body: Vec<u8>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub revocation_reason: Option<u32>, // TODO: enum RFC5280 CRLReason
+    revocation_reason: Option<u32>, // TODO: enum RFC5280 CRLReason
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pse_manifest_status: Option<String>, // TODO: enum per IAS spec
+    pse_manifest_status: Option<String>, // TODO: enum per IAS spec
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pse_manifest_hash: Option<String>, // TODO: base16 blob
+    pse_manifest_hash: Option<String>, // TODO: base16 blob
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub platform_info_blob: Option<String>, // TODO: base16 blob
+    platform_info_blob: Option<String>, // TODO: base16 blob
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nonce: Option<String>,
+    nonce: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", with = "self::serde_option_bytes")]
-    pub epid_pseudonym: Option<Vec<u8>>,
+    epid_pseudonym: Option<Vec<u8>>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryURL")]
-    pub advisory_url: Option<String>,
+    advisory_url: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryIDs")]
-    pub advisory_ids: Option<Vec<IasAdvisoryId>>,
+    advisory_ids: Option<Vec<IasAdvisoryId>>,
+
+    #[serde(skip)]
+    type_: PhantomData<V>
 }
+
+impl<V: VerificationType> VerifyAttestationEvidenceResponse<V> {
+    pub fn advisory_url(&self) -> &Option<String> {
+        &self.advisory_url
+    }
+
+    pub fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
+        &self.advisory_ids
+    }
+}
+
+impl VerifyAttestationEvidenceResponse {
+    #[cfg(feature = "client")]
+    pub fn from_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8], cert_chain: &Vec<DerSequence>, ca_certificates: &[&[u8]]) -> Result<Self, Error> {
+        // serde JSON deserialize, but binary data is Base64-encoded strings
+        let mut deser = serde_json::Deserializer::from_slice(&raw_report);
+        let deser = serde_bytes_repr::ByteFmtDeserializer::new_base64(&mut deser, base64::Config::new(base64::CharacterSet::Standard, true));
+        let resp: VerifyAttestationEvidenceResponse<Unverified> = VerifyAttestationEvidenceResponse::deserialize(deser)
+            .map_err(|e| Error { error_kind: ErrorKind::ReportJsonParse, cause: Some(Box::new(e)) })?;
+
+        verifier::verify_raw_report::<C>(raw_report, report_sig, cert_chain, ca_certificates)?;
+
+        let VerifyAttestationEvidenceResponse::<Unverified> {
+            id,
+            timestamp,
+            version,
+            isv_enclave_quote_status,
+            isv_enclave_quote_body,
+            revocation_reason,
+            pse_manifest_status,
+            pse_manifest_hash,
+            platform_info_blob,
+            nonce,
+            epid_pseudonym,
+            advisory_url,
+            advisory_ids,
+            type_: _,
+        } = resp;
+
+        Ok(VerifyAttestationEvidenceResponse{
+            id,
+            timestamp,
+            version,
+            isv_enclave_quote_status,
+            isv_enclave_quote_body,
+            revocation_reason,
+            pse_manifest_status,
+            pse_manifest_hash,
+            platform_info_blob,
+            nonce,
+            epid_pseudonym,
+            advisory_url,
+            advisory_ids,
+            type_: PhantomData,
+        })
+    }
+}
+
+impl VerifyAttestationEvidenceResponse {
+    pub fn id(&self) -> &String {
+        &self.id
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    pub fn isv_enclave_quote_status(&self) -> QuoteStatus {
+        self.isv_enclave_quote_status
+    }
+
+    pub fn isv_enclave_quote_body(&self) -> EnclaveQuoteBody {
+        EnclaveQuoteBody::try_copy_from(&self.isv_enclave_quote_body)
+            .expect("Validated at VerifyAttestationEvidenceResponse verification time")
+    }
+
+    pub fn revocation_reason(&self) -> Option<u32> {
+        self.revocation_reason
+    }
+
+    pub fn pse_manifest_status(&self) -> &Option<String> {
+        &self.pse_manifest_status
+    }
+
+    pub fn pse_manifest_hash(&self) -> &Option<String> {
+        &self.pse_manifest_hash
+    }
+
+    pub fn platform_info_blob(&self) -> &Option<String> {
+        &self.platform_info_blob
+    }
+
+    pub fn nonce(&self) -> &Option<String> {
+        &self.nonce
+    }
+
+    pub fn epid_pseudonym(&self) -> &Option<Vec<u8>> {
+        &self.epid_pseudonym
+    }
+}
+
 
 /// Attestation verification status enum. Refer to "Attestation Verification
 /// Report" in the IAS API specification.
