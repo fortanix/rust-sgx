@@ -160,6 +160,30 @@ fn less_than_three(&v: &u64) -> bool {
     v < 3
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IasAdvisoryId(pub String);
+
+impl From<String> for IasAdvisoryId {
+    fn from(s: String) -> Self {
+        IasAdvisoryId(s)
+    }
+}
+
+impl std::cmp::PartialEq for IasAdvisoryId {
+    fn eq(&self, other: &Self) -> bool {
+        let IasAdvisoryId(s) = self;
+        let IasAdvisoryId(o) = other;
+
+        s.to_uppercase() == o.to_uppercase()
+    }
+
+    fn ne(&self, other: &IasAdvisoryId) -> bool {
+        !self.eq(other)
+    }
+}
+
+impl std::cmp::Eq for IasAdvisoryId {}
+
 /// A response body for the IAS "verify attestation evidence" endpoint.  Refer
 /// to the IAS API Specification.
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
@@ -200,7 +224,7 @@ pub struct VerifyAttestationEvidenceResponse {
     pub advisory_url: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryIDs")]
-    pub advisory_ids: Option<Vec<String>>,
+    pub advisory_ids: Option<Vec<IasAdvisoryId>>,
 }
 
 /// Attestation verification status enum. Refer to "Attestation Verification
