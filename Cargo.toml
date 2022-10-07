@@ -19,7 +19,6 @@ members = [
     "intel-sgx/enclave-runner",
     "intel-sgx/fortanix-sgx-abi",
     "intel-sgx/fortanix-sgx-tools",
-    "intel-sgx/ias",
     "intel-sgx/report-test",
     "intel-sgx/sgxs",
     "intel-sgx/sgx-isa",
