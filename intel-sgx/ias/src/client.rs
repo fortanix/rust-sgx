@@ -61,7 +61,11 @@ pub struct IasVerificationResult {
 }
 
 impl IasVerificationResult {
-    pub fn report<C: Crypto>(&self, ca_certificates: &[&[u8]]) -> Result<VerifyAttestationEvidenceResponse> {
+    /// Verify that the raw report is correctly signed by a key that chains to one of the
+    /// trusted certificates in `ca_certificates`.
+    ///
+    /// Does NOT verify the report contents.
+    pub fn verify<C: Crypto>(&self, ca_certificates: &[&[u8]]) -> Result<VerifyAttestationEvidenceResponse> {
         let cert_chain = self.cert_chain.iter().map(|c| c.clone().into()).collect();
         VerifyAttestationEvidenceResponse::from_raw_report::<C>(self.raw_report.as_slice(), &self.signature, &cert_chain, ca_certificates)
             .map_err(|e| e.into())

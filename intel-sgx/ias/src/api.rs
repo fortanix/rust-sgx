@@ -167,31 +167,20 @@ fn less_than_three(&v: &u64) -> bool {
     v < 3
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IasAdvisoryId(pub String);
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct IasAdvisoryId(String);
 
 impl From<&str> for IasAdvisoryId {
-    fn from(s: &str) -> Self {
-        IasAdvisoryId(s.to_owned())
+    fn from(adv: &str) -> Self {
+        IasAdvisoryId::new(adv)
     }
 }
-
-impl std::cmp::PartialEq for IasAdvisoryId {
-    fn eq(&self, other: &Self) -> bool {
-        let IasAdvisoryId(s) = self;
-        let IasAdvisoryId(o) = other;
-
-        s.to_uppercase() == o.to_uppercase()
-    }
-
-    fn ne(&self, other: &IasAdvisoryId) -> bool {
-        !self.eq(other)
-    }
-}
-
-impl std::cmp::Eq for IasAdvisoryId {}
 
 impl IasAdvisoryId {
+    pub fn new(adv: &str) -> Self {
+        IasAdvisoryId(adv.to_uppercase())
+    }
+
     pub fn as_str(&self) -> &str {
         self.0.as_str()
     }

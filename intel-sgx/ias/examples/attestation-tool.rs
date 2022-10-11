@@ -137,7 +137,7 @@ async fn main() {
     match ias_client.verify_quote(quote.quote()).await {
         Ok(response) => {
             let report = response
-                .report::<Mbedtls>(&[TEST_REPORT_SIGNING_CERT.as_slice()])
+                .verify::<Mbedtls>(&[TEST_REPORT_SIGNING_CERT.as_slice()])
                 .expect("Corrupt report");
 
             let pstatus = report.platform_info_blob().as_ref()
