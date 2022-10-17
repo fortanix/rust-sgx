@@ -246,12 +246,13 @@ pub struct VerifyAttestationEvidenceResponse<V: VerificationType = VerifiedSig> 
     type_: PhantomData<V>
 }
 
-impl<V: VerificationType> VerifyAttestationEvidenceResponse<V> {
-    pub fn advisory_url(&self) -> &Option<String> {
+#[cfg(feature = "client")]
+impl VerifyAttestationEvidenceResponse<Unverified> {
+    pub(crate) fn advisory_url(&self) -> &Option<String> {
         &self.advisory_url
     }
 
-    pub fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
+    pub(crate) fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
         &self.advisory_ids
     }
 }
@@ -343,6 +344,14 @@ impl VerifyAttestationEvidenceResponse {
 
     pub fn epid_pseudonym(&self) -> &Option<Vec<u8>> {
         &self.epid_pseudonym
+    }
+
+    pub fn advisory_url(&self) -> &Option<String> {
+        &self.advisory_url
+    }
+
+    pub fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
+        &self.advisory_ids
     }
 }
 

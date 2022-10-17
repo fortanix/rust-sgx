@@ -15,6 +15,7 @@ use ias::api::{IasVersion, LATEST_IAS_VERSION, PlatformStatus, VerifyAttestation
 use ias::client::ClientBuilder;
 use ias::verifier::crypto::Mbedtls;
 use pkix::pem::{self, PEM_CERTIFICATE};
+use std::process;
 use sgxs_loaders::isgx::Device as IsgxDevice;
 use sgx_isa::Targetinfo;
 
@@ -28,7 +29,7 @@ const REPORT_SIZE_TRUNCATED: usize = 384; // without KEYID, MAC
 
 lazy_static::lazy_static!{
     // This is the IAS report signing certificate.
-    static ref TEST_REPORT_SIGNING_CERT: Vec<u8> =
+    static ref IAS_REPORT_SIGNING_CERTIFICATE: Vec<u8> =
         pem::pem_to_der(include_str!("../tests/data/reports/test_report_signing_cert"),
                 Some(PEM_CERTIFICATE)).unwrap();
 }
@@ -136,9 +137,14 @@ async fn main() {
 
     match ias_client.verify_quote(quote.quote()).await {
         Ok(response) => {
-            let report = response
-                .verify::<Mbedtls>(&[TEST_REPORT_SIGNING_CERT.as_slice()])
-                .expect("Corrupt report");
+            let report = match response
+                .verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CERTIFICATE.as_slice()]) {
+                    Ok(report) => report,
+                    Err(_) => {
+                        eprintln!("Unable to verify signature on IAS report");
+                        process::exit(1);
+                    }
+                };
 
             let pstatus = report.platform_info_blob().as_ref()
                 .map(|v| v.parse::<PlatformStatus>().map_err(|_| v.to_owned()));
