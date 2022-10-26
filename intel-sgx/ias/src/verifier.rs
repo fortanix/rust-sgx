@@ -117,10 +117,6 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-/// Verify that `report` is correctly signed by a key that chains to one of the
-/// trusted certificates in `ca_certificates`.
-///
-/// Does NOT verify the report contents.
 pub(crate) fn verify_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8], cert_chain: &Vec<DerSequence>, ca_certificates: &[&[u8]]) -> Result<(), Error> {
     // TODO: check the validity of the chain, and use the CA as the trust
     // anchor rather than the leaf. Chain verification outside the context
@@ -154,6 +150,10 @@ pub(crate) fn verify_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8],
     Ok(())
 }
 
+/// Verify that `report` is correctly signed by a key that chains to one of the
+/// trusted certificates in `ca_certificates`.
+///
+/// Does NOT verify the report contents.
 pub fn verify_report<'a, C: Crypto>(ca_certificates: &[&[u8]], report: &AttestationEmbeddedIasReport<'a, 'a, 'a>) -> Result<(), Error> {
     verify_raw_report::<C>(&report.http_body, &report.report_sig, &report.certificates, ca_certificates)
 }
