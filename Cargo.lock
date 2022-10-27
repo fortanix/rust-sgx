@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
