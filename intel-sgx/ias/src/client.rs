@@ -9,15 +9,15 @@ use std::str;
 
 use url::Url;
 use percent_encoding::percent_decode_str as urldecode;
-use reqwest::{header::HeaderValue, RequestBuilder};
-pub use reqwest::IntoUrl;
-use serde::{Deserialize, Serialize};
+use reqwest::{header::HeaderValue, IntoUrl, RequestBuilder};
+use serde::{Serialize, Deserialize};
 
 use pkix::pem::{PEM_CERTIFICATE, PemBlock, pem_to_der};
+use sgx_pkix::attestation::AttestationEmbeddedIasReport;
 
 use crate::HexPrint;
 use crate::api::{IasAdvisoryId, IasVersion, Unverified, VerifyAttestationEvidenceRequest, VerifyAttestationEvidenceResponse};
-pub use crate::verifier::AttestationEmbeddedIasReport;
+use crate::verifier::Crypto;
 
 type Result<T> = std::result::Result<T, Box<dyn Error + Send + Sync>>;
 
@@ -46,13 +46,9 @@ trait Header: Sized {
     fn from_value(v: &HeaderValue) -> std::result::Result<Self, Box<dyn std::error::Error>>;
 }
 
-#[derive(Clone, Debug)]
 pub struct IasVerificationResult {
     /// The raw report, used for signature verification
     pub raw_report: Vec<u8>,
-
-    /// The deserialized report
-    pub report: VerifyAttestationEvidenceResponse<Unverified>,
 
     /// Signature over the raw report
     pub signature: Vec<u8>,
@@ -64,36 +60,24 @@ pub struct IasVerificationResult {
     pub advisory_ids: Vec<IasAdvisoryId>,
 }
 
-impl From<IasVerificationResult> for AttestationEmbeddedIasReport<'static, 'static, 'static, Unverified> {
-    fn from(res: IasVerificationResult) -> AttestationEmbeddedIasReport<'static, 'static, 'static, Unverified> {
-        let IasVerificationResult {
-            raw_report,
-            signature,
-            cert_chain,
-            ..
-        } = res;
-        AttestationEmbeddedIasReport::from(
-            sgx_pkix::attestation::AttestationEmbeddedIasReport {
-                http_body: raw_report.into(),
-                report_sig: signature.into(),
-                certificates: cert_chain.into_iter().map(Into::into).collect()
-            }
-        )
+impl IasVerificationResult {
+    /// Verify that the raw report is correctly signed by a key that chains to one of the
+    /// trusted certificates in `ca_certificates`.
+    ///
+    /// Does NOT verify the report contents.
+    pub fn verify<C: Crypto>(&self, ca_certificates: &[&[u8]]) -> Result<VerifyAttestationEvidenceResponse> {
+        let cert_chain = self.cert_chain.iter().map(|c| c.clone().into()).collect();
+        VerifyAttestationEvidenceResponse::from_raw_report::<C>(self.raw_report.as_slice(), &self.signature, &cert_chain, ca_certificates)
+            .map_err(|e| e.into())
     }
 }
 
-impl Into<sgx_pkix::attestation::AttestationEmbeddedIasReport<'static, 'static, 'static>> for IasVerificationResult {
-    fn into(self) -> sgx_pkix::attestation::AttestationEmbeddedIasReport<'static, 'static, 'static> {
-        let IasVerificationResult {
-            raw_report,
-            signature,
-            cert_chain,
-            ..
-        } = self;
-        sgx_pkix::attestation::AttestationEmbeddedIasReport {
-            http_body: raw_report.into(),
-            report_sig: signature.into(),
-            certificates: cert_chain.into_iter().map(Into::into).collect()
+impl Into<AttestationEmbeddedIasReport<'static, 'static, 'static>> for IasVerificationResult {
+    fn into(self) -> AttestationEmbeddedIasReport<'static, 'static, 'static> {
+        AttestationEmbeddedIasReport {
+            http_body: self.raw_report.into(),
+            report_sig: self.signature.into(),
+            certificates: self.cert_chain.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -144,19 +128,15 @@ impl Header for AdvisoryUrl {
     }
 }
 
-/// Implementation of `hyper::header::Header` for the Advisory-IDs
-/// header returned by IAS. The header contains a list of Advisory IDs
-/// referring to articles providing insight into SGX-related security
-/// issues that may affect attested platform. Refer
-/// to the IAS API Specification.
-#[derive(Clone, Debug)]
-struct AdvisoryIds(pub String);
-
-impl Header for AdvisoryIds {
+impl Header for Vec<IasAdvisoryId> {
     const NAME: &'static str = "Advisory-IDs";
 
     fn from_value(v: &HeaderValue) -> std::result::Result<Self, Box<dyn std::error::Error>> {
-        Ok(AdvisoryIds(v.to_str()?.to_owned()))
+        let adv = v.to_str()?
+                    .split(',')
+                    .map(|adv| IasAdvisoryId::from(adv))
+                    .collect();
+        Ok(adv)
     }
 }
 
@@ -344,7 +324,7 @@ impl Client {
             .collect::<Result<Vec<Vec<u8>>>>()?;
 
         let mut advisory_url = res.headers().header::<AdvisoryUrl>()?.map( |v| v.0 );
-        let advisory_ids = res.headers().header::<AdvisoryIds>()?.map( |v| v.0 );
+        let mut advisory_ids: Option<Vec<IasAdvisoryId>> = res.headers().header::<Vec<IasAdvisoryId>>()?;
 
         // We need to keep a copy of the literal response body JSON to use for
         // signature verification.
@@ -355,30 +335,31 @@ impl Client {
         // serde JSON deserialize, but binary data is Base64-encoded strings
         let mut deser = serde_json::Deserializer::from_slice(&raw_report);
         let deser = serde_bytes_repr::ByteFmtDeserializer::new_base64(&mut deser, base64::Config::new(base64::CharacterSet::Standard, true));
-        let report = VerifyAttestationEvidenceResponse::deserialize(deser).map_err(|e| format!("Error deserializing JSON response: {}", e))?;
+        let report: VerifyAttestationEvidenceResponse<Unverified> = VerifyAttestationEvidenceResponse::deserialize(deser)
+            .map_err(|e| format!("Error deserializing JSON response: {}", e))?;
 
-        // Prior to API documentation v6.0, advisory_url and advisory_ids
-        // were returned in headers instead of the report itself
-        match (&advisory_url, &report.advisory_url) {
+        debug!("IAS verification report: {:?}", report);
+
+        // since API documentation v6.0 advisory_url and advisory_ids
+        // are returned in the body of the response
+        match (&advisory_url, &report.advisory_url()) {
             (None, Some(new_advisory_url)) => advisory_url = Some(new_advisory_url.clone()),
             _ => {}
         }
 
-        let advisory_ids = match (advisory_ids, &report.advisory_ids) {
-            (Some(advs), None) => advs.split(',').map(|adv| IasAdvisoryId::from(adv)).collect(),
-            (None, Some(advs)) => advs.clone(),
-            (None, None) => Vec::new(),
-            _ => panic!("IAS service returned AdvisoryIds in the report and as a header"),
-        };
+        match (&advisory_ids, &report.advisory_ids()) {
+            (None, Some(new_advisory_ids)) => advisory_ids = Some(new_advisory_ids.to_owned()),
+            _ => {}
+        }
 
         Ok(IasVerificationResult {
             raw_report: (*raw_report).into(),
-            report,
             signature,
             cert_chain: split_certs,
             advisory_url,
-            advisory_ids,
+            advisory_ids: advisory_ids.unwrap_or(Vec::new()),
         })
+
     }
 }
 

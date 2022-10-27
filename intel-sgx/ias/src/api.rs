@@ -5,16 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use byteorder::{BigEndian, ReadBytesExt};
-use once_cell::sync::Lazy;
 use serde::{Serialize, Deserialize};
 use sgx_isa::{Attributes, Miscselect, Report};
-use std::convert::TryFrom;
-use std::str::{self, FromStr};
+use std::str;
 use std::fmt;
 use std::marker::PhantomData;
 
-// The values for this enum should correspond to IAS API version numbers
-// as specified in https://www.intel.com/content/dam/develop/public/us/en/documents/sgx-attestation-api-spec.pdf.
+#[cfg(feature = "client")]
+use {
+    super::verifier::{self, Crypto, Error, ErrorKind},
+    pkix::types::DerSequence,
+};
+
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum IasVersion {
     V2 = 2,
@@ -24,30 +26,48 @@ pub enum IasVersion {
 
 pub const LATEST_IAS_VERSION: IasVersion = IasVersion::V4;
 
-impl TryFrom<u64> for IasVersion {
-    type Error = ();
+/// Adapts `serde_bytes` for `Option<T: AsRef<[u8]>>` and `Option<T: From<Vec<u8>>>`
+mod serde_option_bytes {
+    use serde_bytes;
+    use serde::de::{Deserializer, Visitor};
+    use serde::ser::Serializer;
+    use std::marker::PhantomData;
 
-    fn try_from(v: u64) -> Result<Self, Self::Error> {
-        match v {
-            2 => Ok(IasVersion::V2),
-            3 => Ok(IasVersion::V3),
-            4 => Ok(IasVersion::V4),
-            _ => Err(())
+    pub fn serialize<T, S>(value: &Option<T>, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+        where T: serde_bytes::Serialize,
+              S: Serializer
+    {
+        match *value {
+            Some(ref bytes) => serde_bytes::serialize(bytes, serializer),
+            None => serializer.serialize_none(),
         }
     }
+
+    pub fn deserialize<'de, T, D>(deserializer: D) -> ::std::result::Result<Option<T>, D::Error>
+        where D: Deserializer<'de>,
+              T: serde_bytes::Deserialize<'de>
+    {
+        struct VisitorImpl<'de, T: serde_bytes::Deserialize<'de>>(PhantomData<&'de ()>, PhantomData<T>);
+        impl<'de, T> Visitor<'de> for VisitorImpl<'de, T>
+            where T: serde_bytes::Deserialize<'de>
+        {
+            type Value = Option<T>;
+
+            fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+                write!(formatter, "an optional byte array")
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> {
+                Ok(None)
+            }
+
+            fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
+                Ok(Some(serde_bytes::deserialize(deserializer)?))
+            }
+        }
+        deserializer.deserialize_option(VisitorImpl(PhantomData, PhantomData))
+    }
 }
-
-pub(crate) static SUPPORTED_IAS_VERSIONS: Lazy<Vec<IasVersion>> = Lazy::new(|| {
-
-    let mut v: Vec<IasVersion> = Vec::new();
-    #[cfg(feature = "ias_version_v4")]
-    v.push(IasVersion::V4);
-
-    #[cfg(feature = "ias_version_v3")]
-    v.push(IasVersion::V3);
-
-    v
-});
 
 /// A request body for the IAS "verify attestation evidence" endpoint.  Refer to
 /// the IAS API Specification.
@@ -55,10 +75,10 @@ pub(crate) static SUPPORTED_IAS_VERSIONS: Lazy<Vec<IasVersion>> = Lazy::new(|| {
 #[serde(rename_all = "camelCase")]
 pub struct VerifyAttestationEvidenceRequest {
     #[serde(with = "serde_bytes")]
-    pub isv_enclave_quote: Vec<u8>, //base64
+    pub isv_enclave_quote: Vec<u8>,
 
     #[serde(skip_serializing_if = "Option::is_none", with = "self::serde_option_bytes")]
-    pub pse_manifest: Option<Vec<u8>>, //base64
+    pub pse_manifest: Option<Vec<u8>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonce: Option<String>, // IAS spec: max length 32 characters
@@ -68,7 +88,6 @@ pub struct VerifyAttestationEvidenceRequest {
 /// Compared to sgx_isa::Report, this has some QE metadata at the front, and
 /// omits keyid and mac at the end. Everything else is the same.
 /// Refer to the IAS API Specification.
-#[derive(PartialEq, Eq, Clone, Debug)]
 #[repr(C)]
 pub struct EnclaveQuoteBody {
     // "BODY" in the IAS API spec
@@ -148,20 +167,18 @@ fn less_than_three(&v: &u64) -> bool {
     v < 3
 }
 
-// Intel security advisory ids are strings of the form "INTEL-SA-ddddd".
-// https://www.intel.com/content/www/us/en/security-center/default.html has more details.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct IasAdvisoryId(String);
 
 impl From<&str> for IasAdvisoryId {
-    fn from(s: &str) -> Self {
-        IasAdvisoryId::new(s)
+    fn from(adv: &str) -> Self {
+        IasAdvisoryId::new(adv)
     }
 }
 
 impl IasAdvisoryId {
-    fn new(s: &str) -> Self {
-        IasAdvisoryId(s.trim().to_owned().to_uppercase())
+    pub fn new(adv: &str) -> Self {
+        IasAdvisoryId(adv.to_uppercase())
     }
 
     pub fn as_str(&self) -> &str {
@@ -169,57 +186,14 @@ impl IasAdvisoryId {
     }
 }
 
-/// Adapts `serde_bytes` for `Option<T: AsRef<[u8]>>` and `Option<T: From<Vec<u8>>>`
-mod serde_option_bytes {
-    use serde_bytes;
-    use serde::de::{Deserializer, Visitor};
-    use serde::ser::Serializer;
-    use std::marker::PhantomData;
-
-    pub fn serialize<T, S>(value: &Option<T>, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
-        where T: serde_bytes::Serialize,
-              S: Serializer
-    {
-        match *value {
-            Some(ref bytes) => serde_bytes::serialize(bytes, serializer),
-            None => serializer.serialize_none(),
-        }
-    }
-
-    pub fn deserialize<'de, T, D>(deserializer: D) -> ::std::result::Result<Option<T>, D::Error>
-        where D: Deserializer<'de>,
-              T: serde_bytes::Deserialize<'de>
-    {
-        struct VisitorImpl<'de, T: serde_bytes::Deserialize<'de>>(PhantomData<&'de ()>, PhantomData<T>);
-        impl<'de, T> Visitor<'de> for VisitorImpl<'de, T>
-            where T: serde_bytes::Deserialize<'de>
-        {
-            type Value = Option<T>;
-
-            fn expecting(&self, formatter: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                write!(formatter, "an optional byte array")
-            }
-
-            fn visit_none<E>(self) -> Result<Self::Value, E> {
-                Ok(None)
-            }
-
-            fn visit_some<D: Deserializer<'de>>(self, deserializer: D) -> Result<Self::Value, D::Error> {
-                Ok(Some(serde_bytes::deserialize(deserializer)?))
-            }
-        }
-        deserializer.deserialize_option(VisitorImpl(PhantomData, PhantomData))
-    }
-}
-
 pub trait VerificationType {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Verified {}
-impl VerificationType for Verified {}
+pub struct VerifiedSig {}
+impl VerificationType for VerifiedSig {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Unverified {}
+pub(crate) struct Unverified {}
 impl VerificationType for Unverified {}
 
 trait SafeToDeserializeInto {}
@@ -230,55 +204,103 @@ impl SafeToDeserializeInto for Unverified {}
 #[derive(Serialize, Deserialize, Clone, Debug, Eq, PartialEq)]
 #[serde(bound(deserialize = "V: SafeToDeserializeInto"))]
 #[serde(rename_all = "camelCase")]
-pub struct VerifyAttestationEvidenceResponse<V: VerificationType = Verified> {
-    pub(crate) id: String, // TODO: decimal big integer
+pub struct VerifyAttestationEvidenceResponse<V: VerificationType = VerifiedSig> {
+    id: String, // TODO: decimal big integer
 
-    pub(crate) timestamp: String, // TODO: DateTime<UTC>, but DateTime serde doesn't
-                                  // like the IAS timestamp format.
+    timestamp: String, // TODO: DateTime<UTC>, but DateTime serde doesn't
+                           // like the IAS timestamp format.
 
     #[serde(default = "two", skip_serializing_if = "less_than_three")]
-    pub(crate) version: u64,
+    version: u64,
 
-    pub(crate) isv_enclave_quote_status: QuoteStatus,
+    isv_enclave_quote_status: QuoteStatus,
 
     #[serde(with = "serde_bytes")]
-    pub(crate) isv_enclave_quote_body: Vec<u8>,
+    isv_enclave_quote_body: Vec<u8>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) revocation_reason: Option<u32>, // TODO: enum RFC5280 CRLReason
+    revocation_reason: Option<u32>, // TODO: enum RFC5280 CRLReason
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) pse_manifest_status: Option<String>, // TODO: enum per IAS spec
+    pse_manifest_status: Option<String>, // TODO: enum per IAS spec
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) pse_manifest_hash: Option<String>, // TODO: base16 blob
+    pse_manifest_hash: Option<String>, // TODO: base16 blob
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) platform_info_blob: Option<String>, // TODO: base16 blob
+    platform_info_blob: Option<String>, // TODO: base16 blob
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) nonce: Option<String>,
+    nonce: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", with = "self::serde_option_bytes")]
-    pub(crate) epid_pseudonym: Option<Vec<u8>>, // base64
+    epid_pseudonym: Option<Vec<u8>>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryURL")]
-    pub(crate) advisory_url: Option<String>,
+    advisory_url: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "advisoryIDs")]
-    pub(crate) advisory_ids: Option<Vec<IasAdvisoryId>>,
+    advisory_ids: Option<Vec<IasAdvisoryId>>,
 
     #[serde(skip)]
-    pub(crate) type_: PhantomData<V>
+    type_: PhantomData<V>
 }
 
-impl<V: VerificationType> VerifyAttestationEvidenceResponse<V> {
-    pub fn advisory_url(&self) -> &Option<String> {
+#[cfg(feature = "client")]
+impl VerifyAttestationEvidenceResponse<Unverified> {
+    pub(crate) fn advisory_url(&self) -> &Option<String> {
         &self.advisory_url
     }
 
-    pub fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
+    pub(crate) fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
         &self.advisory_ids
+    }
+}
+
+impl VerifyAttestationEvidenceResponse {
+    #[cfg(feature = "client")]
+    pub fn from_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8], cert_chain: &Vec<DerSequence>, ca_certificates: &[&[u8]]) -> Result<Self, Error> {
+        // serde JSON deserialize, but binary data is Base64-encoded strings
+        let mut deser = serde_json::Deserializer::from_slice(&raw_report);
+        let deser = serde_bytes_repr::ByteFmtDeserializer::new_base64(&mut deser, base64::Config::new(base64::CharacterSet::Standard, true));
+        let resp: VerifyAttestationEvidenceResponse<Unverified> = VerifyAttestationEvidenceResponse::deserialize(deser)
+            .map_err(|e| Error { error_kind: ErrorKind::ReportJsonParse, cause: Some(Box::new(e)) })?;
+
+        verifier::verify_raw_report::<C>(raw_report, report_sig, cert_chain, ca_certificates)?;
+
+        let VerifyAttestationEvidenceResponse::<Unverified> {
+            id,
+            timestamp,
+            version,
+            isv_enclave_quote_status,
+            isv_enclave_quote_body,
+            revocation_reason,
+            pse_manifest_status,
+            pse_manifest_hash,
+            platform_info_blob,
+            nonce,
+            epid_pseudonym,
+            advisory_url,
+            advisory_ids,
+            type_: _,
+        } = resp;
+
+        Ok(VerifyAttestationEvidenceResponse{
+            id,
+            timestamp,
+            version,
+            isv_enclave_quote_status,
+            isv_enclave_quote_body,
+            revocation_reason,
+            pse_manifest_status,
+            pse_manifest_hash,
+            platform_info_blob,
+            nonce,
+            epid_pseudonym,
+            advisory_url,
+            advisory_ids,
+            type_: PhantomData,
+        })
     }
 }
 
@@ -323,64 +345,16 @@ impl VerifyAttestationEvidenceResponse {
     pub fn epid_pseudonym(&self) -> &Option<Vec<u8>> {
         &self.epid_pseudonym
     }
-}
 
-#[cfg(test)]
-impl VerifyAttestationEvidenceResponse<Unverified> {
-    pub(crate) fn fake(version: u64, advisory_ids: Option<Vec<IasAdvisoryId>>) -> Self {
-        #[cfg(target_env = "sgx")]
-        let (mrenclave, mrsigner) = {
-            let report_self = Report::for_self();
-            (report_self.mrenclave.clone(),
-            report_self.mrsigner.clone())
-        };
+    pub fn advisory_url(&self) -> &Option<String> {
+        &self.advisory_url
+    }
 
-        #[cfg(not(target_env = "sgx"))]
-        let (mrenclave, mrsigner) = ([0; 32], [0; 32]);
-
-        let isv_enclave_quote_body = EnclaveQuoteBody {
-            version: 4,
-            signature_type: 0,
-            gid: [0; 4],
-            isvsvn_qe: 0,
-            isvsvn_pce: 0,
-            _reserved0: [0; 4],
-            basename: [0; 32],
-
-            cpusvn: [0; 16],
-            miscselect: Miscselect::EXINFO,
-            _reserved1: [0; 28],
-            attributes: Attributes::default(),
-            mrenclave,
-            _reserved2: [0; 32],
-            mrsigner,
-            _reserved3: [0; 96],
-            isvprodid:  0,
-            isvsvn:     0,
-            _reserved4: [0; 60],
-            reportdata: [0; 64],
-        };
-        let isv_enclave_quote_body = unsafe { std::mem::transmute::<_, [u8; ENCLAVE_QUOTE_BODY_LEN]>(isv_enclave_quote_body) }.into();
-
-        VerifyAttestationEvidenceResponse::<Unverified> {
-            id: "id".to_owned(),
-            timestamp: "00:00:01".to_owned(),
-            version,
-            isv_enclave_quote_status: QuoteStatus::SwHardeningNeeded,
-            isv_enclave_quote_body,
-            revocation_reason: None,
-            pse_manifest_status: None,
-            pse_manifest_hash: None,
-            platform_info_blob: None,
-            nonce: None,
-            epid_pseudonym: None,
-            advisory_url: None,
-            //advisory_ids: Some(vec![IasAdvisoryId::from("TEST-SA-99999")]),
-            advisory_ids,
-            type_: PhantomData,
-        }
+    pub fn advisory_ids(&self) -> &Option<Vec<IasAdvisoryId>> {
+        &self.advisory_ids
     }
 }
+
 
 /// Attestation verification status enum. Refer to "Attestation Verification
 /// Report" in the IAS API specification.
@@ -397,27 +371,6 @@ pub enum QuoteStatus {
     ConfigurationNeeded,
     SwHardeningNeeded,
     ConfigurationAndSwHardeningNeeded,
-}
-
-#[cfg(feature = "manipulate_attestation")]
-impl FromStr for QuoteStatus {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<QuoteStatus, String> {
-        match s {
-            "OK" => Ok(QuoteStatus::Ok),
-            "SIGNATURE_INVALID" => Ok(QuoteStatus::SignatureInvalid),
-            "GROUP_REVOKED" => Ok(QuoteStatus::GroupRevoked),
-            "SIGNATURE_REVOKED" => Ok(QuoteStatus::SignatureRevoked),
-            "KEY_REVOKED" => Ok(QuoteStatus::KeyRevoked),
-            "SIG_RL_VERSION_MISMATCH" => Ok(QuoteStatus::SigRlVersionMismatch),
-            "GROUP_OUT_OF_DATE" => Ok(QuoteStatus::GroupOutOfDate),
-            "CONFIGURATION_NEEDED" => Ok(QuoteStatus::ConfigurationNeeded),
-            "SW_HARDENING_NEEDED" => Ok(QuoteStatus::SwHardeningNeeded),
-            "CONFIGURATION_AND_SW_HARDENING_NEEDED" => Ok(QuoteStatus::ConfigurationAndSwHardeningNeeded),
-            _ => Err(format!("Failed to parse \"{}\" as a QuoteStatus", s)),
-        }
-    }
 }
 
 macro_rules! pif_v2_bitflags {
@@ -476,7 +429,7 @@ impl fmt::Display for PlatformStatus {
     }
 }
 
-impl FromStr for PlatformStatus {
+impl str::FromStr for PlatformStatus {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, ()> {

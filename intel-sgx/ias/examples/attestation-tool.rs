@@ -8,16 +8,14 @@
 extern crate clap;
 
 use std::fmt;
-use std::mem;
 use std::str;
 
-use ias::api::{ENCLAVE_QUOTE_BODY_LEN, IasAdvisoryId, IasVersion, LATEST_IAS_VERSION, PlatformStatus, QuoteStatus, Unverified, VerifyAttestationEvidenceRequest};
-use ias::verifier::{AttestationEmbeddedIasReport, Error, PlatformVerifier};
-use ias::verifier::crypto::Mbedtls;
-use ias::client::ClientBuilder;
 use aesm_client::{AesmClient, QuoteType};
-use once_cell::sync::Lazy;
+use ias::api::{IasVersion, LATEST_IAS_VERSION, PlatformStatus, VerifyAttestationEvidenceRequest};
+use ias::client::ClientBuilder;
+use ias::verifier::crypto::Mbedtls;
 use pkix::pem::{self, PEM_CERTIFICATE};
+use std::process;
 use sgxs_loaders::isgx::Device as IsgxDevice;
 use sgx_isa::Targetinfo;
 
@@ -27,26 +25,13 @@ const IAS_DEV_OLD_URL: &'static str = "https://test-as.sgx.trustedservices.intel
 const IAS_PROD_URL: &'static str = "https://api.trustedservices.intel.com/sgx/";
 const IAS_DEV_URL: &'static str = "https://api.trustedservices.intel.com/sgx/dev/";
 
-const REPORT_BODY_HEADER_SIZE: usize = 48; // the part not from enclave's REPORT
 const REPORT_SIZE_TRUNCATED: usize = 384; // without KEYID, MAC
 
-static IAS_REPORT_SIGNING_CERTIFICATE: Lazy<Vec<u8>> = Lazy::new(|| {
-    pem::pem_to_der(include_str!("../tests/data/test_report_signing_cert"),
-                   Some(PEM_CERTIFICATE)).unwrap()
-});
-
-struct IgnorePlatformState;
-
-impl IgnorePlatformState {
-    fn new() -> IgnorePlatformState {
-        IgnorePlatformState {}
-    }
-}
-
-impl PlatformVerifier for IgnorePlatformState {
-    fn verify(&self, _for_self: bool, _nonce: &Option<String>, _isv_enclave_quote_status: QuoteStatus, _advisories: &Vec<IasAdvisoryId>) -> Result<(), Error> {
-        Ok(())
-    }
+lazy_static::lazy_static!{
+    // This is the IAS report signing certificate.
+    static ref IAS_REPORT_SIGNING_CERTIFICATE: Vec<u8> =
+        pem::pem_to_der(include_str!("../tests/data/reports/test_report_signing_cert"),
+                Some(PEM_CERTIFICATE)).unwrap();
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -152,36 +137,30 @@ async fn main() {
 
     match ias_client.verify_quote(quote.quote()).await {
         Ok(response) => {
-            let report: AttestationEmbeddedIasReport<Unverified> = response
-                .clone()
-                .into();
-            let report = report
-                .verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CERTIFICATE.as_slice()])
-                .and_then(|rep| {
-                    rep
-                        .to_attestation_evidence_reponse()?
-                        .verify(&IgnorePlatformState::new())
-                });
-
-            let report = match report {
-                Ok(report) => report,
-                Err(err) => {
-                    println!("IAS verification error:");
-                    println!("  {}", err);
-                    return;
-                }
-            };
+            let report = match response
+                .verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CERTIFICATE.as_slice()]) {
+                    Ok(report) => report,
+                    Err(_) => {
+                        eprintln!("Unable to verify signature on IAS report");
+                        process::exit(1);
+                    }
+                };
 
             let pstatus = report.platform_info_blob().as_ref()
                 .map(|v| v.parse::<PlatformStatus>().map_err(|_| v.to_owned()));
 
-            let report_body_header = unsafe { mem::transmute::<_, [u8; ENCLAVE_QUOTE_BODY_LEN]>(report.isv_enclave_quote_body()) };
             println!("");
             println!("IAS report contents:");
             println!("  id: {}", report.id());
             println!("  version: {}", report.version());
             println!("  isv_enclave_quote_status: {:?}", report.isv_enclave_quote_status());
-            println!("  isv_enclave_quote_body header: {}", HexPrint(&report_body_header[0..REPORT_BODY_HEADER_SIZE]));
+            println!("  isv_enclave_quote_body header");
+            println!("    version: {}", report.isv_enclave_quote_body().version);
+            println!("    signature type: {}", report.isv_enclave_quote_body().signature_type);
+            println!("    gid: {}", HexPrint(&report.isv_enclave_quote_body().gid));
+            println!("    isvsvn qe: {}", report.isv_enclave_quote_body().isvsvn_qe);
+            println!("    isvsvn pce: {}", report.isv_enclave_quote_body().isvsvn_pce);
+            println!("    basename: {}", HexPrint(&report.isv_enclave_quote_body().basename));
             println!("  revocation_resason: {:?}", report.revocation_reason());
             println!("  pse_manifest_status: {:?}", report.pse_manifest_status());
             println!("  pse_manifest_hash: {:?}", report.pse_manifest_hash());
@@ -189,7 +168,7 @@ async fn main() {
             println!("  nonce: {:?}", report.nonce());
             println!("  epid_pseudonym: {}", report.epid_pseudonym().as_ref().map_or_else(|| Box::new("None") as Box<dyn fmt::Display>, |v| Box::new(HexPrint(&v))));
 
-            if pstatus.is_some() {
+            if pstatus.is_some() || response.advisory_url.is_some() || response.advisory_ids.is_empty() {
                 println!("");
             }
 
@@ -206,15 +185,13 @@ async fn main() {
                 println!("Advisory IDs: {}", response.advisory_ids.iter().map(|adv| adv.as_str().to_string()).collect::<Vec<String>>().join(", "));
             }
 
-            let response: sgx_pkix::attestation::AttestationEmbeddedIasReport = response.into();
             if matches.is_present("DUMP") {
                 println!("");
                 println!("IAS report dump:");
-                println!("  report: {}", HexPrint(&response.http_body));
-                println!("  signature: {}", HexPrint(&response.report_sig));
-                for cert in &response.certificates {
-                    let pem = pkix::pem::der_to_pem(&cert, pkix::pem::PEM_CERTIFICATE);
-                    println!("  certificate: {}", pem);
+                println!("  report: {}", HexPrint(&response.raw_report));
+                println!("  signature: {}", HexPrint(&response.signature));
+                for cert in &response.cert_chain {
+                    println!("  certificate: {}", HexPrint(&cert));
                 }
             }
         },

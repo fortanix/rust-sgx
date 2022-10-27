@@ -5,16 +5,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![deny(warnings)]
-//! The ability to attest that an enclave is executing on a trustworthy platform, is a key feature
-//! of Intel SGX. This crate enables users to communicate with the IAS service to verify (EPID)
-//! attestations.
 //! The normal flow for using IAS is to create an IAS client with
 //! `client::ClientBuilder::build()`, call the `get_sig_rl` and `verify_quote`
-//! APIs, then call `verifier::quote`.
-//!
-//! ## Feature flags
-#![doc = document_features::document_features!()]
+//! APIs, then call `verifier::verify_report`.
 
+#[cfg(all(test,target_env = "sgx"))]
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -26,9 +23,6 @@ pub mod client;
 pub mod verifier;
 
 use std::fmt;
-
-#[cfg(all(feature = "manipulate_attestation", not(debug_assertions)))]
-compile_error!("The 'manipulate_attestation' feature is only available in debug mode.");
 
 struct HexPrint<'a>(&'a [u8]);
 impl<'a> fmt::Display for HexPrint<'a> {
