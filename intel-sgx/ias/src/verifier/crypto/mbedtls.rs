@@ -4,10 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use mbedtls::Error;
-use mbedtls::hash::{Type,Md};
-use mbedtls::pk::Pk;
+use crate::verifier::{Error as VerifierError, ErrorKind};
 use mbedtls;
+use mbedtls::alloc::List as MbedtlsList;
+use mbedtls::hash::{Md, Type};
+use mbedtls::pk::Pk;
+use mbedtls::x509::Certificate;
+use mbedtls::Error;
+use pkix::types::DerSequence;
 
 use super::{private::Crypto, SHA256_DIGEST_LEN};
 
@@ -31,4 +35,25 @@ impl Crypto for Mbedtls {
 
         Ok(())
     }
+
+    fn x509_verify_chain(
+        cert_chain: &Vec<DerSequence>,
+        ca_certs: &Vec<DerSequence>,
+    ) -> ::std::result::Result<(), VerifierError> {
+        let cert_chain = der_to_mbedtls_cert_list(cert_chain)
+            .map_err(|e| VerifierError::enclave_certificate(ErrorKind::ReportInvalidCertificate, Some(e)))?;
+        let ca_certs = der_to_mbedtls_cert_list(ca_certs)
+            .map_err(|e| VerifierError::enclave_certificate(ErrorKind::InvalidCaCertificate, Some(e)))?;
+        Certificate::verify(&cert_chain, &ca_certs, None)
+            .map_err(|e| VerifierError::enclave_certificate(ErrorKind::ReportUntrustedCertificate, Some(e)))?;
+        Ok(())
+    }
+}
+
+fn der_to_mbedtls_cert_list(certificates: &Vec<DerSequence>) -> Result<MbedtlsList<Certificate>, Error> {
+    let mut list = MbedtlsList::new();
+    for c in certificates {
+        list.push(Certificate::from_der(c.value.as_ref())?);
+    }
+    Ok(list)
 }
