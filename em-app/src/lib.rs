@@ -13,13 +13,14 @@ use pkix::{DerWrite, ToDer};
 use pkix::bit_vec::BitVec;
 use pkix::pem::{pem_to_der, der_to_pem, PEM_CERTIFICATE, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
-use pkix::types::{Attribute, RsaPkcs15, Sha256, DerSequence};
+use pkix::types::{Attribute, Extension, RsaPkcs15, Sha256, DerSequence};
+use pkix::x509::DnsAltNames;
 use pkix;
 use sgx_isa::{Report, Targetinfo};
 use sgx_pkix::attestation::{SgxName,AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
 use sgx_pkix::oid;
 use std::borrow::Cow;
-use std::{error, fmt};
+use std::{error, fmt, iter};
 
 pub use mbedtls::rng::Rdrand as FtxRng;
 type Result<T> = std::result::Result<T, Error>;
@@ -131,24 +132,52 @@ pub struct FortanixEmCertificate {
 /// common_name - domain name to issue certificate for
 /// key         - trait over public/private key pair that allows access to public key and to a sign operation.
 /// 
-pub fn get_fortanix_em_certificate(
+pub fn get_fortanix_em_certificate(url: &str, common_name: &str, signer: &mut dyn CsrSigner) -> Result<FortanixEmCertificate> {
+    get_certificate(url, common_name, signer, None, None)
+}
+
+pub fn get_certificate(
     url: &str,
     common_name: &str,
-    signer: &mut dyn CsrSigner
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>,
+    config_id: Option<&str>,
 ) -> Result<FortanixEmCertificate> {
-
     let mut client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
 
     // Get an SGX report for target info provided by remote
     let pub_key = signer.get_public_key_der()?;
-    let report = get_target_report(&mut client, &pub_key)?;
+    let user_data = get_user_data(&pub_key, config_id)?;
+    let report = get_target_report(&mut client, &user_data)?;
 
     // Create attestation CSR request
-    let attestation = AttestationInlineSgxLocal {
-        keyid: Cow::Borrowed(&report.keyid),
-        mac: Cow::Borrowed(&report.mac)
-    }.to_der().into();
-    let attributes = vec![Attribute { oid: oid::attestationInlineSgxLocal.clone(), value: vec![attestation] }];
+    let attributes = {
+        let attestation_attribute = Attribute {
+            oid: oid::attestationInlineSgxLocal.clone(),
+            value: vec![
+                AttestationInlineSgxLocal {
+                    keyid: Cow::Borrowed(&report.keyid),
+                    mac: Cow::Borrowed(&report.mac)
+                }.to_der().into()
+            ]
+        };
+
+        let alt_name_extension_attribute = alt_names.map(|names| {
+            let extension_bytes = pkix::yasna::construct_der(|w| w.write_sequence(|w| {
+                Extension {
+                    oid: pkix::oid::subjectAltName.clone(),
+                    critical: false,
+                    value: pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)),
+                }.write(w.next())
+            }));
+            Attribute {
+                oid: pkix::oid::extensionRequest.clone(),
+                value: vec![extension_bytes.into()],
+            }
+        });
+
+        iter::once(attestation_attribute).chain(alt_name_extension_attribute.into_iter()).collect()
+    };
     let csr = get_csr(common_name, &pub_key, &report, attributes);
     let csr_pem = signer.sign_csr(&csr)?;
 
@@ -190,17 +219,16 @@ impl ExternalKey for Pk {
     }
 }
 
-fn get_target_report(client: &mut Client, pub_key: &Vec<u8>) -> Result<sgx_isa::Report> {
+fn get_target_report(client: &mut Client, user_data: &[u8;64]) -> Result<sgx_isa::Report> {
     let result = client.get_target_info().map_err(|e| Error::TargetReport(Box::new(e)))?;
     
-    let target_info = Targetinfo::try_copy_from(result.target_info.ok_or(Error::TargetReportInternal("Node Agent returned empty target_info".to_string()))?
-                                                                  .from_base64().map_err(|e| Error::TargetReportInternal(format!("Base64 decode failed: {:?}", e)))?
-                                                                  .as_ref()
-                                               ).ok_or(Error::TargetReportInternal("Failed creating SGX structure from remote target info".to_string()))?;
+    let target_info = Targetinfo::try_copy_from(
+        result.target_info.ok_or(Error::TargetReportInternal("Node Agent returned empty target_info".to_string()))?
+            .from_base64().map_err(|e| Error::TargetReportInternal(format!("Base64 decode failed: {:?}", e)))?
+            .as_ref()
+    ).ok_or(Error::TargetReportInternal("Failed creating SGX structure from remote target info".to_string()))?;
 
-    let mut data=[0u8;64];
-    Md::hash(Type::Sha256, &pub_key, &mut data).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
-    Ok(sgx_isa::Report::for_target(&target_info, &data))        
+    Ok(sgx_isa::Report::for_target(&target_info, user_data))
 }
 
 fn get_csr<'a>(
@@ -261,6 +289,34 @@ fn get_attestation_certificates(client: &mut Client, report: &Report, csr_pem: S
                                Some(PEM_CERTIFICATE)).ok_or(Error::AttestationCertInternal("Failed decoding node cert pem".to_string()))?;
 
     Ok((fqpe_cert, node_cert))
+}
+
+fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> {
+    let mut data=[0u8;64];
+    hash::Md::hash(hash::Type::Sha256, &pub_key, &mut data).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+    if let Some(id) = config_id {
+        let id = hex::decode(id).map_err(|e| Error::TargetReportHash(format!("Failed decoding config ID: {}", e).into()))?;
+        if id.len() != 32 {
+            return Err(Error::TargetReportHash(format!("config ID is invalid, length: {}, expected length: 32", id.len()).into()));
+        }
+
+        let mut payload=[0u8;65];
+        payload[0] = 1;
+        payload[1..33].copy_from_slice(&data[0..32]);
+        payload[33..65].copy_from_slice(&id[0..32]);
+
+        // The payload is formed as follows in case of workflow report.
+
+        // First 32 bytes is a Sha256 of (Version + public key sha256 + config-id)
+        hash::Md::hash(hash::Type::Sha256, &payload, &mut data[0..32]).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+        // Second 32 bytes part is the actual config-id.
+        data[32..64].copy_from_slice(&id[0..32]);
+    }
+    // if non-workflow report then first 32 bytes is the hash of the public key, second 32 bytes are all 0.
+
+    Ok(data)
 }
 
 fn compare_ct(a: &[u8], b: &[u8]) -> bool {
