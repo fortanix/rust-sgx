@@ -35,9 +35,10 @@ members = [
 exclude = ["examples"]
 
 [patch.crates-io]
-libc  = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
+libc  = { git = "https://github.com/raoulstrackx/libc.git", branch = "raoul/fortanixvme_rebase_137" }
 mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
 nix   = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
 rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
+nitro-cli = { git = "https://github.com/fortanix/aws-nitro-enclaves-cli.git", branch = "main" }
