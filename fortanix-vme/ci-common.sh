@@ -174,3 +174,18 @@ function eif_runner {
     # Run enclave
     nitro-cli run-enclave --eif-path ${enclave_eif} --cpu-count 2 --memory 512 --debug-mode > ${out} 2> ${err}
 }
+
+function install_ftxvme_runner_cargo {
+    pushd ${repo_root}
+    cargo build --bin ftxvme-runner-cargo
+    cargo build --bin ftxvme-elf2eif
+    cargo build --bin fortanix-vme-runner
+
+    rm -f ~/.cargo/bin/ftxvme-runner-cargo
+    ln -s ${repo_root}/target/debug/ftxvme-runner-cargo ~/.cargo/bin/ftxvme-runner-cargo
+    rm -f ~/.cargo/bin/ftxvme-elf2eif
+    ln -s ${repo_root}/target/debug/ftxvme-elf2eif ~/.cargo/bin/ftxvme-elf2eif
+    rm -f ~/.cargo/bin/fortanix-vme-runner
+    ln -s ${PWD}/target/debug/fortanix-vme-runner  ~/.cargo/bin/fortanix-vme-runner
+    popd
+}
