@@ -8,11 +8,17 @@ use std::cmp;
 use std::str;
 use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
+use std::marker::PhantomData;
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Mutex, RwLock};
-use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request};
+use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_PORT};
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
+
+mod platforms;
+use platforms::Platform;
+
+pub use platforms::NitroEnclaves;
 
 const MAX_LOG_MESSAGE_LEN: usize = 80;
 const PROXY_BUFF_SIZE: usize = 4192;
@@ -287,6 +293,30 @@ impl<'de> ClientConnection<'de> {
     }
 }
 
+pub struct EnclaveRunner<P: Platform> {
+    _server: Arc<Server>,
+    _enclave: P::EnclaveDescriptor,
+    platform: PhantomData<P>,
+}
+
+impl<P: Platform> EnclaveRunner<P> {
+    pub fn run<I: Into<P::RunArgs>>(run_args: I) -> Result<EnclaveRunner<P>, VmeError> {
+        let _server = Arc::new(Server::bind(SERVER_PORT)?);
+        let _server_thread = match _server.clone().run() {
+            Ok(handle)                                     => { handle.join().unwrap(); },
+            Err(e) if e.kind() == IoErrorKind::AddrInUse   => println!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e),
+            Err(e)                                         => println!("Server failed. Error: {:?}", e),
+        };
+        let _enclave = P::run(run_args)?;
+
+        Ok(EnclaveRunner {
+            _server,
+            _enclave,
+            platform: PhantomData,
+        })
+    }
+}
+
 pub struct Server {
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
@@ -540,13 +570,13 @@ impl Server {
         })
     }
 
-    pub fn run(port: u32) -> std::io::Result<JoinHandle<()>> {
+    pub fn run(self: Arc<Self>) -> std::io::Result<JoinHandle<()>> {
         info!("Starting enclave runner.");
-        let server = Arc::new(Self::bind(port)?);
-        let port = server.command_listener.lock().unwrap().local_addr()?.port();
+        let port = self.command_listener.lock().unwrap().local_addr()?.port();
         info!("Listening on vsock port {}...", port);
 
-        server.start_command_server()
+        let handle = self.start_command_server()?;
+        Ok(handle)
     }
 }
 

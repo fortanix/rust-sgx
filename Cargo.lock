@@ -795,7 +795,7 @@ dependencies = [
 [[package]]
 name = "eif_defs"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=raoul/EDP-33-run_enclaves#d8e3839a4901e5ec736e7d280fb369a227d2dc55"
 dependencies = [
  "byteorder 1.3.4",
  "num-derive 0.3.3",
@@ -808,7 +808,7 @@ dependencies = [
 [[package]]
 name = "eif_loader"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=raoul/EDP-33-run_enclaves#d8e3839a4901e5ec736e7d280fb369a227d2dc55"
 dependencies = [
  "eif_defs",
  "libc 0.2.138",
@@ -819,7 +819,7 @@ dependencies = [
 [[package]]
 name = "eif_utils"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=raoul/EDP-33-run_enclaves#d8e3839a4901e5ec736e7d280fb369a227d2dc55"
 dependencies = [
  "aws-nitro-enclaves-cose 0.1.0",
  "clap 2.33.3",
@@ -941,7 +941,7 @@ dependencies = [
 [[package]]
 name = "enclave_build"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=raoul/EDP-33-run_enclaves#d8e3839a4901e5ec736e7d280fb369a227d2dc55"
 dependencies = [
  "base64 0.11.0",
  "clap 2.33.3",
@@ -1210,6 +1210,7 @@ dependencies = [
  "env_logger 0.8.4",
  "fnv",
  "fortanix-vme-abi",
+ "libc 0.2.138",
  "log 0.4.14",
  "nitro-cli",
  "nix 0.22.2",
@@ -1961,14 +1962,14 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 name = "libc"
 version = "0.2.104"
 source = "git+https://github.com/fortanix/libc.git?branch=fortanixvme#92233130f38b15b6217cab2669355129400fdcb7"
-dependencies = [
- "rustc-std-workspace-core",
-]
 
 [[package]]
 name = "libc"
 version = "0.2.138"
-source = "git+https://github.com/raoulstrackx/libc.git?branch=raoul/fortanixvme_rebase_137#03a01b767525cfaa303b897a5b4b116d775fa151"
+source = "git+https://github.com/raoulstrackx/libc.git?branch=raoul/fortanixvme_rebase_137#a1b4206c08a7daea61e931136d34918d2029e739"
+dependencies = [
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "libloading"
@@ -2298,7 +2299,7 @@ dependencies = [
 [[package]]
 name = "nitro-cli"
 version = "1.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=raoul/EDP-33-run_enclaves#d8e3839a4901e5ec736e7d280fb369a227d2dc55"
 dependencies = [
  "aws-nitro-enclaves-cose 0.1.0",
  "bindgen",
@@ -2957,7 +2958,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.4.14",
+ "log 0.3.9",
  "which 4.0.2",
 ]
 
@@ -4516,10 +4517,10 @@ dependencies = [
 [[package]]
 name = "vsock"
 version = "0.2.4"
-source = "git+https://github.com/fortanix/vsock-rs.git?branch=fortanixvme#95834efa8f54a3c9c07544de8a561c028bd4fbcb"
+source = "git+https://github.com/raoulstrackx/vsock-rs.git?branch=raoul/EDP-33-update_libc#f25e6eb21e5236ae05c6700edb993c9c1c04da4b"
 dependencies = [
  "getrandom 0.2.3",
- "libc 0.2.104",
+ "libc 0.2.138",
  "nix 0.22.2",
 ]
 
