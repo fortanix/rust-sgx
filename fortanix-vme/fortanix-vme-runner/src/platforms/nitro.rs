@@ -1,8 +1,8 @@
 use crate::VmeError;
 use nitro_cli::enclave_proc_comm;
 use nitro_cli::common::{self as nitro_common, logger};
-use nitro_cli::common::commands_parser::RunEnclavesArgs;
-use nitro_cli::common::json_output::EnclaveRunInfo;
+use nitro_cli::common::commands_parser::{EmptyArgs, RunEnclavesArgs};
+use nitro_cli::common::json_output::{EnclaveRunInfo, EnclaveTerminateInfo};
 use super::Platform;
 
 pub struct NitroEnclaves;
@@ -57,7 +57,27 @@ impl Platform for NitroEnclaves {
     }
 }
 
-    fn terminate(_enclave: &Self::EnclaveDescriptor) -> Result<(), VmeError> {
-        todo!();
+impl Drop for RunningNitroEnclave {
+    fn drop(&mut self) {
+        fn terminate(enclave: &mut EnclaveRunInfo) -> Result<(), ()> {
+            let mut replies = vec![];
+            let mut comm = nitro_cli::enclave_proc_comm::enclave_proc_connect_to_single(&enclave.enclave_id).unwrap();
+
+            nitro_common::enclave_proc_command_send_single::<EmptyArgs>(
+                nitro_common::EnclaveProcessCommandType::Terminate,
+                None,
+                &mut comm,
+            ).unwrap();
+
+            replies.push(comm);
+            nitro_cli::enclave_proc_comm::enclave_process_handle_all_replies::<EnclaveTerminateInfo>(
+                &mut replies,
+                0,
+                false,
+                vec![0],
+            ).unwrap();
+            Ok(())
+        }
+        let _ = terminate(&mut self.0);
     }
 }
