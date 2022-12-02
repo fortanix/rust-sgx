@@ -14,7 +14,7 @@ extern crate failure;
 
 use std::borrow::Borrow;
 use std::fs::File;
-use std::io::{repeat, Error as IoError, Read};
+use std::io::{self, repeat, Error as IoError, Read};
 use std::mem::replace;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
@@ -35,6 +35,9 @@ use sgxs_crate::util::{size_fit_natural, size_fit_page};
 use clap::ArgMatches;
 use std::convert::TryInto;
 
+const THREAD_GUARD_SIZE: u64 = 0x10000;
+const TCB_SIZE: u64 = 120;
+
 #[allow(non_snake_case)]
 struct Symbols<'a> {
     sgx_entry: &'a DynSymEntry,
@@ -53,7 +56,11 @@ struct Symbols<'a> {
     EH_FRM_LEN: Option<&'a DynSymEntry>,
     EH_FRM_HDR_OFFSET: Option<&'a DynSymEntry>,
     EH_FRM_HDR_LEN: Option<&'a DynSymEntry>,
+    TLS_INIT_BASE: Option<&'a DynSymEntry>,
+    TLS_INIT_SIZE: Option<&'a DynSymEntry>,
+    TLS_OFFSET: Option<&'a DynSymEntry>,
 }
+
 struct SectionRange {
     offset: u64,
     size: u64,
@@ -62,6 +69,19 @@ struct SectionRange {
 struct Dynamic<'a> {
     rela: &'a DynEntry<u64>,
     relacount: &'a DynEntry<u64>,
+}
+
+struct Tls {
+    init_base: u64,
+    init_size: u64,
+    /// The module offset from the thread pointer (see the ELF-TLS specification
+    /// for more details)
+    module_offset: u64,
+    /// The size of the TLS area for one thread (page-aligned)
+    size: u64,
+    /// The offset of the thread pointer (hence also the TCB) from the start of
+    /// the TLS area
+    tp_offset: u64,
 }
 
 struct Splice {
@@ -119,6 +139,7 @@ pub struct LayoutInfo<'a> {
     ehfrm: SectionRange,
     ehfrm_hdr: SectionRange,
     text: SectionRange,
+    tls: Tls,
 }
 
 macro_rules! read_syms {
@@ -233,9 +254,8 @@ impl<'a> LayoutInfo<'a> {
         //
         // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
         let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE
-                              optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
+                              optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN, TLS_INIT_BASE, TLS_INIT_SIZE, TLS_OFFSET
                               in syms : elf);
-
 
         check_size!(syms.HEAP_BASE == 8);
         check_size!(syms.HEAP_SIZE == 8);
@@ -264,7 +284,17 @@ impl<'a> LayoutInfo<'a> {
         } else {
             bail!("Missing EH Frame header symbols, application must either have (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
-        
+
+        match  (syms.TLS_INIT_BASE, syms.TLS_INIT_SIZE, syms.TLS_OFFSET) {
+            (Some(TLS_INIT_BASE), Some(TLS_INIT_SIZE), Some(TLS_OFFSET)) => {
+                check_size!(TLS_INIT_BASE == 8);
+                check_size!(TLS_INIT_SIZE == 8);
+                check_size!(TLS_OFFSET == 8);
+            }
+            (None, None, None) => {}
+            _ => bail!("Missing symbols, applications must either have all or none of TLS_INIT_BASE, TLS_INIT_SIZE and TLS_OFFSET"),
+        }
+
         Ok(syms)
     }
 
@@ -380,6 +410,56 @@ impl<'a> LayoutInfo<'a> {
         Ok(())
     }
 
+    fn check_tls(elf: &ElfFile<'a>) -> Result<Tls, Error> {
+        fn round_up(addr: u64, align: u64) -> u64 {
+            addr + addr.wrapping_neg() & (align - 1)
+        }
+
+        let mut ph = None;
+        for header in elf.program_iter() {
+            if header.get_type().map_err(err_msg)? == PhType::Tls && ph.replace(header).is_some() {
+                bail!("Found TLS segment twice");
+            }
+        }
+
+        if let Some(ph) = ph {
+            if ph.align() > 0x1000 {
+                bail!("Cannot guarantee more than page-alignment");
+            } else if !ph.align().is_power_of_two() {
+                bail!("Invalid TLS area alignment");
+            }
+
+            // The linker computes the TLS offsets assuming that
+            //  init_base mod align == tp - module_offset mod align
+            // If
+            //  init_base mod align == 0
+            // the following formula reduces to the formula given by the specification.
+            let module_offset =
+                round_up(ph.virtual_addr() + ph.mem_size(), ph.align()) - ph.virtual_addr();
+            // Compute the thread pointer offset from the start of the TLS area.
+            // For the assumption above to work, it needs to be properly aligned
+            // for the segment. Also, the thread control block needs a minimum
+            // alignment of 8 bytes.
+            let tp_offset = round_up(module_offset, u64::max(8, ph.align()));
+            let size = round_up(tp_offset + TCB_SIZE, 0x1000);
+            Ok(Tls {
+                init_base: ph.virtual_addr(),
+                init_size: ph.file_size(),
+                module_offset,
+                size,
+                tp_offset,
+            })
+        } else {
+            Ok(Tls {
+                init_base: 0,
+                init_size: 0,
+                module_offset: 0,
+                size: round_up(TCB_SIZE, 0x1000),
+                tp_offset: 0,
+            })
+        }
+    }
+
     pub fn new(
         elf: ElfFile<'a>,
         ssaframesize: u32,
@@ -401,6 +481,7 @@ impl<'a> LayoutInfo<'a> {
         let ehfrm = Self::check_section(&elf, ".eh_frame")?;
         let ehfrm_hdr = Self::check_section(&elf, ".eh_frame_hdr")?;
         let text = Self::check_section(&elf, ".text")?;
+        let tls = Self::check_tls(&elf)?;
 
         Ok(LayoutInfo {
             elf,
@@ -416,6 +497,7 @@ impl<'a> LayoutInfo<'a> {
             ehfrm_hdr,
             text,
             sized,
+            tls,
         })
     }
 
@@ -465,6 +547,16 @@ impl<'a> LayoutInfo<'a> {
             bail!("Missing .eh_frame header symbols, application must have symbols exported by rust x86_64_fortanix_unknown_sgx toolchain, either (EH_FRM_HDR_BASE/EH_FRM_HDR_SIZE) or (EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN");
         }
 
+        if let (Some(TLS_INIT_BASE), Some(TLS_INIT_SIZE), Some(TLS_OFFSET)) = (
+            self.sym.TLS_INIT_BASE,
+            self.sym.TLS_INIT_SIZE,
+            self.sym.TLS_OFFSET,
+        ) {
+            splices.push(Splice::for_sym_u64(TLS_INIT_BASE, self.tls.init_base));
+            splices.push(Splice::for_sym_u64(TLS_INIT_SIZE, self.tls.init_size));
+            splices.push(Splice::for_sym_u64(TLS_OFFSET, self.tls.module_offset));
+        }
+
         if let Some(enclave_size) = enclave_size {
             splices.push(Splice::for_sym_u64(self.sym.ENCLAVE_SIZE, enclave_size));
         }
@@ -483,7 +575,7 @@ impl<'a> LayoutInfo<'a> {
         for ph in self
             .elf
             .program_iter()
-            .filter(|ph| ph.get_type() == Ok(PhType::Load))
+            .filter(|ph| matches!(ph.get_type(), Ok(PhType::Load | PhType::Tls)))
         {
             let mut secinfo = SecinfoTruncated {
                 flags: PageType::Reg.into(),
@@ -563,23 +655,19 @@ impl<'a> LayoutInfo<'a> {
             .elf
             .program_iter()
             .filter_map(|ph| {
-                if ph.get_type() == Ok(PhType::Load) {
-                    Some(ph.virtual_addr() + ph.mem_size())
-                } else {
-                    None
-                }
+                matches!(ph.get_type(), Ok(PhType::Load | PhType::Tls)).then(|| {
+                    ph.virtual_addr() + ph.mem_size()
+                })
             })
             .max()
             .ok_or_else(|| format_err!("No loadable segments found"))?;
 
         let heap_addr = size_fit_page(max_addr);
         let mut thread_start = heap_addr + self.heap_size;
-        const THREAD_GUARD_SIZE: u64 = 0x10000;
-        const TLS_SIZE: u64 = 0x1000;
         let nssa = 1u32;
         let thread_size = THREAD_GUARD_SIZE
             + self.stack_size
-            + TLS_SIZE
+            + self.tls.size
             + (1 + (nssa as u64) * (self.ssaframesize as u64)) * 0x1000;
         let memory_size = thread_start + (self.threads as u64) * thread_size;
         let enclave_size = if self.sized {
@@ -615,7 +703,8 @@ impl<'a> LayoutInfo<'a> {
             let stack_addr = thread_start + THREAD_GUARD_SIZE;
             let stack_tos = stack_addr + self.stack_size;
             let tls_addr = stack_tos;
-            let tcs_addr = tls_addr + TLS_SIZE;
+            let tp = tls_addr + self.tls.tp_offset;
+            let tcs_addr = tls_addr + self.tls.size;
 
             // Output stack
             let secinfo = SecinfoTruncated {
@@ -628,26 +717,40 @@ impl<'a> LayoutInfo<'a> {
                 secinfo
             )?;
 
-            // Output TLS
+            // Output TLS area
+            let secinfo = SecinfoTruncated {
+                flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
+            };
+
+            let reserve_pages = self.tls.tp_offset / 0x1000;
+            let remaining_data = self.tls.tp_offset % 0x1000;
+            writer.write_pages::<&[u8]>(None, reserve_pages as usize, Some(tls_addr), secinfo)?;
+
             let secondary = match (self.library, i) {
                 (true, _) | (false, 0) => false,
                 (false, _) => true,
             };
-            let tls = unsafe {
-                std::mem::transmute::<_, [u8; 32]>([stack_tos, secondary as u64, 0u64, 0u64])
+            let tcb = unsafe {
+                std::mem::transmute::<_, [u8; 40]>([tp, stack_tos, secondary as u64, 0u64, 0u64])
             };
-            let secinfo = SecinfoTruncated {
-                flags: SecinfoFlags::R | SecinfoFlags::W | PageType::Reg.into(),
-            };
-            writer.write_pages(Some(&mut &tls[..]), 1, Some(tls_addr), secinfo)?;
+            // FIXME: Avoid writing so many zeroes.
+            let mut data = io::repeat(0).take(remaining_data).chain(&tcb[..]);
+            writer.write_pages(
+                Some(&mut data),
+                (self.tls.size / 0x1000 - reserve_pages) as usize,
+                Some(tls_addr + 0x1000 * reserve_pages),
+                secinfo,
+            )?;
 
             // Output TCS, SSA
             let tcs = Tcs {
                 ossa: tcs_addr + 0x1000,
-                nssa: nssa,
+                nssa,
                 oentry: self.sym.sgx_entry.value(),
-                ofsbasgx: tls_addr,
-                ogsbasgx: stack_tos,
+                ofsbasgx: tls_addr + self.tls.tp_offset,
+                // For backwards-compatibility reasons, GS needs to point to the
+                // second quadword in the TCB
+                ogsbasgx: tls_addr + self.tls.tp_offset + 8,
                 fslimit: 0xfff,
                 gslimit: 0xfff,
                 ..Tcs::default()

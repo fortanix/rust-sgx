@@ -32,18 +32,24 @@ This section describes the requirements on the SGX thread control structure
 ### TCS
 
 - `NSSA` should be set to 1.
-- `OGSBASGX` should point to a thread-specific memory region (e.g. TLS) of at 
-  least 112 bytes.
+- `OFSBASGX` should point to a thread-specific memory region of at least 120 bytes
+  with 8-byte alignment.
+- For backwards-compatibility reasons, `OGSBASGX` should be set to `OFSBASGX + 8`.
 
 ### TLS
 
-The memory region pointed to by `OGSBASGX` should be initialized as follows:
+The memory region pointed to by `OFSBASGX` should be initialized as follows:
 
-- Offset `0x0`: Top-of-Stack offset from image base.
-- Offset `0x8`: `1` if this is an executable and this is a secondary TCS, `0`
+- Offset `0x0`: Value of `OSFSBASX`.
+- Offset `0x8`: Top-of-Stack offset from image base.
+- Offset `0x10`: `1` if this is an executable and this is a secondary TCS, `0`
   otherwise.
-- Offsets `0x10`, `0x18`, `0x20`: `0`
+- Offsets `0x18`, `0x20`, `0x28`: `0`
 - Other offsets: uninitialized.
+
+If the program uses ELF TLS segments (with the local exec model), `OSFSBASGX`
+should point to the end of a memory region capable of holding the TLS data and
+be suitably aligned for that purpose.
 
 ## Globals
 
@@ -70,3 +76,9 @@ binary.
   of the ELF section named '.eh_frame'.
 - `EH_FRM_LEN`. Size 8 bytes. The size in bytes of the ELF section named
   '.eh_frame'.
+- `TLS_INIT_BASE`. Size 8 bytes. The base address of the TLS initialization image,
+  little-endian.
+- `TLS_INIT_SIZE`. Size 8 bytes. The size of the TLS initialization image,
+  little-endian.
+- `TLS_OFFSET`. Size 8 bytes. The TLS offset of the main module (see the [ELF-TLS
+  specification](https://uclibc.org/docs/tls.pdf) for more information).
