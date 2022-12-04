@@ -35,6 +35,7 @@ matrix:
         - cargo test --verbose --locked -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
+        - cargo build --verbose --locked --manifest-path em-app/Cargo.toml --target=x86_64-fortanix-unknown-sgx
         # uses backtrace, which still requires nightly on SGX
         - cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
         # uses sgxstd feature
