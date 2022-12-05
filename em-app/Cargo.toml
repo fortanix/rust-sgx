@@ -2,7 +2,7 @@
 
 [package]
 name = "em-app"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -21,4 +21,4 @@ sgx-isa = { version="0.3", features=["sgxstd"], default-features=false }
 
 em-node-agent-client = "1.0.0"
 sgx_pkix = "0.1.0"
-pkix = "0.1.1"
+pkix = ">=0.1.1, <0.3.0"
