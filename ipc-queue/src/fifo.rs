@@ -6,7 +6,7 @@
 
 use std::cell::UnsafeCell;
 use std::mem;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, Ordering::SeqCst};
 use std::sync::Arc;
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
@@ -152,7 +152,7 @@ impl<T: Transmittable> Fifo<T> {
     pub(crate) fn try_send_impl(&self, val: Identified<T>) -> Result</*wake up reader:*/ bool, TrySendError> {
         let (new, was_empty) = loop {
             // 1. Load the current offsets.
-            let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
+            let current = Offsets::new(self.offsets.load(SeqCst), self.data.len() as u32);
             let was_empty = current.is_empty();
 
             // 2. If the queue is full, wait, then go to step 1.
@@ -164,8 +164,7 @@ impl<T: Transmittable> Fifo<T> {
             //    with the current offsets. If the CAS was not succesful, go to step 1.
             let new = current.increment_write_offset();
             let current = current.as_usize();
-            let prev = self.offsets.compare_and_swap(current, new.as_usize(), Ordering::SeqCst);
-            if prev == current {
+            if self.offsets.compare_exchange(current, new.as_usize(), SeqCst, SeqCst).is_ok() {
                 break (new, was_empty);
             }
         };
@@ -173,7 +172,7 @@ impl<T: Transmittable> Fifo<T> {
         // 4. Write the data, then the `id`.
         let slot = unsafe { &mut *self.data[new.write_offset()].get() };
         slot.data = val.data;
-        slot.id.store(val.id, Ordering::SeqCst);
+        slot.id.store(val.id, SeqCst);
 
         // 5. If the queue was empty in step 1, signal the reader to wake up.
         Ok(was_empty)
@@ -181,7 +180,7 @@ impl<T: Transmittable> Fifo<T> {
 
     pub(crate) fn try_recv_impl(&self) -> Result<(Identified<T>, /*wake up writer:*/ bool), TryRecvError> {
         // 1. Load the current offsets.
-        let current = Offsets::new(self.offsets.load(Ordering::SeqCst), self.data.len() as u32);
+        let current = Offsets::new(self.offsets.load(SeqCst), self.data.len() as u32);
 
         // 2. If the queue is empty, wait, then go to step 1.
         if current.is_empty() {
@@ -194,7 +193,7 @@ impl<T: Transmittable> Fifo<T> {
         let (slot, id) = loop {
             // 4. Read the `id` at the new read offset.
             let slot = unsafe { &mut *self.data[new.read_offset()].get() };
-            let id = slot.id.load(Ordering::SeqCst);
+            let id = slot.id.load(SeqCst);
 
             // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
             //    expected to be written imminently.
@@ -205,13 +204,13 @@ impl<T: Transmittable> Fifo<T> {
 
         // 6. Read the data, then store `0` in the `id`.
         let val = Identified { id, data: slot.data };
-        slot.id.store(0, Ordering::SeqCst);
+        slot.id.store(0, SeqCst);
 
         // 7. Store the new read offset, retrieving the old offsets.
         let before = fetch_adjust(
             self.offsets,
             new.read as isize - current.read as isize,
-            Ordering::SeqCst,
+            SeqCst,
         );
 
         // 8. If the queue was full before step 7, signal the writer to wake up.
@@ -288,7 +287,6 @@ impl Offsets {
 mod tests {
     use super::*;
     use crate::test_support::{NoopSynchronizer, TestValue};
-    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::mpsc;
     use std::thread;
 
@@ -367,10 +365,10 @@ mod tests {
     #[test]
     fn fetch_adjust_correctness() {
         let x = AtomicUsize::new(0);
-        fetch_adjust(&x, 5, Ordering::SeqCst);
-        assert_eq!(x.load(Ordering::SeqCst), 5);
-        fetch_adjust(&x, -3, Ordering::SeqCst);
-        assert_eq!(x.load(Ordering::SeqCst), 2);
+        fetch_adjust(&x, 5, SeqCst);
+        assert_eq!(x.load(SeqCst), 5);
+        fetch_adjust(&x, -3, SeqCst);
+        assert_eq!(x.load(SeqCst), 2);
     }
 
     #[test]
