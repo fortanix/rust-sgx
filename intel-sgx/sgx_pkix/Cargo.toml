@@ -12,7 +12,7 @@ categories = ["cryptography"]
 
 [dependencies]
 byteorder = "1.0"
-pkix = "0.1.1"
+pkix = ">=0.1.1, <0.3.0"
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 quick-error = "1.1.0"
 lazy_static = "1"
