@@ -24,6 +24,10 @@ impl EnclaveHash {
         EnclaveHash { hash }
     }
 
+    pub fn hash(&self) -> Hash {
+        self.hash
+    }
+
     pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
         struct WriteToHasher<H> {
             hasher: H,
@@ -97,7 +101,7 @@ impl Signer {
         }
     }
 
-    fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
+    pub fn sighash<H: SgxHashOps>(sig: &Sigstruct) -> Hash {
         let mut hasher = H::new();
         let data = sig.signature_data();
         hasher.update(data.0);
@@ -105,13 +109,8 @@ impl Signer {
         hasher.finish()
     }
 
-    /// # Panics
-    ///
-    /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
-    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
-        Self::check_key(key);
-
-        let mut sig = Sigstruct {
+    pub fn build_sigstruct(&self) -> Sigstruct {
+        Sigstruct {
             header: SIGSTRUCT_HEADER1,
             vendor: 0,
             date: self.date,
@@ -133,7 +132,16 @@ impl Signer {
             _reserved4: [0; 12],
             q1: [0; 384],
             q2: [0; 384],
-        };
+        }
+    }
+
+    /// # Panics
+    ///
+    /// Panics if key is not 3072 bits. Panics if the public exponent of key is not 3.
+    pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
+        Self::check_key(key);
+
+        let mut sig = self.build_sigstruct();
 
         let (s, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig))?;
         let n = key.n();
