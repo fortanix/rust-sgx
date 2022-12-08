@@ -1,5 +1,9 @@
 branches:
   only:
+    # This is where pull requests from "bors r+" are built.
+    - staging
+    # This is where pull requests from "bors try" are built.
+    - trying
     # Branch for continued development of sgx-pkix v0.1.x
     - sgx-pkix_v0.1.x
 language: rust
