@@ -1,5 +1,9 @@
 branches:
   only:
+    # This is where pull requests from "bors r+" are built.
+    - staging
+    # This is where pull requests from "bors try" are built.
+    - trying
     # Branch for continued development of em-app v0.2.x
     - em-app_v0.2.x
 language: rust
