@@ -258,10 +258,11 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "b64-ct",
  "em-node-agent-client",
+ "hex",
  "hyper",
  "mbedtls",
  "pkix",
@@ -331,6 +332,12 @@ checksum = "91780f809e750b0a89f5544be56617ff6b1227ee485bcb06ebe10cdf89bd3b71"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "httparse"
