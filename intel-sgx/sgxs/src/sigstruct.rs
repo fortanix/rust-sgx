@@ -105,13 +105,13 @@ impl Signer {
         hasher.finish()
     }
 
-    pub fn unsigned_hash<H: SgxHashOps>(self) -> Hash {
+    pub fn unsigned_hash<H: SgxHashOps>(&self) -> Hash {
         let sig = Self::unsigned_sig(self);
 
         Self::sighash::<H>(&sig)
     }
 
-    pub fn unsigned_sig(self) -> Sigstruct {
+    pub fn unsigned_sig(&self) -> Sigstruct {
         let sig = Sigstruct {
             header: SIGSTRUCT_HEADER1,
             vendor: 0,
@@ -145,7 +145,7 @@ impl Signer {
     pub fn sign<K: SgxRsaOps, H: SgxHashOps>(self, key: &K) -> Result<Sigstruct, K::Error> {
         Self::check_key(key);
 
-        let mut sig = Self::unsigned_sig(self);
+        let mut sig = Self::unsigned_sig(&self);
 
         let (s, q1, q2) = key.sign_sha256_pkcs1v1_5_with_q1_q2(Self::sighash::<H>(&sig))?;
         let n = key.n();
@@ -162,13 +162,13 @@ impl Signer {
     /// Adds a signature from raw bytes. This is used to add a signature
     /// generated in an out-of-band process outside of sgxs-tools.
     pub fn cat_sign<K: SgxRsaOps>(
-        self,
+        &self,
         key: &K,
         mut s_vec: Vec<u8>,
     ) -> Result<Sigstruct, K::Error> {
         Self::check_key(key);
 
-        let mut sig = Self::unsigned_sig(self);
+        let mut sig = Self::unsigned_sig(&self);
         let (q1, q2) = key.calculate_q1_q2(&s_vec)?;
 
         // The signature is read in as big-endian. It must be little-endian for
