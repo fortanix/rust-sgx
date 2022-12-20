@@ -24,6 +24,10 @@ impl EnclaveHash {
         EnclaveHash { hash }
     }
 
+    pub fn hash(&self) -> Hash {
+        self.hash
+    }
+
     pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
         struct WriteToHasher<H> {
             hasher: H,
