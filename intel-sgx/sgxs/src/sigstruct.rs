@@ -11,7 +11,7 @@ use time;
 
 use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
 pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
-use crypto::{Hash, SgxHashOps, SgxRsaOps};
+use crypto::{Hash, SgxHashOps, SgxRsaOps, SgxRsaPubOps};
 use sgxs::{copy_measured, SgxsRead};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -161,11 +161,11 @@ impl Signer {
 
     /// Adds a signature from raw bytes. This is used to add a signature
     /// generated in an out-of-band process outside of sgxs-tools.
-    pub fn cat_sign<K: SgxRsaOps>(
+    pub fn cat_sign<K: SgxRsaPubOps + SgxRsaOps>(
         &self,
         key: &K,
         mut s_vec: Vec<u8>,
-    ) -> Result<Sigstruct, K::Error> {
+    ) -> Result<Sigstruct, <K as SgxRsaPubOps>::Error> {
         Self::check_key(key);
 
         let mut sig = Self::unsigned_sig(&self);

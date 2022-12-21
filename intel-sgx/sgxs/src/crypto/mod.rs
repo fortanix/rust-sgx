@@ -46,14 +46,27 @@ pub trait SgxRsaOps {
         hash: H,
     ) -> Result<(), Self::Error>;
 
-    /// Retrieve the public key in little-endian format
+    /// Retrieve the public key exponent in little-endian format
     fn e(&self) -> Vec<u8>;
 
     /// Retrieve the modulus in little-endian format
     fn n(&self) -> Vec<u8>;
+}
 
-    /// Calculate q1 and q2 for a signature
-    fn calculate_q1_q2(&self, s_slice: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Self::Error>;
+pub trait SgxRsaPubOps {
+    type Error: ::std::error::Error;
+    
+    /// Given a signature, compute
+    /// - `q1 = s^2 / n`
+    /// - `q2 = (s^3 - q1*s*n) / n`
+    /// where `/` is integer division.
+    ///
+    /// Returns `(q1, q2)` in little-endian format.
+    ///
+    /// ### Panics
+    /// May panic if the input length is not 32, or if the key does not contain
+    /// the private component.
+    fn calculate_q1_q2(&self, s: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Self::Error>;
 }
 
 #[cfg(feature = "crypto-openssl")]
@@ -61,13 +74,43 @@ mod openssl {
     use super::*;
 
     use foreign_types::ForeignTypeRef;
-    use openssl::bn::{BigNum, BigNumContext};
+    use openssl::bn::{BigNum, BigNumRef, BigNumContext};
     use openssl::error::ErrorStack as SslError;
     use openssl::hash::{Hasher, MessageDigest};
     use openssl::nid::Nid;
     use openssl::pkey::{HasPublic, Private, Public};
     use openssl::rsa::RsaRef;
     use openssl_sys as ffi;
+
+    pub fn calculate_q1_q2(n: &BigNumRef, s_slice: &[u8]) -> Result<(Vec<u8>, Vec<u8>), SslError> {
+        // Compute Q1 and Q2
+        let mut s_2 = BigNum::new()?;
+        let mut s_3 = BigNum::new()?;
+        let mut q1 = BigNum::new()?;
+        let mut tmp1 = BigNum::new()?;
+        let mut tmp2 = BigNum::new()?;
+        let mut tmp3 = BigNum::new()?;
+        let mut q2 = BigNum::new()?;
+
+        let mut ctx = BigNumContext::new()?;
+        let s = BigNum::from_slice(s_slice)?;
+        s_2.sqr(&s, &mut ctx)?;
+        q1.checked_div(&s_2, &n, &mut ctx)?;
+
+        s_3.checked_mul(&s_2, &s, &mut ctx)?;
+        tmp1.checked_mul(&q1, &s, &mut ctx)?;
+        tmp2.checked_mul(&tmp1, &n, &mut ctx)?;
+        tmp3.checked_sub(&s_3, &tmp2)?;
+        q2.checked_div(&tmp3, &n, &mut ctx)?;
+        let mut q1 = q1.to_vec();
+        let mut q2 = q2.to_vec();
+
+        // Return in little-endian format
+        q1.reverse();
+        q2.reverse();
+        Ok((q1, q2))
+    }
+
 
     impl SgxHashOps for Hasher {
         fn new() -> Self {
@@ -140,7 +183,7 @@ mod openssl {
                 }
             };
 
-            let (q1, q2) = self.calculate_q1_q2(&s_vec)?;
+            let (q1, q2) = calculate_q1_q2(self.n(), &s_vec)?;
             s_vec.reverse();
             Ok((s_vec, q1, q2))
         }
@@ -185,35 +228,13 @@ mod openssl {
             v.reverse();
             v
         }
+    }
 
-        fn calculate_q1_q2(&self, s_slice: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Self::Error> {
-            // Compute Q1 and Q2
-            let mut s_2 = BigNum::new()?;
-            let mut s_3 = BigNum::new()?;
-            let mut q1 = BigNum::new()?;
-            let mut tmp1 = BigNum::new()?;
-            let mut tmp2 = BigNum::new()?;
-            let mut tmp3 = BigNum::new()?;
-            let mut q2 = BigNum::new()?;
+    impl<T: HasPublic> SgxRsaPubOps for RsaRef<T> {
+        type Error = SslError;
 
-            let mut ctx = BigNumContext::new()?;
-            let s = BigNum::from_slice(s_slice)?;
-            let n = self.n();
-            s_2.sqr(&s, &mut ctx)?;
-            q1.checked_div(&s_2, &n, &mut ctx)?;
-
-            s_3.checked_mul(&s_2, &s, &mut ctx)?;
-            tmp1.checked_mul(&q1, &s, &mut ctx)?;
-            tmp2.checked_mul(&tmp1, &n, &mut ctx)?;
-            tmp3.checked_sub(&s_3, &tmp2)?;
-            q2.checked_div(&tmp3, &n, &mut ctx)?;
-            let mut q1 = q1.to_vec();
-            let mut q2 = q2.to_vec();
-
-            // Return in little-endian format
-            q1.reverse();
-            q2.reverse();
-            Ok((q1, q2))
+        fn calculate_q1_q2(&self, s: &[u8]) -> Result<(Vec<u8>, Vec<u8>), Self::Error> {
+            calculate_q1_q2(self.n(), s)
         }
     }
 }
