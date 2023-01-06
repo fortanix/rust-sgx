@@ -13,6 +13,6 @@ fn main() {
             eprintln!("ERROR retrieving PCK ID: {}", e);
             std::process::exit(1);
         }
-        Ok(pckid_str) => println!("{}", pckid_str),
+        Ok(pckid) => println!("{}", pckid.to_string()),
     }
 }

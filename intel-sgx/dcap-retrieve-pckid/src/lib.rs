@@ -6,6 +6,7 @@
 
 #![deny(warnings)]
 use std::fmt;
+use std::convert::TryInto;
 
 use aesm_client::AesmClient;
 use dcap_ql::quote::{Qe3CertDataPpid, Quote, Quote3SignatureEcdsaP256, QuoteHeader};
@@ -34,7 +35,25 @@ impl<'a> fmt::Display for PrintHex<'a> {
     }
 }
 
-pub fn retrieve_pckid_str() -> Result<String, &'static str> {
+pub struct PckCertId {
+    pub cd_ppid: Qe3CertDataPpid<'static>,
+    pub qe_id: [u8; 16],
+}
+
+impl ToString for PckCertId {
+    fn to_string(&self) -> String {
+        format!(
+            "{ppid},{pceid},{cpusvn},{pcesvn},{qe3id}",
+            ppid = PrintHex(&self.cd_ppid.ppid),
+            pceid = PrintHex(&self.cd_ppid.pceid.to_le_bytes()),
+            cpusvn = PrintHex(&self.cd_ppid.cpusvn),
+            pcesvn = PrintHex(&self.cd_ppid.pcesvn.to_le_bytes()),
+            qe3id = PrintHex(&self.qe_id),
+        )
+    }
+}
+
+pub fn retrieve_pckid_str() -> Result<PckCertId, &'static str> {
     const SGX_QL_ALG_ECDSA_P256: u32 = 2;
 
     let mut device = IsgxDevice::new()
@@ -73,12 +92,8 @@ pub fn retrieve_pckid_str() -> Result<String, &'static str> {
         .certification_data::<Qe3CertDataPpid>()
         .map_err(|_| "Certification data is already available for the current platform")?;
 
-    Ok(format!(
-        "{ppid},{pceid},{cpusvn},{pcesvn},{qe3id}",
-        ppid = PrintHex(&cd_ppid.ppid),
-        pceid = PrintHex(&cd_ppid.pceid.to_le_bytes()),
-        cpusvn = PrintHex(&cd_ppid.cpusvn),
-        pcesvn = PrintHex(&cd_ppid.pcesvn.to_le_bytes()),
-        qe3id = PrintHex(&user_data[0..16]),
-    ))
+    Ok(PckCertId {
+        cd_ppid: cd_ppid.clone_owned(),
+        qe_id: user_data[0..16].try_into().unwrap(),
+    })
 }
