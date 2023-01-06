@@ -704,7 +704,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "aesm-client",
  "dcap-ql",
