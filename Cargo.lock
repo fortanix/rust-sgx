@@ -708,6 +708,7 @@ version = "0.1.3"
 dependencies = [
  "aesm-client",
  "dcap-ql",
+ "failure",
  "report-test",
  "sgx-isa",
  "sgxs-loaders",

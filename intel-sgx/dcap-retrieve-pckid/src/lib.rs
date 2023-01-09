@@ -5,11 +5,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #![deny(warnings)]
-use std::fmt;
 use std::convert::TryInto;
+use std::fmt;
 
 use aesm_client::AesmClient;
 use dcap_ql::quote::{Qe3CertDataPpid, Quote, Quote3SignatureEcdsaP256, QuoteHeader};
+use failure::Error as FailureError;
 use sgx_isa::Targetinfo;
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
@@ -53,11 +54,11 @@ impl ToString for PckId {
     }
 }
 
-pub fn retrieve_pckid_str() -> Result<PckId, &'static str> {
+pub fn retrieve_pckid_str() -> Result<PckId, FailureError> {
     const SGX_QL_ALG_ECDSA_P256: u32 = 2;
 
     let mut device = IsgxDevice::new()
-        .map_err(|_| "Error opening SGX device")?
+        .map_err(|err| FailureError::from(err).context("Error opening SGX device"))?
         .einittoken_provider(AesmClient::new())
         .build();
 
@@ -65,32 +66,32 @@ pub fn retrieve_pckid_str() -> Result<PckId, &'static str> {
 
     let key_ids = client
         .get_supported_att_key_ids()
-        .map_err(|_| "AESM communication error getting attestation key ID")?;
+        .map_err(|err| FailureError::from(err).context("AESM communication error getting attestation key ID"))?;
 
     let ecdsa_key_id = key_ids
         .into_iter()
         .find(|id| SGX_QL_ALG_ECDSA_P256 == get_algorithm_id(id))
-        .ok_or("No appropriate attestation key ID")?;
+        .ok_or(::failure::err_msg("No appropriate attestation key ID"))?;
 
     let quote_info = client
         .init_quote_ex(ecdsa_key_id.clone())
-        .map_err(|_| "Error during quote initialization")?;
+        .map_err(|err| FailureError::from(err).context("Error during quote initialization"))?;
 
     let ti = Targetinfo::try_copy_from(quote_info.target_info()).unwrap();
     let report = report_test::report(&ti, &mut device).unwrap();
 
     let res = client
         .get_quote_ex(ecdsa_key_id, report.as_ref().to_owned(), None, vec![0; 16])
-        .map_err(|_| "Error obtaining quote")?;
+        .map_err(|err| FailureError::from(err).context("Error obtaining quote"))?;
 
-    let quote = Quote::parse(res.quote()).map_err(|_| "Error parsing quote")?;
+    let quote = Quote::parse(res.quote()).map_err(|err| err.context("Error parsing quote"))?;
     let QuoteHeader::V3 { user_data, .. } = quote.header();
     let sig = quote
         .signature::<Quote3SignatureEcdsaP256>()
-        .map_err(|_| "Error parsing requested signature type")?;
+        .map_err(|err| err.context("Error parsing requested signature type"))?;
     let cd_ppid = sig
         .certification_data::<Qe3CertDataPpid>()
-        .map_err(|_| "Certification data is already available for the current platform")?;
+        .map_err(|err| err.context("Error parsing requested signature type"))?;
 
     Ok(PckId {
         cd_ppid: cd_ppid.clone_owned(),
