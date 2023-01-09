@@ -35,12 +35,12 @@ impl<'a> fmt::Display for PrintHex<'a> {
     }
 }
 
-pub struct PckCertId {
+pub struct PckId {
     pub cd_ppid: Qe3CertDataPpid<'static>,
     pub qe_id: [u8; 16],
 }
 
-impl ToString for PckCertId {
+impl ToString for PckId {
     fn to_string(&self) -> String {
         format!(
             "{ppid},{pceid},{cpusvn},{pcesvn},{qe3id}",
@@ -53,7 +53,7 @@ impl ToString for PckCertId {
     }
 }
 
-pub fn retrieve_pckid_str() -> Result<PckCertId, &'static str> {
+pub fn retrieve_pckid_str() -> Result<PckId, &'static str> {
     const SGX_QL_ALG_ECDSA_P256: u32 = 2;
 
     let mut device = IsgxDevice::new()
@@ -92,7 +92,7 @@ pub fn retrieve_pckid_str() -> Result<PckCertId, &'static str> {
         .certification_data::<Qe3CertDataPpid>()
         .map_err(|_| "Certification data is already available for the current platform")?;
 
-    Ok(PckCertId {
+    Ok(PckId {
         cd_ppid: cd_ppid.clone_owned(),
         qe_id: user_data[0..16].try_into().unwrap(),
     })
