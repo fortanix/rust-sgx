@@ -306,9 +306,12 @@ pub struct LibraryBuilder {
 
 impl Library {
     pub fn load(library: Option<dl::Library>) -> IoResult<LibraryBuilder> {
+        println!("load: {:?}", library);
         unsafe {
             let library = library.map_or_else(|| dl::Library::new(LIBRARY), Ok)?;
+            println!("loaded library, looking for symbols");
             let enclave_create = *library.get::<EnclaveCreateFn>(SYM_ENCLAVE_CREATE)?;
+            println!("create symbol found");
             let enclave_load_data = *library.get::<EnclaveLoadDataFn>(SYM_ENCLAVE_LOAD_DATA)?;
             let enclave_initialize = *library.get::<EnclaveInitializeFn>(SYM_ENCLAVE_INITIALIZE)?;
             let enclave_delete = *library.get::<EnclaveDeleteFn>(SYM_ENCLAVE_DELETE)?;
