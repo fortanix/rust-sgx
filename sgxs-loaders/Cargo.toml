@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-loaders"
-version = "0.3.1"
+version = "0.3.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"

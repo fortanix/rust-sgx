@@ -1,6 +1,6 @@
 [package]
 name = "dcap-ql"
-version = "0.3.3"
+version = "0.3.5"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
