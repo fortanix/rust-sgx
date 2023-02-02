@@ -75,11 +75,18 @@ pub fn is_loaded() -> bool {
 ///
 /// Since DCAP is being used, assume that no EINITTOKEN provider is necessary.
 pub fn enclave_loader() -> Result<EnclaveCommonLibrary, Error> {
+    println!("dcap_ql: enclave_loader()");
     #[cfg(not(feature = "link"))]
     dl::load().map_err(failure::err_msg)?;
     // NB. libsgx_dcap_ql.so.1 transitively links to libsgx_enclave_common.so.1
     // so we should be able to find it already loaded.
     // We can't use the library from `mod dl` if `not(feature = "link")`,
     // because that is not the right library.
-    Ok(EnclaveCommonLibrary::load(Some(Dl::this().into()))?.build())
+    let lib = EnclaveCommonLibrary::load(Some(Dl::this().into()))
+        .or_else(|e| {
+            eprintln!("Loading library failed: {}", e);
+            EnclaveCommonLibrary::load(Dl::new("libsgx_enclave_common.so.1").map(|e| e.into()).ok())
+            .or(EnclaveCommonLibrary::load(Dl::new("libsgx_enclave_common.so").map(|e| e.into()).ok()))
+        })?;
+    Ok(lib.build())
 }
