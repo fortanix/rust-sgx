@@ -81,5 +81,7 @@ pub fn enclave_loader() -> Result<EnclaveCommonLibrary, Error> {
     // so we should be able to find it already loaded.
     // We can't use the library from `mod dl` if `not(feature = "link")`,
     // because that is not the right library.
-    Ok(EnclaveCommonLibrary::load(Some(Dl::this().into()))?.build())
+    let lib = EnclaveCommonLibrary::load(Some(Dl::this().into()))
+        .or(EnclaveCommonLibrary::load(None))?;
+    Ok(lib.build())
 }
