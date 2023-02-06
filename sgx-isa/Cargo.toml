@@ -27,4 +27,3 @@ serde = { version = "1.0.104", features = ["derive"], optional = true } # MIT/Ap
 [features]
 large_array_derive = []
 sgxstd = []
-nightly = []

@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![feature(llvm_asm)]
 extern crate aesm_client;
 extern crate clap;
 extern crate sgx_isa;
@@ -29,20 +28,24 @@ use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 fn enclu_eenter(tcs: &mut dyn Tcs) {
     let result: u32;
     unsafe {
-        llvm_asm!("
-        lea aep(%rip),%rcx
-        jmp enclu
-aep:
-        xor %eax,%eax
-        jmp post
-enclu:
-        enclu
-post:
-"       : "={eax}"(result)
-            : "{eax}"(Enclu::EEnter), "{rbx}"(tcs.address())
-            : "rcx"
-            : "volatile"
-        )
+        std::arch::asm!("
+            xchg %rbx, {0}
+            lea 1f(%rip),%rcx
+            jmp 2f
+1:
+            xor %eax,%eax
+            jmp 3f
+2:
+            enclu
+3:
+            xchg {0}, %rbx
+",
+            // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
+            in(reg) tcs.address(),
+            inout("eax") Enclu::EEnter as u32 => result,
+            lateout("rcx") _,
+            options(nostack, att_syntax)
+        );
     };
 
     if result == 0 {

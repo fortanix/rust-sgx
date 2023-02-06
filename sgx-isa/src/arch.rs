@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 use core::mem::MaybeUninit;
+use core::arch::asm;
 use super::Enclu;
 
 /// Wrapper struct to force 16-byte alignment.
@@ -24,13 +25,15 @@ pub fn egetkey(request: &Align512<[u8; 512]>) -> Result<Align16<[u8; 16]>, u32> 
         let mut out = MaybeUninit::uninit();
         let error;
 
-        llvm_asm!(
-            "enclu"
-            : "={eax}"(error)
-            : "{eax}"(Enclu::EGetkey),
-              "{rbx}"(request),
-              "{rcx}"(out.as_mut_ptr())
-            : "flags"
+        asm!(
+            // rbx is reserved by LLVM
+            "xchg %rbx, {0}",
+            "enclu",
+            "mov {0}, %rbx",
+            inout(reg) request => _,
+            inlateout("eax") Enclu::EGetkey as u32 => error,
+            in("rcx") out.as_mut_ptr(),
+            options(att_syntax, nostack),
         );
 
         match error {
@@ -52,13 +55,16 @@ pub fn ereport(
     unsafe {
         let mut report = MaybeUninit::uninit();
 
-        llvm_asm!(
-            "enclu"
-            : /* no output registers */
-            : "{eax}"(Enclu::EReport),
-              "{rbx}"(targetinfo),
-              "{rcx}"(reportdata),
-              "{rdx}"(report.as_mut_ptr())
+        asm!(
+            // rbx is reserved by LLVM
+            "xchg %rbx, {0}",
+            "enclu",
+            "mov {0}, %rbx",
+            inout(reg) targetinfo => _,
+            in("eax") Enclu::EReport as u32,
+            in("rcx") reportdata,
+            in("rdx") report.as_mut_ptr(),
+            options(att_syntax, preserves_flags, nostack),
         );
 
         report.assume_init()
