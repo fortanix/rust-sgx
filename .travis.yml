@@ -23,7 +23,8 @@ matrix:
             - libclang-3.8-dev
             - musl-tools
       rust:
-        - nightly
+        # This need to change back to `nightly` after https://github.com/fortanix/rust-sgx/issues/433 is fixed
+        - nightly-2023-01-31
       env:
         - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
       before_script:
