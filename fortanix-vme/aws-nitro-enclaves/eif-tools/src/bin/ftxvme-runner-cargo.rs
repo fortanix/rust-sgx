@@ -206,9 +206,13 @@ fn main() -> anyhow::Result<()> {
     // functions like `TcpStream::connect()`.
     // If your application calls `TcpStream::connect("<url:port>")`,
     // this proxy server acts as a bridge for request and responses.
-    let mut fortanix_vme_runner = command!("fortanix-vme-runner");
+    let mut fortanix_vme_runner = command! {
+        "fortanix-vme-runner" => args(
+            "--enclave-file"  => fortanix_vme_config.eif_file_path
+        )
+    };
     fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
-
+/*
     let nitro_cli_run_enclave = command! {
         "nitro-cli" => args(
             "run-enclave",
@@ -221,6 +225,6 @@ fn main() -> anyhow::Result<()> {
     };
 
     run_command(nitro_cli_run_enclave)?;
-
+*/
     Ok(())
 }
