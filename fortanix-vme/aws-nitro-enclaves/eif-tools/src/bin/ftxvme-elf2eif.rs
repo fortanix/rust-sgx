@@ -122,7 +122,32 @@ fn main() {
     run(input_path, output_path, &signing_certificate, &private_key, &resource_path);
 }
 
+#[cfg(test)]
+mod tests {
+    use log::LevelFilter;
+    use std::fs::File;
+    use std::io::{Error, Write};
+    use std::path::{Path, PathBuf};
+    use tempdir::TempDir;
 
+    #[test]
+    fn test_build() {
+        fn create_elf(workdir: &Path) -> Result<PathBuf, Error> {
+            let elf_path = workdir.join("a.elf");
+            let mut elf = File::create(elf_path.clone())?;
+            writeln!(elf, "Hello world!")?;
+            Ok(elf_path)
         }
 
+        let mut logger = env_logger::Builder::from_default_env();
+        let logger = logger.format(|buf, record| writeln!(buf, "{}", record.args()));
+        logger.filter_level(LevelFilter::Debug).init();
+
+        let workdir = TempDir::new("test-workdir").expect("Can't create workdir");
+        let elf_path = create_elf(workdir.path()).expect("Can't create eif");
+        let eif_path = workdir.path().join("a.eif");
+        let eif_path = eif_path.to_str().expect("Valid unicode");
+        let resource_path = PathBuf::from("./tests/binaries/x86_64/");
+        super::run(&elf_path, &eif_path, &None, &None, &resource_path);
+    }
 }
