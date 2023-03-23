@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use clap::{Arg, crate_authors, crate_version};
@@ -11,8 +11,10 @@ use tempdir::TempDir;
 
 use eif_tools::*;
 
+const DEFAULT_RESOURCE_PATH: &str = "/usr/share/nitro_enclaves/blobs/";
+
 /// Create a temporary directory used for creating a docker image.
-fn setup_docker_dir(elf_path: &str) -> Result<TempDir> {
+fn setup_docker_dir(elf_path: &Path) -> Result<TempDir> {
     const DOCKERFILE: &str = "
         FROM scratch
         COPY enclave .
@@ -24,6 +26,39 @@ fn setup_docker_dir(elf_path: &str) -> Result<TempDir> {
     let mut dockerfile = File::create(docker_dir.path().join("Dockerfile"))?;
     writeln!(dockerfile, "{}", DOCKERFILE)?;
     Ok(docker_dir)
+}
+
+fn run(input_path: &Path, output_path: &str, signing_certificate: &Option<String>, private_key: &Option<String>, resource_path: &PathBuf) {
+    println!("Converting elf file `{}` to eif, please wait", input_path.display());
+
+    let docker_dir = match setup_docker_dir(input_path) {
+        Ok(d) => d,
+        Err(e) => {
+            println!("Could create docker image from elf file: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+    let docker_dir_path = docker_dir.path().to_str().map(|s| s.to_string());
+    debug!("Created docker dir `{:?}`", docker_dir_path);
+
+    let (_output_file, measurements) = match build_from_docker(&resource_path, "elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key) {
+        Ok((o, m)) => {
+            if let Err(_) = docker_dir.close() {
+                debug!("Could not clean up docker directory `{:?}`", docker_dir_path)
+            }
+            (o, m)
+        }
+        Err(e) => {
+            if let Err(_) = docker_dir.close() {
+                debug!("Could not clean up docker directory `{:?}`", docker_dir_path)
+            }
+            println!("Building eif failed with {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    println!("Enclave Image successfully created: `{}`", output_path);
+    println!("{:#?}", measurements);
 }
 
 fn main() {
@@ -70,11 +105,11 @@ fn main() {
         .get_matches();
 
     let verbose = args.is_present("verbose");
-    let input_path = args.value_of("elffile").unwrap();
-    let output_path = args.value_of("eiffile").unwrap();
+    let input_path = args.value_of("elffile").map(|p| Path::new(p)).expect("Validated readable file");
+    let output_path = args.value_of("eiffile").expect("Validated string");
     let signing_certificate = args.value_of("signing-certificate").map(|c| c.to_string());
     let private_key = args.value_of("private-key").map(|k| k.to_string());
-    let resource_path = args.value_of("resource-path").unwrap_or("/usr/share/nitro_enclaves/blobs/");
+    let resource_path = args.value_of("resource-path").unwrap_or(DEFAULT_RESOURCE_PATH);
     let resource_path = Path::new(resource_path).to_path_buf();
     let mut logger = env_logger::Builder::from_default_env();
     let logger = logger.format(|buf, record| writeln!(buf, "{}", record.args()));
@@ -84,34 +119,10 @@ fn main() {
         logger.filter_level(LevelFilter::Error).init();
     }
 
-    println!("Converting elf file `{}` to eif, please wait", input_path);
+    run(input_path, output_path, &signing_certificate, &private_key, &resource_path);
+}
 
-    let docker_dir = match setup_docker_dir(input_path) {
-        Ok(d) => d,
-        Err(e) => {
-            println!("Could create docker image from elf file: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-    let docker_dir_path = docker_dir.path().to_str().map(|s| s.to_string());
-    debug!("Created docker dir `{:?}`", docker_dir_path);
 
-    let (_output_file, measurements) = match build_from_docker(&resource_path, "elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key) {
-        Ok((o, m)) => {
-            if let Err(_) = docker_dir.close() {
-                debug!("Could not clean up docker directory `{:?}`", docker_dir_path)
-            }
-            (o, m)
         }
-        Err(e) => {
-            if let Err(_) = docker_dir.close() {
-                debug!("Could not clean up docker directory `{:?}`", docker_dir_path)
-            }
-            println!("Building eif failed with {:?}", e);
-            std::process::exit(1);
-        }
-    };
 
-    println!("Enclave Image successfully created: `{}`", output_path);
-    println!("{:#?}", measurements);
 }
