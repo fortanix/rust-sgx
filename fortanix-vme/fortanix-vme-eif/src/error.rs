@@ -6,7 +6,7 @@ pub enum Error {
     #[error("Creating initramfs failed")]
     InitramfsWriteError(#[source] io::Error),
     #[error("Reading initramfs failed")]
-    InitramfsParseError(#[from] io::Error),
+    InitramfsParseError(#[source] io::Error),
     #[error("Can't extract data from initramfs")]
     InitramfsExtractError(#[source] io::Error),
     #[error("Expected trailer in initramfs missing")]
@@ -17,6 +17,16 @@ pub enum Error {
         found: String,
         expected: String,
     },
+    #[error("Writing kernel to file failed")]
+    KernelWriteError(#[source] io::Error),
+    #[error("Writing kernel config to file failed")]
+    KernelConfigWriteError(#[source] io::Error),
+    #[error("Generating Eif info failed: {error}")]
+    EifIdentityInfoError{
+        error: String,
+    },
+    #[error("Writing Eif failed")]
+    EifWriteError(#[source] io::Error),
     #[error("Invalid entry name (found \"{found:?}\", expected \"{expected:?}\")")]
     WrongEntryName {
         found: String,
@@ -45,6 +55,12 @@ impl Error {
             path,
             found,
             expected,
+        }
+    }
+
+    pub fn eif_identity_info(error: String) -> Self {
+        Error::EifIdentityInfoError {
+            error,
         }
     }
 

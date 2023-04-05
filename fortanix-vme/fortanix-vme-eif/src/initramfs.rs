@@ -139,11 +139,11 @@ impl<R: Read> Initramfs<R> {
         fn next<R: Read>(reader: NewcReader<R>) -> Result<NewcReader<R>, Error> {
             reader.finish()
                 .and_then(|r| NewcReader::new(r))
-                .map_err(Into::into)
+                .map_err(|e| Error::InitramfsWriteError(e))
         }
 
         let decoder = GzDecoder::new(self.0);
-        let reader = NewcReader::new(decoder)?;
+        let reader = NewcReader::new(decoder).map_err(|e| Error::InitramfsWriteError(e))?;
         is_directory(&reader, "./rootfs")?;
         
         let reader = next(reader)?;
