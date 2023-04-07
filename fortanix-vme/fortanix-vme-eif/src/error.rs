@@ -27,6 +27,10 @@ pub enum Error {
     },
     #[error("Writing Eif failed")]
     EifWriteError(#[source] io::Error),
+    #[error("Reading Eif failed")]
+    EifReadError(#[source] io::Error),
+    #[error("Parsing Eif failed")]
+    EifParseError(String),
     #[error("Invalid entry name (found \"{found:?}\", expected \"{expected:?}\")")]
     WrongEntryName {
         found: String,
