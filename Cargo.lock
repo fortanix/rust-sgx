@@ -1272,8 +1272,10 @@ name = "fortanix-vme-eif"
 version = "0.1.0"
 dependencies = [
  "aws-nitro-enclaves-image-format",
+ "clap 4.0.27",
  "cpio",
  "flate2",
+ "hex 0.4.3",
  "hex-literal",
  "serde_json",
  "sha2 0.9.8",

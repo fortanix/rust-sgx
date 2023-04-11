@@ -1,5 +1,5 @@
 use aws_nitro_enclaves_image_format::generate_build_info;
-use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader, EifSectionType};
+use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader};
 use aws_nitro_enclaves_image_format::utils::EifBuilder;
 use serde_json::json;
 use sha2::{Digest, Sha512};
@@ -10,6 +10,8 @@ mod initramfs;
 mod error;
 
 pub use error::Error;
+pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
+
 use initramfs::{Builder as InitramfsBuilder, Initramfs};
 
 pub struct Builder<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> {
@@ -104,7 +106,7 @@ impl<T: Read> FtxEif<T> {
     /// The AWS image format crate doesn't provide a way to extract these sections easily. This
     /// code should be upstreamed.
     /// https://github.com/aws/aws-nitro-enclaves-image-format/blob/main/src/utils/eif_reader.rs#L85-L209
-    fn parse(self) -> Result<(EifHeader, SectionIterator<T>), Error> {
+    pub fn parse(self) -> Result<(EifHeader, SectionIterator<T>), Error> {
         fn header<T: Read>(reader: &mut T) -> Result<EifHeader, Error> {
             let mut buff = [0; EifHeader::size()];
             reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
