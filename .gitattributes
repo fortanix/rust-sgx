@@ -2,3 +2,6 @@ fortanix-vme/aws-nitro-enclaves/eif-tools/tests/binaries/x86_64/bzImage filter=l
 fortanix-vme/aws-nitro-enclaves/eif-tools/tests/binaries/x86_64/init filter=lfs diff=lfs merge=lfs -text
 fortanix-vme/aws-nitro-enclaves/eif-tools/tests/binaries/x86_64/linuxkit filter=lfs diff=lfs merge=lfs -text
 fortanix-vme/aws-nitro-enclaves/eif-tools/tests/binaries/x86_64/nsm.ko filter=lfs diff=lfs merge=lfs -text
+fortanix-vme/fortanix-vme-tools/src/data/bzImage filter=lfs diff=lfs merge=lfs -text
+fortanix-vme/fortanix-vme-tools/src/data/init filter=lfs diff=lfs merge=lfs -text
+fortanix-vme/fortanix-vme-tools/src/data/nsm.ko filter=lfs diff=lfs merge=lfs -text
