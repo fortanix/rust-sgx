@@ -5,6 +5,7 @@ members = [
     "fortanix-vme/aws-nitro-enclaves/nitro-attestation-verify",
     "fortanix-vme/aws-nitro-enclaves/tests/nsm-test",
     "fortanix-vme/fortanix-vme-abi",
+    "fortanix-vme/fortanix-vme-eif",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/tests/hello_world",
     "fortanix-vme/tests/outgoing_connection",

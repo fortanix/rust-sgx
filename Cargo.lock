@@ -527,6 +527,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
+name = "cpio"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "27e77cfc4543efb4837662cb7cd53464ae66f0fd5c708d71e0f338b1c11d62d3"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1200,6 +1206,15 @@ dependencies = [
  "rustc-std-workspace-core",
  "serde",
  "vsock 0.2.4",
+]
+
+[[package]]
+name = "fortanix-vme-eif"
+version = "0.1.0"
+dependencies = [
+ "cpio",
+ "flate2",
+ "thiserror",
 ]
 
 [[package]]
@@ -2958,7 +2973,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.3.9",
+ "log 0.4.14",
  "which 4.0.2",
 ]
 
