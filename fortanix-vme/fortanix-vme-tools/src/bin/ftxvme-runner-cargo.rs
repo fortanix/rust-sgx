@@ -211,6 +211,10 @@ fn main() -> anyhow::Result<()> {
         ftxvme_runner.arg("--simulate");
     }
 
+    if cli.verbose {
+        ftxvme_runner.arg("--verbose");
+    }
+
     ftxvme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
 
     Ok(())
