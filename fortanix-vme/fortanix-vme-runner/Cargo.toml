@@ -9,10 +9,12 @@ clap = { version = "4.0", features = ["derive"] }
 env_logger = "0.8.4"
 fnv = "1.0.7"
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
+fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 libc = { version = "0.2", features = ["extra_traits"] }
 log = "0.4.14"
 nitro-cli = "1.1.0"
 nix = "0.22.1"
+rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = { version = "0.11" }
 vsock = "0.2.4"

@@ -16,9 +16,7 @@ use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
 
 mod platforms;
-use platforms::Platform;
-
-pub use platforms::NitroEnclaves;
+pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
 const MAX_LOG_MESSAGE_LEN: usize = 80;
 const PROXY_BUFF_SIZE: usize = 4192;
@@ -295,25 +293,47 @@ impl<'de> ClientConnection<'de> {
 
 pub struct EnclaveRunner<P: Platform> {
     _server: Arc<Server>,
-    _enclave: P::EnclaveDescriptor,
+    server_thread: JoinHandle<()>,
+    enclave: Option<P::EnclaveDescriptor>,
     platform: PhantomData<P>,
 }
 
 impl<P: Platform> EnclaveRunner<P> {
-    pub fn run<I: Into<P::RunArgs>>(run_args: I) -> Result<EnclaveRunner<P>, VmeError> {
+    /// Creates a new enclave runner
+    pub fn new() -> Result<EnclaveRunner<P>, IoError> {
         let _server = Arc::new(Server::bind(SERVER_PORT)?);
-        let _server_thread = match _server.clone().run() {
-            Ok(handle)                                     => { handle.join().unwrap(); },
-            Err(e) if e.kind() == IoErrorKind::AddrInUse   => println!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e),
-            Err(e)                                         => println!("Server failed. Error: {:?}", e),
-        };
-        let _enclave = P::run(run_args)?;
+        let server_thread = _server.clone().run()?;
 
         Ok(EnclaveRunner {
             _server,
-            _enclave,
+            server_thread,
+            enclave: None,
             platform: PhantomData,
         })
+    }
+
+    /// Starts a new enclave
+    pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I) -> Result<(), VmeError> {
+        if self.enclave.is_some() {
+            panic!("Enclave already exists");
+        }
+
+        let enclave = P::run(run_args)?;
+        /*
+        let _server_thread = match self.server.clone().run() {
+            Ok(handle)                                     => { println!("blocking?"); handle.join().unwrap(); },
+            Err(e) if e.kind() == IoErrorKind::AddrInUse   => println!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e),
+            Err(e)                                         => println!("Server failed. Error: {:?}", e),
+        };
+        */
+        self.enclave = Some(enclave);
+        Ok(())
+    }
+
+    /// Blocks the current thread until the command thread exits
+    pub fn wait(self) {
+        let EnclaveRunner { server_thread, .. } = self;
+        server_thread.join().unwrap()
     }
 }
 

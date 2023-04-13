@@ -213,9 +213,9 @@ fn main() -> anyhow::Result<()> {
 
     if cli.verbose {
         ftxvme_runner.arg("--verbose");
+        ftxvme_runner.env("RUST_LOG", "debug");
     }
-
-    ftxvme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
+    run_command(ftxvme_runner)?;
 
     Ok(())
 }

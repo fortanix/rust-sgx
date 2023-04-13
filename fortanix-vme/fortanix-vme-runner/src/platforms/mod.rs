@@ -3,6 +3,9 @@ use super::VmeError;
 mod nitro;
 pub use nitro::NitroEnclaves;
 
+mod simulator;
+pub use simulator::{Simulator, SimulatorArgs};
+
 pub trait Platform: Send + Sync {
     type RunArgs;
     type EnclaveDescriptor;
