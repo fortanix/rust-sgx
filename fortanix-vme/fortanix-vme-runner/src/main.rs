@@ -1,5 +1,5 @@
 use clap::Parser;
-use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves};
+use ftxvme_runner::{EnclaveRunner, NitroEnclaves};
 use nitro_cli::common::commands_parser::RunEnclavesArgs;
 
 #[derive(Parser, Debug)]

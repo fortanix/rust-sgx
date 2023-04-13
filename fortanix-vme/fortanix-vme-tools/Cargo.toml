@@ -6,5 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0"
+cargo_toml = "0.10.3"
 clap = { version = "4.0", features = ["derive"] }
 fortanix-vme-eif = { path = "../fortanix-vme-eif" }
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "1.0"

@@ -1284,7 +1284,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "fortanix-vme-runner"
+name = "fortanix-vme-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cargo_toml",
+ "clap 4.0.27",
+ "fortanix-vme-eif",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "ftxvme-runner"
 version = "0.1.0"
 dependencies = [
  "clap 4.0.27",
@@ -1298,14 +1310,6 @@ dependencies = [
  "serde",
  "serde_cbor",
  "vsock 0.2.4",
-]
-
-[[package]]
-name = "fortanix-vme-tools"
-version = "0.1.0"
-dependencies = [
- "clap 4.0.27",
- "fortanix-vme-eif",
 ]
 
 [[package]]
