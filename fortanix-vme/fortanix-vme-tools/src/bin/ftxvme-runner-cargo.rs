@@ -190,31 +190,28 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let fortanix_vme_config = FortanixVmeConfig::get()?;
 
+    let ftxvme_elf2eif = command! {
+        "ftxvme-elf2eif"   => args(
+        "--elf-path"       => cli.elf_path.clone(),
+        "--output-path"    => cli.eif_path()
+        )
+    };
+
+    run_command(ftxvme_elf2eif)?;
+
+    let mut ftxvme_runner = command! {
+        "ftxvme-runner" => args(
+            "--enclave-file"  => cli.eif_path(),
+            "--cpu-count"     => fortanix_vme_config.cpu_count.to_string(),
+            "--memory"        => fortanix_vme_config.memory.to_string()
+        )
+    };
+
     if cli.simulate {
-        let mut fortanix_vme_runner = command! {
-            "ftxvme-runner" => args(
-                "--enclave-file" => cli.elf_path
-            )
-        };
-        fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
-    } else {
-        let ftxvme_elf2eif = command! {
-            "ftxvme-elf2eif"   => args(
-            "--elf-path"       => cli.elf_path.clone(),
-            "--output-path"    => cli.eif_path()
-            )
-        };
-
-        run_command(ftxvme_elf2eif)?;
-
-        let mut fortanix_vme_runner = command! {
-            "ftxvme-runner" => args(
-                "--enclave-file"  => cli.eif_path(),
-                "--cpu-count"     => fortanix_vme_config.cpu_count.to_string(),
-                "--memory"        => fortanix_vme_config.memory.to_string()
-            )
-        };
-        fortanix_vme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
+        ftxvme_runner.arg("--simulate");
     }
+
+    ftxvme_runner.spawn().context("Failed to start fortanix-vme-runner")?;
+
     Ok(())
 }
