@@ -43,6 +43,9 @@ pub enum Request {
         enclave_port: u32,
         runner_port: Option<u32>,
     },
+    Exit {
+        code: i32,
+    },
 }
 
 /// Serializes a `Request` value. We can't rely on the `serde` `Serialize` macro as we wish to use
@@ -82,6 +85,11 @@ impl Serialize for Request {
                 SerializeStructVariant::serialize_field(&mut state, "runner_port", runner_port)?;
                 SerializeStructVariant::end(state)
             }
+            Request::Exit { ref code } => {
+                let mut state = Serializer::serialize_struct_variant(serializer, "Request", 5u32, "Exit", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "code", code)?;
+                SerializeStructVariant::end(state)
+            }
         }
     }
 }
@@ -101,6 +109,7 @@ impl<'de> Deserialize<'de> for Request {
             Accept,
             Close,
             Info,
+            Exit,
         }
         struct RequestFieldVisitor;
         impl<'de> Visitor<'de> for RequestFieldVisitor {
@@ -118,6 +127,7 @@ impl<'de> Deserialize<'de> for Request {
                     "Accept" => Ok(RequestField::Accept),
                     "Close" => Ok(RequestField::Close),
                     "Info" => Ok(RequestField::Info),
+                    "Exit" => Ok(RequestField::Exit),
                     _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
                 }
             }
@@ -537,10 +547,85 @@ impl<'de> Deserialize<'de> for Request {
                             },
                         )
                     }
+                    (RequestField::Exit, variant) => {
+                        enum ExitField {
+                            Code,
+                            Ignore,
+                        }
+                        struct ExitFieldVisitor;
+                        impl<'de> Visitor<'de> for ExitFieldVisitor {
+                            type Value = ExitField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "code" => Ok(ExitField::Code),
+                                    _ => Ok(ExitField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for ExitField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(ExitFieldVisitor)
+                            }
+                        }
+                        struct ExitValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for ExitValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Exit")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut code: Option<i32> = None;
+                                while let Some(key) =
+                                    MapAccess::next_key::<ExitField>(&mut map)?
+                                {
+                                    match key {
+                                        ExitField::Code => {
+                                            if code.is_some() {
+                                                return Err(SerdeError::duplicate_field("code"));
+                                            }
+                                            code = Some(MapAccess::next_value::<i32>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Exit {
+                                    code: code.ok_or(SerdeError::missing_field("code"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["code"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            ExitValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
                 }
             }
         }
-        const VARIANTS: &'static [&'static str] = &["Connect", "Bind", "Accept", "Close", "Info"];
+        const VARIANTS: &'static [&'static str] = &["Connect", "Bind", "Accept", "Close", "Info", "Exit"];
         Deserializer::deserialize_enum(
             deserializer,
             "Request",
