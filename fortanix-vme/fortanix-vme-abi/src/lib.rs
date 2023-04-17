@@ -1822,6 +1822,23 @@ mod test {
                     0x6e, 0x6e, 0x65, 0x72, 0x5f, 0x70, 0x6f, 0x72, 0x74, 0x18, 0x2a,
                 ]),
             ),
+            (
+                Request::Exit {
+                    code: 0,
+                },
+                Vec::from([
+                    0xa1, 0x64, 0x45, 0x78, 0x69, 0x74, 0xa1, 0x64, 0x63, 0x6f, 0x64, 0x65, 0x00
+                ]),
+            ),
+            (
+                Request::Exit {
+                    code: 42,
+                },
+                Vec::from([
+                    0xa1, 0x64, 0x45, 0x78, 0x69, 0x74, 0xa1, 0x64, 0x63, 0x6f, 0x64, 0x65, 0x18,
+                    0x2a
+                ]),
+            ),
         ]);
 
         for (req, bin) in data.iter() {
