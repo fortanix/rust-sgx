@@ -545,6 +545,10 @@ impl Server {
         }
     }
 
+    fn handle_request_exit(self: Arc<Self>, exit_code: i32) -> Result<(), VmeError> {
+        std::process::exit(exit_code);
+    }
+
     fn handle_client(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
         match conn.read_request()? {
             Request::Connect{ addr }             => self.handle_request_connect(&addr, conn),
@@ -554,6 +558,7 @@ impl Server {
                 enclave_port,
                 runner_port }                    => self.handle_request_info(enclave_port, runner_port, conn),
             Request::Close{ enclave_port }       => self.handle_request_close(enclave_port, conn),
+            Request::Exit{ code }                => self.handle_request_exit(code),
         }
     }
 
