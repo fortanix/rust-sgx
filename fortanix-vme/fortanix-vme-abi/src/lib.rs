@@ -5,6 +5,7 @@ extern crate alloc;
 extern crate std;
 
 use alloc::string::String;
+use alloc::vec::Vec;
 use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -1069,6 +1070,9 @@ pub enum Response {
         peer: Option<Addr>,
     },
     Failed(Error),
+    Init {
+        args: Vec<String>,
+    },
 }
 
 /// Serializes a `Response` value. We can't rely on the `serde` `Serialize` macro as we wish to use
@@ -1125,6 +1129,12 @@ impl Serialize for Response {
             }
             Response::Failed(ref __field0) =>
                 Serializer::serialize_newtype_variant(serializer, "Response", 5u32, "Failed", __field0),
+            Response::Init { ref args } => {
+                let mut state =
+                    Serializer::serialize_struct_variant(serializer, "Response", 6u32, "Init", 1)?;
+                SerializeStructVariant::serialize_field(&mut state, "args", args)?;
+                SerializeStructVariant::end(state)
+            }
         }
     }
 }
@@ -1146,6 +1156,7 @@ impl<'de> Deserialize<'de> for Response {
             Closed,
             Info,
             Failed,
+            Init,
         }
         struct ResponseFieldVisitor;
         impl<'de> Visitor<'de> for ResponseFieldVisitor {
@@ -1164,6 +1175,7 @@ impl<'de> Deserialize<'de> for Response {
                     "Closed" => Ok(ResponseField::Closed),
                     "Info" => Ok(ResponseField::Info),
                     "Failed" => Ok(ResponseField::Failed),
+                    "Init" => Ok(ResponseField::Init),
                     _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
                 }
             }
@@ -1544,6 +1556,79 @@ impl<'de> Deserialize<'de> for Response {
                         variant.newtype_variant()
                             .map(|e| Response::Failed(e))
                     }
+                    (ResponseField::Init, variant) => {
+                        enum InitField {
+                            Args,
+                            Ignore,
+                        }
+                        struct InitFieldVisitor;
+                        impl<'de> Visitor<'de> for InitFieldVisitor {
+                            type Value = InitField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    "args" => Ok(InitField::Args),
+                                    _ => Ok(InitField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for InitField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(InitFieldVisitor)
+                            }
+                        }
+                        struct InitValueVisitor<'de> {
+                            marker: PhantomData<Response>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for InitValueVisitor<'de> {
+                            type Value = Response;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Response::Init")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A,) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                let mut args: Option<Vec<String>> = None;
+                                while let Some(key) = MapAccess::next_key::<InitField>(&mut map)? {
+                                    match key {
+                                        InitField::Args => {
+                                            if args.is_some() {
+                                                return Err(SerdeError::duplicate_field("args"));
+                                            }
+                                            args = Some(MapAccess::next_value::<Vec<String>>(&mut map)?);
+                                        }
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Response::Init {
+                                    args: args.ok_or(SerdeError::missing_field("args"))?,
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &["args"];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            InitValueVisitor {
+                                marker: PhantomData::<Response>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -1554,6 +1639,7 @@ impl<'de> Deserialize<'de> for Response {
             "Closed",
             "Info",
             "Failed",
+            "Init",
         ];
         Deserializer::deserialize_enum(
             deserializer,
