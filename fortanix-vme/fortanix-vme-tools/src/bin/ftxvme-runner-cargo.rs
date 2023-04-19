@@ -1,7 +1,9 @@
-use std::{io, path::{Path, PathBuf}, process::{ExitStatus, Command}};
+use std::env;
+use std::io::{self, Error as IoError, ErrorKind as IoErrorKind};
+use std::path::{Path, PathBuf};
+use std::process::{ExitStatus, Command};
 
 use anyhow::Context;
-use clap::Parser;
 use cargo_toml::Manifest;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
@@ -87,28 +89,52 @@ fn run_command(mut cmd: Command) -> Result<(), CommandFail> {
     }
 }
 
-#[derive(Parser, Debug)]
-#[command(about = "Run an x86_64-unknown-linux-fortanixvme EIF binary on an AWS Nitro instance, or on a simulator")]
-#[command(author, version, long_about = None)]
+#[derive(Debug, Default)]
 struct Cli {
-    #[arg(short, long)]
     simulate: bool,
 
-    #[arg(short, long)]
     verbose: bool,
 
     /// Path of the x86_64-unknown-linux-fortanixvme ELF binary
-    #[arg(value_parser = Cli::parse_elf_path)]
     elf_path: PathBuf,
+
+    others: Vec<String>,
 }
 
 impl Cli {
-    pub fn parse_elf_path(elf: &str) -> Result<PathBuf, String> {
-        let elf = PathBuf::from(elf);
-        if elf.file_name().is_none() {
-            Err(format!("Provided elf path is not a filename: {}", elf.display()))
+    pub fn help() -> String {
+        String::from("Usage: <ftxvme-runner-cargo> [--simulate] [--verbose] <elf_path> [others]*")
+    }
+
+    pub fn parse() -> Result<Self, IoError> {
+        fn parse_arg(mut cli: Cli, arg: String) -> Result<Cli, IoError> {
+            if cli.elf_path == PathBuf::default() {
+                match arg.as_str() {
+                    "--simulate" => cli.simulate = true,
+                    "--verbose" => cli.verbose = true,
+                    _ => {
+                        let elf = PathBuf::from(arg);
+                        if elf.file_name().is_none() {
+                            return Err(IoError::new(IoErrorKind::InvalidInput, format!("Provided elf path is not a filename: {}", elf.display())))
+                        } else {
+                            cli.elf_path = elf;
+                        }
+                    }
+                }
+            } else {
+                cli.others.push(arg);
+            }
+            Ok(cli)
+        }
+
+        let mut cli = env::args();
+        cli.next(); // Skip executable name
+        let cli = cli.fold(Ok(Cli::default()), |cli, arg| { cli.and_then(|cli| parse_arg(cli, arg) ) })?;
+
+        if cli.elf_path == PathBuf::default() {
+            Err(IoError::new(IoErrorKind::InvalidInput, String::from("No elf path provided")))
         } else {
-            Ok(elf)
+            Ok(cli)
         }
     }
 
@@ -187,7 +213,14 @@ impl Default for FortanixVmeConfig {
 }
 
 fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    let cli = match Cli::parse() {
+        Ok(cli) => cli,
+        Err(e) => {
+            eprintln!("Failed to parse command line: {}", e);
+            Cli::help();
+            return Err(e.into());
+        }
+    };
     let fortanix_vme_config = FortanixVmeConfig::get()?;
 
     let ftxvme_elf2eif = command! {
@@ -212,8 +245,12 @@ fn main() -> anyhow::Result<()> {
     }
 
     if cli.verbose {
-        ftxvme_runner.arg("--verbose");
         ftxvme_runner.env("RUST_LOG", "debug");
+        ftxvme_runner.arg("--verbose");
+    }
+    if !cli.others.is_empty() {
+        ftxvme_runner.arg("--");
+        ftxvme_runner.args(cli.others);
     }
     run_command(ftxvme_runner)?;
 

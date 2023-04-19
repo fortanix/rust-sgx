@@ -34,6 +34,9 @@ struct Cli {
 
     #[arg(short, long)]
     verbose: bool,
+
+    #[arg(last = true)]
+    others: Vec<String>,
 }
 
 impl TryFrom<&Cli> for NitroArgs {
