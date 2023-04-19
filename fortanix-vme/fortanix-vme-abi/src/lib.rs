@@ -1911,6 +1911,12 @@ mod test {
                     0x2a
                 ]),
             ),
+            (
+                Request::Init,
+                Vec::from([
+                    0xa1, 0x64, 0x49, 0x6e, 0x69, 0x74, 0xa0,
+                ]),
+            ),
         ]);
 
         for (req, bin) in data.iter() {
