@@ -46,6 +46,7 @@ pub enum Request {
     Exit {
         code: i32,
     },
+    Init,
 }
 
 /// Serializes a `Request` value. We can't rely on the `serde` `Serialize` macro as we wish to use
@@ -90,6 +91,10 @@ impl Serialize for Request {
                 SerializeStructVariant::serialize_field(&mut state, "code", code)?;
                 SerializeStructVariant::end(state)
             }
+            Request::Init => {
+                let state = Serializer::serialize_struct_variant(serializer, "Request", 5u32, "Init", 0)?;
+                SerializeStructVariant::end(state)
+            }
         }
     }
 }
@@ -110,6 +115,7 @@ impl<'de> Deserialize<'de> for Request {
             Close,
             Info,
             Exit,
+            Init,
         }
         struct RequestFieldVisitor;
         impl<'de> Visitor<'de> for RequestFieldVisitor {
@@ -128,6 +134,7 @@ impl<'de> Deserialize<'de> for Request {
                     "Close" => Ok(RequestField::Close),
                     "Info" => Ok(RequestField::Info),
                     "Exit" => Ok(RequestField::Exit),
+                    "Init" => Ok(RequestField::Init),
                     _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
                 }
             }
@@ -622,10 +629,75 @@ impl<'de> Deserialize<'de> for Request {
                             },
                         )
                     }
+                    (RequestField::Init, variant) => {
+                        enum InitField {
+                            Ignore,
+                        }
+                        struct InitFieldVisitor;
+                        impl<'de> Visitor<'de> for InitFieldVisitor {
+                            type Value = InitField;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "field identifier")
+                            }
+                            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                            where
+                                E: SerdeError,
+                            {
+                                match value {
+                                    _ => Ok(InitField::Ignore),
+                                }
+                            }
+                        }
+                        impl<'de> Deserialize<'de> for InitField {
+                            #[inline]
+                            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+                            where
+                                D: Deserializer<'de>,
+                            {
+                                deserializer.deserialize_identifier(InitFieldVisitor)
+                            }
+                        }
+                        struct InitValueVisitor<'de> {
+                            marker: PhantomData<Request>,
+                            lifetime: PhantomData<&'de ()>,
+                        }
+                        impl<'de> Visitor<'de> for InitValueVisitor<'de> {
+                            type Value = Request;
+                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                                Formatter::write_str(formatter, "struct variant Request::Init")
+                            }
+                            #[inline]
+                            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+                            where
+                                A: MapAccess<'de>,
+                            {
+                                while let Some(key) =
+                                    MapAccess::next_key::<InitField>(&mut map)?
+                                {
+                                    match key {
+                                        _ => {
+                                            MapAccess::next_value::<IgnoredAny>(&mut map)?;
+                                        }
+                                    }
+                                }
+                                Ok(Request::Init {
+                                })
+                            }
+                        }
+                        const FIELDS: &'static [&'static str] = &[];
+                        VariantAccess::struct_variant(
+                            variant,
+                            FIELDS,
+                            InitValueVisitor {
+                                marker: PhantomData::<Request>,
+                                lifetime: PhantomData,
+                            },
+                        )
+                    }
                 }
             }
         }
-        const VARIANTS: &'static [&'static str] = &["Connect", "Bind", "Accept", "Close", "Info", "Exit"];
+        const VARIANTS: &'static [&'static str] = &["Connect", "Bind", "Accept", "Close", "Info", "Exit", "Init"];
         Deserializer::deserialize_enum(
             deserializer,
             "Request",
