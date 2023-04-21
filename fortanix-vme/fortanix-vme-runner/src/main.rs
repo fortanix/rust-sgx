@@ -101,7 +101,7 @@ fn log(cli: &Cli, text: &str) {
     }
 }
 
-fn create_runner<P: Platform>() -> EnclaveRunner<P> {
+fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
     match EnclaveRunner::new() {
         Ok(runner)                                     => runner,
         Err(e) if e.kind() == IoErrorKind::AddrInUse   => {

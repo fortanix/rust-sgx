@@ -292,42 +292,27 @@ impl<'de> ClientConnection<'de> {
 }
 
 pub struct EnclaveRunner<P: Platform> {
-    _server: Arc<Server>,
+    server: Arc<Server<P>>,
     server_thread: JoinHandle<()>,
-    enclave: Option<P::EnclaveDescriptor>,
     platform: PhantomData<P>,
 }
 
-impl<P: Platform> EnclaveRunner<P> {
+impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
     pub fn new() -> Result<EnclaveRunner<P>, IoError> {
-        let _server = Arc::new(Server::bind(SERVER_PORT)?);
-        let server_thread = _server.clone().run()?;
+        let server = Arc::new(Server::bind(SERVER_PORT)?);
+        let server_thread = server.clone().run_command_server()?;
 
         Ok(EnclaveRunner {
-            _server,
+            server,
             server_thread,
-            enclave: None,
             platform: PhantomData,
         })
     }
 
     /// Starts a new enclave
     pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I) -> Result<(), VmeError> {
-        if self.enclave.is_some() {
-            panic!("Enclave already exists");
-        }
-
-        let enclave = P::run(run_args)?;
-        /*
-        let _server_thread = match self.server.clone().run() {
-            Ok(handle)                                     => { println!("blocking?"); handle.join().unwrap(); },
-            Err(e) if e.kind() == IoErrorKind::AddrInUse   => println!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e),
-            Err(e)                                         => println!("Server failed. Error: {:?}", e),
-        };
-        */
-        self.enclave = Some(enclave);
-        Ok(())
+        self.server.run_enclave(run_args)
     }
 
     /// Blocks the current thread until the command thread exits
@@ -337,7 +322,16 @@ impl<P: Platform> EnclaveRunner<P> {
     }
 }
 
-pub struct Server {
+#[allow(dead_code)]
+enum EnclaveState<P: Platform> {
+    Null,
+    Running {
+        enclave: P::EnclaveDescriptor,
+    },
+}
+
+pub struct Server<P: Platform> {
+    enclave: RwLock<EnclaveState<P>>,
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
     /// every TCP listener socket in the runner, there is a vsock listener socket in the enclave.
@@ -348,7 +342,8 @@ pub struct Server {
     connections: RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>,
 }
 
-impl Server {
+impl<P: Platform + 'static> Server<P> {
+
     /*
      * +-----------+
      * |   remote  |
@@ -551,6 +546,7 @@ impl Server {
 
     fn handle_client(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
         match conn.read_request()? {
+            Request::Init                        => todo!(),
             Request::Connect{ addr }             => self.handle_request_connect(&addr, conn),
             Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn),
             Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn),
@@ -562,9 +558,10 @@ impl Server {
         }
     }
 
-    fn bind(port: u32) -> io::Result<Server> {
+    fn bind(port: u32) -> io::Result<Self> {
         let command_listener = VsockListener::<Std>::bind_with_cid_port(vsock::VMADDR_CID_ANY, port)?;
         Ok(Server {
+            enclave: RwLock::new(EnclaveState::Null),
             command_listener: Mutex::new(command_listener),
             listeners: RwLock::new(FnvHashMap::default()),
             connections: RwLock::new(FnvHashMap::default()),
@@ -595,13 +592,28 @@ impl Server {
         })
     }
 
-    pub fn run(self: Arc<Self>) -> std::io::Result<JoinHandle<()>> {
+    fn run_command_server(self: Arc<Self>) -> std::io::Result<JoinHandle<()>> {
         info!("Starting enclave runner.");
         let port = self.command_listener.lock().unwrap().local_addr()?.port();
         info!("Listening on vsock port {}...", port);
 
         let handle = self.start_command_server()?;
         Ok(handle)
+    }
+
+    /// Starts a new enclave
+    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I) -> Result<(), VmeError> {
+        let mut state = self.enclave.write().unwrap();
+        match *state {
+            EnclaveState::Running { .. } => panic!("Enclave already exists"),
+            EnclaveState::Null => {
+                let enclave = P::run(run_args)?;
+                *state = EnclaveState::Running {
+                    enclave
+                };
+            }
+        }
+        Ok(())
     }
 }
 

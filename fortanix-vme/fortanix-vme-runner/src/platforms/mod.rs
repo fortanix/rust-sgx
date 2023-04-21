@@ -8,7 +8,7 @@ pub use simulator::{Simulator, SimulatorArgs};
 
 pub trait Platform: Send + Sync {
     type RunArgs;
-    type EnclaveDescriptor;
+    type EnclaveDescriptor: Send + Sync;
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, VmeError>;
 }
