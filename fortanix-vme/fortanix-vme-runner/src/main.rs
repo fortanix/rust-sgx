@@ -36,7 +36,7 @@ struct Cli {
     verbose: bool,
 
     #[arg(last = true)]
-    others: Vec<String>,
+    args: Vec<String>,
 }
 
 impl TryFrom<&Cli> for NitroArgs {
@@ -129,12 +129,12 @@ fn main() {
         log(&cli, &format!("Simulating enclave as {}", elf_path.display()));
         let mut runner: EnclaveRunner<Simulator> = create_runner();
         let args = SimulatorArgs::new(elf_path);
-        runner.run_enclave(args).expect("Failed to run enclave");
+        runner.run_enclave(args, cli.args).expect("Failed to run enclave");
         runner.wait();
     } else {
         let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args).expect("Failed to run enclave");
+        runner.run_enclave(args, cli.args).expect("Failed to run enclave");
         runner.wait();
     };
 }

@@ -292,33 +292,33 @@ impl<'de> ClientConnection<'de> {
 }
 
 pub struct EnclaveRunner<P: Platform> {
-    server: Arc<Server<P>>,
-    server_thread: JoinHandle<()>,
+    servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
     platform: PhantomData<P>,
 }
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
     pub fn new() -> Result<EnclaveRunner<P>, IoError> {
-        let server = Arc::new(Server::bind(SERVER_PORT)?);
-        let server_thread = server.clone().run_command_server()?;
-
         Ok(EnclaveRunner {
-            server,
-            server_thread,
+            servers: Vec::new(),
             platform: PhantomData,
         })
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I) -> Result<(), VmeError> {
-        self.server.run_enclave(run_args)
+    pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I, enclave_args: Vec<String>) -> Result<(), VmeError> {
+        let server = Arc::new(Server::bind(SERVER_PORT)?);
+        let server_thread = server.clone().run_command_server()?;
+        server.run_enclave(run_args, enclave_args)?;
+        self.servers.push((server, server_thread));
+        Ok(())
     }
 
     /// Blocks the current thread until the command thread exits
     pub fn wait(self) {
-        let EnclaveRunner { server_thread, .. } = self;
-        server_thread.join().unwrap()
+        self.servers
+            .into_iter()
+            .for_each(|(_, thread)| { let _ = thread.join(); });
     }
 }
 
@@ -327,6 +327,7 @@ enum EnclaveState<P: Platform> {
     Null,
     Running {
         enclave: P::EnclaveDescriptor,
+        args: Vec<String>,
     },
 }
 
@@ -343,6 +344,18 @@ pub struct Server<P: Platform> {
 }
 
 impl<P: Platform + 'static> Server<P> {
+    fn handle_request_init(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
+        let state = self.enclave.read().unwrap();
+        let args = match &*state {
+            EnclaveState::Null => panic!("Not yet running enclave requesting initialization"),
+            EnclaveState::Running { args, .. } => args.to_owned(),
+        };
+        let response = Response::Init {
+            args,
+        };
+        conn.send(&response)?;
+        Ok(())
+    }
 
     /*
      * +-----------+
@@ -546,7 +559,7 @@ impl<P: Platform + 'static> Server<P> {
 
     fn handle_client(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
         match conn.read_request()? {
-            Request::Init                        => todo!(),
+            Request::Init                        => self.handle_request_init(conn),
             Request::Connect{ addr }             => self.handle_request_connect(&addr, conn),
             Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn),
             Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn),
@@ -602,14 +615,15 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I) -> Result<(), VmeError> {
+    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I, enclave_args: Vec<String>) -> Result<(), VmeError> {
         let mut state = self.enclave.write().unwrap();
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
             EnclaveState::Null => {
                 let enclave = P::run(run_args)?;
                 *state = EnclaveState::Running {
-                    enclave
+                    enclave,
+                    args: enclave_args,
                 };
             }
         }
