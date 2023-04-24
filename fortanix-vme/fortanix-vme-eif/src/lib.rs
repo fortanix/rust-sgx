@@ -4,6 +4,8 @@ use aws_nitro_enclaves_image_format::utils::EifBuilder;
 use serde_json::json;
 use sha2::{Digest, Sha512};
 use std::io::{self, ErrorKind, Cursor, Read, Seek, Write};
+use std::ops::Deref;
+use std::rc::Rc;
 use tempfile::{self, NamedTempFile};
 
 mod initramfs;
@@ -40,22 +42,69 @@ impl<T> FtxEif<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum EifPart {
+    Header(EifHeader),
+    SectionHeader(EifSectionHeader),
+    SectionData(Vec<u8>),
+}
+
 pub struct SectionIterator<T: Read> {
     reader: T,
+    part: Option<Rc<EifPart>>,
 }
 
 impl<T: Read> SectionIterator<T> {
     fn new(reader: T) -> SectionIterator<T> {
         SectionIterator {
-            reader
+            reader,
+            part: None,
         }
     }
 }
 
-impl<T: Read> Iterator for SectionIterator<T> {
-    type Item = (EifSectionHeader, Vec<u8>);
+impl<T: Read> SectionIterator<T> {
+    pub fn eif_header(&self) -> Option<&EifHeader> {
+        if let Some(EifPart::Header(header)) = self.part.as_ref().map(|p| p.deref()) {
+            Some(header)
+        } else {
+            None
+        }
+    }
 
-    fn next(&mut self) -> Option<(EifSectionHeader, Vec<u8>)> {
+    pub fn section_header(&self) -> Option<&EifSectionHeader> {
+        if let Some(EifPart::SectionHeader(header)) = self.part.as_ref().map(|p| p.deref()) {
+            Some(header)
+        } else {
+            None
+        }
+    }
+
+    //pub fn sections(&mut self) -> Option<()>
+}
+
+impl<T: Read> Iterator for SectionIterator<T> {
+    type Item = Rc<EifPart>;
+
+    fn next(&mut self) -> Option<Rc<EifPart>> {
+        /*
+         *  Eif files are stored as:
+         *      +--------------------+ <- 0
+         *      |      EifHeader     |
+         *     /+--------------------+ <- EifHeader::size()
+         *     ||  EifSectionHeader  |
+         *  +--|+--------------------+ <- EifHeader::size() + EifSectionHeader::size()
+         *  |  ||      <section>     |
+         *  |  \+--------------------+ <- EifHeader::size() + EifSectionHeader::size() + section.section_size
+         *  |
+         *  +-> Any number of sections
+         */
+        fn header<T: Read>(reader: &mut T) -> Result<EifHeader, Error> {
+            let mut buff = [0; EifHeader::size()];
+            reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
+            EifHeader::from_be_bytes(&mut buff).map_err(|e| Error::EifParseError(e))
+        }
+
         fn section_header<T: Read>(reader: &mut T) -> Result<Option<EifSectionHeader>, Error> {
             let mut buff = [0; EifSectionHeader::size()];
             if let Err(e) = reader.read_exact(&mut buff) {
@@ -75,28 +124,22 @@ impl<T: Read> Iterator for SectionIterator<T> {
             Ok(buff)
         }
 
-        /*
-         *  Eif files are stored as:
-         *      +--------------------+ <- 0
-         *      |      EifHeader     |
-         *     /+--------------------+ <- EifHeader::size()
-         *     ||  EifSectionHeader  |
-         *  +--|+--------------------+ <- EifHeader::size() + EifSectionHeader::size()
-         *  |  ||      <section>     |
-         *  |  \+--------------------+ <- EifHeader::size() + EifSectionHeader::size() + section.section_size
-         *  |
-         *  +-> Any number of sections
-         */
-        fn section<T: Read>(reader: &mut T) -> Result<Option<(EifSectionHeader, Vec<u8>)>, Error> {
-            let header = if let Some(header) = section_header(reader)? {
-                header
-            } else {
-                return Ok(None)
-            };
-            let content = section_content(reader, &header)?;
-            Ok(Some((header, content)))
+        match self.part.as_ref().map(|p| p.deref()) {
+            None => {
+                let h = header(&mut self.reader).ok()?;
+                self.part = Some(Rc::new(EifPart::Header(h)));
+            },
+            Some(EifPart::Header(_)) |
+                Some(EifPart::SectionData(_)) => {
+                let s = section_header(&mut self.reader).ok()??;
+                self.part = Some(Rc::new(EifPart::SectionHeader(s)));
+            }
+            Some(EifPart::SectionHeader(h)) => {
+                let data = section_content(&mut self.reader, h).ok()?;
+                self.part = Some(Rc::new(EifPart::SectionData(data)));
+            }
         }
-        section(&mut self.reader).ok().flatten()
+        self.part.clone()
     }
 }
 
@@ -113,12 +156,11 @@ impl<T: Read> FtxEif<T> {
             EifHeader::from_be_bytes(&mut buff).map_err(|e| Error::EifParseError(e))
         }
 
-
-        //let Self { eif: mut reader } = self;
         let header = header(&mut self.eif)?;
         Ok((header, SectionIterator::new(&mut self.eif)))
     }
 
+    /*
     pub fn application(&mut self) -> Result<Vec<u8>, Error> {
         let initramfs = self.parse()?
             .1
@@ -136,6 +178,7 @@ impl<T: Read> FtxEif<T> {
         initramfs.application(&mut app)?;
         Ok(app)
     }
+    */
 }
 
 impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> Builder<R, S, T, U, V> {
