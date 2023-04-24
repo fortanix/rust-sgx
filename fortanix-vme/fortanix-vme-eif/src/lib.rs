@@ -40,11 +40,11 @@ impl<T> FtxEif<T> {
     }
 }
 
-pub struct SectionIterator<T> {
+pub struct SectionIterator<T: Read> {
     reader: T,
 }
 
-impl<T> SectionIterator<T> {
+impl<T: Read> SectionIterator<T> {
     fn new(reader: T) -> SectionIterator<T> {
         SectionIterator {
             reader
@@ -106,7 +106,7 @@ impl<T: Read> FtxEif<T> {
     /// The AWS image format crate doesn't provide a way to extract these sections easily. This
     /// code should be upstreamed.
     /// https://github.com/aws/aws-nitro-enclaves-image-format/blob/main/src/utils/eif_reader.rs#L85-L209
-    pub fn parse(self) -> Result<(EifHeader, SectionIterator<T>), Error> {
+    pub fn parse(&mut self) -> Result<(EifHeader, SectionIterator<&mut T>), Error> {
         fn header<T: Read>(reader: &mut T) -> Result<EifHeader, Error> {
             let mut buff = [0; EifHeader::size()];
             reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
@@ -114,12 +114,12 @@ impl<T: Read> FtxEif<T> {
         }
 
 
-        let Self { eif: mut reader } = self;
-        let header = header(&mut reader)?;
-        Ok((header, SectionIterator::new(reader)))
+        //let Self { eif: mut reader } = self;
+        let header = header(&mut self.eif)?;
+        Ok((header, SectionIterator::new(&mut self.eif)))
     }
 
-    pub fn application(self) -> Result<Vec<u8>, Error> {
+    pub fn application(&mut self) -> Result<Vec<u8>, Error> {
         let initramfs = self.parse()?
             .1
             .find_map(|(hdr, cnt)| {
@@ -240,7 +240,8 @@ mod tests {
             .into_inner();
 
         // Parse eif
-        let (_header, section_it) = FtxEif::new(Cursor::new(&eif))
+        let mut eif_reader = FtxEif::new(Cursor::new(&eif));
+        let (_header, section_it) = eif_reader
             .parse()
             .unwrap();
 

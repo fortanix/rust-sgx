@@ -35,6 +35,6 @@ fn eif_creation_and_extraction() {
         .into_inner()
         .into_inner();
 
-    let eif = FtxEif::new(Cursor::new(eif));
+    let mut eif = FtxEif::new(Cursor::new(eif));
     assert_eq!(eif.application().unwrap(), HELLO_WORLD);
 }

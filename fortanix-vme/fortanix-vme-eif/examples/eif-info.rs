@@ -26,7 +26,7 @@ fn main() {
     let cli = Cli::parse();
     let eif = File::open(cli.enclave_path)
         .expect("Failed to open enclave");
-    let eif = FtxEif::new(eif);
+    let mut eif = FtxEif::new(eif);
 
     let (header, it) = eif.parse()
         .expect("Failed to parse eif enclave");
