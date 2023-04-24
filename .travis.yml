@@ -26,7 +26,8 @@ matrix:
             - clang-11
             - musl-tools
       rust:
-        - stable
+        # This need to change back to `nightly` after https://github.com/fortanix/rust-sgx/issues/433 is fixed
+        - nightly-2023-01-31
       env:
         - RUST_BACKTRACE=1
         - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
