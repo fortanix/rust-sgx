@@ -17,6 +17,7 @@ pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
 use initramfs::{Builder as InitramfsBuilder, Initramfs};
 
 pub struct Builder<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> {
+    name: String,
     application: R,
     init: S,
     nsm: T,
@@ -202,8 +203,9 @@ impl<T: Read + Seek> FtxEif<T> {
 }
 
 impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> Builder<R, S, T, U, V> {
-    pub fn new(application: R, init: S, nsm: T, kernel: U, kernel_config: V, cmdline: &str) -> Self {
+    pub fn new(name: String, application: R, init: S, nsm: T, kernel: U, kernel_config: V, cmdline: &str) -> Self {
         Builder {
+            name,
             application,
             init,
             nsm,
@@ -214,7 +216,7 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
     }
 
     pub fn build<F: Write + Seek>(self, mut output: F) -> Result<FtxEif<F>, Error> {
-        let Builder { application, init, nsm, kernel: mut image, kernel_config: mut image_config, cmdline } = self;
+        let Builder { name, application, init, nsm, kernel: mut image, kernel_config: mut image_config, cmdline } = self;
 
         // Unfortunately `aws_nitro_enclaves_image_format::EifBuilder` forces us to have data in
         // files.
@@ -238,7 +240,7 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
         // Unfortunately it's unclear if this information is required. Using defaults found in
         // https://github.com/aws/aws-nitro-enclaves-image-format/blob/d0d224b8b626db5fcc2d7b685bdd229991bbf0a7/examples/eif_build.rs#L171-L184
         let metadata = EifIdentityInfo {
-            img_name: String::from("FtxEnclave"),
+            img_name: name,
             img_version: String::from("0.1"),
             build_info: generate_build_info!(&kernel_config_path).map_err(|e| Error::eif_identity_info(e))?,
             docker_info: json!(null),
@@ -297,7 +299,8 @@ mod tests {
     #[test]
     fn eif_creation() {
         // Create eif
-        let eif = Builder::new(Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
+        let name = String::from("enclave");
+        let eif = Builder::new(name.clone(), Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
             .build(Cursor::new(Vec::new()))
             .unwrap()
             .into_inner()
@@ -338,5 +341,6 @@ mod tests {
                 }
             }
         }
+        assert_eq!(eif_reader.metadata().unwrap().img_name, name);
     }
 }

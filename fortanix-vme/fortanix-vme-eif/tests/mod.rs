@@ -24,12 +24,13 @@ const CMDLINE: &'static str = include_str!("data/cmdline");
 
 #[test]
 fn eif_creation_and_extraction() {
+    let name = String::from("TestEnclave");
     let hello_world = Cursor::new(HELLO_WORLD);
     let init = Cursor::new(INIT);
     let nsm = Cursor::new(NSM);
     let kernel = Cursor::new(KERNEL);
     let kernel_config = Cursor::new(KERNEL_CONFIG);
-    let eif = Builder::new(hello_world, init, nsm, kernel, kernel_config, CMDLINE)
+    let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, CMDLINE)
         .build(Cursor::new(Vec::new()))
         .unwrap()
         .into_inner()
