@@ -116,12 +116,14 @@ fn main() {
 
     let cli = Cli::parse();
     let eif = File::open(&cli.enclave_file).expect("Failed to open enclave file");
-    
+    let mut eif = FtxEif::new(BufReader::new(eif));
+    let metadata = eif.metadata()
+        .expect("Failed to parse metadata");
+
     if cli.simulate {
         //TODO also extract env/cmd file and make sure the application is executed with this
         //context
-        let elf = FtxEif::new(BufReader::new(eif))
-            .application()
+        let elf = eif.application()
             .expect("Failed to parse enclave file");
         let elf_path = create_elf(elf)
             .expect("Failed to create executable file");
@@ -129,12 +131,12 @@ fn main() {
         log(&cli, &format!("Simulating enclave as {}", elf_path.display()));
         let mut runner: EnclaveRunner<Simulator> = create_runner();
         let args = SimulatorArgs::new(elf_path);
-        runner.run_enclave(args, cli.args).expect("Failed to run enclave");
+        runner.run_enclave(args, metadata.img_name, cli.args).expect("Failed to run enclave");
         runner.wait();
     } else {
         let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args, cli.args).expect("Failed to run enclave");
+        runner.run_enclave(args, metadata.img_name, cli.args).expect("Failed to run enclave");
         runner.wait();
     };
 }

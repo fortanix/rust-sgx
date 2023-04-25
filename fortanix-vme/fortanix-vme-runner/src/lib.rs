@@ -306,8 +306,8 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I, enclave_args: Vec<String>) -> Result<(), VmeError> {
-        let server = Arc::new(Server::bind(SERVER_PORT)?);
+    pub fn run_enclave<I: Into<P::RunArgs>>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeError> {
+        let server = Arc::new(Server::bind(enclave_name, SERVER_PORT)?);
         let server_thread = server.clone().run_command_server()?;
         server.run_enclave(run_args, enclave_args)?;
         self.servers.push((server, server_thread));
@@ -332,6 +332,7 @@ enum EnclaveState<P: Platform> {
 }
 
 pub struct Server<P: Platform> {
+    name: String,
     enclave: RwLock<EnclaveState<P>>,
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
@@ -571,9 +572,10 @@ impl<P: Platform + 'static> Server<P> {
         }
     }
 
-    fn bind(port: u32) -> io::Result<Self> {
+    fn bind(enclave_name: String, port: u32) -> io::Result<Self> {
         let command_listener = VsockListener::<Std>::bind_with_cid_port(vsock::VMADDR_CID_ANY, port)?;
         Ok(Server {
+            name: enclave_name,
             enclave: RwLock::new(EnclaveState::Null),
             command_listener: Mutex::new(command_listener),
             listeners: RwLock::new(FnvHashMap::default()),
@@ -615,11 +617,12 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I, enclave_args: Vec<String>) -> Result<(), VmeError> {
+    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeError> {
         let mut state = self.enclave.write().unwrap();
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
             EnclaveState::Null => {
+                enclave_args.insert(0, self.name.clone());
                 let enclave = P::run(run_args)?;
                 *state = EnclaveState::Running {
                     enclave,
