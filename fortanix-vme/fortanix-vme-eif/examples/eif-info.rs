@@ -2,6 +2,7 @@ use clap::Parser;
 use fortanix_vme_eif::{EifSectionType, FtxEif};
 use std::io::Error as IoError;
 use std::fs::{self, File};
+use std::ops::Deref;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
@@ -28,7 +29,7 @@ fn main() {
         .expect("Failed to open enclave");
     let mut eif = FtxEif::new(eif);
 
-    let (header, it) = eif.parse()
+    let header = eif.eif_header()
         .expect("Failed to parse eif enclave");
 
     println!("[Header]");
@@ -44,7 +45,7 @@ fn main() {
     println!("  unused: {}", header.unused);
     println!("  crc32: {}", header.eif_crc32);
 
-    for (sec_header, content) in it {
+    for (sec_header, content) in eif.sections().expect("Failed to get section iterator") {
         println!("");
         println!("[Section Header]");
         println!("  Section type: {:?}", sec_header.section_type);
@@ -56,7 +57,7 @@ fn main() {
                 cli.output_path.as_ref().map(|p| store(p.clone(), "bzImage", &content));
             },
             EifSectionType::EifSectionCmdline => {
-                if let Ok(cmd) = String::from_utf8(content.clone()) {
+                if let Ok(cmd) = String::from_utf8(content.deref().clone()) {
                     println!("  content: \"{}\"", cmd);
                 } else {
                     println!("  content: Failed to parse as an utf8 string");
@@ -71,7 +72,7 @@ fn main() {
                 cli.output_path.as_ref().map(|p| store(p.clone(), "signature", &content));
             },
             EifSectionType::EifSectionMetadata => {
-                if let Ok(meta) = String::from_utf8(content.clone()) {
+                if let Ok(meta) = String::from_utf8(content.deref().clone()) {
                     println!("  content: \"{}\"", meta);
                 } else {
                     println!("  content: Failed to parse as an utf8 string");

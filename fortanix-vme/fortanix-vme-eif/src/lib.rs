@@ -25,68 +25,31 @@ pub struct Builder<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read +
     cmdline: String,
 }
 
-pub struct FtxEif<T> {
-    eif: T,
-}
-
-impl<T> FtxEif<T> {
-    pub fn new(eif: T) -> Self {
-        FtxEif {
-            eif
-        }
-    }
-
-    pub fn into_inner(self) -> T {
-        let FtxEif { eif } = self;
-        eif
-    }
-}
-
 #[derive(Debug, Clone)]
-pub enum EifPart {
-    Header(EifHeader),
-    SectionHeader(EifSectionHeader),
-    SectionData(Vec<u8>),
+enum EifPart {
+    Header(Rc<EifHeader>),
+    SectionHeader(Rc<EifSectionHeader>),
+    SectionData(Rc<Vec<u8>>),
 }
 
-pub struct SectionIterator<T: Read> {
+struct EifPartIterator<T: Read> {
     reader: T,
-    part: Option<Rc<EifPart>>,
+    part: Option<EifPart>,
 }
 
-impl<T: Read> SectionIterator<T> {
-    fn new(reader: T) -> SectionIterator<T> {
-        SectionIterator {
+impl<T: Read> EifPartIterator<T> {
+    fn new(reader: T) -> EifPartIterator<T> {
+        EifPartIterator {
             reader,
             part: None,
         }
     }
 }
 
-impl<T: Read> SectionIterator<T> {
-    pub fn eif_header(&self) -> Option<&EifHeader> {
-        if let Some(EifPart::Header(header)) = self.part.as_ref().map(|p| p.deref()) {
-            Some(header)
-        } else {
-            None
-        }
-    }
+impl<T: Read> Iterator for EifPartIterator<T> {
+    type Item = EifPart;
 
-    pub fn section_header(&self) -> Option<&EifSectionHeader> {
-        if let Some(EifPart::SectionHeader(header)) = self.part.as_ref().map(|p| p.deref()) {
-            Some(header)
-        } else {
-            None
-        }
-    }
-
-    //pub fn sections(&mut self) -> Option<()>
-}
-
-impl<T: Read> Iterator for SectionIterator<T> {
-    type Item = Rc<EifPart>;
-
-    fn next(&mut self) -> Option<Rc<EifPart>> {
+    fn next(&mut self) -> Option<EifPart> {
         /*
          *  Eif files are stored as:
          *      +--------------------+ <- 0
@@ -124,46 +87,92 @@ impl<T: Read> Iterator for SectionIterator<T> {
             Ok(buff)
         }
 
-        match self.part.as_ref().map(|p| p.deref()) {
+        match &self.part {
             None => {
                 let h = header(&mut self.reader).ok()?;
-                self.part = Some(Rc::new(EifPart::Header(h)));
+                self.part = Some(EifPart::Header(Rc::new(h)));
             },
             Some(EifPart::Header(_)) |
                 Some(EifPart::SectionData(_)) => {
                 let s = section_header(&mut self.reader).ok()??;
-                self.part = Some(Rc::new(EifPart::SectionHeader(s)));
+                self.part = Some(EifPart::SectionHeader(Rc::new(s)));
             }
             Some(EifPart::SectionHeader(h)) => {
-                let data = section_content(&mut self.reader, h).ok()?;
-                self.part = Some(Rc::new(EifPart::SectionData(data)));
+                let data = section_content(&mut self.reader, &h).ok()?;
+                self.part = Some(EifPart::SectionData(Rc::new(data)));
             }
         }
         self.part.clone()
     }
 }
 
-impl<T: Read> FtxEif<T> {
-    /// Parses an eif file and returns the `EifHeader` and an iterator over a tuple of
-    /// `EifSectionHeader` and the section content
+pub struct SectionIterator<T: Read>(EifPartIterator<T>);
+
+impl<T: Read> Iterator for SectionIterator<T> {
+    type Item = (Rc<EifSectionHeader>, Rc<Vec<u8>>);
+
+    fn next(&mut self) -> Option<(Rc<EifSectionHeader>, Rc<Vec<u8>>)> {
+        let header = self.0.next()?;
+        let data = self.0.next()?;
+        match (header, data) {
+            (EifPart::SectionHeader(h), EifPart::SectionData(d)) => Some((h, d)),
+            _ => None
+        }
+    }
+}
+
+pub struct FtxEif<T> {
+    eif: T,
+}
+
+impl<T> FtxEif<T> {
+    pub fn new(eif: T) -> Self {
+        FtxEif {
+            eif
+        }
+    }
+
+    pub fn into_inner(self) -> T {
+        let FtxEif { eif } = self;
+        eif
+    }
+}
+
+impl<T: Read + Seek> FtxEif<T> {
+    /// Parses an eif file and returns an iterator of its parts
     /// The AWS image format crate doesn't provide a way to extract these sections easily. This
     /// code should be upstreamed.
     /// https://github.com/aws/aws-nitro-enclaves-image-format/blob/main/src/utils/eif_reader.rs#L85-L209
-    pub fn parse(&mut self) -> Result<(EifHeader, SectionIterator<&mut T>), Error> {
-        fn header<T: Read>(reader: &mut T) -> Result<EifHeader, Error> {
-            let mut buff = [0; EifHeader::size()];
-            reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
-            EifHeader::from_be_bytes(&mut buff).map_err(|e| Error::EifParseError(e))
-        }
-
-        let header = header(&mut self.eif)?;
-        Ok((header, SectionIterator::new(&mut self.eif)))
+    fn iter(&mut self) -> Result<EifPartIterator<&mut T>, Error> {
+        self.eif.rewind().map_err(|e| Error::EifReadError(e))?;
+        Ok(EifPartIterator::new(&mut self.eif))
     }
 
-    /*
+    fn eif_header_ex(&mut self) -> Result<(Rc<EifHeader>, EifPartIterator<&mut T>), Error> {
+        let mut it = self.iter()?;
+        let header = it.next()
+            .map(|h| {
+                if let EifPart::Header(header) = h {
+                    Ok(header.clone())
+                } else {
+                    Err(Error::EifParseError(String::from("Malformed eif file: Expected EifHeader")))
+                }
+            })
+            .ok_or(Error::EifParseError(String::from("Failed to parse eif header")))??;
+        Ok((header, it))
+    }
+
+    pub fn eif_header(&mut self) -> Result<Rc<EifHeader>, Error> {
+        self.eif_header_ex().map(|(header, _)| header)
+    }
+
+    pub fn sections(&mut self) -> Result<SectionIterator<&mut T>, Error> {
+        let it = self.eif_header_ex()?.1;
+        Ok(SectionIterator(it))
+    }
+
     pub fn application(&mut self) -> Result<Vec<u8>, Error> {
-        let initramfs = self.parse()?
-            .1
+        let initramfs = self.sections()?
             .find_map(|(hdr, cnt)| {
                 if hdr.section_type == EifSectionType::EifSectionRamdisk {
                     Some(cnt)
@@ -173,12 +182,11 @@ impl<T: Read> FtxEif<T> {
             })
             .ok_or(Error::EifParseError(String::from("No ramdisks found")))?;
 
-        let initramfs = Initramfs::from(Cursor::new(initramfs));
+        let initramfs = Initramfs::from(Cursor::new(initramfs.deref()));
         let mut app = Vec::new();
         initramfs.application(&mut app)?;
         Ok(app)
     }
-    */
 }
 
 impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> Builder<R, S, T, U, V> {
@@ -249,6 +257,7 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
 mod tests {
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
     use std::io::Cursor;
+    use std::ops::Deref;
     use super::{Builder, FtxEif};
     use super::initramfs::{Builder as InitramfsBuilder};
 
@@ -284,16 +293,12 @@ mod tests {
 
         // Parse eif
         let mut eif_reader = FtxEif::new(Cursor::new(&eif));
-        let (_header, section_it) = eif_reader
-            .parse()
-            .unwrap();
-
         let mut initramfs = None;
         let mut sig = None;
         let mut meta = None;
         let mut kernel = None;
         let mut cmdline = None;
-        for (section, content) in section_it {
+        for (section, content) in eif_reader.sections().unwrap() {
             match section.section_type {
                 EifSectionType::EifSectionInvalid => panic!("Invalid section"),
                 EifSectionType::EifSectionKernel => {
@@ -301,7 +306,7 @@ mod tests {
                     assert_eq!(None, kernel.replace(content));
                 },
                 EifSectionType::EifSectionCmdline => {
-                    assert_eq!(CMDLINE.trim(), String::from_utf8(content.clone()).unwrap());
+                    assert_eq!(CMDLINE.trim(), String::from_utf8(content.deref().clone()).unwrap());
                     assert_eq!(None, cmdline.replace(content));
                 },
                 EifSectionType::EifSectionRamdisk => {
@@ -310,7 +315,7 @@ mod tests {
                         .unwrap()
                         .into_inner()
                         .into_inner();
-                    assert_eq!(expected_initramfs, content);
+                    assert_eq!(expected_initramfs, *content);
                     assert_eq!(None, initramfs.replace(content));
                 },
                 EifSectionType::EifSectionSignature => {
