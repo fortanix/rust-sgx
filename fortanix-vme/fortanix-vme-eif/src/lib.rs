@@ -187,6 +187,18 @@ impl<T: Read + Seek> FtxEif<T> {
         initramfs.application(&mut app)?;
         Ok(app)
     }
+
+    pub fn metadata(&mut self) -> Result<EifIdentityInfo, Error> {
+        let metadata = self.sections()?
+            .find_map(|(header, data)|
+            if header.deref().section_type == EifSectionType::EifSectionMetadata {
+                Some(data)
+            } else {
+                None
+            })
+            .ok_or(Error::EifParseError(String::from("No metadata section found in EIF file")))?;
+        serde_json::from_slice(metadata.deref().as_slice()).map_err(|e| Error::MetadataParseError(e))
+    }
 }
 
 impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> Builder<R, S, T, U, V> {

@@ -31,6 +31,8 @@ pub enum Error {
     EifReadError(#[source] io::Error),
     #[error("Parsing Eif failed")]
     EifParseError(String),
+    #[error("Parsing Metadata section failed")]
+    MetadataParseError(#[source] serde_json::Error),
     #[error("Invalid entry name (found \"{found:?}\", expected \"{expected:?}\")")]
     WrongEntryName {
         found: String,
