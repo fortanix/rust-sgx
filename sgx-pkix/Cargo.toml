@@ -1,6 +1,6 @@
 [package]
 name = "sgx_pkix"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Fortanix, Inc."]
 edition = "2018"
 license = "MPL-2.0"
@@ -12,6 +12,6 @@ categories = ["cryptography"]
 [dependencies]
 byteorder = "1.0"
 pkix = ">=0.1.1, <0.3.0"
-sgx-isa = { version = "0.3", path = "../sgx-isa" }
+sgx-isa = "0.3"
 quick-error = "1.1.0"
 lazy_static = "1"

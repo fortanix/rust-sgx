@@ -35,6 +35,9 @@ lazy_static!{
     pub static ref round5_5pke_0d: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 4, 2].into();
     pub static ref lms_15_10_sha256: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 4, 3].into();
 
+    // Fortanix attestation transparency identifiers
+    pub static ref transparencyProofSgx: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 5, 1].into();
+
     // Intel SGX OID namespaces:
     // https://download.01.org/intel-sgx/sgx-dcap/1.10/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.4.pdf
     // https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/master/QuoteVerification/QVL/Src/AttestationParsers/src/ParserUtils.h#L57
