@@ -2,7 +2,7 @@ use clap::Parser;
 use fortanix_vme_eif::Builder;
 use std::io::{BufReader, BufWriter, Cursor, Write};
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const KERNEL: &'static [u8; 5083088] = include_bytes!("../data/bzImage");
 const KERNEL_CONFIG: &'static str = include_str!("../data/bzImage.config");
@@ -18,6 +18,9 @@ struct Cli {
     #[arg(short, long, value_name = "FILE")]
     elf_path: PathBuf,
 
+    #[arg(short, long, value_name = "NAME")]
+    name: Option<String>,
+
     /// Path where the resulting EIF file should be written
     #[arg(short, long, value_name = "FILE")]
     output_path: PathBuf,
@@ -25,7 +28,7 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    let elf = File::open(cli.elf_path)
+    let elf = File::open(cli.elf_path.to_owned())
         .expect("Failed to open elf path");
     let elf = BufReader::new(elf);
     let eif = File::create(cli.output_path)
@@ -35,8 +38,14 @@ fn main() {
     let nsm = Cursor::new(NSM);
     let kernel = Cursor::new(KERNEL);
     let kernel_config = Cursor::new(KERNEL_CONFIG);
-    
-    Builder::new(elf, init, nsm, kernel, kernel_config, CMDLINE.trim())
+    let name = cli.name.or_else(|| {
+        Path::new(&cli.elf_path)
+            .file_name()
+            .map(|name| name.to_str().map(|name| name.to_string()))
+            .flatten()
+    }).unwrap_or(String::from("FtxEnclave"));
+
+    Builder::new(name, elf, init, nsm, kernel, kernel_config, CMDLINE.trim())
         .build(eif)
         .expect("Failed to create eif file")
         .into_inner()
