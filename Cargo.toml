@@ -26,6 +26,7 @@ members = [
     "intel-sgx/sgx_pkix",
     "intel-sgx/sgxs-loaders",
     "intel-sgx/sgxs-tools",
+    "async-usercalls",
     "ipc-queue",
     "rs-libc",
     "em-app",

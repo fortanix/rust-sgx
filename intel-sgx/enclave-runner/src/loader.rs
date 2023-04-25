@@ -102,8 +102,6 @@ impl From<DebugBuffer> for EnclavePanic {
 #[derive(Debug)]
 pub(crate) struct ErasedTcs {
     address: *mut c_void,
-    // This represents a resource so we need to maintain ownership even if not
-    // used
     #[allow(dead_code)]
     tcs: Box<dyn Tcs>,
 }
