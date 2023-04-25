@@ -1,6 +1,6 @@
 [package]
 name = "nitro-attestation-verify"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Adrian Cruceru <adrian.cruceru@fortanix.com>"]
 edition = "2018"
 
