@@ -6,10 +6,10 @@
 use hyper::net::{NetworkStream, SslClient, SslServer};
 use std::fmt;
 use std::io;
+use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 
 use mbedtls::ssl::{Config, Context};
 
@@ -19,26 +19,34 @@ pub struct TlsStream<T> {
     context: Arc<Mutex<Context<T>>>,
 }
 
-impl<T: 'static> TlsStream<T> {
+impl<T> TlsStream<T>
+where
+    T: 'static,
+{
     pub fn new(context: Arc<Mutex<Context<T>>>) -> io::Result<Self> {
         if context.lock().unwrap().io_mut().is_none() {
-            return Err(IoError::new(IoErrorKind::InvalidInput, "Peer set in context is not of expected type"));
+            return Err(IoError::new(
+                IoErrorKind::InvalidInput,
+                "Peer set in context is not of expected type",
+            ));
         }
 
-        Ok(TlsStream {
-            context,
-        })
+        Ok(TlsStream { context: context })
     }
 }
 
-impl<T: 'static + io::Read + io::Write> io::Read for TlsStream<T>
+impl<T> io::Read for TlsStream<T>
+where
+    T: 'static + io::Read + io::Write,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.context.lock().unwrap().read(buf)
     }
 }
 
-impl<T: 'static + io::Read + io::Write> io::Write for TlsStream<T>
+impl<T> io::Write for TlsStream<T>
+where
+    T: 'static + io::Read + io::Write,
 {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.context.lock().unwrap().write(buf)
@@ -49,28 +57,37 @@ impl<T: 'static + io::Read + io::Write> io::Write for TlsStream<T>
     }
 }
 
-impl<T: 'static> NetworkStream for TlsStream<T>
-    where T: NetworkStream
+impl<T> NetworkStream for TlsStream<T>
+where
+    T: NetworkStream + 'static,
 {
     fn peer_addr(&mut self) -> io::Result<SocketAddr> {
-        self.context.lock().unwrap().io_mut()
+        self.context
+            .lock()
+            .unwrap()
+            .io_mut()
             .ok_or(IoError::new(IoErrorKind::NotFound, "No peer available"))?
             .peer_addr()
     }
 
     fn set_read_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.context.lock().unwrap().io_mut()
+        self.context
+            .lock()
+            .unwrap()
+            .io_mut()
             .ok_or(IoError::new(IoErrorKind::NotFound, "No peer available"))?
             .set_read_timeout(dur)
     }
 
     fn set_write_timeout(&self, dur: Option<Duration>) -> io::Result<()> {
-        self.context.lock().unwrap().io_mut()
+        self.context
+            .lock()
+            .unwrap()
+            .io_mut()
             .ok_or(IoError::new(IoErrorKind::NotFound, "No peer available"))?
             .set_write_timeout(dur)
     }
- }
-
+}
 
 #[derive(Clone)]
 pub struct MbedSSLServer {
@@ -79,15 +96,15 @@ pub struct MbedSSLServer {
 
 impl MbedSSLServer {
     pub fn new(rc_config: Arc<Config>) -> Self {
-        MbedSSLServer {
-            rc_config,
-        }
+        MbedSSLServer { rc_config }
     }
 }
 
-/// An abstraction to allow any SSL implementation to be used with server-side HttpsStreams.
+/// An abstraction to allow any SSL implementation to be used with server-side
+/// HttpsStreams.
 impl<T> SslServer<T> for MbedSSLServer
-    where T: NetworkStream + Send + Clone + fmt::Debug + Sync
+where
+    T: NetworkStream + Send + Clone + fmt::Debug + Sync,
 {
     /// The protected stream.
     type Stream = TlsStream<T>;
@@ -107,7 +124,8 @@ pub struct MbedSSLClient {
     verify_hostname: bool,
 
     // This can be used when verify_hostname is set to true.
-    // It will force ssl client to send this specific SNI on all established connections disregarding any host provided by hyper.
+    // It will force ssl client to send this specific SNI on all established connections disregarding any host provided by
+    // hyper.
     override_sni: Option<String>,
 }
 
@@ -132,7 +150,8 @@ impl MbedSSLClient {
 }
 
 impl<T> SslClient<T> for MbedSSLClient
-    where T: NetworkStream + Send + Clone + fmt::Debug + Sync
+where
+    T: NetworkStream + Send + Clone + fmt::Debug + Sync,
 {
     type Stream = TlsStream<T>;
 
@@ -150,4 +169,3 @@ impl<T> SslClient<T> for MbedSSLClient
         }
     }
 }
-
