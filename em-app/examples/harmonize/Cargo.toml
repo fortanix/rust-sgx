@@ -18,5 +18,5 @@ hyper = "0.10"
 sdkms = { version = "0.2.1", default-features = false }
 rustc-serialize = "0.3.24"
 csv = "1.1"
-pkix = "0.1.2"
+pkix = ">=0.1.2, <0.3.0"
 url = "1"
