@@ -7,4 +7,4 @@ edition = "2021"
 
 [dependencies]
 nsm = { path = "../../nsm" }
-pkix = { version = "0.1" }
+pkix = ">=0.1.1, <0.3.0"
