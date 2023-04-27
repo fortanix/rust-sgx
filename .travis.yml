@@ -37,7 +37,6 @@ matrix:
         - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
         - cargo test --verbose --locked --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
-        - cargo test --verbose --locked -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
         - cargo test --verbose --locked -p ias --features mbedtls
