@@ -138,7 +138,7 @@ version = "0.58.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f8523b410d7187a43085e7e064416ea32ded16bd0a4e6fc025e21616d01258f"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "cexpr",
  "clang-sys",
  "clap",
@@ -169,12 +169,6 @@ checksum = "5f0dc55f2d8a1a85650ac47858bb001b4c0dd73d79e3c455a842925e68d29cd3"
 
 [[package]]
 name = "bitflags"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8dead7461c1127cf637931a1e50934eb6eee8bff2f74433ac7909e9afcee04a3"
-
-[[package]]
-name = "bitflags"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf1de2fe8c75bc145a2f577add951f8134889b4795d47466a54a5c846d691693"
@@ -199,12 +193,6 @@ checksum = "fa79dedbb091f449f1f39e53edf88d5dbe95f895dae6135a8d7b881fb5af73f5"
 dependencies = [
  "byte-tools",
 ]
-
-[[package]]
-name = "broadcast"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fb214f702da3cc6aa1666520f40ea66f506644db5e1065be4bbc972f7ec3750b"
 
 [[package]]
 name = "bumpalo"
@@ -302,7 +290,7 @@ checksum = "37e58ac78573c40708d45522f0d80fa2f01cc4f9b4e2bf749807255454312002"
 dependencies = [
  "ansi_term",
  "atty",
- "bitflags 1.2.1",
+ "bitflags",
  "strsim",
  "textwrap",
  "unicode-width",
@@ -315,7 +303,7 @@ version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc5b9aa5d4507acaf872de71051dfd0e309860e88966e1051e462a077aac4f"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
 ]
 
 [[package]]
@@ -761,7 +749,7 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e9763c69ebaae630ba35f74888db465e49e259ba1bc0eda7d06f4a067615d82"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "fuchsia-zircon-sys",
 ]
 
@@ -1221,7 +1209,7 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77f2c88dbe2fcc6fddc0dc33eb2694471fef46f48b2081996335adb2f8085c53"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "byteorder",
  "cc",
  "cfg-if 1.0.0",
@@ -1407,7 +1395,7 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4dbdc256eaac2e3bd236d93ad999d3479ef775c863dbda3068c4006a92eec51b"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "cc",
  "cfg-if 0.1.10",
  "libc",
@@ -1420,7 +1408,7 @@ version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b2e0b4f3320ed72aaedb9a5ac838690a8047c7b275da22711fddff4f8a14229"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "cc",
  "cfg-if 0.1.10",
  "libc",
@@ -1559,7 +1547,7 @@ version = "0.10.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d575eff3665419f9b83678ff2815858ad9d11567e082f5ac1814baba4e2bcb4"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "cfg-if 0.1.10",
  "foreign-types",
  "lazy_static",
@@ -1625,15 +1613,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec13ba9a0eec5c10a89f6ec1b6e9e2ef7d29b810d771355abbd1c43cae003ed6"
 dependencies = [
  "err-derive",
-]
-
-[[package]]
-name = "pe"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de31e953ee9f97fce65decc96536d4df6a9ac7e51e13e2b635aae46e507b9048"
-dependencies = [
- "bitflags 0.4.0",
 ]
 
 [[package]]
@@ -2167,7 +2146,7 @@ version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "64808902d7d99f78eaddd2b4e2509713babc3dc3c85ad6f4c447680f3c01e535"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "core-foundation",
  "core-foundation-sys 0.7.0",
  "libc",
@@ -2258,7 +2237,7 @@ dependencies = [
 name = "sgx-isa"
 version = "0.3.3"
 dependencies = [
- "bitflags 1.2.1",
+ "bitflags",
  "mbedtls",
  "serde",
 ]
@@ -2284,7 +2263,7 @@ name = "sgxs-loaders"
 version = "0.3.1"
 dependencies = [
  "aesm-client",
- "bitflags 1.2.1",
+ "bitflags",
  "failure",
  "failure_derive",
  "libc",
@@ -2302,7 +2281,6 @@ version = "0.8.4"
 dependencies = [
  "aesm-client",
  "atty",
- "broadcast",
  "byteorder",
  "clap",
  "crypto-hash",
@@ -2317,7 +2295,6 @@ dependencies = [
  "mopa",
  "num",
  "openssl",
- "pe",
  "petgraph",
  "proc-macro2 0.4.30",
  "proc-mounts",

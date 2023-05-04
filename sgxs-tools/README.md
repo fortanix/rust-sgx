@@ -2,11 +2,15 @@
 
 Compiles with Rust nightly.
 
-## pe2sgxs
+## pe2sgxs (deprecated since v0.8.7)
 
 `pe2sgxs` converts enclaves in Intel's PE format to SGXS format, optionally
 extracting the signature. You can then use the SGXS file with the other SGXS
 utilities.
+
+This is deprecated since v0.8.7 because the code of its dependency `pe` is
+incompatible with rust compiler since `nightly-2023-01-31`. The source code has
+been moved to `src/deprecated`.
 
 ## sgx-debug-read
 

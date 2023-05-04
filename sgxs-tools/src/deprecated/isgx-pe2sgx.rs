@@ -4,6 +4,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+//! This code is deprecated since v0.8.7 because its dependency `pe`
+//! is incompatible with rust compiler since `nightly-2023-01-31`.
+
 #[macro_use]
 extern crate lazy_static;
 extern crate broadcast;
@@ -614,6 +617,9 @@ sgx-utils@jbeekman.nl with as much data as you can provide about the enclave."
     )
 }
 
+#[deprecated(since = "0.8.7")]
+/// The dependency `pe` of this part of code is incompatible with rust compiler
+/// since `nightly-2023-01-31`."
 fn main() {
     let mut args = std::env::args_os();
     let _name = args.next();
