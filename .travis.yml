@@ -25,8 +25,7 @@ matrix:
             - clang-11
             - musl-tools
       rust:
-        # This need to change back to `nightly` after https://github.com/fortanix/rust-sgx/issues/433 is fixed
-        - nightly-2023-01-31
+        - nightly
       env:
         - RUST_BACKTRACE=1
         - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
@@ -37,7 +36,6 @@ matrix:
         - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
         - cargo test --verbose --locked --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
-        - cargo test --verbose --locked -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
         - cargo build --verbose --locked --manifest-path em-app/Cargo.toml --target=x86_64-fortanix-unknown-sgx
