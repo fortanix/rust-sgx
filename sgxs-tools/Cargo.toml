@@ -20,10 +20,6 @@ proc-macro = true
 path = "src/sgx_detect/proc_macro.rs"
 
 [[bin]]
-name = "isgx-pe2sgx"
-required-features = ["pe2sgxs"]
-
-[[bin]]
 name = "sgx-detect"
 path = "src/sgx_detect/main.rs"
 
@@ -47,7 +43,6 @@ openssl = "0.10"                                 # Apache-2.0
 failure = "0.1.1"                                # MIT/Apache-2.0
 failure_derive = "0.1.1"                         # MIT/Apache-2.0
 crypto-hash = "0.3"                              # MIT
-broadcast = { version = "0.1", optional = true } # MIT
 log = "0.4"                                      # MIT/Apache-2.0
 env_logger = "0.6"                               # MIT/Apache-2.0
 yansi = "0.5"                                    # MIT/Apache-2.0
@@ -62,7 +57,6 @@ proc-mounts = "0.2.4"                            # MIT
 serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
 serde_yaml = "0.8.8"                             # MIT/Apache-2.0
-pe = { version = "0.1", optional = true }        # GPL
 
 [target.'cfg(unix)'.dependencies]
 "dcap-ql" = { version = "0.3.0", path = "../dcap-ql" }
@@ -71,7 +65,6 @@ pe = { version = "0.1", optional = true }        # GPL
 winapi = { version = "0.3.7", features = ["winbase"] }
 
 [features]
-pe2sgxs = ["pe", "broadcast"]
 docs = []
 
 [package.metadata.docs.rs]
