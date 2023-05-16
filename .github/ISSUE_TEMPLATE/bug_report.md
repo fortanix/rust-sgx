@@ -1,17 +1,16 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: "[BUG]: "
-labels: ''
-assignees: ''
 
+about: Create a report to help us improve
+
+title: "[BUG]: "
 ---
 
 **Describe the bug:**
-A clear and concise description of what the bug is.
+ A clear and concise description of what the bug is.
 
 **To Reproduce:**
-Steps to reproduce the behavior:
+ Steps to reproduce the behavior:
 1. Step 1 '...'
 2. Step 2 '....'
 3. Step 3 '....'
@@ -29,8 +28,7 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment:**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
+ - OS: [e.g. Ubuntu]
  - Version [e.g. 22]
 
 **Possible Solution:**

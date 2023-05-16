@@ -8,7 +8,7 @@ assignees: ''
 ---
 
 **Description**
-A clear and concise description of feature you are requesting.
+A clear and concise description of the feature you are requesting.
 
 **Problem or Motivation:**
 A brief explanation of the problem or motivation behind this feature request.
