@@ -10,7 +10,7 @@ serde_cbor = "0.11"
 # Required until PR36 is accepted
 # https://github.com/awslabs/aws-nitro-enclaves-cose/pull/36
 aws-nitro-enclaves-cose = { version = "0.5.0", git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "raoul/crypto_abstraction_pinned", default-features = false }
-mbedtls = { version = ">=0.8.0, <0.10.0", features = ["rdrand", "std", "time"], default-features = false, optional = true }
+mbedtls = { version = "0.10.0", features = ["rdrand", "std", "time"], default-features = false, optional = true }
 num-bigint = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"

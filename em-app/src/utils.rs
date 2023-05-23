@@ -45,7 +45,7 @@ pub fn get_runtime_configuration(
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
 
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config.set_min_version(Version::Tls12).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -77,7 +77,7 @@ pub fn get_sdkms_dataset(
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
     
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config.set_min_version(Version::Tls12).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -112,7 +112,7 @@ pub fn https_get(url: Url,
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
     
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config.set_min_version(Version::Tls12).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -144,7 +144,7 @@ pub fn https_put(url: Url,
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
     
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config.set_min_version(Version::Tls12).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -222,7 +222,7 @@ pub fn get_mbedtls_hyper_connector_pool(ca_chain: Vec<Vec<u8>>, client_pki: Opti
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
 
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config.set_min_version(Version::Tls12).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if !ca_chain.is_empty() {
         let mut list = MbedtlsList::<Certificate>::new();
