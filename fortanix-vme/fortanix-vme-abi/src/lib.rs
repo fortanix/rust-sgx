@@ -2156,6 +2156,15 @@ mod test {
                     0x64, 0x61, 0x72, 0x67, 0x30
                 ]),
             ),
+            (
+                Response::Init {
+                    args: Vec::from([String::from("arg0"), String::from("arg1")]),
+                },
+                Vec::from([
+                    0xa1, 0x64, 0x49, 0x6e, 0x69, 0x74, 0xa1, 0x64, 0x61, 0x72, 0x67, 0x73, 0x82,
+                    0x64, 0x61, 0x72, 0x67, 0x30, 0x64, 0x61, 0x72, 0x67, 0x31
+                ]),
+            ),
         ]);
 
         for (resp, bin) in data.iter() {
