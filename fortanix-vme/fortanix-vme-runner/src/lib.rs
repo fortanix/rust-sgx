@@ -378,7 +378,7 @@ impl<P: Platform + 'static> Server<P> {
      */
     fn handle_request_connect(self: Arc<Self>, remote_addr: &String, conn: &mut ClientConnection) -> Result<(), VmeError> {
         // Connect to remote server
-        let remote_socket = TcpStream::connect(remote_addr)?;
+        let remote_socket = TcpStream::connect(remote_addr).map_err(|e| VmeError::Command(e.kind().into()))?;
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
@@ -476,7 +476,7 @@ impl<P: Platform + 'static> Server<P> {
      */
     fn handle_request_bind(self: Arc<Self>, addr: &String, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
         let cid: u32 = conn.peer_port()?;
-        let listener = TcpListener::bind(addr)?;
+        let listener = TcpListener::bind(addr).map_err(|e| VmeError::Command(e.kind().into()))?;
         let local: Addr = listener.local_addr()?.into();
         self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
         conn.send(&Response::Bound{ local })?;
@@ -489,7 +489,7 @@ impl<P: Platform + 'static> Server<P> {
         let listener = self.listener(&enclave_addr)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
         let listener = listener.lock().unwrap();
-        let (conn, peer) = listener.listener.accept()?;
+        let (conn, peer) = listener.listener.accept().map_err(|e| VmeError::Command(e.kind().into()))?;
         let vsock = Vsock::new::<Std>()?;
         let runner_addr = vsock.addr::<Std>()?;
         client_conn.send(&Response::IncomingConnection{
