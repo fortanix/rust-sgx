@@ -1654,9 +1654,272 @@ impl<'de> Deserialize<'de> for Response {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum ErrorKind {
+    NotFound,
+    PermissionDenied,
+    ConnectionRefused,
+    ConnectionReset,
+    HostUnreachable,
+    NetworkUnreachable,
+    ConnectionAborted,
+    NotConnected,
+    AddrInUse,
+    AddrNotAvailable,
+    NetworkDown,
+    BrokenPipe,
+    AlreadyExists,
+    WouldBlock,
+    NotADirectory,
+    IsADirectory,
+    DirectoryNotEmpty,
+    ReadOnlyFilesystem,
+    FilesystemLoop,
+    StaleNetworkFileHandle,
+    InvalidInput,
+    InvalidData,
+    TimedOut,
+    WriteZero,
+    StorageFull,
+    NotSeekable,
+    FilesystemQuotaExceeded,
+    FileTooLarge,
+    ResourceBusy,
+    ExecutableFileBusy,
+    Deadlock,
+    CrossesDevices,
+    TooManyLinks,
+    FilenameTooLong,
+    ArgumentListTooLong,
+    Interrupted,
+    Unsupported,
+    UnexpectedEof,
+    OutOfMemory,
+    Other,
+    Uncategorized,
+}
+
+impl Serialize for ErrorKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            ErrorKind::NotFound =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 0u32, "NotFound"),
+            ErrorKind::PermissionDenied =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 1u32, "PermissionDenied"),
+            ErrorKind::ConnectionRefused =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 2u32, "ConnectionRefused"),
+            ErrorKind::ConnectionReset =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 3u32, "ConnectionReset"),
+            ErrorKind::HostUnreachable =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 4u32, "HostUnreachable"),
+            ErrorKind::NetworkUnreachable =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 5u32, "NetworkUnreachable"),
+            ErrorKind::ConnectionAborted =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 6u32, "ConnectionAborted"),
+            ErrorKind::NotConnected =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 7u32, "NotConnected"),
+            ErrorKind::AddrInUse =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 8u32, "AddrInUse"),
+            ErrorKind::AddrNotAvailable =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 9u32, "AddrNotAvailable"),
+            ErrorKind::NetworkDown =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 10u32, "NetworkDown"),
+            ErrorKind::BrokenPipe =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 11u32, "BrokenPipe"),
+            ErrorKind::AlreadyExists =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 12u32, "AlreadyExists"),
+            ErrorKind::WouldBlock =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 13u32, "WouldBlock"),
+            ErrorKind::NotADirectory =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 14u32, "NotADirectory"),
+            ErrorKind::IsADirectory =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 15u32, "IsADirectory"),
+            ErrorKind::DirectoryNotEmpty =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 16u32, "DirectoryNotEmpty"),
+            ErrorKind::ReadOnlyFilesystem =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 17u32, "ReadOnlyFilesystem"),
+            ErrorKind::FilesystemLoop =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 18u32, "FilesystemLoop"),
+            ErrorKind::StaleNetworkFileHandle =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 19u32, "StaleNetworkFileHandle"),
+            ErrorKind::InvalidInput =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 20u32, "InvalidInput"),
+            ErrorKind::InvalidData =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 21u32, "InvalidData"),
+            ErrorKind::TimedOut =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 22u32, "TimedOut"),
+            ErrorKind::WriteZero =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 23u32, "WriteZero"),
+            ErrorKind::StorageFull =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 24u32, "StorageFull"),
+            ErrorKind::NotSeekable =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 25u32, "NotSeekable"),
+            ErrorKind::FilesystemQuotaExceeded =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 26u32, "FilesystemQuotaExceeded"),
+            ErrorKind::FileTooLarge =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 27u32, "FileTooLarge"),
+            ErrorKind::ResourceBusy =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 28u32, "ResourceBusy"),
+            ErrorKind::ExecutableFileBusy =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 29u32, "ExecutableFileBusy"),
+            ErrorKind::Deadlock =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 30u32, "Deadlock"),
+            ErrorKind::CrossesDevices =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 31u32, "CrossesDevices"),
+            ErrorKind::TooManyLinks =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 32u32, "TooManyLinks"),
+            ErrorKind::FilenameTooLong =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 33u32, "FilenameTooLong"),
+            ErrorKind::ArgumentListTooLong =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 34u32, "ArgumentListTooLong"),
+            ErrorKind::Interrupted =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 35u32, "Interrupted"),
+            ErrorKind::Unsupported =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 36u32, "Unsupported"),
+            ErrorKind::UnexpectedEof =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 37u32, "UnexpectedEof"),
+            ErrorKind::OutOfMemory =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 38u32, "OutOfMemory"),
+            ErrorKind::Other =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 39u32, "Other"),
+            ErrorKind::Uncategorized =>
+                Serializer::serialize_unit_variant(serializer, "ErrorKind", 40u32, "Uncategorized"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ErrorKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        pub struct ErrorKindVariant(ErrorKind);
+
+        struct ErrorKindVariantVisitor;
+        impl<'de> Visitor<'de> for ErrorKindVariantVisitor {
+            type Value = ErrorKindVariant;
+
+            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(fmt, "ErrorKind variant identifier")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: SerdeError,
+            {
+                match value {
+                    "NotFound" => Ok(ErrorKindVariant(ErrorKind::NotFound)),
+                    "PermissionDenied" => Ok(ErrorKindVariant(ErrorKind::PermissionDenied)),
+                    "ConnectionRefused" => Ok(ErrorKindVariant(ErrorKind::ConnectionRefused)),
+                    "ConnectionReset" => Ok(ErrorKindVariant(ErrorKind::ConnectionReset)),
+                    "HostUnreachable" => Ok(ErrorKindVariant(ErrorKind::HostUnreachable)),
+                    "NetworkUnreachable" => Ok(ErrorKindVariant(ErrorKind::NetworkUnreachable)),
+                    "ConnectionAborted" => Ok(ErrorKindVariant(ErrorKind::ConnectionAborted)),
+                    "NotConnected" => Ok(ErrorKindVariant(ErrorKind::NotConnected)),
+                    "AddrInUse" => Ok(ErrorKindVariant(ErrorKind::AddrInUse)),
+                    "AddrNotAvailable" => Ok(ErrorKindVariant(ErrorKind::AddrNotAvailable)),
+                    "NetworkDown" => Ok(ErrorKindVariant(ErrorKind::NetworkDown)),
+                    "BrokenPipe" => Ok(ErrorKindVariant(ErrorKind::BrokenPipe)),
+                    "AlreadyExists" => Ok(ErrorKindVariant(ErrorKind::AlreadyExists)),
+                    "WouldBlock" => Ok(ErrorKindVariant(ErrorKind::WouldBlock)),
+                    "NotADirectory" => Ok(ErrorKindVariant(ErrorKind::NotADirectory)),
+                    "IsADirectory" => Ok(ErrorKindVariant(ErrorKind::IsADirectory)),
+                    "DirectoryNotEmpty" => Ok(ErrorKindVariant(ErrorKind::DirectoryNotEmpty)),
+                    "ReadOnlyFilesystem" => Ok(ErrorKindVariant(ErrorKind::ReadOnlyFilesystem)),
+                    "FilesystemLoop" => Ok(ErrorKindVariant(ErrorKind::FilesystemLoop)),
+                    "StaleNetworkFileHandle" => Ok(ErrorKindVariant(ErrorKind::StaleNetworkFileHandle)),
+                    "InvalidInput" => Ok(ErrorKindVariant(ErrorKind::InvalidInput)),
+                    "InvalidData" => Ok(ErrorKindVariant(ErrorKind::InvalidData)),
+                    "TimedOut" => Ok(ErrorKindVariant(ErrorKind::TimedOut)),
+                    "WriteZero" => Ok(ErrorKindVariant(ErrorKind::WriteZero)),
+                    "StorageFull" => Ok(ErrorKindVariant(ErrorKind::StorageFull)),
+                    "NotSeekable" => Ok(ErrorKindVariant(ErrorKind::NotSeekable)),
+                    "FilesystemQuotaExceeded" => Ok(ErrorKindVariant(ErrorKind::FilesystemQuotaExceeded)),
+                    "FileTooLarge" => Ok(ErrorKindVariant(ErrorKind::FileTooLarge)),
+                    "ResourceBusy" => Ok(ErrorKindVariant(ErrorKind::ResourceBusy)),
+                    "ExecutableFileBusy" => Ok(ErrorKindVariant(ErrorKind::ExecutableFileBusy)),
+                    "Deadlock" => Ok(ErrorKindVariant(ErrorKind::Deadlock)),
+                    "CrossesDevices" => Ok(ErrorKindVariant(ErrorKind::CrossesDevices)),
+                    "TooManyLinks" => Ok(ErrorKindVariant(ErrorKind::TooManyLinks)),
+                    "FilenameTooLong" => Ok(ErrorKindVariant(ErrorKind::FilenameTooLong)),
+                    "ArgumentListTooLong" => Ok(ErrorKindVariant(ErrorKind::ArgumentListTooLong)),
+                    "Interrupted" => Ok(ErrorKindVariant(ErrorKind::Interrupted)),
+                    "Unsupported" => Ok(ErrorKindVariant(ErrorKind::Unsupported)),
+                    "UnexpectedEof" => Ok(ErrorKindVariant(ErrorKind::UnexpectedEof)),
+                    "OutOfMemory" => Ok(ErrorKindVariant(ErrorKind::OutOfMemory)),
+                    "Other" => Ok(ErrorKindVariant(ErrorKind::Other)),
+                    "Uncategorized" => Ok(ErrorKindVariant(ErrorKind::Uncategorized)),
+                    _ => Err(SerdeError::unknown_variant(value, VARIANTS)),
+                }
+            }
+        }
+        impl<'de> Deserialize<'de> for ErrorKindVariant {
+            #[inline]
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>,
+            {
+                Deserializer::deserialize_identifier(deserializer, ErrorKindVariantVisitor)
+            }
+        }
+
+        struct ErrorKindVisitor<'de> {
+            marker: PhantomData<Error>,
+            lifetime: PhantomData<&'de ()>,
+        }
+
+        impl<'de> Visitor<'de> for ErrorKindVisitor<'de> {
+            type Value = ErrorKind;
+            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                Formatter::write_str(formatter, "enum ErrorKind")
+            }
+
+            fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
+            where
+                A: EnumAccess<'de>,
+            {
+                match EnumAccess::variant(data)? {
+                    (ErrorKindVariant(kind), val) => {
+                        VariantAccess::unit_variant(val)?;
+                        Ok(kind)
+                    }
+                }
+            }
+        }
+
+        const VARIANTS: &'static [&'static str] =
+            &["NotFound", "PermissionDenied", "ConnectionRefused", "ConnectionReset",
+              "HostUnreachable", "NetworkUnreachable", "ConnectionAborted", "NotConnected",
+              "AddrInUse", "AddrNotAvailable", "NetworkDown", "BrokenPipe",
+              "AlreadyExists", "WouldBlock", "NotADirectory", "IsADirectory",
+              "DirectoryNotEmpty", "ReadOnlyFilesystem", "FilesystemLoop", "StaleNetworkFileHandle",
+              "InvalidInput", "InvalidData", "TimedOut", "WriteZero",
+              "StorageFull", "NotSeekable", "FilesystemQuotaExceeded", "FileTooLarge",
+              "ResourceBusy", "ExecutableFileBusy", "Deadlock", "CrossesDevices",
+              "TooManyLinks", "FilenameTooLong", "ArgumentListTooLong", "Interrupted",
+              "Unsupported", "UnexpectedEof", "OutOfMemory", "Other",
+              "Uncategorized"];
+
+        Deserializer::deserialize_enum(
+            deserializer,
+            "ErrorKind",
+            VARIANTS,
+            ErrorKindVisitor {
+                marker: PhantomData::<Error>,
+                lifetime: PhantomData,
+            },
+        )
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     ConnectionNotFound,
     SystemError(i32),
+    /*Command(ErrorKind), // Command executed on behalf of enclave (e.g., bind, accept, ...)
+    * resulted in an error. This error itself should be returned as the result of the command. */
     Unknown,
     VsockError,
 }
@@ -1809,7 +2072,7 @@ mod test {
     use std::str::FromStr;
     use std::string::String;
     use std::vec::Vec;
-    use crate::{Addr, Error, Response, Request};
+    use crate::{Addr, Error, ErrorKind, Response, Request};
 
     #[test]
     fn test_addr() {
@@ -1820,6 +2083,99 @@ mod test {
             assert_eq!(port, 4567);
         } else {
             panic!("Not IPv4")
+        }
+    }
+
+    #[test]
+    fn test_error_kind() {
+        let data: Vec<(ErrorKind, Vec<u8>)> = Vec::from([
+            (ErrorKind::NotFound,
+                Vec::from([0x68, 0x4e, 0x6f, 0x74, 0x46, 0x6f, 0x75, 0x6e, 0x64])),
+            (ErrorKind::PermissionDenied,
+                Vec::from([0x70, 0x50, 0x65, 0x72, 0x6d, 0x69, 0x73, 0x73, 0x69, 0x6f, 0x6e, 0x44, 0x65, 0x6e, 0x69, 0x65, 0x64])),
+            (ErrorKind::ConnectionRefused,
+                Vec::from([0x71, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x66, 0x75, 0x73, 0x65, 0x64])),
+            (ErrorKind::ConnectionReset,
+                Vec::from([0x6f, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x65, 0x74])),
+            (ErrorKind::HostUnreachable,
+                Vec::from([0x6f, 0x48, 0x6f, 0x73, 0x74, 0x55, 0x6e, 0x72, 0x65, 0x61, 0x63, 0x68, 0x61, 0x62, 0x6c, 0x65])),
+            (ErrorKind::NetworkUnreachable,
+                Vec::from([0x72, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x55, 0x6e, 0x72, 0x65, 0x61, 0x63, 0x68, 0x61, 0x62, 0x6c, 0x65])),
+            (ErrorKind::ConnectionAborted,
+                Vec::from([0x71, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x41, 0x62, 0x6f, 0x72, 0x74, 0x65, 0x64])),
+            (ErrorKind::NotConnected,
+                Vec::from([0x6c, 0x4e, 0x6f, 0x74, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x65, 0x64])),
+            (ErrorKind::AddrInUse,
+                Vec::from([0x69, 0x41, 0x64, 0x64, 0x72, 0x49, 0x6e, 0x55, 0x73, 0x65])),
+            (ErrorKind::AddrNotAvailable,
+                Vec::from([0x70, 0x41, 0x64, 0x64, 0x72, 0x4e, 0x6f, 0x74, 0x41, 0x76, 0x61, 0x69, 0x6c, 0x61, 0x62, 0x6c, 0x65])),
+            (ErrorKind::NetworkDown,
+                Vec::from([0x6b, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x44, 0x6f, 0x77, 0x6e])),
+            (ErrorKind::BrokenPipe,
+                Vec::from([0x6a, 0x42, 0x72, 0x6f, 0x6b, 0x65, 0x6e, 0x50, 0x69, 0x70, 0x65])),
+            (ErrorKind::AlreadyExists,
+                Vec::from([0x6d, 0x41, 0x6c, 0x72, 0x65, 0x61, 0x64, 0x79, 0x45, 0x78, 0x69, 0x73, 0x74, 0x73])),
+            (ErrorKind::WouldBlock,
+                Vec::from([0x6a, 0x57, 0x6f, 0x75, 0x6c, 0x64, 0x42, 0x6c, 0x6f, 0x63, 0x6b])),
+            (ErrorKind::NotADirectory,
+                Vec::from([0x6d, 0x4e, 0x6f, 0x74, 0x41, 0x44, 0x69, 0x72, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x79])),
+            (ErrorKind::IsADirectory,
+                Vec::from([0x6c, 0x49, 0x73, 0x41, 0x44, 0x69, 0x72, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x79])),
+            (ErrorKind::DirectoryNotEmpty,
+                Vec::from([0x71, 0x44, 0x69, 0x72, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x79, 0x4e, 0x6f, 0x74, 0x45, 0x6d, 0x70, 0x74, 0x79])),
+            (ErrorKind::ReadOnlyFilesystem,
+                Vec::from([0x72, 0x52, 0x65, 0x61, 0x64, 0x4f, 0x6e, 0x6c, 0x79, 0x46, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d])),
+            (ErrorKind::FilesystemLoop,
+                Vec::from([0x6e, 0x46, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x4c, 0x6f, 0x6f, 0x70])),
+            (ErrorKind::StaleNetworkFileHandle,
+                Vec::from([0x76, 0x53, 0x74, 0x61, 0x6c, 0x65, 0x4e, 0x65, 0x74, 0x77, 0x6f, 0x72, 0x6b, 0x46, 0x69, 0x6c, 0x65, 0x48, 0x61, 0x6e, 0x64, 0x6c, 0x65])),
+            (ErrorKind::InvalidInput,
+                Vec::from([0x6c, 0x49, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x49, 0x6e, 0x70, 0x75, 0x74])),
+            (ErrorKind::InvalidData,
+                Vec::from([0x6b, 0x49, 0x6e, 0x76, 0x61, 0x6c, 0x69, 0x64, 0x44, 0x61, 0x74, 0x61])),
+            (ErrorKind::TimedOut,
+                Vec::from([0x68, 0x54, 0x69, 0x6d, 0x65, 0x64, 0x4f, 0x75, 0x74])),
+            (ErrorKind::WriteZero,
+                Vec::from([0x69, 0x57, 0x72, 0x69, 0x74, 0x65, 0x5a, 0x65, 0x72, 0x6f])),
+            (ErrorKind::StorageFull,
+                Vec::from([0x6b, 0x53, 0x74, 0x6f, 0x72, 0x61, 0x67, 0x65, 0x46, 0x75, 0x6c, 0x6c])),
+            (ErrorKind::NotSeekable,
+                Vec::from([0x6b, 0x4e, 0x6f, 0x74, 0x53, 0x65, 0x65, 0x6b, 0x61, 0x62, 0x6c, 0x65])),
+            (ErrorKind::FilesystemQuotaExceeded,
+                Vec::from([0x77, 0x46, 0x69, 0x6c, 0x65, 0x73, 0x79, 0x73, 0x74, 0x65, 0x6d, 0x51, 0x75, 0x6f, 0x74, 0x61, 0x45, 0x78, 0x63, 0x65, 0x65, 0x64, 0x65, 0x64])),
+            (ErrorKind::FileTooLarge,
+                Vec::from([0x6c, 0x46, 0x69, 0x6c, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x61, 0x72, 0x67, 0x65])),
+            (ErrorKind::ResourceBusy,
+                Vec::from([0x6c, 0x52, 0x65, 0x73, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x42, 0x75, 0x73, 0x79])),
+            (ErrorKind::ExecutableFileBusy,
+                Vec::from([0x72, 0x45, 0x78, 0x65, 0x63, 0x75, 0x74, 0x61, 0x62, 0x6c, 0x65, 0x46, 0x69, 0x6c, 0x65, 0x42, 0x75, 0x73, 0x79])),
+            (ErrorKind::Deadlock,
+                Vec::from([0x68, 0x44, 0x65, 0x61, 0x64, 0x6c, 0x6f, 0x63, 0x6b])),
+            (ErrorKind::CrossesDevices,
+                Vec::from([0x6e, 0x43, 0x72, 0x6f, 0x73, 0x73, 0x65, 0x73, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x73])),
+            (ErrorKind::TooManyLinks,
+                Vec::from([0x6c, 0x54, 0x6f, 0x6f, 0x4d, 0x61, 0x6e, 0x79, 0x4c, 0x69, 0x6e, 0x6b, 0x73])),
+            (ErrorKind::FilenameTooLong,
+                Vec::from([0x6f, 0x46, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
+            (ErrorKind::ArgumentListTooLong,
+                Vec::from([0x73, 0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x4c, 0x69, 0x73, 0x74, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
+            (ErrorKind::Interrupted,
+                Vec::from([0x6b, 0x49, 0x6e, 0x74, 0x65, 0x72, 0x72, 0x75, 0x70, 0x74, 0x65, 0x64])),
+            (ErrorKind::Unsupported,
+                Vec::from([0x6b, 0x55, 0x6e, 0x73, 0x75, 0x70, 0x70, 0x6f, 0x72, 0x74, 0x65, 0x64])),
+            (ErrorKind::UnexpectedEof,
+                Vec::from([0x6d, 0x55, 0x6e, 0x65, 0x78, 0x70, 0x65, 0x63, 0x74, 0x65, 0x64, 0x45, 0x6f, 0x66])),
+            (ErrorKind::OutOfMemory,
+                Vec::from([0x6b, 0x4f, 0x75, 0x74, 0x4f, 0x66, 0x4d, 0x65, 0x6d, 0x6f, 0x72, 0x79])),
+            (ErrorKind::Other,
+                Vec::from([0x65, 0x4f, 0x74, 0x68, 0x65, 0x72])),
+            (ErrorKind::Uncategorized,
+                Vec::from([0x6d, 0x55, 0x6e, 0x63, 0x61, 0x74, 0x65, 0x67, 0x6f, 0x72, 0x69, 0x7a, 0x65, 0x64])),
+        ]);
+
+        for (errk, bin) in data.iter() {
+            assert_eq!(serde_cbor::ser::to_vec(&errk).unwrap(), *bin);
+            assert_eq!(serde_cbor::de::from_slice::<ErrorKind>(&bin).unwrap(), *errk);
         }
     }
 
