@@ -1069,6 +1069,8 @@ pub enum Response {
         /// The address of the remote party for open connection, None for server sockets
         peer: Option<Addr>,
     },
+    // TODO Split up failed command (e.g., bind executed on behalve of runner errored) and
+    // errored runner (e.g., no info was found for fd).
     Failed(Error),
     Init {
         args: Vec<String>,
