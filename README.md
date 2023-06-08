@@ -1,6 +1,6 @@
 # Fortanix Rust Enclave Development Platform
 
-[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack&logoColor=whitesmoke)](https://fortanix.com/runtime-encryption-slack) [![Build Status](https://travis-ci.com/fortanix/rust-sgx.svg?branch=master)](https://travis-ci.com/fortanix/rust-sgx)
+[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack&logoColor=whitesmoke)](https://fortanix.com/runtime-encryption-slack) [![Build Status](https://travis-ci.com/fortanix/rust-sgx.svg?branch=master)](https://app.travis-ci.com/github/fortanix/rust-sgx/builds)
 
 The [Fortanix Rust EDP](https://edp.fortanix.com/) is the preferred way to write Intel SGX enclaves from scratch.
 
