@@ -1,4 +1,5 @@
 #![deny(warnings)]
+#![feature(ip_in_core)]
 #![no_std]
 extern crate alloc;
 #[cfg(feature="std")]
@@ -8,6 +9,7 @@ use alloc::string::String;
 use alloc::vec::Vec;
 use core::fmt::{self, Formatter};
 use core::marker::PhantomData;
+use core::net::{IpAddr, SocketAddr};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::ser::SerializeStructVariant;
 use serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, VariantAccess, Visitor};
@@ -15,7 +17,6 @@ use serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, VariantA
 #[cfg(feature="std")]
 use {
     std::io,
-    std::net::SocketAddr,
     vsock::Error as VsockError,
 };
 
@@ -1017,7 +1018,6 @@ impl<'de> Deserialize<'de> for Addr {
     }
 }
 
-#[cfg(feature="std")]
 impl From<SocketAddr> for Addr {
     fn from(addr: SocketAddr) -> Addr {
         match addr {
@@ -1035,6 +1035,19 @@ impl From<SocketAddr> for Addr {
                     scope_id: addr.scope_id(),
                 }
             }
+        }
+    }
+}
+
+impl From<Addr> for SocketAddr {
+    fn from(addr: Addr) -> SocketAddr {
+        match addr {
+            Addr::IPv4{ ip, port } => {
+                SocketAddr::new(IpAddr::V4(ip.into()), port)
+            },
+            Addr::IPv6{ ip, port, .. } => {
+                SocketAddr::new(IpAddr::V6(ip.into()), port)
+            },
         }
     }
 }
