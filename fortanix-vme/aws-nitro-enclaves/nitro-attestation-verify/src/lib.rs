@@ -328,8 +328,8 @@ mod tests {
         //   Not After : Sep  9 13:19:20 2021 GMT
         static ref PROPER_TOKEN : Vec<u8> = include_bytes!("../data/request_proper.bin").to_vec();
         static ref PROPER_VALIDITY: (DateTime<Utc>, DateTime<Utc>) = (Utc.ymd(2021, 9, 9).and_hms(10, 19, 19),  Utc.ymd(2021, 9, 9).and_hms(13, 19, 21));
-        static ref NOT_VALID_YET_ERR: NitroError = NitroError::CertificateVerifyFailure("Certificate verify failure: X509CertVerifyFailed, The certificate validity starts in the future\n".to_string());
-        static ref EXPIRED_ERR: NitroError = NitroError::CertificateVerifyFailure("Certificate verify failure: X509CertVerifyFailed, The certificate validity has expired\n".to_string());
+        static ref NOT_VALID_YET_ERR: NitroError = NitroError::CertificateVerifyFailure("Certificate verify failure: HighLevel(X509CertVerifyFailed), The certificate validity starts in the future\n".to_string());
+        static ref EXPIRED_ERR: NitroError = NitroError::CertificateVerifyFailure("Certificate verify failure: HighLevel(X509CertVerifyFailed), The certificate validity has expired\n".to_string());
         static ref TAMPERED_SIGNATURE : Vec<u8> = include_bytes!("../data/tampered_signature.bin").to_vec();
         static ref TAMPERED_CERTIFICATE : Vec<u8> = include_bytes!("../data/tampered_certificate.bin").to_vec();
     }

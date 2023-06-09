@@ -97,7 +97,7 @@ impl SigningPublicKey for WrappedCert {
         // We'll throw error if signature verify does not work
         match pk.verify(*md, &digest, &sig) {
             Ok(_) => Ok(true),
-            Err(mbedtls::Error::EcpVerifyFailed) => Ok(false),
+            Err(mbedtls::Error::HighLevel(mbedtls::error::HiError::EcpVerifyFailed)) => Ok(false),
             Err(e) => Err(CoseError::SignatureError(Box::new(e))),
         }
     }
