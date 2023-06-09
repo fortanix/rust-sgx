@@ -1,6 +1,6 @@
 [package]
 name = "sgx-isa"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -17,7 +17,7 @@ categories = ["hardware-support"]
 
 [dev-dependencies]
 # External dependencies
-mbedtls = { version = "0.8", default-features = false, features = ["std"] }
+mbedtls = { version = ">=0.8.0, <0.10.0", default-features = false, features = ["std"] }
 
 [dependencies]
 # External dependencies

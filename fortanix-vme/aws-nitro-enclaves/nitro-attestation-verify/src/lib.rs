@@ -281,7 +281,7 @@ fn verify_certificates(
         Ok(())
     };
     let mut err_str = String::new();
-    Certificate::verify_with_callback(&chain, &c_root, Some(&mut err_str), verify_callback)
+    Certificate::verify_with_callback(&chain, &c_root, None, Some(&mut err_str), verify_callback)
         .map_err(|e| NitroError::CertificateVerifyFailure(format!("Certificate verify failure: {:?}, {}", e, err_str)))?;
 
     let certificate = chain

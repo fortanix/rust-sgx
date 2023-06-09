@@ -1,14 +1,14 @@
 # Minimal application for testing purposes - used to fetch app config via cert auth.
 [package]
 name = "harmonize"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["fortanix.com"]
 edition = "2018"
 license = "MPL-2.0"
 
 [dependencies]
 em-app = { path = "../../" }
-mbedtls = { version = "0.8.1", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code" ], default-features = false }
+mbedtls = { version = "0.9", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code" ], default-features = false }
 serde_json = "1.0.62"
 serde = "1.0.123"
 serde_derive = "1.0.123"
