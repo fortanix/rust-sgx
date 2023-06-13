@@ -86,6 +86,7 @@ impl StreamConnection for VsockStream {
     }
 }
 
+#[derive(Debug)]
 struct Listener {
     listener: TcpListener,
 }
@@ -238,7 +239,10 @@ impl<'de> ClientConnection<'de> {
     }
 
     pub fn peer_port(&self) -> Result<u32, IoError> {
-        self.sender.peer()?.parse().map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
+        self.sender
+            .peer_addr()
+            .map(|addr| addr.port())
+            .map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
     }
 
     fn log_communication(level: log::Level, src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: Direction, prot: &str, max_len: Option<usize>) {
@@ -475,7 +479,7 @@ impl<P: Platform + 'static> Server<P> {
      *  `enclave`: The runner-enclave vsock connection
      */
     fn handle_request_bind(self: Arc<Self>, addr: &String, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let cid: u32 = conn.peer_port()?;
+        let cid: u32 = conn.sender.peer_addr()?.cid();
         let listener = TcpListener::bind(addr).map_err(|e| VmeError::Command(e.kind().into()))?;
         let local: Addr = listener.local_addr()?.into();
         self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
@@ -484,12 +488,17 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     fn handle_request_accept(self: Arc<Self>, vsock_listener_port: u32, client_conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let enclave_cid = client_conn.peer_port()?;
+        // Locate TCP listener
+        let enclave_cid = client_conn.sender.peer_addr()?.cid();
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
         let listener = self.listener(&enclave_addr)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
+
+        // Accept connection for TCP Listener
         let listener = listener.lock().unwrap();
         let (conn, peer) = listener.listener.accept().map_err(|e| VmeError::Command(e.kind().into()))?;
+
+        // Send enclave info where it should accept new incoming connection
         let vsock = Vsock::new::<Std>()?;
         let runner_addr = vsock.addr::<Std>()?;
         client_conn.send(&Response::IncomingConnection{
@@ -511,12 +520,13 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     fn handle_request_close(self: Arc<Self>, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let cid: u32 = conn.peer_port()?;
+        let cid: u32 = conn.sender.peer_addr()?.cid();
         let addr = VsockAddr::new(cid, enclave_port);
         if let Some(listener) = self.remove_listener(&addr) {
             // Close `TcpListener`
             drop(listener);
         } else {
+            // Close TcpStream?
             warn!("Can't close the connection as it can't be located.");
         }
         conn.send(&Response::Closed)?;
