@@ -197,7 +197,6 @@ impl Connection {
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 struct ConnectionKey {
     enclave: VsockAddr,
-    runner: VsockAddr,
 }
 
 impl ConnectionKey {
@@ -209,10 +208,9 @@ impl ConnectionKey {
         Ok(Self::connection_key(enclave_cid, enclave_port, runner_cid, runner_port))
     }
 
-    pub fn from_addresses(enclave: VsockAddr, runner: VsockAddr) -> Self {
+    pub fn from_addresses(enclave: VsockAddr, _runner: VsockAddr) -> Self {
         ConnectionKey {
             enclave,
-            runner,
         }
     }
 
@@ -442,6 +440,11 @@ impl<P: Platform + 'static> Server<P> {
             .cloned()
     }
 
+    fn remove_connection(self: Arc<Self>, enclave: &VsockAddr) -> Option<ConnectionInfo> {
+        let k = ConnectionKey::from_addresses(enclave.clone(), enclave.clone());
+        self.connections.write().unwrap().remove(&k)
+    }
+
     fn add_connection(self: Arc<Self>, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
         let k = ConnectionKey::from_vsock_stream(&runner_enclave)?;
         let mut connection = Connection::new(runner_enclave, runner_remote, remote_name);
@@ -497,6 +500,7 @@ impl<P: Platform + 'static> Server<P> {
         // Accept connection for TCP Listener
         let listener = listener.lock().unwrap();
         let (conn, peer) = listener.listener.accept().map_err(|e| VmeError::Command(e.kind().into()))?;
+        drop(listener);
 
         // Send enclave info where it should accept new incoming connection
         let vsock = Vsock::new::<Std>()?;
@@ -525,6 +529,9 @@ impl<P: Platform + 'static> Server<P> {
         if let Some(listener) = self.remove_listener(&addr) {
             // Close `TcpListener`
             drop(listener);
+        } else if let Some(conn) = self.clone().remove_connection(&addr) {
+            // Close TcpStream
+            drop(conn);
         } else {
             // Close TcpStream?
             warn!("Can't close the connection as it can't be located.");
