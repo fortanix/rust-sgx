@@ -668,7 +668,7 @@ dependencies = [
  "failure",
  "lazy_static",
  "libc",
- "mbedtls 0.9.1",
+ "mbedtls",
  "num",
  "num-derive 0.2.5",
  "num-traits",
@@ -802,14 +802,14 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "b64-ct",
  "em-client",
  "em-node-agent-client",
  "hyper 0.10.16",
- "mbedtls 0.8.3",
+ "mbedtls",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -1314,10 +1314,10 @@ dependencies = [
 
 [[package]]
 name = "get-certificate"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "em-app",
- "mbedtls 0.8.3",
+ "mbedtls",
  "serde_json",
 ]
 
@@ -1399,13 +1399,13 @@ checksum = "eabb4a44450da02c90444cf74558da904edde8fb4e9035a9a6a4e15445af0bd7"
 
 [[package]]
 name = "harmonize"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "b64-ct",
  "csv",
  "em-app",
  "hyper 0.10.16",
- "mbedtls 0.8.3",
+ "mbedtls",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -1651,7 +1651,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -1661,7 +1661,7 @@ dependencies = [
  "env_logger 0.9.0",
  "lazy_static",
  "log 0.4.14",
- "mbedtls 0.8.3",
+ "mbedtls",
  "percent-encoding 2.1.0",
  "pkix",
  "report-test",
@@ -1942,25 +1942,6 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "mbedtls"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4cdd74b4f7c633899ce071acfd307b053ccab39b7ca1ffac6900ed39a050e85"
-dependencies = [
- "bitflags",
- "byteorder 1.3.4",
- "cc",
- "cfg-if 1.0.0",
- "mbedtls-platform-support",
- "mbedtls-sys-auto",
- "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustc_version",
- "serde",
- "serde_derive 1.0.132",
- "yasna 0.2.2",
-]
-
-[[package]]
-name = "mbedtls"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "77f2c88dbe2fcc6fddc0dc33eb2694471fef46f48b2081996335adb2f8085c53"
@@ -2195,12 +2176,12 @@ dependencies = [
 
 [[package]]
 name = "nitro-attestation-verify"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aws-nitro-enclaves-cose 0.5.0",
  "chrono",
  "lazy_static",
- "mbedtls 0.8.3",
+ "mbedtls",
  "num-bigint 0.4.3",
  "pkix",
  "serde",
@@ -3509,10 +3490,10 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bitflags",
- "mbedtls 0.8.3",
+ "mbedtls",
  "serde",
 ]
 
