@@ -454,6 +454,7 @@ impl<P: Platform + 'static> Server<P> {
             if let Err(e) = connection.proxy() {
                 error!("Connection failed: {}", e);
             }
+            // The connection may have been closed already due to a close message from the enclave.
             self.connections.write().unwrap().remove(&k);
         })
     }
