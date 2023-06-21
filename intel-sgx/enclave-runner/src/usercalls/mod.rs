@@ -12,6 +12,7 @@ use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
@@ -964,17 +965,23 @@ impl EnclaveState {
             num_of_worker_threads: usize,
             work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
             io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
-        ) -> Vec<JoinHandle<()>> {
+        ) -> Vec<(JoinHandle<()>, pthread_t)> {
             let mut thread_handles = vec![];
             for _ in 0..num_of_worker_threads {
                 let work_receiver = work_receiver.clone();
                 let mut io_queue_send = io_queue_send.clone();
+                let (id_sender, id_receiver) = mpsc::channel();
 
-                thread_handles.push(thread::spawn(move || {
+                let join_handle = thread::spawn(move || {
+                    // TODO only for unix/vdso cases
+                    let id = unsafe { libc::pthread_self() };
+                    id_sender.send(id).expect("Sending thread id failed");
                     while let Ok(work) = work_receiver.recv() {
                         work.do_work(&mut io_queue_send);
                     }
-                }));
+                });
+                let thread_id = id_receiver.recv().expect("Receiving thread id failed");
+                thread_handles.push((join_handle, thread_id));
             }
             thread_handles
         }
@@ -992,7 +999,9 @@ impl EnclaveState {
         let main_result =
             EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, io_queue_send, work_sender);
 
-        for handler in join_handlers {
+        for (handler, thread_id) in join_handlers {
+            // TODO only for vdso case
+            unsafe { libc::pthread_kill(thread_id, signal::SIGINT as _); }
             let _ = handler.join();
         }
         return main_result;
