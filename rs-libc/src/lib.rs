@@ -15,3 +15,38 @@ pub unsafe extern "C" fn explicit_bzero(buf: *mut std::ffi::c_void, len: alloc::
     let buffer = core::slice::from_raw_parts_mut(buf as *mut std::ffi::c_char, len);
     buffer.zeroize();
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::c_void;
+
+    use super::*;
+
+    #[test]
+    fn test_explicit_bzero() {
+        let mut buf = [1u8, 2, 3, 4, 5];
+        let len = buf.len();
+
+        // Call the unsafe C function
+        unsafe {
+            explicit_bzero(buf.as_mut_ptr() as *mut c_void, len as alloc::size_t);
+        }
+
+        // Check that the buffer has been zeroed out
+        assert_eq!(&buf, &[0u8; 5]);
+    }
+
+    #[test]
+    fn test_explicit_bzero_zero_buffer() {
+        let mut buf = [0u8; 5];
+        let len = buf.len();
+
+        // Call the unsafe C function
+        unsafe {
+            explicit_bzero(buf.as_mut_ptr() as *mut c_void, len as alloc::size_t);
+        }
+
+        // Check that the buffer is still all zero
+        assert_eq!(&buf, &[0u8; 5]);
+    }
+}
