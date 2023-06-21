@@ -47,6 +47,21 @@ fn catch_sigbus() {
     }
 }
 
+#[cfg(unix)]
+fn catch_sigint() {
+    unsafe {
+        extern "C" fn handle_bus(_signo: c_int, _info: *mut siginfo_t, _context: *mut c_void) {
+            eprintln!("SIGINT triggered");
+            let _ = stderr().flush();
+        }
+
+        // POC: Need to think about what signal to send & hook
+        let hdl = signal::SigHandler::SigAction(handle_bus);
+        let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
+        signal::sigaction(signal::SIGINT, &sig_action).unwrap();
+    }
+}
+
 fn main() -> Result<(), Error> {
     let args = App::new("ftxsgx-runner")
         .arg(
@@ -88,6 +103,7 @@ fn main() -> Result<(), Error> {
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
 
     #[cfg(unix)] catch_sigbus();
+    #[cfg(unix)] catch_sigint();
 
     enclave.run().map_err(|e| {
         eprintln!("Error while executing SGX enclave.\n{}", e);
