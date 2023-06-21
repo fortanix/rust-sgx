@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use libc::{c_int, c_long};
 use std;
 use std::arch::asm;
 use std::cell::RefCell;
@@ -49,6 +50,34 @@ impl<T: Tcs> Usercall<T> {
     }
 }
 
+#[repr(C)]
+#[derive(Default)]
+struct SgxEnclaveRun {
+    tcs: u64,
+    function: u32,
+    exception_vector: u16,
+    exception_error_code: u16,
+    exception_addr: u64,
+    user_handler: u64,
+    user_data: u64,
+    reserved: [u64; 27],
+}
+
+#[no_mangle]
+extern "C" fn sgx_user_handler(_rdi: c_long, _rsi: c_long, _rdx: c_long,
+    _rsp: c_long, _r8: c_long, _r9: c_long,
+    run: *const SgxEnclaveRun) -> c_int {
+    let run: &SgxEnclaveRun = unsafe { &*run };
+    println!("sgx user handler: {:?}", run);
+    if run.function == Enclu::EResume as _ {
+        Enclu::EResume as i32
+    } else if run.function == Enclu::EExit as _ {
+        0
+    } else {
+        -1
+    }
+}
+
 pub(crate) fn coenter<T: Tcs>(
     tcs: T,
     mut p1: u64,
@@ -58,6 +87,12 @@ pub(crate) fn coenter<T: Tcs>(
     mut p5: u64,
     debug_buf: Option<&RefCell<DebugBuffer>>,
 ) -> ThreadResult<T> {
+    if tcs.address().is_null() {
+        // Avoid the linker from omitting the `sgx_user_handler` handler. This code is never
+        // called.
+        sgx_user_handler(0, 0, 0, 0, 0, 0, std::ptr::null());
+    }
+
     /// Check if __vdso_sgx_enter_enclave exists. We're using weak linkage, so
     /// it might not.
     #[cfg(target_os = "linux")]
@@ -103,18 +138,38 @@ pub(crate) fn coenter<T: Tcs>(
             }
         };
         if has_vdso_sgx_enter_enclave() {
-            #[repr(C)]
-            #[derive(Default)]
-            struct SgxEnclaveRun {
-                tcs: u64,
-                function: u32,
-                exception_vector: u16,
-                exception_error_code: u16,
-                exception_addr: u64,
-                user_handler: u64,
-                user_data: u64,
-                reserved: [u64; 27],
-            }
+            let asm_sgx_user_handler: usize;
+            asm!("
+                jmp 1f
+0:
+                // Inline function to call rust-based user_handler
+                push %rdi   // Store save-by-caller registers so these won't get clobbered by handler
+                push %rsi
+                push %rdx
+                push %rcx
+                push %r8
+                push %r9
+                push %r10
+
+                // Call rust-based sgx_user_handler
+                movq 8*8(%rsp), %r10  # store 7th arg of sgx_user_handler on stack
+                push %r10
+                push %r10         # ensure the stack is still aligned
+                callq sgx_user_handler@PLT
+                popq %r10         # undo alignment
+                popq %r10
+
+                popq %r10       # restore save-by-caller registers
+                popq %r9
+                popq %r8
+                popq %rcx
+                popq %rdx
+                popq %rsi
+                popq %rdi
+                retq
+1:
+                lea 0b(%rip), {}
+                ", out(reg) asm_sgx_user_handler, options(att_syntax));
 
             impl fmt::Debug for SgxEnclaveRun {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -134,6 +189,7 @@ pub(crate) fn coenter<T: Tcs>(
 
             let mut run = SgxEnclaveRun {
                 tcs: tcs.address() as _,
+                user_handler: asm_sgx_user_handler as _,
                 ..Default::default()
             };
             let ret: i32;
@@ -179,6 +235,8 @@ pub(crate) fn coenter<T: Tcs>(
                     },
                     _ => panic!("Error entering enclave (VDSO): ret = success, run = {:?}", run),
                 }
+            } else if ret == -1 {
+                panic!("exit from callback");
             } else {
                 panic!("Error entering enclave (VDSO): ret = {:?}, run = {:?}", std::io::Error::from_raw_os_error(-ret), run);
             }
