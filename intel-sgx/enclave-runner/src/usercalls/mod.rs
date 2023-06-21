@@ -979,6 +979,9 @@ impl EnclaveState {
             thread_handles
         }
 
+        // TODO: Only register for vdso case
+        catch_sigint();
+
         let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::unbounded_channel();
 
         let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
@@ -1237,6 +1240,19 @@ async fn trap_attached_debugger(tcs: usize, debug_buf: *const u8) {
         signal::sigaction(signal::SIGTRAP, &old).unwrap();
     }
 }
+
+#[cfg(unix)]
+fn catch_sigint() {
+    unsafe {
+            eprintln!("SIGINT triggered");
+        }
+
+        let hdl = signal::SigHandler::SigAction(handle_bus);
+        let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
+        signal::sigaction(signal::SIGINT, &sig_action).unwrap();
+    }
+}
+
 
 /// Provides a mechanism for the enclave code to interface with an external service via a modified runner.
 ///
