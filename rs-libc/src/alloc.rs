@@ -13,7 +13,8 @@ use std::ptr;
 pub(crate) type size_t = usize;
 const ALIGN: usize = 8;
 
-// We purposefully mangle symbols, when compiling for test to avoid collision with libc.a
+// We purposefully mangle symbols, when compiling for test to avoid collision
+// with libc.a
 #[cfg_attr(not(test), no_mangle)]
 pub unsafe extern "C" fn malloc(size: size_t) -> *mut c_void {
     let ptr_size = mem::size_of::<*mut usize>();
