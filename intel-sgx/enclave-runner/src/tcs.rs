@@ -49,6 +49,19 @@ impl<T: Tcs> Usercall<T> {
     }
 }
 
+#[repr(C)]
+#[derive(Default)]
+pub(crate) struct SgxEnclaveRun {
+    tcs: u64,
+    function: u32,
+    exception_vector: u16,
+    exception_error_code: u16,
+    exception_addr: u64,
+    user_handler: u64,
+    pub(crate) user_data: u64,
+    reserved: [u64; 27],
+}
+
 pub(crate) fn coenter<T: Tcs>(
     tcs: T,
     mut p1: u64,
@@ -103,19 +116,6 @@ pub(crate) fn coenter<T: Tcs>(
             }
         };
         if has_vdso_sgx_enter_enclave() {
-            #[repr(C)]
-            #[derive(Default)]
-            struct SgxEnclaveRun {
-                tcs: u64,
-                function: u32,
-                exception_vector: u16,
-                exception_error_code: u16,
-                exception_addr: u64,
-                user_handler: u64,
-                user_data: u64,
-                reserved: [u64; 27],
-            }
-
             impl fmt::Debug for SgxEnclaveRun {
                 fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                     let function = Enclu::try_from(self.function);
@@ -128,6 +128,7 @@ pub(crate) fn coenter<T: Tcs>(
                         .field("exception_vector", &self.exception_vector)
                         .field("exception_error_code", &self.exception_error_code)
                         .field("exception_addr", &(self.exception_addr as *mut ()))
+                        .field("user_data", &self.user_data)
                         .finish()
                 }
             }
@@ -145,7 +146,7 @@ pub(crate) fn coenter<T: Tcs>(
                     call __vdso_sgx_enter_enclave@PLT
                     add $0x10, %rsp                  // restore stack pointer
                 ",
-                in(reg) &mut run,
+                in(reg) &mut run as *mut SgxEnclaveRun,
                 lateout("eax") ret,
                 /* rbx unused */
                 inout("rcx") Enclu::EEnter as u64 => _,
@@ -165,7 +166,15 @@ pub(crate) fn coenter<T: Tcs>(
             if ret == 0 {
                 sgx_result = run.function;
                 match sgx_result.try_into() {
-                    Ok(Enclu::EExit) => { /* normal case */ },
+                    Ok(Enclu::EExit) => {
+                        if run.user_data == 0 {
+                            /* normal case */
+                        } else {
+                            // TODO: Explain why this is the `Enclu::EExit` case
+                            // TODO: Check if we need to abort execution, or resume the enclave
+                            println!("We were interrupted!");
+                        }
+                    },
                     Ok(Enclu::EResume) => {
                         if let Some(mut debug_buf) = debug_buf {
                             let _ = write!(&mut debug_buf[..], "Enclave triggered exception: {:?}\0", run);

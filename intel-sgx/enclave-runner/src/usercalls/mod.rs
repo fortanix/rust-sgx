@@ -10,6 +10,7 @@ use std::collections::VecDeque;
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
 use std::result::Result as StdResult;
+use std::slice;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -1253,9 +1254,27 @@ async fn trap_attached_debugger(tcs: usize, debug_buf: *const u8) {
 #[cfg(unix)]
 fn catch_sigint() {
     unsafe {
-            eprintln!("SIGINT triggered");
+        extern "C" fn handle_bus(_signo: c_int, _info: *mut siginfo_t, context: *mut c_void) {
+            unsafe {
+                // Check if we hit an enclu
+                let context = &mut *(context as *mut ucontext_t);
+                let rip = &mut context.uc_mcontext.gregs[Greg::RIP as usize];
+                let inst = slice::from_raw_parts(*rip as *const u8, 3);
+                if inst[0] == 0x0f && inst[1] == 0x01 && inst[2] == 0xd7 {
+                    // Simulate a normal EEXIT. Enclaves compiled for the `x86_64-fortanix-unknown-sgx`
+                    // target exit to the instruction after the `enclu[EENTER]` instruction.
+                    *rip += 3;
+
+                    // TODO Explain ptr calculation + add ref
+                    let run = &mut **((context.uc_mcontext.gregs[Greg::RBP as usize] + 16) as *const *mut crate::tcs::SgxEnclaveRun);
+                    run.user_data = 0x1;
+                }
+            }
         }
 
+        // TODO: Check this catches signal indefinitely
+        // TODO: Protect with mutex
+        // TODO: Call already registered handler
         let hdl = signal::SigHandler::SigAction(handle_bus);
         let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
         signal::sigaction(signal::SIGINT, &sig_action).unwrap();
