@@ -2837,7 +2837,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.3.9",
+ "log 0.4.14",
  "which 4.0.2",
 ]
 
@@ -3192,6 +3192,7 @@ name = "rs-libc"
 version = "0.2.3"
 dependencies = [
  "cc",
+ "zeroize",
 ]
 
 [[package]]
@@ -4647,6 +4648,12 @@ name = "zero"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5f1bc8a6b2005884962297587045002d8cfb8dcec9db332f4ca216ddc5de82c5"
+
+[[package]]
+name = "zeroize"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a0956f1ba7c7909bfb66c2e9e4124ab6f6482560f6628b5aaeba39207c9aad9"
 
 [[patch.unused]]
 name = "mbedtls"
