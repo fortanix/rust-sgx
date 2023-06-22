@@ -14,6 +14,9 @@ use std::os::raw::c_void;
 
 use sgx_isa::Enclu;
 use sgxs::loader::Tcs;
+use std::sync::Arc;
+use crate::usercalls::EnclaveState;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) type DebugBuffer = [u8; 1024];
 
@@ -40,8 +43,9 @@ impl<T: Tcs> Usercall<T> {
         self,
         retval: (u64, u64),
         debug_buf: Option<&RefCell<DebugBuffer>>,
+        exiting: Arc<AtomicBool>
     ) -> ThreadResult<T> {
-        coenter(self.tcs, 0, retval.0, retval.1, 0, 0, debug_buf)
+        coenter(self.tcs, 0, retval.0, retval.1, 0, 0, debug_buf, exiting.clone())
     }
 
     pub fn tcs_address(&self) -> *mut c_void {
@@ -57,6 +61,7 @@ pub(crate) fn coenter<T: Tcs>(
     mut p4: u64,
     mut p5: u64,
     debug_buf: Option<&RefCell<DebugBuffer>>,
+    exiting: Arc<AtomicBool>
 ) -> ThreadResult<T> {
     /// Check if __vdso_sgx_enter_enclave exists. We're using weak linkage, so
     /// it might not.
@@ -183,13 +188,27 @@ pub(crate) fn coenter<T: Tcs>(
                 panic!("Error entering enclave (VDSO): ret = {:?}, run = {:?}", std::io::Error::from_raw_os_error(-ret), run);
             }
         } else {
+            let exiting_ptr: *mut bool = (*exiting).as_ptr();
+
             asm!("
+                    push %r14
                     lea 1f(%rip), %rcx // set SGX AEP
                     xchg {0}, %rbx
-1:                  enclu
-                    xchg %rbx, {0}
+                    jmp 2f
+
+1:                  pop %r14
+                    mov (%r14), %r15
+                    test %r15, %r15
+                    jne 3f
+                    push %r14
+
+2:                  enclu
+                    pop %r14
+3:
                 ",
                 inout(reg) tcs.address() => _, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
+                in("r14") exiting_ptr,
+                out("r15") _,
                 inout("eax") Enclu::EEnter as u32 => sgx_result,
                 out("rcx") _,
                 inout("rdx") p3,
@@ -201,6 +220,16 @@ pub(crate) fn coenter<T: Tcs>(
                 out("r11") _,
                 options(nostack, att_syntax)
             );
+
+            if sgx_result == (Enclu::EExit as u32) {
+                if crate::usercalls::abi::UsercallList::exit as u64 == p1 {
+                    (*exiting).store(true, Ordering::Relaxed);
+                }
+            } else if sgx_result == (Enclu::EResume as u32) {
+                // AEX after main thread has exited, issue #165
+                // TODO: what to return to propagate it as EnclaveAbort
+                return CoResult::Return((tcs, p2, p3))
+            }
         }
     };
 

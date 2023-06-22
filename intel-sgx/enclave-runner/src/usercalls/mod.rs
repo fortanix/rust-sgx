@@ -647,7 +647,7 @@ pub(crate) struct EnclaveState {
     event_queues: FnvHashMap<TcsAddress, PendingEvents>,
     fds: Mutex<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
     last_fd: AtomicUsize,
-    exiting: AtomicBool,
+    exiting: Arc<AtomicBool>,
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
@@ -667,15 +667,15 @@ enum CoEntry {
 }
 
 impl Work {
-    fn do_work(self, io_send_queue: &mut tokio::sync::mpsc::UnboundedSender<UsercallSendData>) {
+    fn do_work(self, io_send_queue: &mut tokio::sync::mpsc::UnboundedSender<UsercallSendData>, exiting: Arc<AtomicBool>) {
         let buf = RefCell::new([0u8; 1024]);
         let usercall_send_data = match self.entry {
             CoEntry::Initial(erased_tcs, p1, p2, p3, p4, p5) => {
-                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf));
+                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf), exiting);
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
             CoEntry::Resume(usercall, coresult) => {
-                let coresult = usercall.coreturn(coresult, Some(&buf));
+                let coresult = usercall.coreturn(coresult, Some(&buf), exiting);
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
         };
@@ -739,7 +739,7 @@ impl EnclaveState {
             event_queues,
             fds: Mutex::new(fds),
             last_fd,
-            exiting: AtomicBool::new(false),
+            exiting: Arc::new(AtomicBool::new(false)),
             usercall_ext,
             threads_queue,
             forward_panics,
@@ -964,15 +964,16 @@ impl EnclaveState {
             num_of_worker_threads: usize,
             work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
             io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
+            exiting: Arc<AtomicBool>
         ) -> Vec<JoinHandle<()>> {
             let mut thread_handles = vec![];
             for _ in 0..num_of_worker_threads {
                 let work_receiver = work_receiver.clone();
                 let mut io_queue_send = io_queue_send.clone();
-
+                let exiting_clone = exiting.clone();
                 thread_handles.push(thread::spawn(move || {
                     while let Ok(work) = work_receiver.recv() {
-                        work.do_work(&mut io_queue_send);
+                        work.do_work(&mut io_queue_send, exiting_clone.clone());
                     }
                 }));
             }
@@ -987,7 +988,7 @@ impl EnclaveState {
             .expect("Work sender couldn't send data to receiver");
 
         let join_handlers =
-            create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send.clone());
+            create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send.clone(), enclave.exiting.clone());
         // main syscall polling loop
         let main_result =
             EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, io_queue_send, work_sender);
@@ -1027,7 +1028,9 @@ impl EnclaveState {
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
 
-        let num_of_worker_threads = num_cpus::get();
+        // TODO: issue #483 if only one worker thread it might be blocked
+        //    by infinite loop
+        let num_of_worker_threads = num_cpus::get() + 1;
 
         let kind = EnclaveKind::Command(Command {
             panic_reason: Mutex::new(PanicReason {
