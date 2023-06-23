@@ -1952,7 +1952,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "mbedtls-platform-support",
  "mbedtls-sys-auto",
- "rs-libc 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rs-libc 0.2.3",
  "serde",
  "serde_derive 1.0.132",
  "yasna 0.2.2",
@@ -3190,18 +3190,18 @@ dependencies = [
 [[package]]
 name = "rs-libc"
 version = "0.2.3"
-dependencies = [
- "cc",
- "zeroize",
-]
-
-[[package]]
-name = "rs-libc"
-version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "914c985b921cf571d950d17ca33221ed54fed3c2001a329ee6fd5b15dd433260"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "rs-libc"
+version = "0.2.4"
+dependencies = [
+ "cc",
+ "zeroize",
 ]
 
 [[package]]
