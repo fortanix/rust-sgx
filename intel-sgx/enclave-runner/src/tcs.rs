@@ -15,7 +15,6 @@ use std::os::raw::c_void;
 use sgx_isa::Enclu;
 use sgxs::loader::Tcs;
 use std::sync::Arc;
-use crate::usercalls::EnclaveState;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 pub(crate) type DebugBuffer = [u8; 1024];
@@ -191,24 +190,24 @@ pub(crate) fn coenter<T: Tcs>(
             let exiting_ptr: *mut bool = (*exiting).as_ptr();
 
             asm!("
-                    push %r14
+                    push {1}
                     lea 1f(%rip), %rcx // set SGX AEP
                     xchg {0}, %rbx
                     jmp 2f
 
-1:                  pop %r14
-                    mov (%r14), %r15
-                    test %r15, %r15
+1:                  pop {1}
+                    mov ({1}), {2} // TODO: Raoul: If you use `mov (%rsp), %r14` here, you don't need to push/pop %r14 everytime, and you don't need %r15
+                    test {2}, {2}
                     jne 3f
-                    push %r14
+                    push {1}
 
 2:                  enclu
-                    pop %r14
+                    pop {1}
 3:
                 ",
                 inout(reg) tcs.address() => _, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
-                in("r14") exiting_ptr,
-                out("r15") _,
+                in(reg) exiting_ptr,
+                out(reg) _,
                 inout("eax") Enclu::EEnter as u32 => sgx_result,
                 out("rcx") _,
                 inout("rdx") p3,
@@ -221,13 +220,11 @@ pub(crate) fn coenter<T: Tcs>(
                 options(nostack, att_syntax)
             );
 
-            if sgx_result == (Enclu::EExit as u32) {
-                if crate::usercalls::abi::UsercallList::exit as u64 == p1 {
-                    (*exiting).store(true, Ordering::Relaxed);
-                }
-            } else if sgx_result == (Enclu::EResume as u32) {
-                // AEX after main thread has exited, issue #165
-                // TODO: what to return to propagate it as EnclaveAbort
+            if sgx_result == (Enclu::EResume as u32) && p3 == 0 && p2 == 0 && p1 == 0 { 
+                // AEX after main thread has exited - abort execution, issue #165
+                // AEX has happened after main thread exited. issue #165.
+                // This indicates some programming error. Apprently main thread has finished without joining spawned thread(s)
+                // Return dummy CoResult
                 return CoResult::Return((tcs, p2, p3))
             }
         }

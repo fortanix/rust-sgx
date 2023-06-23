@@ -679,8 +679,13 @@ impl Work {
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
         };
-        // if there is an error do nothing, as it means that the main thread has exited
-        let _ = io_send_queue.send(usercall_send_data);
+
+        match io_send_queue.send(usercall_send_data) {
+            // IO user call after main thread has finished!
+            // TODO: How to make this problem visible? Panic and abort runner and all enclaves?
+            Err(SendError) => unreachable!(),
+            _ => () 
+        }
     }
 }
 
@@ -810,6 +815,9 @@ impl EnclaveState {
             Err(EnclaveAbort::MainReturned) => Err(EnclaveAbort::MainReturned),
             Err(EnclaveAbort::Secondary) => Err(EnclaveAbort::Secondary),
         };
+        if let Err(_) = ret {
+            enclave.exiting.store(true, Ordering::SeqCst);
+        }
         let _ = tx_return_channel.send((ret, mode));
     }
 
@@ -1028,8 +1036,7 @@ impl EnclaveState {
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
 
-        // TODO: issue #483 if only one worker thread it might be blocked
-        //    by infinite loop
+        // TODO: issue #483 if only one worker thread it might be blocked by infinite loop
         let num_of_worker_threads = num_cpus::get() + 1;
 
         let kind = EnclaveKind::Command(Command {
