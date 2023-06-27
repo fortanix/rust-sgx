@@ -45,7 +45,7 @@ byteorder = "1.1.0" # Unlicense/MIT
 failure = "0.1.1"   # MIT/Apache-2.0
 lazy_static = "1"   # MIT/Apache-2.0
 libc = { version = "0.2", optional = true }        # MIT/Apache-2.0
-mbedtls = { version = "0.10.0", default-features = false, feature = ["std"], optional = true }
+mbedtls = { version = "0.11.0", default-features = false, feature = ["std"], optional = true }
 num = { version = "0.2", optional = true }
 num-derive = "0.2"  # MIT/Apache-2.0
 num-traits = "0.2"  # MIT/Apache-2.0
@@ -53,7 +53,7 @@ serde = { version = "1.0.104", features = ["derive"], optional = true } # MIT/Ap
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"], optional = true }
 
 [dev-dependencies]
-mbedtls = { version = "0.10.0" }
+mbedtls = { version = "0.11.0" }
 report-test = { version = "0.3.1", path = "../report-test" }
 sgxs = { version = "0.7.0", path = "../sgxs" }
 serde = { version = "1.0.104", features = ["derive"] }
