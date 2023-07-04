@@ -21,7 +21,8 @@ use nix::sys::signal;
 use sgxs_loaders::isgx::Device as IsgxDevice;
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
-
+#[cfg(unix)]
+use libc::{ucontext_t, REG_RIP};
 use clap::{App, Arg};
 
 arg_enum!{
@@ -48,17 +49,27 @@ fn catch_sigbus() {
 }
 
 #[cfg(unix)]
-fn catch_sigint() {
+fn catch_sigusr1() {
     unsafe {
-        extern "C" fn handle_bus(_signo: c_int, _info: *mut siginfo_t, _context: *mut c_void) {
-            eprintln!("SIGINT triggered");
+        extern "C" fn handle_sigusr1(_signo: c_int, _info: *mut siginfo_t, _context: *mut c_void) {
+            eprintln!("SIGUSR1 triggered, thread_id {:?}", std::thread::current().id());
+            let instruction_ptr = unsafe { (*(_context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] as *const u8};
+            const ENCLU: [u8; 3] = [0x0f, 0x01, 0xd7];
+            let is_enclu = ENCLU.iter().enumerate().all(|(idx, v)| {
+                unsafe { *instruction_ptr.offset(idx as isize) == *v }
+            });
             let _ = stderr().flush();
+            if is_enclu {
+                // At enclu instruction - force IP to the next instruction after enclu
+                unsafe { (*(_context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] += 3 }
+                eprintln!("Enclave thread {:?} hanged and aboarted by the signal", std::thread::current().id());
+            }
         }
 
         // POC: Need to think about what signal to send & hook
-        let hdl = signal::SigHandler::SigAction(handle_bus);
+        let hdl = signal::SigHandler::SigAction(handle_sigusr1);
         let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
-        signal::sigaction(signal::SIGINT, &sig_action).unwrap();
+        signal::sigaction(signal::SIGUSR1, &sig_action).unwrap();
     }
 }
 
@@ -103,7 +114,7 @@ fn main() -> Result<(), Error> {
     let enclave = enclave_builder.build(&mut device).context("While loading SGX enclave")?;
 
     #[cfg(unix)] catch_sigbus();
-    #[cfg(unix)] catch_sigint();
+    #[cfg(unix)] catch_sigusr1();
 
     enclave.run().map_err(|e| {
         eprintln!("Error while executing SGX enclave.\n{}", e);
