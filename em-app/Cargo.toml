@@ -1,6 +1,6 @@
 [package]
 name = "em-app"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -13,6 +13,7 @@ keywords = [ "sgx" ]
 b64-ct = "0.1.0"
 em-client = { version = "3.0.0", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
+hex = "0.4"
 hyper = { version = "0.10", default-features = false }
 mbedtls = { version = "0.9", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code" ], default-features = false }
 pkix = "0.1.2"
@@ -35,12 +36,12 @@ sgx-isa = { version = "0.4", path = "../intel-sgx/sgx-isa", default-features = f
 
 [target.x86_64-unknown-linux-musl.dependencies]
 aws-nitro-enclaves-nsm-api = "0.2.0"
-vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
+vme-pkix = { version = "0.1.1", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
 aws-nitro-enclaves-nsm-api = "0.2.0"
-vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
+vme-pkix = { version = "0.1.1", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-fortanixvme.dependencies]
 aws-nitro-enclaves-nsm-api = "0.2.0"
-vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
+vme-pkix = { version = "0.1.1", path = "../fortanix-vme/vme-pkix/" }
