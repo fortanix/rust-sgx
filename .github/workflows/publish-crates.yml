@@ -1,0 +1,59 @@
+# This workflow is used for publish crate to crates.io.
+# The workflow can be manually triggered or by creating new release, when the
+# workflow is triggered by creating new release, please ensure the tag for the
+# release follow this format: '${crate name}_v{version number}'
+
+name: Publish Crates
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      crate_name:
+        description: 'Name of crate to be published'
+        required: true
+        type: string
+permissions:
+  contents: read
+
+jobs:
+  crate_publish:
+    environment: "Publish to crates.io"
+    runs-on: ubuntu-20.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+      - name: Install build dependencies
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee -a /etc/apt/sources.list
+          wget -O - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | sudo apt-key add -
+          echo "deb https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" | sudo tee -a /etc/apt/sources.list
+          sudo apt-get update
+          sudo apt-get install -y clang-11 libsgx-dcap-ql-dev protobuf-compiler
+          # Create a symbolic link to ensure correct usage of libclang
+          sudo ln -s /lib/x86_64-linux-gnu/libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
+      - name: Get name of crate to be published
+        run: |
+          if [[ -z "${{ inputs.crate_name }}" ]]; then
+            # Extract the crate name from the GITHUB_REF environment variable
+            # GITHUB_REF contains the GitHub reference (e.g., refs/tags/rs-lic_v0.2.4) associated with the event
+            export CRATE_NAME=$(python3 -c "print('$GITHUB_REF'.split('/')[2].rsplit('_v', 1)[0])")
+          else
+            export CRATE_NAME="${{ inputs.crate_name }}"
+          fi
+          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+      - name: Publish crate to crates.io
+        run: |
+          echo "Publishing crate: $CRATE_NAME"
+          cargo publish --locked --token ${CARGO_REGISTRY_TOKEN} --package "$CRATE_NAME" --dry-run
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          RUST_BACKTRACE: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
