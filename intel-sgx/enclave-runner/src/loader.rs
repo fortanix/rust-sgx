@@ -332,6 +332,7 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+        self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
