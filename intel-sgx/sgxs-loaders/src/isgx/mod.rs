@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 mod ioctl;
+pub mod debugging;
 
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
@@ -194,6 +195,7 @@ impl EnclaveLoad for InnerDevice {
             attributes,
             ..Default::default()
         };
+        debugging::register_new_enclave(secs.baseaddr, secs.size);
         let createdata = ioctl::CreateData { secs: &secs };
         ioctl_unsafe!(
             Create,
