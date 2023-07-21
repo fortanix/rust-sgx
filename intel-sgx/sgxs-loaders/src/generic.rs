@@ -16,6 +16,7 @@ use sgxs::sgxs::{
     CreateInfo, Error as SgxsError, MeasEAdd, MeasECreate, PageChunks, PageReader, SgxsRead,
 };
 
+use crate::isgx::debugging;
 use crate::{MappingInfo, Tcs};
 
 pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
@@ -54,6 +55,7 @@ pub(crate) struct Mapping<D: EnclaveLoad> {
 
 impl<D: EnclaveLoad> Drop for Mapping<D> {
     fn drop(&mut self) {
+        debugging::unregister_terminated_enclave(self.base);
         D::destroy(self)
     }
 }
