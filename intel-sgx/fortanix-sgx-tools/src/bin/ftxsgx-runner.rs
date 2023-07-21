@@ -49,9 +49,12 @@ fn catch_sigbus() {
 
 fn main() -> Result<(), Error> {
     let args = App::new("ftxsgx-runner")
+        .before_help("Runs an sgxs file, with support for ftxsgx usercalls. \
+            See the Fortanix architecture and elf2sgxs for details.")
         .arg(
             Arg::with_name("file")
                 .required(true)
+                .help("SGXS file to run")
         )
         .arg(Arg::with_name("signature")
             .short("s")
