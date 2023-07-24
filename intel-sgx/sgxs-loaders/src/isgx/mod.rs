@@ -186,6 +186,7 @@ impl EnclaveLoad for InnerDevice {
             size: ecreate.size,
             tcss: vec![],
         };
+        debugging::register_new_enclave(mapping.base, mapping.size);
 
         let secs = Secs {
             baseaddr: mapping.base,
@@ -195,7 +196,6 @@ impl EnclaveLoad for InnerDevice {
             attributes,
             ..Default::default()
         };
-        debugging::register_new_enclave(secs.baseaddr, secs.size);
         let createdata = ioctl::CreateData { secs: &secs };
         ioctl_unsafe!(
             Create,
@@ -384,6 +384,7 @@ impl EnclaveLoad for InnerDevice {
     }
 
     fn destroy(mapping: &mut Mapping<Self>) {
+        debugging::unregister_terminated_enclave(mapping.base);
         unsafe { let _ = munmap(mapping.base as usize as *mut _, mapping.size as usize); }
     }
 }
