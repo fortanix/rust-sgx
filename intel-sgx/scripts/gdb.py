@@ -196,10 +196,8 @@ class SgxState (gdb.Command):
       else:
         print("No state to restore")
     elif args[0] == 'auto':
-      """
-      This should be called after the runner signals SIGTRAP with tcs address in RBX.
-      The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
-      """
+      # This should be called after the runner signals SIGTRAP with tcs address in RBX.
+      # The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
       tcs=int(gdb.parse_and_eval("$rbx"));
       if len(args) >= 2:
         sgx_load_sym_file(args[1], tcs)
@@ -218,8 +216,8 @@ class SgxState (gdb.Command):
       gdb.execute("set ${} = {}".format(r,v))
 
 class Sgx_Add_Symbol_File (gdb.Command):
-  """
-  Given any address in the enclave and ELF path, load enclave's symbols.
+  """Given any address in the enclave and ELF path, load enclave's symbols.
+
   sgx-add-symbol-file <ADDR_IN_ENCLAVE | auto> <ELF_PATH>
   Specifying address as auto is equivalent to specifying $rbx.
   """
@@ -241,7 +239,9 @@ class Sgx_Add_Symbol_File (gdb.Command):
 
 class SgxBase (gdb.Function):
   """Given an address, return the enclave base address.
-If the address is not inside an enclave, the return value is unspecified."""
+
+  If the address is not inside an enclave, the return value is unspecified.
+  """
 
   def __init__ (self):
     super (SgxBase, self).__init__ ("sgxbase")
