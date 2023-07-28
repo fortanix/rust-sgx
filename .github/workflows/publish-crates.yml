@@ -1,13 +1,16 @@
-# This workflow is used for publish crate to crates.io.
-# The workflow can be manually triggered or by creating new release, when the
-# workflow is triggered by creating new release, please ensure the tag for the
-# release follow this format: '${crate name}_v{version number}'
+# This workflow is used for publish crate to crates.io. The workflow will use
+# environment "Publish to crates.io" which needs approval to access the `CARGO_REGISTRY_TOKEN`
 
 name: Publish Crates
 
 on:
+  # The workflow can be triggered or by creating new release: please ensure the tag name used for the
+  # release follow this format: '${crate name}_v{version number}', although in this workflow
+  # only ${crate name} is used, but {version number} is still needed for a good tag name.
   release:
     types: [created]
+  # The workflow can be also manually triggered by `workflow_dispatch`, see more
+  # from: https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#workflow_dispatch
   workflow_dispatch:
     inputs:
       crate_name:
@@ -41,6 +44,7 @@ jobs:
           sudo ln -s /lib/x86_64-linux-gnu/libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
       - name: Get name of crate to be published
         run: |
+          # If this workflow is manually triggered through `workflow_dispatch`
           if [[ -z "${{ inputs.crate_name }}" ]]; then
             # Extract the crate name from the GITHUB_REF environment variable
             # GITHUB_REF contains the GitHub reference (e.g., refs/tags/rs-lic_v0.2.4) associated with the event
@@ -52,7 +56,7 @@ jobs:
       - name: Publish crate to crates.io
         run: |
           echo "Publishing crate: $CRATE_NAME"
-          cargo publish --locked --token ${CARGO_REGISTRY_TOKEN} --package "$CRATE_NAME" --dry-run
+          cargo publish --locked --token ${CARGO_REGISTRY_TOKEN} --package "$CRATE_NAME"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           RUST_BACKTRACE: "1"
