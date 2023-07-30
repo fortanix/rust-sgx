@@ -11,11 +11,12 @@
 //!
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
 #![cfg_attr(feature = "nightly", feature(llvm_asm))]
-
 #![no_std]
-#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
-       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
-       html_root_url = "https://edp.fortanix.com/docs/api/")]
+#![doc(
+    html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+    html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+    html_root_url = "https://edp.fortanix.com/docs/api/"
+)]
 #![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
 
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
@@ -28,7 +29,7 @@ extern crate bitflags;
 extern crate serde;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 use std::os::fortanix_sgx::arch;
@@ -36,14 +37,13 @@ use std::os::fortanix_sgx::arch;
 mod arch;
 use core::{convert::TryFrom, num::TryFromIntError, slice};
 
-
 #[cfg(feature = "serde")]
 mod array_64 {
+    use core::fmt;
     use serde::{
         de::{Deserializer, Error, SeqAccess, Visitor},
         ser::{SerializeTuple, Serializer},
     };
-    use core::fmt;
 
     const LEN: usize = 64;
 
@@ -599,7 +599,7 @@ impl Sigstruct {
 
             (
                 slice::from_raw_parts(part1_start, part1_end - (part1_start as usize)),
-                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize))
+                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize)),
             )
         }
     }
@@ -687,6 +687,12 @@ impl Report {
         Report::try_copy_from(&out.0).unwrap()
     }
 
+    // Keep this function for rust-analyzer compatibility!
+    #[cfg(not(target_env = "sgx"))]
+    pub fn for_self() -> Self {
+        panic!("Report::for_self() is only available on the SGX target");
+    }
+
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
     pub fn for_target(targetinfo: &Targetinfo, reportdata: &[u8; 64]) -> Report {
         let reportdata = arch::Align128(*reportdata);
@@ -695,11 +701,17 @@ impl Report {
         Report::try_copy_from(&out.0).unwrap()
     }
 
+    // Keep this function for rust-analyzer compatibility!
+    #[cfg(not(target_env = "sgx"))]
+    pub fn for_target(_targetinfo: &Targetinfo, _reportdata: &[u8; 64]) -> Report {
+        panic!("Report::for_target() is only available on the SGX target");
+    }
+
     /// This function verifies the report's MAC using the provided
     /// implementation of the verifying function.
     ///
     /// Care should be taken that `check_mac` prevents timing attacks,
-    /// in particular that the comparison happens in constant time. 
+    /// in particular that the comparison happens in constant time.
     #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
     pub fn verify<F, R>(&self, check_mac: F) -> R
     where
@@ -711,18 +723,18 @@ impl Report {
             ..Default::default()
         };
         let key = req.egetkey().expect("Couldn't get report key");
-        check_mac(
-            &key,
-            self.mac_data(),
-            &self.mac,
-        )
+        check_mac(&key, self.mac_data(), &self.mac)
+    }
+
+    // Keep this function for rust-analyzer compatibility!
+    #[cfg(not(target_env = "sgx"))]
+    pub fn verify<F, R>(&self, _check_mac: F) -> R {
+        panic!("Report::verify() is only available on the SGX target");
     }
 
     /// Returns that part of the `Report` that is MACed.
     pub fn mac_data(&self) -> &[u8; Report::TRUNCATED_SIZE] {
-        unsafe {
-            &*(self as *const Self as *const [u8; Report::TRUNCATED_SIZE])
-        }
+        unsafe { &*(self as *const Self as *const [u8; Report::TRUNCATED_SIZE]) }
     }
 }
 
@@ -786,8 +798,14 @@ impl Keyrequest {
         match arch::egetkey(self.as_ref()) {
             Ok(k) => Ok(k.0),
             // unwrap ok, `arch::egetkey` will always return a valid `ErrorCode`
-            Err(e) => Err(ErrorCode::try_from(e).unwrap())
+            Err(e) => Err(ErrorCode::try_from(e).unwrap()),
         }
+    }
+
+    // Keep this function for rust-analyzer compatibility!
+    #[cfg(not(target_env = "sgx"))]
+    pub fn egetkey(&self) -> Result<[u8; 16], ErrorCode> {
+        panic!("Keyrequest::egetkey() is only available on the SGX target");
     }
 }
 
