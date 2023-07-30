@@ -728,7 +728,10 @@ impl Report {
 
     // Keep this function for rust-analyzer compatibility!
     #[cfg(not(target_env = "sgx"))]
-    pub fn verify<F, R>(&self, _check_mac: F) -> R {
+    pub fn verify<F, R>(&self, _check_mac: F) -> R
+    where
+        F: FnOnce(&[u8; 16], &[u8; Report::TRUNCATED_SIZE], &[u8; 16]) -> R,
+    {
         panic!("Report::verify() is only available on the SGX target");
     }
 
