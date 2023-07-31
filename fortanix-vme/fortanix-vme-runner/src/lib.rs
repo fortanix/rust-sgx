@@ -130,7 +130,7 @@ impl Connection {
 
     fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
         let mut buff = [0; PROXY_BUFF_SIZE];
-        let n = src.read(&mut buff[..])?;
+        let n = src.read(&mut buff[..]).map_err(|e| { println!("[{}:{}] transfer read failed", file!(), line!()); e })?;
         if n > 0 {
             ClientConnection::log_communication(
                 log::Level::Debug,
@@ -142,7 +142,7 @@ impl Connection {
                 Direction::Left,
                 S::protocol(),
                 Some(MAX_LOG_MESSAGE_LEN));
-            dst.write_all(&buff[0..n])?;
+            dst.write_all(&buff[0..n]).map_err(|e| { println!("[{}:{}] transfer write failed", file!(), line!()); e })?;
             ClientConnection::log_communication(
                 log::Level::Debug,
                 dst_name,
@@ -177,16 +177,19 @@ impl Connection {
                     //  - reflect this change on the other connection
                     //  - avoid reading from the socket again
                     // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
-                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
-                        enclave.shutdown(Shutdown::Write)?;
+                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave0")? == 0 {
+                        enclave.shutdown(Shutdown::Write).map_err(|e| { println!("{}:{} shutdown failed", file!(), line!()); e } )?;
                         golden_set.remove(remote.as_raw_fd());
                     }
                 }
                 if read_set.contains(enclave.as_raw_fd()) {
-                    if Self::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
-                        remote.shutdown(Shutdown::Write)?;
+                    // The same behavior on TCP reads, may not be present on vsock connections
+                    let _ = Self::transfer_data(enclave, "enclave1", remote, &self.remote_name);
+                    /*
+                     * if Self::transfer_data(enclave, "enclave1", remote, &self.remote_name)? == 0 {
+                        remote.shutdown(Shutdown::Write).map_err(|e| { println!("{}:{} shutdown failed", file!(), line!()); e } )?;
                         golden_set.remove(enclave.as_raw_fd());
-                    }
+                    }*/
                 }
             }
         }
@@ -514,6 +517,7 @@ impl<P: Platform + 'static> Server<P> {
 
         let connect = || -> Result<(), VmeError> {
             // Connect to enclave at the expected port
+            println!("enclave cid: {}, port: {}", enclave_addr.cid(), enclave_addr.port());
             let proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port())?;
             self.add_connection(proxy, conn, "remote".to_string())?;
             Ok(())
@@ -616,6 +620,7 @@ impl<P: Platform + 'static> Server<P> {
                             }
                         };
                         if let Err(e) = server.handle_client(&mut conn) {
+                            error!("Original error: {:?}", e);
                             if let Err(e) = conn.send(&Response::Failed(e)) {
                                 error!("Failed to send response to enclave: {:?}", e);
                             }
