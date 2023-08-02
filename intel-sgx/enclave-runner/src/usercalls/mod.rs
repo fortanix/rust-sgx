@@ -7,7 +7,7 @@
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::io::{self, stderr, Write, ErrorKind as IoErrorKind, Read, Result as IoResult};
+use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -1008,9 +1008,11 @@ impl EnclaveState {
         for handler in join_handlers {
             #[cfg(unix)]
             if tcs::has_vdso_sgx_enter_enclave() {
-                // * The enclave thread may be in a long-running `AEX/enclu[ERESUME]` loop.
-                // for vdso case: execution control back to the enclave-runner worker thread returned
-                //    by means of issued signal and rewriting IP in signal handler.
+                // The enclave thread may be in a long-running `AEX/enclu[ERESUME]` loop.
+                // for vdso case: return execution control back to the enclave-runner worker thread
+                //    by issuing a sighup signal and rewriting IP in the signal handler. The
+                //    `pthread_kill` function ensures that the signal is thread-directed (i.e., the
+                //    signal is handled by the specified thread).
                 unsafe { libc::pthread_kill(handler.as_pthread_t() as _, signal::SIGHUP as _); }
                 // for non-vdso case: execution control returned using AEP set next after Enclu to break AEX/enclu[EResume] loop (signal not required).
             }
@@ -1239,13 +1241,15 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
 fn catch_sighup() {
     unsafe {
         extern "C" fn handle_sighup(_signo: c_int, _info: *mut siginfo_t, context: *mut c_void) {
-            eprintln!("SIGHUP triggered, thread_id: {:?}", std::thread::current().id());
             let instruction_ptr = unsafe { (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] as *const u8};
             // enclu instruction code
             const ENCLU: [u8; 3] = [0x0f, 0x01, 0xd7];
             let is_enclu = ENCLU.iter().enumerate().all(|(idx, v)| {
                 unsafe { *instruction_ptr.offset(idx as isize) == *v }
             });
+            // `EXITING` may be `None` when:
+            //  - The thread is no longer executing in the enclave
+            //  - The destructor of this thread local variable already executed
             if is_enclu && EXITING.with(|cell| cell.borrow().as_ref().is_some_and(|val| val.load(Ordering::SeqCst) == true)) {
                 // Interrupt enclave execution by setting IP to the instruction following the ENCLU to mimic normal ENCLU[EEXIT])
                 unsafe {
@@ -1253,7 +1257,6 @@ fn catch_sighup() {
                     (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RAX as usize] = Enclu::EExit as i64;
                 }
             }
-            let _ = stderr().flush();
         }
         
         let hdl = signal::SigHandler::SigAction(handle_sighup);
