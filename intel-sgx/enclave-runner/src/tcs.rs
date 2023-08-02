@@ -100,7 +100,6 @@ pub(crate) fn coenter<T: Tcs>(
     exiting: &Arc<AtomicBool>,
     debug_buf: Option<&RefCell<DebugBuffer>>
 ) -> ThreadResult<T> {
-
     let mut enclu_leaf = Enclu::EEnter as u32;
 
     unsafe {
@@ -114,7 +113,6 @@ pub(crate) fn coenter<T: Tcs>(
             }
         };
         if has_vdso_sgx_enter_enclave() {
-
             #[repr(C)]
             #[derive(Default)]
             struct SgxEnclaveRun {

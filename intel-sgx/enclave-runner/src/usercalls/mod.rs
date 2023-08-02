@@ -1250,7 +1250,7 @@ fn catch_sighup() {
             // `EXITING` may be `None` when:
             //  - The thread is no longer executing in the enclave
             //  - The destructor of this thread local variable already executed
-            if is_enclu && EXITING.with(|cell| cell.borrow().as_ref().is_some_and(|val| val.load(Ordering::SeqCst) == true)) {
+            if is_enclu && EXITING.with(|cell| cell.borrow().as_ref().is_some_and(|val| val.load(Ordering::SeqCst))) {
                 // Interrupt enclave execution by setting IP to the instruction following the ENCLU to mimic normal ENCLU[EEXIT])
                 unsafe {
                     (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] += ENCLU.len() as i64;
@@ -1258,7 +1258,7 @@ fn catch_sighup() {
                 }
             }
         }
-        
+
         let hdl = signal::SigHandler::SigAction(handle_sighup);
         let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
         signal::sigaction(signal::SIGHUP, &sig_action).unwrap();
