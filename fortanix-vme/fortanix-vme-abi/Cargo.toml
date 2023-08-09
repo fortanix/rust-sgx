@@ -11,7 +11,7 @@ core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 compiler_builtins = { version = "0.1.0", optional = true }
 # Avoid using patch section due to https://github.com/rust-lang/cargo/issues/10031
-serde = { git = "https://github.com/fortanix/serde.git", branch = "master", default-features = false }
+serde = { git = "https://github.com/fortanix/serde.git", branch = "master", default-features = false, optional = true }
 vsock = { version = "0.2.4", optional = true }
 
 [dev-dependencies]
