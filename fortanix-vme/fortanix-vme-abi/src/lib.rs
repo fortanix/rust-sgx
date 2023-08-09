@@ -1,5 +1,4 @@
 #![deny(warnings)]
-#![feature(ip_in_core)]
 #![no_std]
 extern crate alloc;
 #[cfg(feature="std")]
@@ -7,12 +6,19 @@ extern crate std;
 
 use alloc::string::String;
 use alloc::vec::Vec;
-use core::fmt::{self, Formatter};
-use core::marker::PhantomData;
+#[cfg(feature="core")]
 use core::net::{IpAddr, SocketAddr};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::ser::SerializeStructVariant;
-use serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, VariantAccess, Visitor};
+#[cfg(all(feature="std", not(feature="core")))]
+use std::net::{IpAddr, SocketAddr};
+#[cfg(feature="serde")]
+use {
+    core::fmt::{self, Formatter},
+    core::marker::PhantomData,
+
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
+    serde::ser::SerializeStructVariant,
+    serde::de::{EnumAccess, Error as SerdeError, IgnoredAny, MapAccess, VariantAccess, Visitor},
+};
 
 #[cfg(feature="std")]
 use {
@@ -55,6 +61,7 @@ pub enum Request {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Serialize` macro.
+#[cfg(feature="serde")]
 impl Serialize for Request {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -105,6 +112,7 @@ impl Serialize for Request {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Deserialize` macro.
+#[cfg(feature="serde")]
 impl<'de> Deserialize<'de> for Request {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -730,6 +738,7 @@ pub enum Addr {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Serialize` macro.
+#[cfg(feature="serde")]
 impl Serialize for Addr {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -765,6 +774,7 @@ impl Serialize for Addr {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Deserialize` macro.
+#[cfg(feature="serde")]
 impl<'de> Deserialize<'de> for Addr {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -1018,6 +1028,7 @@ impl<'de> Deserialize<'de> for Addr {
     }
 }
 
+#[cfg(any(feature="core", feature="std"))]
 impl From<SocketAddr> for Addr {
     fn from(addr: SocketAddr) -> Addr {
         match addr {
@@ -1039,6 +1050,7 @@ impl From<SocketAddr> for Addr {
     }
 }
 
+#[cfg(any(feature="core", feature="std"))]
 impl From<Addr> for SocketAddr {
     fn from(addr: Addr) -> SocketAddr {
         match addr {
@@ -1094,6 +1106,7 @@ pub enum Response {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Serialize` macro.
+#[cfg(feature="serde")]
 impl Serialize for Response {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1158,6 +1171,7 @@ impl Serialize for Response {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Deserialize` macro.
+#[cfg(feature="serde")]
 impl<'de> Deserialize<'de> for Response {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -1784,6 +1798,7 @@ impl From<io::ErrorKind> for ErrorKind {
     }
 }
 
+#[cfg(feature="serde")]
 impl Serialize for ErrorKind {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1876,6 +1891,7 @@ impl Serialize for ErrorKind {
     }
 }
 
+#[cfg(feature="serde")]
 impl<'de> Deserialize<'de> for ErrorKind {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -2015,6 +2031,7 @@ pub enum Error {
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
 /// This implementation is based on the expanded `Serialize` macro.
+#[cfg(feature="serde")]
 impl Serialize for Error {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -2040,6 +2057,7 @@ impl Serialize for Error {
 /// Deserializes an `Error` value. We can't rely on the `serde` `Deserialize` macro as we wish to use
 /// this crate in the standard library.
 /// See <https://github.com/rust-lang/rust/issues/64671>
+#[cfg(feature="serde")]
 impl<'de> Deserialize<'de> for Error {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -2161,13 +2179,17 @@ impl From<VsockError> for Error {
 
 #[cfg(test)]
 mod test {
-    use std::net::{IpAddr, SocketAddr};
-    use std::str::FromStr;
-    use std::string::String;
-    use std::vec::Vec;
-    use crate::{Addr, Error, ErrorKind, Response, Request};
+    #[cfg(feature="std")]
+    use {
+        std::net::{IpAddr, SocketAddr},
+        std::str::FromStr,
+        std::string::String,
+        std::vec::Vec,
+        crate::{Addr, Error, ErrorKind, Response, Request},
+    };
 
     #[test]
+    #[cfg(any(feature="core", feature="std"))]
     fn test_addr() {
         let sock_addr = SocketAddr::from_str("10.11.12.13:4567").unwrap();
         if let Addr::IPv4 { port, ip } = sock_addr.into() {
@@ -2180,6 +2202,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature="serde")]
     fn test_error_kind() {
         let data: Vec<(ErrorKind, Vec<u8>)> = Vec::from([
             (ErrorKind::NotFound,
@@ -2273,6 +2296,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature="serde")]
     fn test_error() {
         let data: Vec<(Error, Vec<u8>)> = Vec::from([
             (Error::ConnectionNotFound, Vec::from([0x72, 0x43, 0x6f, 0x6e, 0x6e, 0x65, 0x63, 0x74, 0x69, 0x6f,
@@ -2376,6 +2400,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature="serde")]
     fn test_addr_encoding() {
         let data: Vec<(Addr, Vec<u8>)> = Vec::from([
             (Addr::IPv4{ip: [1, 2, 3, 4], port: 2}, Vec::from([0xa1, 0x64, 0x49, 0x50, 0x76, 0x34, 0xa2, 0x62,
@@ -2408,6 +2433,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature="serde")]
     fn test_request_encoding() {
         let data: Vec<(Request, Vec<u8>)> = Vec::from([
             (
@@ -2543,6 +2569,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature="serde")]
     fn test_response_encoding() {
         let data: Vec<(Response, Vec<u8>)> = Vec::from([
             (
