@@ -1717,7 +1717,7 @@ pub enum ErrorKind {
     Deadlock,
     CrossesDevices,
     TooManyLinks,
-    FilenameTooLong,
+    //FilenameTooLong,
     ArgumentListTooLong,
     Interrupted,
     Unsupported,
@@ -1871,8 +1871,8 @@ impl Serialize for ErrorKind {
                 Serializer::serialize_unit_variant(serializer, "ErrorKind", 31u32, "CrossesDevices"),
             ErrorKind::TooManyLinks =>
                 Serializer::serialize_unit_variant(serializer, "ErrorKind", 32u32, "TooManyLinks"),
-            ErrorKind::FilenameTooLong =>
-                Serializer::serialize_unit_variant(serializer, "ErrorKind", 33u32, "FilenameTooLong"),
+            //ErrorKind::FilenameTooLong =>
+            //    Serializer::serialize_unit_variant(serializer, "ErrorKind", 33u32, "FilenameTooLong"),
             ErrorKind::ArgumentListTooLong =>
                 Serializer::serialize_unit_variant(serializer, "ErrorKind", 34u32, "ArgumentListTooLong"),
             ErrorKind::Interrupted =>
@@ -1945,7 +1945,7 @@ impl<'de> Deserialize<'de> for ErrorKind {
                     "Deadlock" => Ok(ErrorKindVariant(ErrorKind::Deadlock)),
                     "CrossesDevices" => Ok(ErrorKindVariant(ErrorKind::CrossesDevices)),
                     "TooManyLinks" => Ok(ErrorKindVariant(ErrorKind::TooManyLinks)),
-                    "FilenameTooLong" => Ok(ErrorKindVariant(ErrorKind::FilenameTooLong)),
+                    //"FilenameTooLong" => Ok(ErrorKindVariant(ErrorKind::FilenameTooLong)),
                     "ArgumentListTooLong" => Ok(ErrorKindVariant(ErrorKind::ArgumentListTooLong)),
                     "Interrupted" => Ok(ErrorKindVariant(ErrorKind::Interrupted)),
                     "Unsupported" => Ok(ErrorKindVariant(ErrorKind::Unsupported)),
@@ -2000,7 +2000,7 @@ impl<'de> Deserialize<'de> for ErrorKind {
               "InvalidInput", "InvalidData", "TimedOut", "WriteZero",
               "StorageFull", "NotSeekable", "FilesystemQuotaExceeded", "FileTooLarge",
               "ResourceBusy", "ExecutableFileBusy", "Deadlock", "CrossesDevices",
-              "TooManyLinks", "FilenameTooLong", "ArgumentListTooLong", "Interrupted",
+              "TooManyLinks", /*"FilenameTooLong",*/ "ArgumentListTooLong", "Interrupted",
               "Unsupported", "UnexpectedEof", "OutOfMemory", "Other",
               "Uncategorized"];
 
@@ -2271,8 +2271,8 @@ mod test {
                 Vec::from([0x6e, 0x43, 0x72, 0x6f, 0x73, 0x73, 0x65, 0x73, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x73])),
             (ErrorKind::TooManyLinks,
                 Vec::from([0x6c, 0x54, 0x6f, 0x6f, 0x4d, 0x61, 0x6e, 0x79, 0x4c, 0x69, 0x6e, 0x6b, 0x73])),
-            (ErrorKind::FilenameTooLong,
-                Vec::from([0x6f, 0x46, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
+            //(ErrorKind::FilenameTooLong,
+            //    Vec::from([0x6f, 0x46, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
             (ErrorKind::ArgumentListTooLong,
                 Vec::from([0x73, 0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x4c, 0x69, 0x73, 0x74, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
             (ErrorKind::Interrupted,
@@ -2375,8 +2375,8 @@ mod test {
                 Vec::from([0xa1, 0x67, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x6e, 0x43, 0x72, 0x6f, 0x73, 0x73, 0x65, 0x73, 0x44, 0x65, 0x76, 0x69, 0x63, 0x65, 0x73])),
             (Error::Command(ErrorKind::TooManyLinks),
                 Vec::from([0xa1, 0x67, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x6c, 0x54, 0x6f, 0x6f, 0x4d, 0x61, 0x6e, 0x79, 0x4c, 0x69, 0x6e, 0x6b, 0x73])),
-            (Error::Command(ErrorKind::FilenameTooLong),
-                Vec::from([0xa1, 0x67, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x6f, 0x46, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
+            //(Error::Command(ErrorKind::FilenameTooLong),
+            //    Vec::from([0xa1, 0x67, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x6f, 0x46, 0x69, 0x6c, 0x65, 0x6e, 0x61, 0x6d, 0x65, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
             (Error::Command(ErrorKind::ArgumentListTooLong),
                 Vec::from([0xa1, 0x67, 0x43, 0x6f, 0x6d, 0x6d, 0x61, 0x6e, 0x64, 0x73, 0x41, 0x72, 0x67, 0x75, 0x6d, 0x65, 0x6e, 0x74, 0x4c, 0x69, 0x73, 0x74, 0x54, 0x6f, 0x6f, 0x4c, 0x6f, 0x6e, 0x67])),
             (Error::Command(ErrorKind::Interrupted),
