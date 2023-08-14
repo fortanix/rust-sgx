@@ -2,8 +2,6 @@
 use fnv::FnvHashMap;
 use nix::sys::select::{select, FdSet};
 use log::{error, info, log, warn};
-use serde_cbor::{self, StreamDeserializer};
-use serde_cbor::de::IoRead;
 use std::cmp;
 use std::str;
 use std::thread::{self, JoinHandle};
@@ -219,23 +217,19 @@ impl ConnectionKey {
     }
 }
 
-pub struct ClientConnection<'de> {
-    sender: VsockStream,
-    reader: StreamDeserializer<'de, IoRead<VsockStream>, Request>,
+pub struct ClientConnection {
+    stream: VsockStream,
 }
 
-impl<'de> ClientConnection<'de> {
+impl ClientConnection {
     pub fn new(stream: VsockStream) -> Self {
-        // Mimic splitting the stream in a read and send part
-        let sender = unsafe { VsockStream::from_raw_fd(stream.as_raw_fd()) };
         ClientConnection {
-            sender,
-            reader: serde_cbor::Deserializer::from_reader(stream).into_iter::<Request>(),
+            stream,
         }
     }
 
     pub fn peer_port(&self) -> Result<u32, IoError> {
-        self.sender
+        self.stream
             .peer_addr()
             .map(|addr| addr.port())
             .map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
@@ -260,29 +254,37 @@ impl<'de> ClientConnection<'de> {
         Self::log_communication(
             log::Level::Info,
             "runner",
-            self.sender.local_port().unwrap_or_default(),
+            self.stream.local_port().unwrap_or_default(),
             "enclave",
-            self.sender.peer_port().unwrap_or_default(),
+            self.stream.peer_port().unwrap_or_default(),
             &format!("{:?}", response),
             Direction::Right,
             "vsock",
             None);
         let response: Vec<u8> = serde_cbor::ser::to_vec(response)
                                     .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Serialization failed"))?;
-        self.sender.write(&response)?;
+        self.stream.write_all(&response.len().to_le_bytes())?;
+        self.stream.write_all(&response)?;
         Ok(())
     }
 
     pub fn read_request(&mut self) -> Result<Request, IoError> {
-        let req = self.reader.next() // Blocks until a full `Request` object is received
-                    .ok_or(IoError::new(IoErrorKind::Other, "Failed to read request"))?
-                    .map_err(|e| IoError::new(IoErrorKind::InvalidInput, e))?;
+        let mut size = [0u8; usize::BITS as usize / 8];
+        self.stream.read_exact(&mut size[..])?;
+        let size = usize::from_le_bytes(size);
+
+        let mut req = Vec::new();
+        req.resize(size, 0);
+        self.stream.read_exact(&mut req)?;
+        let req = serde_cbor::from_slice(&req)
+            .map_err(|e| IoError::new(IoErrorKind::InvalidInput, e))?;
+
         Self::log_communication(
             log::Level::Info,
             "runner",
-            self.sender.local_port().unwrap_or_default(),
+            self.stream.local_port().unwrap_or_default(),
             "enclave",
-            self.sender.peer_port().unwrap_or_default(),
+            self.stream.peer_port().unwrap_or_default(),
             &format!("{:?}", &req),
             Direction::Left,
             "vsock",
@@ -481,7 +483,7 @@ impl<P: Platform + 'static> Server<P> {
      *  `enclave`: The runner-enclave vsock connection
      */
     fn handle_request_bind(self: Arc<Self>, addr: &String, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let cid: u32 = conn.sender.peer_addr()?.cid();
+        let cid: u32 = conn.stream.peer_addr()?.cid();
         let listener = TcpListener::bind(addr).map_err(|e| VmeError::Command(e.kind().into()))?;
         let local: Addr = listener.local_addr()?.into();
         self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
@@ -491,7 +493,7 @@ impl<P: Platform + 'static> Server<P> {
 
     fn handle_request_accept(self: Arc<Self>, vsock_listener_port: u32, client_conn: &mut ClientConnection) -> Result<(), VmeError> {
         // Locate TCP listener
-        let enclave_cid = client_conn.sender.peer_addr()?.cid();
+        let enclave_cid = client_conn.stream.peer_addr()?.cid();
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
         let listener = self.listener(&enclave_addr)
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
@@ -523,7 +525,7 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     fn handle_request_close(self: Arc<Self>, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let cid: u32 = conn.sender.peer_addr()?.cid();
+        let cid: u32 = conn.stream.peer_addr()?.cid();
         let addr = VsockAddr::new(cid, enclave_port);
         if let Some(listener) = self.remove_listener(&addr) {
             // Close `TcpListener`
@@ -575,16 +577,23 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     fn handle_client(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        match conn.read_request()? {
-            Request::Init                        => self.handle_request_init(conn),
-            Request::Connect{ addr }             => self.handle_request_connect(&addr, conn),
-            Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn),
-            Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn),
+        match conn.read_request().or_else(|e| { error!("read_request error: {:?}", e); Err(e) } )? {
+            Request::Init                        => self.handle_request_init(conn)
+                                                        .or_else(|e| { error!("init error: {:?}", e); Err(e) }),
+            Request::Connect{ addr }             => self.handle_request_connect(&addr, conn)
+                                                        .or_else(|e| { error!("connect error: {:?}", e); Err(e) }),
+            Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn)
+                                                        .or_else(|e| { error!("bind error: {:?}", e); Err(e) }),
+            Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn)
+                                                        .or_else(|e| { error!("accept error: {:?}", e); Err(e) }),
             Request::Info{
                 enclave_port,
-                runner_port }                    => self.handle_request_info(enclave_port, runner_port, conn),
-            Request::Close{ enclave_port }       => self.handle_request_close(enclave_port, conn),
-            Request::Exit{ code }                => self.handle_request_exit(code),
+                runner_port }                    => self.handle_request_info(enclave_port, runner_port, conn)
+                                                        .or_else(|e| { error!("info error: {:?}", e); Err(e) }),
+            Request::Close{ enclave_port }       => self.handle_request_close(enclave_port, conn)
+                                                        .or_else(|e| { error!("close error: {:?}", e); Err(e) }),
+            Request::Exit{ code }                => self.handle_request_exit(code)
+                                                        .or_else(|e| { error!("exit error: {:?}", e); Err(e) }),
         }
     }
 
