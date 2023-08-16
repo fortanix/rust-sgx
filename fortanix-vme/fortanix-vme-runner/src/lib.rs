@@ -181,8 +181,10 @@ impl Connection {
                     }
                 }
                 if read_set.contains(enclave.as_raw_fd()) {
-                    // The same behavior on TCP reads, may not be present on vsock connections
-                    let _ = Self::transfer_data(enclave, "enclave1", remote, &self.remote_name);
+                    if Self::transfer_data(enclave, "enclave1", remote, &self.remote_name)? == 0 {
+                        remote.shutdown(Shutdown::Write)?;
+                        golden_set.remove(enclave.as_raw_fd());
+                    }
                 }
             }
         }
