@@ -8,12 +8,11 @@ use std::borrow::Cow;
 use mbedtls::rng::{Rdrand, Random};
 use aws_nitro_enclaves_nsm_api::api::{Response, Request};
 use aws_nitro_enclaves_nsm_api::driver;
-use pkix::types::{ObjectIdentifier};
-use pkix::x509::DnsAltNames;
-use pkix::{DerWrite, ToDer};
+use pkix::types::{Name, ObjectIdentifier};
+use pkix::ToDer;
 use vme_pkix::oid::ATTESTATION_NITRO;
-
-use crate::{CsrSigner, Error, get_csr_common_name};
+use crate::platform::get_extensions_from_alt_names;
+use crate::{CsrSigner, Error, get_csr, get_csr_common_name};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -26,11 +25,25 @@ pub(crate) fn get_remote_attestation_parameters(
 ) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
     let attributes = get_nitro_attestation(user_data)?;
 
-    let extensions = alt_names.and_then(|names| {
-        Some(vec![(pkix::oid::subjectAltName.clone(), false, pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)).into())])
-    });
+    let extensions = get_extensions_from_alt_names(alt_names);
     
     let csr_pem = get_csr_common_name(signer, &common_name, attributes, &extensions)?;
+
+    Ok((None, None, csr_pem))
+}
+
+pub(crate) fn get_remote_attestation_parameters_subject(
+    signer: &mut dyn CsrSigner,
+    _url: &str,
+    subject: &Name,
+    user_data: &[u8;64],
+    alt_names: Option<Vec<Cow<str>>>,
+) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
+    let attributes = get_nitro_attestation(user_data)?;
+
+    let extensions = get_extensions_from_alt_names(alt_names);
+
+    let csr_pem = get_csr(signer, &subject, attributes, &extensions)?;
 
     Ok((None, None, csr_pem))
 }

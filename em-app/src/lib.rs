@@ -13,6 +13,7 @@ use mbedtls::hash;
 use std::borrow::Cow;
 use rustc_serialize::hex::FromHex;
 use uuid::Uuid;
+use pkix::types::Name;
 
 mod platform;
 
@@ -45,7 +46,28 @@ pub fn get_fortanix_em_certificate(url: &str, common_name: &str, signer: &mut dy
     get_certificate(url, common_name, signer, None, None)
 }
 
-pub fn get_certificate(url: &str, 
+pub fn get_certificate_subject(url: &str,
+                       subject: &Name,
+                       signer: &mut dyn CsrSigner,
+                       alt_names: Option<Vec<Cow<str>>>,
+                       config_id: Option<&str>
+) -> Result<FortanixEmCertificate> {
+
+    let pub_key = signer.get_public_key_der()?;
+    let user_data = get_user_data(&pub_key, config_id)?;
+
+    let (attestation_certificate_der, node_certificate_der, csr_pem) = platform::get_remote_attestation_parameters_subject(signer, url, subject, &user_data, alt_names)?;
+
+    let certificate_response = request_issue_certificate(url, csr_pem)?;
+
+    Ok(FortanixEmCertificate {
+        attestation_certificate_der,
+        node_certificate_der,
+        certificate_response,
+    })
+}
+
+pub fn get_certificate(url: &str,
                        common_name: &str, 
                        signer: &mut dyn CsrSigner,
                        alt_names: Option<Vec<Cow<str>>>, 
@@ -75,6 +97,18 @@ pub fn get_remote_attestation_csr(url: &str,
     let pub_key = signer.get_public_key_der()?;
     let user_data = get_user_data(&pub_key, config_id)?;
     let (_, _, csr_pem) = platform::get_remote_attestation_parameters(signer, url, common_name, &user_data, alt_names)?;
+    Ok(csr_pem)
+}
+
+pub fn get_remote_attestation_csr_subject(url: &str,
+                                          subject: &Name,
+                                          signer: &mut dyn CsrSigner,
+                                          alt_names: Option<Vec<Cow<str>>>,
+                                          config_id: Option<&str>
+) -> Result<String> {
+    let pub_key = signer.get_public_key_der()?;
+    let user_data = get_user_data(&pub_key, config_id)?;
+    let (_, _, csr_pem) = platform::get_remote_attestation_parameters_subject(signer, url, subject, &user_data, alt_names)?;
     Ok(csr_pem)
 }
 
