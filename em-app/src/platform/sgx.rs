@@ -8,7 +8,7 @@ use em_node_agent_client::{Api, Client, models};
 use mbedtls::cipher::{Cipher, raw};
 use mbedtls::hash::{Type,Md};
 use mbedtls::hash;
-use pkix::{DerWrite, ToDer};
+use pkix::ToDer;
 use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
 use pkix::types::Name;
 use pkix;
@@ -16,7 +16,6 @@ use sgx_isa::{Report, Targetinfo};
 use sgx_pkix::attestation::{AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
 use sgx_pkix::oid;
 use std::borrow::Cow;
-use pkix::x509::DnsAltNames;
 use sgx_pkix::attestation::{SgxName};
 use crate::platform::get_extensions_from_alt_names;
 use crate::{CsrSigner, Error, get_csr};
@@ -45,9 +44,8 @@ pub(crate) fn get_remote_attestation_parameters_subject(
     let attributes = vec![(oid::attestationInlineSgxLocal.clone(), vec![attestation])];
     let extensions = get_extensions_from_alt_names(alt_names);
     let mut sgx_name = SgxName::from_report(&report, true);
-    sgx_name.append(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
     let mut subject = subject.clone(); // Copy the subject, since it must be modified
-    subject.value.append(sgx_name.to_name().value); // Extend the subject with SGX names
+    subject.value.append(&mut sgx_name.to_name().value); // Extend the subject with SGX names
     let csr_pem = get_csr(signer, &subject, attributes, &extensions)?;
 
     // Send CSR to Node Agent and receive signed app/node/attestation certificates
@@ -67,13 +65,13 @@ pub(crate) fn get_remote_attestation_parameters_subject(
 
 pub(crate) fn get_remote_attestation_parameters(
     signer: &mut dyn CsrSigner,
-    url: &str, 
-    common_name: &str, 
+    url: &str,
+    common_name: &str,
     user_data: &[u8;64],
     alt_names: Option<Vec<Cow<str>>>,
 ) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
     let subject = Name::from(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
-    get_remote_attestation_parameters_subject(&mut signer, url, &subject, user_data, alt_names)
+    get_remote_attestation_parameters_subject(signer, url, &subject, user_data, alt_names)
 }
 
 pub(crate) fn get_target_report(client: &mut Client, user_data: &[u8;64]) -> Result<sgx_isa::Report> {
