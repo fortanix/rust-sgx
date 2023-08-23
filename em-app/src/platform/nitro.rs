@@ -3,34 +3,17 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-use std::borrow::Cow;
-
-use mbedtls::rng::{Rdrand, Random};
-use aws_nitro_enclaves_nsm_api::api::{Response, Request};
+use crate::platform::get_extensions_from_alt_names;
+use crate::{common_name_to_subject, get_csr, CsrSigner, Error};
+use aws_nitro_enclaves_nsm_api::api::{Request, Response};
 use aws_nitro_enclaves_nsm_api::driver;
+use mbedtls::rng::{Random, Rdrand};
 use pkix::types::{Name, ObjectIdentifier};
 use pkix::ToDer;
+use std::borrow::Cow;
 use vme_pkix::oid::ATTESTATION_NITRO;
-use crate::platform::get_extensions_from_alt_names;
-use crate::{CsrSigner, Error, get_csr, get_csr_common_name};
 
 type Result<T> = std::result::Result<T, Error>;
-
-pub(crate) fn get_remote_attestation_parameters(
-    signer: &mut dyn CsrSigner,
-    _url: &str, 
-    common_name: &str, 
-    user_data: &[u8;64],
-    alt_names: Option<Vec<Cow<str>>>, 
-) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
-    let attributes = get_nitro_attestation(user_data)?;
-
-    let extensions = get_extensions_from_alt_names(alt_names);
-    
-    let csr_pem = get_csr_common_name(signer, &common_name, attributes, &extensions)?;
-
-    Ok((None, None, csr_pem))
-}
 
 pub(crate) fn get_remote_attestation_parameters_subject(
     signer: &mut dyn CsrSigner,
@@ -48,6 +31,19 @@ pub(crate) fn get_remote_attestation_parameters_subject(
     Ok((None, None, csr_pem))
 }
 
+// Kept in place for legacy purposes
+#[allow(dead_code)]
+pub(crate) fn get_remote_attestation_parameters(
+    signer: &mut dyn CsrSigner,
+    url: &str,
+    common_name: &str,
+    user_data: &[u8;64],
+    alt_names: Option<Vec<Cow<str>>>,
+) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
+    let subject = common_name_to_subject(common_name);
+    get_remote_attestation_parameters_subject(signer, url, &subject, user_data, alt_names)
+}
+
 pub(crate) fn get_nitro_attestation(user_data: &[u8;64]) -> Result<Vec<(ObjectIdentifier, Vec<Vec<u8>>)>> {
     const NONCE_SIZE: usize = 16;
 
@@ -55,7 +51,7 @@ pub(crate) fn get_nitro_attestation(user_data: &[u8;64]) -> Result<Vec<(ObjectId
     Rdrand.random(&mut nonce[..]).map_err(|e| Error::NonceGeneration(Box::new(e)))?;
 
     let nsm_fd = driver::nsm_init();
-    
+
     let user_data = serde_bytes::ByteBuf::from(user_data.to_vec());
     let nonce = serde_bytes::ByteBuf::from(nonce);
 

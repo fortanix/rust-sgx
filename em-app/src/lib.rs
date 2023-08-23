@@ -3,17 +3,19 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-#[macro_use] pub extern crate serde_derive;
+#[macro_use]
+pub extern crate serde_derive;
 
-pub mod utils;
 pub mod mbedtls_hyper;
 
-use em_node_agent_client::{Api, Client, models};
+pub mod utils;
+
+use em_node_agent_client::{models, Api, Client};
 use mbedtls::hash;
-use std::borrow::Cow;
-use rustc_serialize::hex::FromHex;
-use uuid::Uuid;
 use pkix::types::Name;
+use rustc_serialize::hex::FromHex;
+use std::borrow::Cow;
+use uuid::Uuid;
 
 mod platform;
 
@@ -42,21 +44,37 @@ pub fn get_certificate_status(url: &str, task_id: Uuid) -> Result<models::IssueC
     client.get_issue_certificate_response(task_id).map_err(|e| Error::NodeAgentClient(Box::new(e)))
 }
 
-pub fn get_fortanix_em_certificate(url: &str, common_name: &str, signer: &mut dyn CsrSigner) -> Result<FortanixEmCertificate> {
+pub fn get_fortanix_em_certificate_subject(
+    url: &str,
+    subject: &Name,
+    signer: &mut dyn CsrSigner,
+) -> Result<FortanixEmCertificate> {
+    get_certificate_subject(url, subject, signer, None, None)
+}
+
+pub fn get_fortanix_em_certificate(
+    url: &str,
+    common_name: &str,
+    signer: &mut dyn CsrSigner,
+) -> Result<FortanixEmCertificate> {
     get_certificate(url, common_name, signer, None, None)
 }
 
-pub fn get_certificate_subject(url: &str,
-                       subject: &Name,
-                       signer: &mut dyn CsrSigner,
-                       alt_names: Option<Vec<Cow<str>>>,
-                       config_id: Option<&str>
-) -> Result<FortanixEmCertificate> {
 
+pub fn get_certificate_subject(
+    url: &str,
+    subject: &Name,
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>,
+    config_id: Option<&str>,
+) -> Result<FortanixEmCertificate> {
     let pub_key = signer.get_public_key_der()?;
     let user_data = get_user_data(&pub_key, config_id)?;
 
-    let (attestation_certificate_der, node_certificate_der, csr_pem) = platform::get_remote_attestation_parameters_subject(signer, url, subject, &user_data, alt_names)?;
+    let (attestation_certificate_der, node_certificate_der, csr_pem) =
+        platform::get_remote_attestation_parameters_subject(
+            signer, url, subject, &user_data, alt_names,
+        )?;
 
     let certificate_response = request_issue_certificate(url, csr_pem)?;
 
@@ -67,49 +85,41 @@ pub fn get_certificate_subject(url: &str,
     })
 }
 
-pub fn get_certificate(url: &str,
-                       common_name: &str, 
-                       signer: &mut dyn CsrSigner,
-                       alt_names: Option<Vec<Cow<str>>>, 
-                       config_id: Option<&str>
+pub fn get_certificate(
+    url: &str,
+    common_name: &str,
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>,
+    config_id: Option<&str>,
 ) -> Result<FortanixEmCertificate> {
-
-    let pub_key = signer.get_public_key_der()?;
-    let user_data = get_user_data(&pub_key, config_id)?;
-
-    let (attestation_certificate_der, node_certificate_der, csr_pem) = platform::get_remote_attestation_parameters(signer, url, common_name, &user_data, alt_names)?;
-
-    let certificate_response = request_issue_certificate(url, csr_pem)?;
-    
-    Ok(FortanixEmCertificate {
-        attestation_certificate_der,
-        node_certificate_der,
-        certificate_response,
-    })
+    let subject = common_name_to_subject(common_name);
+    get_certificate_subject(url, &subject, signer, alt_names, config_id)
 }
 
-pub fn get_remote_attestation_csr(url: &str, 
-                                  common_name: &str, 
-                                  signer: &mut dyn CsrSigner,
-                                  alt_names: Option<Vec<Cow<str>>>, 
-                                  config_id: Option<&str>
+pub fn get_remote_attestation_csr_subject(
+    url: &str,
+    subject: &Name,
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>,
+    config_id: Option<&str>,
 ) -> Result<String> {
     let pub_key = signer.get_public_key_der()?;
     let user_data = get_user_data(&pub_key, config_id)?;
-    let (_, _, csr_pem) = platform::get_remote_attestation_parameters(signer, url, common_name, &user_data, alt_names)?;
+    let (_, _, csr_pem) = platform::get_remote_attestation_parameters_subject(
+        signer, url, subject, &user_data, alt_names,
+    )?;
     Ok(csr_pem)
 }
 
-pub fn get_remote_attestation_csr_subject(url: &str,
-                                          subject: &Name,
-                                          signer: &mut dyn CsrSigner,
-                                          alt_names: Option<Vec<Cow<str>>>,
-                                          config_id: Option<&str>
+pub fn get_remote_attestation_csr(
+    url: &str,
+    common_name: &str,
+    signer: &mut dyn CsrSigner,
+    alt_names: Option<Vec<Cow<str>>>,
+    config_id: Option<&str>,
 ) -> Result<String> {
-    let pub_key = signer.get_public_key_der()?;
-    let user_data = get_user_data(&pub_key, config_id)?;
-    let (_, _, csr_pem) = platform::get_remote_attestation_parameters_subject(signer, url, subject, &user_data, alt_names)?;
-    Ok(csr_pem)
+    let subject = common_name_to_subject(common_name);
+    get_remote_attestation_csr_subject(url, &subject, signer, alt_names, config_id)
 }
 
 pub fn request_issue_certificate(url: &str, csr_pem: String) -> Result<models::IssueCertificateResponse> {
@@ -127,14 +137,14 @@ fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> 
         if id.len() != 32 {
             return Err(Error::ConfigIdIssue(format!("config ID is invalid, length: {}, expected length: 32", id.len())));
         }
-        
+
         let mut payload=[0u8;65];
         payload[0] = 1;
         payload[1..33].copy_from_slice(&data[0..32]);
         payload[33..65].copy_from_slice(&id[0..32]);
 
         // The payload is formed as follows in case of workflow report.
-        
+
         // First 32 bytes is a Sha256 of (Version + public key sha256 + config-id)
         hash::Md::hash(hash::Type::Sha256, &payload, &mut data[0..32]).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
 

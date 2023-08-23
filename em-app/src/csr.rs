@@ -4,20 +4,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crate::Error;
+use crate::Result;
 use mbedtls::hash;
 use mbedtls::pk::{Pk, Type as PkType};
-use pkix::DerWrite;
+pub use mbedtls::rng::Rdrand as FtxRng;
+use pkix;
 use pkix::bit_vec::BitVec;
 use pkix::pem::{der_to_pem, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
-use pkix::types::{Attribute, Extension, ObjectIdentifier, TaggedDerValue, RsaPkcs15, EcdsaX962, Sha256, DerSequence, Name};
+use pkix::types::{
+    Attribute, DerSequence, EcdsaX962, Extension, Name, ObjectIdentifier, RsaPkcs15, Sha256,
+    TaggedDerValue,
+};
+use pkix::DerWrite;
 use yasna::tags::TAG_UTF8STRING;
-use pkix;
-
-use crate::Error;
-
-pub use mbedtls::rng::Rdrand as FtxRng;
-use crate::Result;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SignatureAlgorithm {
@@ -68,7 +69,7 @@ where
                 }.write(writer)
             })
         };
-        
+
         Ok(der_to_pem(&csr, PEM_CERTIFICATE_REQUEST))
     }
 }
@@ -77,11 +78,11 @@ impl ExternalKey for Pk {
     fn get_public_key_der(&mut self) -> Result<Vec<u8>> {
         Ok(self.write_public_der_vec().map_err(|e| Error::ExternalKey(Box::new(e)))?)
     }
-    
+
     fn sign_sha256(&mut self, input: &[u8]) -> Result<(Vec<u8>, SignatureAlgorithm)> {
         let mut hash = [0u8; 32];
         hash::Md::hash(hash::Type::Sha256, &input, &mut hash).map_err(|e| Error::ExternalKey(Box::new(e)))?;
-        
+
         let mut sig = vec![0u8; (self.len()+7)/8];
         self.sign(hash::Type::Sha256, &hash, &mut sig, &mut FtxRng).map_err(|e| Error::ExternalKey(Box::new(e)))?;
 
@@ -90,24 +91,24 @@ impl ExternalKey for Pk {
             PkType::Eckey | PkType::Ecdsa => Ok(SignatureAlgorithm::EcdsaX962),
             _ => Err(Error::ExternalKeyString(format!("Invalid key type: {:?}", self.pk_type()))),
         }?;
-        
+
         Ok((sig, sigalg))
     }
 }
 
-pub fn get_csr_common_name(signer: &mut dyn CsrSigner,
-                           common_name: &str,
-                           attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
-                           extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>
-) -> Result<String> {
-    let subject = vec![(pkix::oid::commonName.clone(), TaggedDerValue::from_tag_and_bytes(TAG_UTF8STRING, common_name.as_bytes().to_vec()))].into();
-    get_csr(signer, &subject, attributes, extensions)
+pub(crate) fn common_name_to_subject(common_name: &str) -> Name {
+    vec![(
+        pkix::oid::commonName.clone(),
+        TaggedDerValue::from_tag_and_bytes(TAG_UTF8STRING, common_name.as_bytes().to_vec()),
+    )]
+    .into()
 }
 
-pub fn get_csr(signer: &mut dyn CsrSigner,
-               subject: &Name,
-               attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
-               extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>
+pub fn get_csr(
+    signer: &mut dyn CsrSigner,
+    subject: &Name,
+    attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
+    extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>,
 ) -> Result<String> {
 
     let pub_key_der = signer.get_public_key_der()?;
@@ -130,20 +131,29 @@ pub fn get_csr(signer: &mut dyn CsrSigner,
             }
         })))
     });
-    
+
     if let Some(bytes) = &extension_bytes {
         attributes.push(Attribute{
             oid: pkix::oid::extensionRequest.clone(),
             value: vec![bytes[..].into()],
         });
     }
-    
+
     let csr = CertificationRequestInfo {
         subject: subject.to_owned(),
         spki: DerSequence::from(&pub_key_der[..]),
         attributes: attributes,
     };
-    
+
     signer.sign_csr(&csr)
 }
 
+pub fn get_csr_common_name(
+    signer: &mut dyn CsrSigner,
+    common_name: &str,
+    attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
+    extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>,
+) -> Result<String> {
+    let subject = common_name_to_subject(common_name);
+    get_csr(signer, &subject, attributes, extensions)
+}
