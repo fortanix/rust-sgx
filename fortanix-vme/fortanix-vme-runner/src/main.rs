@@ -51,9 +51,10 @@ impl TryFrom<&Cli> for NitroArgs {
             enclave_cid: None,
             memory_mib,
             cpu_ids: None,
-            debug_mode: None,
+            debug_mode: false,
             cpu_count: Some(cpu_count),
             enclave_name: None,
+            attach_console: true,
         })
     }
 }
