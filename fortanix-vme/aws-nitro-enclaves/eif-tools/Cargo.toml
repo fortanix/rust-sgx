@@ -15,6 +15,7 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 anyhow = "1.0"
+aws-nitro-enclaves-image-format = "0.2.0"
 cargo_toml = "0.10.3"
 clap = "2.33"
 elf = "0.0.10"
