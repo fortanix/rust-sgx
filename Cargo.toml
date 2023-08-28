@@ -37,6 +37,7 @@ members = [
 exclude = ["examples"]
 
 [patch.crates-io]
+aws-nitro-enclaves-image-format = { git = "https://github.com/fortanix/aws-nitro-enclaves-image-format", branch = "fortanixvme-2023-05-07-alpha" }
 getrandom = { git = "https://github.com/fortanix/getrandom", branch = "fortanixvme-2023-05-07-alpha" }
 libc   = { git = "https://github.com/fortanix/libc", branch = "fortanixvme-2023-05-07-alpha" }
 mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
