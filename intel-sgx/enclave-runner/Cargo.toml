@@ -21,7 +21,7 @@ exclude = ["fake-vdso/.gitignore", "fake-vdso/Makefile", "fake-vdso/main.S"]
 [dependencies]
 # Project dependencies
 sgxs = { version = "0.7.2", path = "../sgxs" }
-fortanix-sgx-abi = { version = "0.4.0" } # TODO: add back `path = "../fortanix-sgx-abi"`
+fortanix-sgx-abi = { version = "0.5.0", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 ipc-queue = { version = "0.2.0", path = "../../ipc-queue" }
 
@@ -33,7 +33,7 @@ lazy_static = "1.2.0"                           # MIT/Apache-2.0
 libc = "0.2.48"                                 # MIT/Apache-2.0
 nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
-crossbeam = "0.7.1"                             # MIT/Apache-2.0
+crossbeam = "0.8.2"                             # MIT/Apache-2.0
 num_cpus = "1.10.0"                             # MIT/Apache-2.0
 tokio = { version = "0.2", features = ["full"] } # MIT
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
