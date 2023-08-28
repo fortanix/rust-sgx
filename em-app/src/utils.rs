@@ -42,10 +42,16 @@ pub fn get_runtime_configuration(
     ca_crl: Option<Arc<Crl>>
 ) -> Result<models::RuntimeAppConfig, String> {
 
+    log::info!("Creating runtime config");
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
 
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+
+    log::info!("runtime config rng");
+
     config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+
+    log::info!("runtime config tls");
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -55,11 +61,21 @@ pub fn get_runtime_configuration(
     }
     
     config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
-    
+
+    log::info!("runtime config certs");
+
     let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(format!("nodes.{}", server)));
+
+    log::info!("runtime config ssl client");
+
     let connector = HttpsConnector::new(ssl);
     let client = Client::try_new_with_connector(&format!("https://{}:{}/v1/runtime/app_configs", server, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
+
+    log::info!("runtime config https client");
+
     let response = client.get_runtime_application_config().map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
+
+    log::info!("runtime config response");
 
     Ok(response)
 }
