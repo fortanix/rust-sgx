@@ -809,6 +809,7 @@ dependencies = [
  "em-client",
  "em-node-agent-client",
  "hyper 0.10.16",
+ "log 0.4.14",
  "mbedtls",
  "pkix",
  "rustc-serialize",

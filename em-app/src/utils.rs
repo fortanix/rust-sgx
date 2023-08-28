@@ -74,10 +74,16 @@ pub fn get_sdkms_dataset(
     ca_crl: Option<Arc<Crl>>
 ) -> Result<Blob, String> {
 
+	log::info!("Creating config");
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
     
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
+    
+    log::info!("Set rng");
+    
     config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    
+        log::info!("Set min version");
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -86,11 +92,23 @@ pub fn get_sdkms_dataset(
         config.set_authmode(AuthMode::Optional);
     }
     
+            log::info!("Set something");
+    
     config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
     
+                log::info!("Pushed cert");
+    
     let ssl = MbedSSLClient::new(Arc::new(config), true);
+    
+                    log::info!("Created mbde ssl client");
+    
     let connector = HttpsConnector::new(ssl);
+    
+                        log::info!("Created ssl connector");
+    
     let client = Arc::new(hyper::Client::with_connector(Pool::with_connector(Default::default(), connector)));
+
+                        log::info!("Created ssl connector with something");
 
     let client = sdkms::SdkmsClient::builder()
         .with_api_endpoint(&sdkms_url)
@@ -98,9 +116,15 @@ pub fn get_sdkms_dataset(
         .build().map_err(|e| format!("SDKMS Build failed: {:?}", e))?
         .authenticate_with_cert(Some(&convert_uuid(app_id))).map_err(|e| format!("SDKMS authenticate failed: {:?}", e))?;
 
+                        log::info!("Created sdkms client");
+
     let key_id = sdkms::api_model::SobjectDescriptor::Name(dataset_id);
     
+                            log::info!("Requesting sobject");
+    
     let result = client.export_sobject(&key_id).map_err(|e| format!("Failed SDKMS export operation: {:?}", e))?;
+    
+                                log::info!("Finished with sobject");
     
     result.value.ok_or("Missing value in exported object".to_string())
 }
