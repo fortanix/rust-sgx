@@ -26,7 +26,7 @@ matrix:
             - clang-11
             - musl-tools
       rust:
-        - stable
+        - nightly-2023-05-07
       env:
         - RUST_BACKTRACE=1
         - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
@@ -44,7 +44,8 @@ matrix:
         - rustup toolchain add nightly
         - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
-        - cargo test --verbose --locked --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
+        - cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
+        - cargo test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
         - cargo test --verbose --locked -p ias --features mbedtls
