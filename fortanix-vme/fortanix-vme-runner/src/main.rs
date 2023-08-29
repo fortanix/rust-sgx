@@ -113,8 +113,6 @@ fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
 }
 
 fn main() {
-    env_logger::init();
-
     let cli = Cli::parse();
     let eif = File::open(&cli.enclave_file).expect("Failed to open enclave file");
     let mut eif = FtxEif::new(BufReader::new(eif));
@@ -122,6 +120,8 @@ fn main() {
         .expect("Failed to parse metadata");
 
     if cli.simulate {
+        env_logger::init();
+
         //TODO also extract env/cmd file and make sure the application is executed with this
         //context
         let elf = eif.application()
