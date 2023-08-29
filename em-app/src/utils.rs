@@ -42,16 +42,16 @@ pub fn get_runtime_configuration(
     ca_crl: Option<Arc<Crl>>
 ) -> Result<models::RuntimeAppConfig, String> {
 
-    log::info!("Creating runtime config");
+    println!("Creating runtime config");
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
 
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
 
-    log::info!("runtime config rng");
+    println!("runtime config rng");
 
     config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
-    log::info!("runtime config tls");
+    println!("runtime config tls");
 
     if let Some(ca_cert_list) = ca_cert_list {
         config.set_ca_list(ca_cert_list, ca_crl);
@@ -62,25 +62,26 @@ pub fn get_runtime_configuration(
     
     config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
-    log::info!("runtime config certs");
+    println!("runtime config certs");
 
     let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(format!("nodes.{}", server)));
 
-    log::info!("runtime config ssl client");
+    println!("runtime config ssl client");
 
     let connector = HttpsConnector::new(ssl);
     let client = Client::try_new_with_connector(&format!("https://{}:{}/v1/runtime/app_configs", server, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
 
-    log::info!("runtime config https client");
+    println!("runtime config https client");
 
     let response = client.get_runtime_application_config().map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
 
-    log::info!("runtime config response");
+    println!("runtime config response");
 
     Ok(response)
 }
 
 pub fn log_function() -> () {
+    println!("Test log");
     log::info!("Test log");
     log::info!("Test log");
     log::info!("Test log");
@@ -96,15 +97,19 @@ pub fn get_sdkms_dataset(
     ca_crl: Option<Arc<Crl>>
 ) -> Result<Blob, String> {
 
+    println!("Creating config");
+
 	log::info!("Creating config");
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
     
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    
+
+    println!("Set rng");
     log::info!("Set rng");
     
     config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
-    
+
+    println!("Set min version");
         log::info!("Set min version");
 
     if let Some(ca_cert_list) = ca_cert_list {
@@ -113,23 +118,24 @@ pub fn get_sdkms_dataset(
     } else {
         config.set_authmode(AuthMode::Optional);
     }
-    
+
+    println!("Set something");
             log::info!("Set something");
     
     config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
-    
+    println!("Pushed cert");
                 log::info!("Pushed cert");
     
     let ssl = MbedSSLClient::new(Arc::new(config), true);
-    
+    println!("Created mbde ssl client");
                     log::info!("Created mbde ssl client");
     
     let connector = HttpsConnector::new(ssl);
-    
+    println!("Created ssl connector");
                         log::info!("Created ssl connector");
     
     let client = Arc::new(hyper::Client::with_connector(Pool::with_connector(Default::default(), connector)));
-
+    println!("Created ssl connector with something");
                         log::info!("Created ssl connector with something");
 
     let client = sdkms::SdkmsClient::builder()
@@ -137,15 +143,15 @@ pub fn get_sdkms_dataset(
         .with_hyper_client(client)
         .build().map_err(|e| format!("SDKMS Build failed: {:?}", e))?
         .authenticate_with_cert(Some(&convert_uuid(app_id))).map_err(|e| format!("SDKMS authenticate failed: {:?}", e))?;
-
+    println!("Created sdkms client");
                         log::info!("Created sdkms client");
 
     let key_id = sdkms::api_model::SobjectDescriptor::Name(dataset_id);
-    
+    println!("Requesting sobject");
                             log::info!("Requesting sobject");
     
     let result = client.export_sobject(&key_id).map_err(|e| format!("Failed SDKMS export operation: {:?}", e))?;
-    
+    println!("Finished with sobject");
                                 log::info!("Finished with sobject");
     
     result.value.ok_or("Missing value in exported object".to_string())
