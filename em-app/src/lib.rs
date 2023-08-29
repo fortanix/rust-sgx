@@ -24,6 +24,8 @@ pub use csr::*;
 
 pub mod error;
 pub use error::*;
+use yasna::models::TaggedDerValue;
+use yasna::tags::TAG_UTF8STRING;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -37,6 +39,14 @@ pub struct FortanixEmCertificate {
 
     // Response
     pub certificate_response: models::IssueCertificateResponse,
+}
+
+pub(crate) fn common_name_to_subject(common_name: &str) -> Name {
+    vec![(
+        pkix::oid::commonName.clone(),
+        TaggedDerValue::from_tag_and_bytes(TAG_UTF8STRING, common_name.as_bytes().to_vec()),
+    )]
+        .into()
 }
 
 pub fn get_certificate_status(url: &str, task_id: Uuid) -> Result<models::IssueCertificateResponse> {
@@ -155,4 +165,3 @@ fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> 
 
     Ok(data)
 }
-

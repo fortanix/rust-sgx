@@ -6,6 +6,7 @@
 
 use crate::Error;
 use crate::Result;
+use crate::common_name_to_subject;
 use mbedtls::hash;
 use mbedtls::pk::{Pk, Type as PkType};
 pub use mbedtls::rng::Rdrand as FtxRng;
@@ -15,10 +16,8 @@ use pkix::pem::{der_to_pem, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
 use pkix::types::{
     Attribute, DerSequence, EcdsaX962, Extension, Name, ObjectIdentifier, RsaPkcs15, Sha256,
-    TaggedDerValue,
 };
 use pkix::DerWrite;
-use yasna::tags::TAG_UTF8STRING;
 
 #[derive(Clone, Copy, Debug)]
 pub enum SignatureAlgorithm {
@@ -94,14 +93,6 @@ impl ExternalKey for Pk {
 
         Ok((sig, sigalg))
     }
-}
-
-pub(crate) fn common_name_to_subject(common_name: &str) -> Name {
-    vec![(
-        pkix::oid::commonName.clone(),
-        TaggedDerValue::from_tag_and_bytes(TAG_UTF8STRING, common_name.as_bytes().to_vec()),
-    )]
-    .into()
 }
 
 pub fn get_csr(
