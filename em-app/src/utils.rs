@@ -80,6 +80,12 @@ pub fn get_runtime_configuration(
     Ok(response)
 }
 
+pub fn log_function() -> () {
+    log::info!("Test log");
+    log::info!("Test log");
+    log::info!("Test log");
+}
+
 pub fn get_sdkms_dataset(
     sdkms_url: String,
     dataset_id: String,
