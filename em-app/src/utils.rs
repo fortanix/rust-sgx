@@ -154,7 +154,11 @@ pub fn get_sdkms_dataset(
     println!("Finished with sobject");
                                 log::info!("Finished with sobject");
     
-    result.value.ok_or("Missing value in exported object".to_string())
+    let result1 = result.value.ok_or("Missing value in exported object".to_string());
+
+    println!("Sobject result is {:?}", result1);
+
+    result1
 }
 
 pub fn https_get(url: Url,
