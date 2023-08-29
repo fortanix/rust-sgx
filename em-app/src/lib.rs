@@ -41,12 +41,12 @@ pub struct FortanixEmCertificate {
     pub certificate_response: models::IssueCertificateResponse,
 }
 
-pub(crate) fn common_name_to_subject(common_name: &str) -> Name {
+pub fn common_name_to_subject(common_name: &str) -> Name {
     vec![(
         pkix::oid::commonName.clone(),
         TaggedDerValue::from_tag_and_bytes(TAG_UTF8STRING, common_name.as_bytes().to_vec()),
     )]
-        .into()
+    .into()
 }
 
 pub fn get_certificate_status(url: &str, task_id: Uuid) -> Result<models::IssueCertificateResponse> {
