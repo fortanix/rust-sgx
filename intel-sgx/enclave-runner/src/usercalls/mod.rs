@@ -37,6 +37,7 @@ use sgxs::loader::Tcs as SgxsTcs;
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs::{self, CoResult, ThreadResult};
 use self::abi::dispatch;
+use self::abi::UsercallList;
 use self::interface::{Handler, OutputBuffer};
 
 pub(crate) mod abi;
