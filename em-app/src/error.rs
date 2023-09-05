@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 use std::{error, fmt};
 
-type RemoteError = Box<dyn error::Error>;
+type RemoteError = Box<dyn error::Error + 'static>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -53,6 +53,28 @@ pub enum Error {
 
     // Unexpected response from NSM driver
     UnexpectedNsmResponse(String),
+}
+
+impl std::error::Error for crate::Error {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match self {
+            Error::ExternalKey(e) |
+            Error::NodeAgentClient(e) |
+            Error::TargetReport(e) |
+            Error::TargetReportHash(e) |
+            Error::AttestationCert(e) |
+            Error::AttestationCertHash(e) |
+            Error::CertIssue(e) |
+            Error::NonceGeneration(e) => Some(e.as_ref()),
+            Error::ExternalKeyString(_) |
+            Error::TargetReportInternal(_) |
+            Error::AttestationCertInternal(_) |
+            Error::AttestationCertValidation(_) |
+            Error::ConfigIdIssue(_) |
+            Error::NsmDriver(_) |
+            Error::UnexpectedNsmResponse(_) => None,
+        }
+    }
 }
 
 impl fmt::Display for crate::Error {
