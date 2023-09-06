@@ -31,7 +31,8 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use fortanix_sgx_abi::*;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent, WritePosition};
+use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
 
 use crate::loader::{EnclavePanic, ErasedTcs};
