@@ -29,7 +29,7 @@ use {
 mod fifo;
 mod interface_sync;
 mod interface_async;
-mod position;
+pub mod position;
 #[cfg(test)]
 mod test_support;
 
