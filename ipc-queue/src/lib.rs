@@ -170,19 +170,3 @@ impl<T> DescriptorGuard<T> {
         self.descriptor
     }
 }
-
-/// `PositionMonitor<T>` can be used to record the current read/write positions
-/// of a queue. Even though a queue is comprised of a limited number of slots
-/// arranged as a ring buffer, we can assign a position to each value written/
-/// read to/from the queue. This is useful in case we want to know whether or
-/// not a particular value written to the queue has been read.
-pub struct PositionMonitor<T: 'static> {
-    read_epoch: Arc<AtomicU64>,
-    fifo: Fifo<T>,
-}
-
-/// A read position in a queue.
-pub struct ReadPosition(u64);
-
-/// A write position in a queue.
-pub struct WritePosition(u64);

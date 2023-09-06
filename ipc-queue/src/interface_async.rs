@@ -6,6 +6,7 @@
 
 use super::*;
 use std::sync::atomic::Ordering;
+use crate::position::PositionMonitor;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for AsyncSender<T, S> {}
