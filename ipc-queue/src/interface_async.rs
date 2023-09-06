@@ -4,8 +4,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::*;
 use std::sync::atomic::Ordering;
+use crate::AsyncReceiver;
+use crate::AsyncSender;
+use crate::AsyncSynchronizer;
+#[cfg(not(target_env = "sgx"))]
+use crate::DescriptorGuard;
+use crate::Identified;
+use crate::QueueEvent;
+use crate::RecvError;
+use crate::SendError;
+use crate::SynchronizationError;
+use crate::Transmittable;
+use crate::TryRecvError;
+use crate::TrySendError;
 use crate::position::PositionMonitor;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
@@ -93,11 +105,12 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
 #[cfg(not(target_env = "sgx"))]
 #[cfg(test)]
 mod tests {
-    use crate::*;
-    use crate::test_support::TestValue;
     use futures::future::FutureExt;
     use futures::lock::Mutex;
     use tokio::sync::broadcast;
+
+    use crate::*;
+    use crate::test_support::TestValue;
 
     async fn do_single_sender(len: usize, n: u64) {
         let s = TestAsyncSynchronizer::new();
@@ -275,7 +288,7 @@ mod tests {
     }
 
     impl AsyncSynchronizer for TestAsyncSynchronizer {
-        fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = Result<(), SynchronizationError>> + '_>> {
+        fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output=Result<(), SynchronizationError>> + '_>> {
             async move {
                 match event {
                     QueueEvent::NotEmpty => self.not_empty.recv().await,
