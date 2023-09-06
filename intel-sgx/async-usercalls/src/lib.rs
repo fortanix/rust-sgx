@@ -330,23 +330,29 @@ mod tests {
     #[test]
     #[ignore]
     fn echo() {
-        println!();
         let provider = Arc::new(AutoPollingProvider::new());
-        const ADDR: &'static str = "0.0.0.0:7799";
+        const LISTEN_ADDR: &'static str = "0.0.0.0:7799";
         let (tx, rx) = mpmc::bounded(1);
-        provider.bind_stream(ADDR, move |res| {
+        provider.bind_stream(LISTEN_ADDR, move |res| {
             tx.send(res).unwrap();
         });
         let bind_res = rx.recv().unwrap();
         let listener = bind_res.unwrap();
-        println!("bind done: {:?}", listener);
         let fd = listener.as_raw_fd();
         let cb = KeepAccepting {
             listener,
             provider: Arc::clone(&provider),
         };
         provider.accept_stream(fd, cb);
-        thread::sleep(Duration::from_secs(60));
+
+        const WRITE_ADDR: &'static str = "127.0.0.1:7799";
+        for i in 0..100 {
+            let mut stream = TcpStream::connect(WRITE_ADDR)
+                .expect("Failed to connect to the AutoPollingProvider");
+            stream
+                .shutdown(std::net::Shutdown::Both)
+                .expect("Failed to shut down test stream");
+        }
     }
 
     struct KeepAccepting {
