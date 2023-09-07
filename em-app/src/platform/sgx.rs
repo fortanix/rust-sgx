@@ -3,29 +3,28 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-use b64_ct::{ToBase64, FromBase64, STANDARD};
-use em_node_agent_client::{Api, Client, models};
-use mbedtls::cipher::{Cipher, raw};
-use mbedtls::hash::{Type,Md};
+use crate::platform::get_extensions_from_alt_names;
+use crate::{common_name_to_subject, get_csr, CsrSigner, Error};
+use b64_ct::{FromBase64, ToBase64, STANDARD};
+use em_node_agent_client::{models, Api, Client};
+use mbedtls::cipher::{raw, Cipher};
 use mbedtls::hash;
-use pkix::{DerWrite, ToDer};
-use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
+use mbedtls::hash::{Md, Type};
 use pkix;
+use pkix::pem::{pem_to_der, PEM_CERTIFICATE};
+use pkix::types::Name;
+use pkix::ToDer;
 use sgx_isa::{Report, Targetinfo};
-use sgx_pkix::attestation::{AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
+use sgx_pkix::attestation::{AttestationEmbeddedFqpe, AttestationInlineSgxLocal, SgxName};
 use sgx_pkix::oid;
 use std::borrow::Cow;
-use pkix::x509::DnsAltNames;
-use sgx_pkix::attestation::{SgxName};
-
-use crate::{CsrSigner, Error, get_csr};
 
 type Result<T> = std::result::Result<T, Error>;
 
-pub(crate) fn get_remote_attestation_parameters(
+pub(crate) fn get_remote_attestation_parameters_subject(
     signer: &mut dyn CsrSigner,
-    url: &str, 
-    common_name: &str, 
+    url: &str,
+    subject: &Name,
     user_data: &[u8;64],
     alt_names: Option<Vec<Cow<str>>>,
 ) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
@@ -42,14 +41,10 @@ pub(crate) fn get_remote_attestation_parameters(
     }.to_der().into();
 
     let attributes = vec![(oid::attestationInlineSgxLocal.clone(), vec![attestation])];
-    let extensions = alt_names.and_then(|names| {
-        Some(vec![(pkix::oid::subjectAltName.clone(), false, pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)).into())])
-    });
-
-    let mut sgx_name = SgxName::from_report(&report, true);
-    sgx_name.append(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
-    let subject = sgx_name.to_name();
-    
+    let extensions = get_extensions_from_alt_names(alt_names);
+    let sgx_name = SgxName::from_report(&report, true);
+    let mut subject = subject.clone(); // Copy the subject, since it must be modified
+    subject.value.append(&mut sgx_name.to_name().value); // Extend the subject with SGX names
     let csr_pem = get_csr(signer, &subject, attributes, &extensions)?;
 
     // Send CSR to Node Agent and receive signed app/node/attestation certificates
@@ -67,15 +62,28 @@ pub(crate) fn get_remote_attestation_parameters(
     Ok((Some(fqpe_cert), Some(node_cert), csr_pem))
 }
 
+// Kept in place for legacy purposes
+#[allow(dead_code)]
+pub(crate) fn get_remote_attestation_parameters(
+    signer: &mut dyn CsrSigner,
+    url: &str,
+    common_name: &str,
+    user_data: &[u8;64],
+    alt_names: Option<Vec<Cow<str>>>,
+) -> Result<(Option<Vec<u8>>, Option<Vec<u8>>, String)> {
+    let subject = common_name_to_subject(common_name);
+    get_remote_attestation_parameters_subject(signer, url, &subject, user_data, alt_names)
+}
+
 pub(crate) fn get_target_report(client: &mut Client, user_data: &[u8;64]) -> Result<sgx_isa::Report> {
     let result = client.get_target_info().map_err(|e| Error::TargetReport(Box::new(e)))?;
-    
+
     let target_info = Targetinfo::try_copy_from(
         result.target_info.ok_or(Error::TargetReportInternal("Node Agent returned empty target_info".to_string()))?
             .from_base64().map_err(|e| Error::TargetReportInternal(format!("Base64 decode failed: {:?}", e)))?
             .as_ref()
     ).ok_or(Error::TargetReportInternal("Failed creating SGX structure from remote target info".to_string()))?;
-    
+
     Ok(sgx_isa::Report::for_target(&target_info, user_data))
 }
 
@@ -83,14 +91,14 @@ pub(crate) fn get_target_report(client: &mut Client, user_data: &[u8;64]) -> Res
 pub(crate) fn get_attestation_certificates(client: &mut Client, report: &Report, csr_pem: String) -> Result<(Vec<u8>, Vec<u8>)> {
     let mut corr_report_bytes = vec![0; Report::UNPADDED_SIZE];
     corr_report_bytes.copy_from_slice(report.as_ref());
-    
+
     let request = models::GetFortanixAttestationRequest {
         report: Some(corr_report_bytes.to_base64(STANDARD)),
         attestation_csr: Some(csr_pem),
     };
-    
+
     let result = client.get_fortanix_attestation(request).map_err(|e| Error::AttestationCert(Box::new(e)))?;
-    
+
     let qe_report = Report::try_copy_from(result.fqpe_report.ok_or(Error::AttestationCertInternal("No fqpe report returned by node agent".to_string()))?
                                           .from_base64().map_err(|e| Error::AttestationCertInternal(format!("Base64 decode failed: {:?}", e)))?
                                           .as_ref()
