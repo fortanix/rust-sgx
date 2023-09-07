@@ -34,9 +34,9 @@ jobs:
             override: true
       - name: Install build dependencies
         run: |
-          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          cat llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee -a /etc/apt/sources.list
-          wget -O - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | sudo apt-key add -
+          cat intel-sgx-deb.key | sudo apt-key add -
           echo "deb https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" | sudo tee -a /etc/apt/sources.list
           sudo apt-get update
           sudo apt-get install -y clang-11 libsgx-dcap-ql-dev protobuf-compiler
