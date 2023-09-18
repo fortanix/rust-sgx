@@ -26,6 +26,17 @@ cargo run --target x86_64-fortanix-unknown-sgx
 Looking for the in-enclave source code? Check out the [rust-lang/rust
 repository](https://github.com/rust-lang/rust/tree/master/library/std/src/sys/sgx).
 
+## Note for maintenance
+
+### About creating release and publishing to crates.io
+
+The [Publish Crates](./.github/workflows/publish-crates.yml) workflow can be
+triggered or by [creating **new
+Release**](https://github.com/fortanix/rust-sgx/releases/new): please ensure the
+**tag name** used for the new release following format: `${crate name}_v{version
+number}` , although in this workflow only ${crate name} is used, but {version
+number} is still required for keeping a good tag name.
+
 # Contributing
 
 We gratefully accept contributions from the community.
