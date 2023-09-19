@@ -4,7 +4,7 @@
 
 SGXS is the SGX stream format. This is a cross-platform file format to describe 
 SGX enclaves. For more information about the format itself, see the [format 
-specification](../doc/SGXS.md).
+specification](../../doc/SGXS.md).
 
 ## Rust crate
 
