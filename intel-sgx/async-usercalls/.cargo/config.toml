@@ -1,0 +1,2 @@
+[alias]
+ci-test = "test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run"

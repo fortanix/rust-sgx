@@ -346,8 +346,8 @@ mod tests {
         provider.accept_stream(fd, cb);
 
         const WRITE_ADDR: &'static str = "127.0.0.1:7799";
-        for i in 0..100 {
-            let mut stream = TcpStream::connect(WRITE_ADDR)
+        for _ in 0..100 {
+            let stream = TcpStream::connect(WRITE_ADDR)
                 .expect("Failed to connect to the AutoPollingProvider");
             stream
                 .shutdown(std::net::Shutdown::Both)
