@@ -26,6 +26,7 @@ matrix:
             - clang-11
             - musl-tools
       rust:
+        - nightly
         - nightly-2023-05-07
       env:
         - RUST_BACKTRACE=1

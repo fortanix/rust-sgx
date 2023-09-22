@@ -38,7 +38,9 @@ use sgxs::loader::Tcs as SgxsTcs;
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs::{self, CoResult, ThreadResult};
 use self::abi::dispatch;
+use self::abi::ReturnValue;
 use self::abi::UsercallList;
+use self::interface::ToSgxResult;
 use self::interface::{Handler, OutputBuffer};
 
 pub(crate) mod abi;
@@ -793,9 +795,6 @@ impl EnclaveState {
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
         let result = {
-            use self::interface::ToSgxResult;
-            use self::abi::ReturnValue;
-
             let (p1, p2, p3, p4, p5) = parameters;
             match notifier_rx {
                 None => dispatch(handler, p1, p2, p3, p4, p5).await.1,

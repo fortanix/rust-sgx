@@ -19,7 +19,7 @@ use futures::future::Future;
 
 type Register = u64;
 
-pub(super) trait RegisterArgument {
+trait RegisterArgument {
     fn from_register(_: Register) -> Self;
     fn into_register(self) -> Register;
 }
