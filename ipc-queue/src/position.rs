@@ -29,19 +29,24 @@ impl<T> PositionMonitor<T> {
         let read_epoch = self.read_epoch.load(Ordering::Relaxed);
         let read_epoch_shifted = read_epoch
             .checked_shl(32)
-            .expect("Reading from position of over 2^32 (2 to the power of 32). This is unsupported.");
+            .expect("Read epoch is >= 2^32 (2 to the power of 32). This is unsupported.");
         ReadPosition(read_epoch_shifted | (current.read_offset() as u64))
     }
 
     pub fn write_position(&self) -> WritePosition {
         let current = self.fifo.current_offsets(Ordering::Relaxed);
         let mut write_epoch = self.read_epoch.load(Ordering::Relaxed);
+        // Write epoch keeps track of how many times the write offset wrapped around
+        // the ring buffer. Write epochs are not tracked separately, only read epoch are.
+        // We know, however, that objects are always written to the buffer first.
+        // So, the high bit used in the write and read offsets tell us whether writes
+        // already wrapped around the ring buffer, while reads have not yet.
         if current.read_high_bit() != current.write_high_bit() {
             write_epoch += 1;
         }
         let write_epoch_shifted = write_epoch
             .checked_shl(32)
-            .expect("Writing to position of over 2^32 (2 to the power of 32). This is unsupported.");
+            .expect("Write epoch is >= 2^32 (2 to the power of 32). This is unsupported.");
         WritePosition(write_epoch_shifted | (current.write_offset() as u64))
     }
 }
@@ -57,8 +62,7 @@ impl<T> Clone for PositionMonitor<T> {
 
 impl ReadPosition {
     /// A `WritePosition` can be compared to a `ReadPosition` **correctly** if
-    /// at most 2³¹ (2 to the power of 31) writes
-    /// have occurred since the write position was recorded.
+    /// the ring buffer wrapped around at most 2³¹ (2 to the power of 31) times.
     pub fn is_past(&self, write: &WritePosition) -> bool {
         let (read, write) = (self.0, write.0);
         let hr = read & (1 << 63);
