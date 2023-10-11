@@ -87,10 +87,7 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
     }
 
     pub fn position_monitor(&self) -> PositionMonitor<T> {
-        PositionMonitor {
-            read_epoch: self.read_epoch.clone(),
-            fifo: self.inner.clone(),
-        }
+        PositionMonitor::new(self.read_epoch.clone(), self.inner.clone())
     }
 
     /// Consumes `self` and returns a DescriptorGuard.
