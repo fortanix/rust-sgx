@@ -20,8 +20,8 @@ use std::sync::atomic::Ordering;
 /// read to/from the queue. This is useful in case we want to know whether or
 /// not a particular value written to the queue has been read.
 pub struct PositionMonitor<T: 'static> {
-    pub(crate) read_epoch: Arc<AtomicU64>,
-    pub(crate) fifo: Fifo<T>,
+    read_epoch: Arc<AtomicU64>,
+    fifo: Fifo<T>,
 }
 
 /// A read position in a queue.
@@ -31,6 +31,13 @@ pub struct ReadPosition(u64);
 pub struct WritePosition(u64);
 
 impl<T> PositionMonitor<T> {
+    pub (crate) fn new(read_epoch: Arc<AtomicU64>,fifo: Fifo<T>) -> PositionMonitor<T> {
+        PositionMonitor {
+            read_epoch,
+            fifo,
+        }
+    }
+
     pub fn read_position(&self) -> ReadPosition {
         let current = self.fifo.current_offsets(Ordering::Relaxed);
         let read_epoch = self.read_epoch.load(Ordering::Relaxed);
