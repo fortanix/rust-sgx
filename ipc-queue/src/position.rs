@@ -7,8 +7,15 @@
 use super::*;
 use std::sync::atomic::Ordering;
 
-/// `PositionMonitor<T>` can be used to record the current read/write positions
-/// of a queue. Even though a queue is comprised of a limited number of slots
+/// `PositionMonitor<T>` records the current read/write positions of a queue.
+///
+/// The `PositionMonitor` works by keeping track how many times the ring buffer wrapped around,
+/// and the current offsets that are used.
+/// The former (how many times the ring buffer wrapped around) is kept in an `AtomicU64`
+/// that is updated each time a value is read.
+/// The latter (current offsets) is kept by looking at the `Fifo` directly.
+///
+/// Even though a queue is comprised of a limited number of slots
 /// arranged as a ring buffer, we can assign a position to each value written/
 /// read to/from the queue. This is useful in case we want to know whether or
 /// not a particular value written to the queue has been read.
