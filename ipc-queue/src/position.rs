@@ -78,17 +78,18 @@ impl ReadPosition {
     /// A `WritePosition` can be compared to a `ReadPosition` **correctly** if
     /// the ring buffer wrapped around at most 2³¹ (2 to the power of 31) times.
     ///
-    /// Returns true if the read position and the write position differ by non-significant bit,
-    /// or if the read position is higher than the write position.
-    pub fn is_past(&self, write: &WritePosition) -> bool {
+    /// Returns `None` if the read position and the write position cannot be compared,
+    /// `Some(true)` if the read position is strictly higher than the write position,
+    /// `Some(false)` otherwise
+    pub fn is_past(&self, write: &WritePosition) -> Option<bool> {
         let (read, write) = (self.0, write.0);
 
         let hr = read & (1 << 63);
         let hw = write & (1 << 63);
         if hr == hw {
-            read > write
+            Some(read > write)
         } else {
-            true
+            None
         }
     }
 }

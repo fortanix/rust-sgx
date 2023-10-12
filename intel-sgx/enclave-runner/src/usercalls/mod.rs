@@ -983,7 +983,13 @@ impl EnclaveState {
                     }
                     // cleanup old cancels
                     let read_position = usercall_queue_monitor.read_position();
-                    cancels.retain(|_id, wp| !read_position.is_past(wp));
+                    cancels.retain(|_id, wp|
+                        if let Some(past) = read_position.is_past(wp) {
+                            !past
+                        } else {
+                            false
+                        }
+                    );
                 }
             });
 

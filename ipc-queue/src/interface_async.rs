@@ -193,28 +193,28 @@ mod tests {
         tx.send(Identified { id: id + 2, data: TestValue(3) }).await.unwrap();
         let p3 = monitor.write_position();
         id += 3;
-        assert!(monitor.read_position().is_past(&p0) == false);
-        assert!(monitor.read_position().is_past(&p1) == false);
-        assert!(monitor.read_position().is_past(&p2) == false);
-        assert!(monitor.read_position().is_past(&p3) == false);
+        assert!(monitor.read_position().is_past(&p0) == Some(false));
+        assert!(monitor.read_position().is_past(&p1) == Some(false));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
 
         rx.recv().await.unwrap();
-        assert!(monitor.read_position().is_past(&p0) == true);
-        assert!(monitor.read_position().is_past(&p1) == false);
-        assert!(monitor.read_position().is_past(&p2) == false);
-        assert!(monitor.read_position().is_past(&p3) == false);
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(false));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
 
         rx.recv().await.unwrap();
-        assert!(monitor.read_position().is_past(&p0) == true);
-        assert!(monitor.read_position().is_past(&p1) == true);
-        assert!(monitor.read_position().is_past(&p2) == false);
-        assert!(monitor.read_position().is_past(&p3) == false);
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(true));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
 
         rx.recv().await.unwrap();
-        assert!(monitor.read_position().is_past(&p0) == true);
-        assert!(monitor.read_position().is_past(&p1) == true);
-        assert!(monitor.read_position().is_past(&p2) == true);
-        assert!(monitor.read_position().is_past(&p3) == false);
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(true));
+        assert!(monitor.read_position().is_past(&p2) == Some(true));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
 
         for i in 0..1000 {
             let n = 1 + (i % LEN);
@@ -226,12 +226,12 @@ mod tests {
             let p5 = monitor.write_position();
             for _ in 0..n {
                 rx.recv().await.unwrap();
-                assert!(monitor.read_position().is_past(&p0) == true);
-                assert!(monitor.read_position().is_past(&p1) == true);
-                assert!(monitor.read_position().is_past(&p2) == true);
-                assert!(monitor.read_position().is_past(&p3) == true);
-                assert!(monitor.read_position().is_past(&p4) == true);
-                assert!(monitor.read_position().is_past(&p5) == false);
+                assert!(monitor.read_position().is_past(&p0) == Some(true));
+                assert!(monitor.read_position().is_past(&p1) == Some(true));
+                assert!(monitor.read_position().is_past(&p2) == Some(true));
+                assert!(monitor.read_position().is_past(&p3) == Some(true));
+                assert!(monitor.read_position().is_past(&p4) == Some(true));
+                assert!(monitor.read_position().is_past(&p5) == Some(false));
             }
         }
     }
