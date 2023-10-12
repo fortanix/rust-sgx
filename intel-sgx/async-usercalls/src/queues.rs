@@ -9,6 +9,7 @@ use std::os::fortanix_sgx::usercalls::raw::{
 };
 use std::sync::{Arc, Mutex};
 use std::{io, iter, thread};
+use self::map::SequentialMap;
 
 pub(crate) type Sender<T> = ipc_queue::Sender<T, QueueSynchronizer>;
 pub(crate) type Receiver<T> = ipc_queue::Receiver<T, QueueSynchronizer>;
@@ -16,7 +17,7 @@ pub(crate) type Receiver<T> = ipc_queue::Receiver<T, QueueSynchronizer>;
 pub(crate) struct Providers {
     usercall_queue_tx: Sender<Usercall>,
     cancel_queue_tx: Sender<Cancel>,
-    provider_map: Arc<Mutex<Map<Option<mpmc::Sender<Identified<Return>>>>>>,
+    provider_map: Arc<Mutex<SequentialMap<Option<mpmc::Sender<Identified<Return>>>>>>,
 }
 
 impl Providers {
@@ -41,7 +42,7 @@ impl Providers {
 lazy_static! {
     pub(crate) static ref PROVIDERS: Providers = {
         let (utx, ctx, rx) = init_async_queues().expect("Failed to initialize async queues");
-        let provider_map = Arc::new(Mutex::new(Map::new()));
+        let provider_map = Arc::new(Mutex::new(SequentialMap::new()));
         let return_handler = ReturnHandler {
             return_queue_rx: rx,
             provider_map: Arc::clone(&provider_map),
@@ -79,7 +80,7 @@ fn init_async_queues() -> io::Result<(Sender<Usercall>, Sender<Cancel>, Receiver
 
 struct ReturnHandler {
     return_queue_rx: Receiver<Return>,
-    provider_map: Arc<Mutex<Map<Option<mpmc::Sender<Identified<Return>>>>>>,
+    provider_map: Arc<Mutex<SequentialMap<Option<mpmc::Sender<Identified<Return>>>>>>,
 }
 
 impl ReturnHandler {
@@ -156,16 +157,15 @@ impl Synchronizer for QueueSynchronizer {
     }
 }
 
-use self::map::Map;
 mod map {
     use fnv::FnvHashMap;
 
-    pub struct Map<T> {
+    pub struct SequentialMap<T> {
         map: FnvHashMap<u32, T>,
         next_id: u32,
     }
 
-    impl<T> Map<T> {
+    impl<T> SequentialMap<T> {
         pub fn new() -> Self {
             Self {
                 map: FnvHashMap::with_capacity_and_hasher(16, Default::default()),
@@ -173,12 +173,22 @@ mod map {
             }
         }
 
+        /// Insert a new value and return the index.
+        ///
+        /// If trying to insert more than `u32` keys, the insert operation will hang forever.
         pub fn insert(&mut self, value: T) -> u32 {
-            let id = self.next_id;
-            self.next_id += 1;
-            let old = self.map.insert(id, value);
-            debug_assert!(old.is_none());
-            id
+            loop {
+                let id = self.next_id;
+                // We intentionally ignore the overflow, thus allowing `next_id` to jump back to 0
+                // after `u32::MAX` number of insertions.
+                self.next_id = self.next_id.overflowing_add(1).0;
+                if self.map.contains_key(&id) {
+                    continue
+                } else {
+                    self.map.insert(id, value);
+                    return id
+                }
+            }
         }
 
         pub fn get(&self, id: u32) -> Option<&T> {
