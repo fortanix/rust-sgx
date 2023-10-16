@@ -41,10 +41,7 @@ impl<T> PositionMonitor<T> {
     pub fn read_position(&self) -> ReadPosition {
         let current = self.fifo.current_offsets(Ordering::Relaxed);
         let read_epoch = self.read_epoch.load(Ordering::Relaxed);
-        let read_epoch_shifted = read_epoch
-            .checked_shl(32)
-            .expect("Read epoch is >= 2^32 (2 to the power of 32). This is unsupported.");
-        ReadPosition(read_epoch_shifted | (current.read_offset() as u64))
+        ReadPosition((read_epoch << 32) | (current.read_offset() as u64))
     }
 
     pub fn write_position(&self) -> WritePosition {
@@ -58,10 +55,7 @@ impl<T> PositionMonitor<T> {
         if current.read_high_bit() != current.write_high_bit() {
             write_epoch += 1;
         }
-        let write_epoch_shifted = write_epoch
-            .checked_shl(32)
-            .expect("Write epoch is >= 2^32 (2 to the power of 32). This is unsupported.");
-        WritePosition(write_epoch_shifted | (current.write_offset() as u64))
+        WritePosition((write_epoch << 32) | (current.write_offset() as u64))
     }
 }
 

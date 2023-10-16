@@ -72,6 +72,7 @@ fn init_async_queues() -> io::Result<(Sender<Usercall>, Sender<Cancel>, Receiver
 
     // FIXME: once `WithId` is exported from `std::os::fortanix_sgx::usercalls::raw`, we can remove
     // `transmute` calls here and use FifoDescriptor/WithId from std everywhere including in ipc-queue.
+    // See: https://github.com/fortanix/rust-sgx/issues/533
     let utx = unsafe { Sender::from_descriptor(std::mem::transmute(usercall_queue), QueueSynchronizer { queue: Queue::Usercall }) };
     let ctx = unsafe { Sender::from_descriptor(std::mem::transmute(cancel_queue), QueueSynchronizer { queue: Queue::Cancel }) };
     let rx = unsafe { Receiver::from_descriptor(std::mem::transmute(return_queue), QueueSynchronizer { queue: Queue::Return }) };
@@ -175,18 +176,24 @@ mod map {
 
         /// Insert a new value and return the index.
         ///
-        /// If trying to insert more than `u32` keys, the insert operation will hang forever.
+        /// # Panics
+        /// Panics if `u32::MAX` entries are kept in the queue and a new one is attempted
+        /// to be inserted. Note that removing entries from the queue also frees up space
+        /// and the number of available entries.
         pub fn insert(&mut self, value: T) -> u32 {
+            let initial_id = self.next_id;
             loop {
                 let id = self.next_id;
-                // We intentionally ignore the overflow, thus allowing `next_id` to jump back to 0
+                // We intentionally ignore the overflow here, thus allowing `next_id` to jump back to 0
                 // after `u32::MAX` number of insertions.
                 self.next_id = self.next_id.overflowing_add(1).0;
-                if self.map.contains_key(&id) {
-                    continue
-                } else {
+                if !self.map.contains_key(&id) {
                     self.map.insert(id, value);
                     return id
+                } else if id == initial_id {
+                    panic!("Cannot keep more than {} entries into the async queue. Aborting.", u32::MAX)
+                } else {
+                    continue
                 }
             }
         }

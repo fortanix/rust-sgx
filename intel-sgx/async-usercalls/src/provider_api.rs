@@ -28,6 +28,9 @@ impl AsyncUsercallProvider {
         let ptr = read_buf.as_mut_ptr();
         let len = read_buf.len();
         let cb = move |res: io::Result<usize>| {
+            // Passing a `User<u8>` likely leads to the value being dropped implicitly,
+            // which will cause a synchronous `free` usercall.
+            // See: https://github.com/fortanix/rust-sgx/issues/531
             let read_buf = ManuallyDrop::into_inner(read_buf).into_inner();
             callback(res, read_buf);
         };
@@ -93,6 +96,8 @@ impl AsyncUsercallProvider {
         where
             F: FnOnce(io::Result<TcpListener>) + Send + 'static,
     {
+        // `User::<[u8]>::uninitialized` causes a synchronous usercall when dropped.
+        // See: https://github.com/fortanix/rust-sgx/issues/531
         let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
         let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
@@ -101,7 +106,12 @@ impl AsyncUsercallProvider {
         let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
+            // `_addr_buf` is of type `MakeSend<_>`, which will lead to a synchronous usercall
+            // upon being dropped.
+            // See: https://github.com/fortanix/rust-sgx/issues/531
             let _addr_buf = ManuallyDrop::into_inner(addr_buf);
+            // Same as above, synchronous usercall will happen upon dropping
+            // See: https://github.com/fortanix/rust-sgx/issues/531
             let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
 
             let local_addr = Some(string_from_bytebuffer(&local_addr_buf, "bind_stream", "local_addr"));
@@ -253,12 +263,15 @@ impl AsyncUsercallProvider {
     }
 }
 
+// The code is similar to `rust-lang/sys/sgx/abi/usercalls/mod.rs`,
+// see: https://github.com/fortanix/rust-sgx/issues/532
 fn string_from_bytebuffer(buf: &UserRef<ByteBuffer>, usercall: &str, arg: &str) -> String {
     String::from_utf8(copy_user_buffer(buf))
         .unwrap_or_else(|_| panic!("Usercall {}: expected {} to be valid UTF-8", usercall, arg))
 }
 
-// adapted from libstd sys/sgx/abi/usercalls/alloc.rs
+// The code is similar to `rust-lang/sys/sgx/abi/usercalls/mod.rs`,
+// see: https://github.com/fortanix/rust-sgx/issues/532
 fn copy_user_buffer(buf: &UserRef<ByteBuffer>) -> Vec<u8> {
     unsafe {
         let buf = buf.to_enclave();

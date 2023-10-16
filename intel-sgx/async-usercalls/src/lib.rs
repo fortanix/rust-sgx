@@ -1,3 +1,6 @@
+// deny compilation warnings for the whole `async-usercalls` module
+#![deny(warnings)]
+
 //! This crate provides an interface for performing asynchronous usercalls in
 //! SGX enclaves. The motivation behind asynchronous usercalls and ABI
 //! documentation can be found
