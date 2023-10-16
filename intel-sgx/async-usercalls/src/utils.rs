@@ -2,8 +2,10 @@ use std::ops::{Deref, DerefMut};
 use std::os::fortanix_sgx::usercalls::alloc::User;
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 
+// This might be removed in the future, see: https://github.com/fortanix/rust-sgx/issues/530
 pub(crate) trait MakeSendMarker {}
 
+// This might be removed in the future, see: https://github.com/fortanix/rust-sgx/issues/530
 pub(crate) struct MakeSend<T: MakeSendMarker>(T);
 
 impl<T: MakeSendMarker> MakeSend<T> {

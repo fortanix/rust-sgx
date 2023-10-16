@@ -45,7 +45,7 @@ matrix:
         - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
         - cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
-        - CARGO_BUILD_RUSTFLAGS='-D warnings' cargo ci-test
+        - cargo test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose --locked -p dcap-ql --features link
         - cargo test --verbose --locked -p dcap-ql --features verify
         - cargo test --verbose --locked -p ias --features mbedtls

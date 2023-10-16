@@ -5,6 +5,9 @@ use std::ops::{Deref, DerefMut, Range};
 use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef};
 use std::sync::Arc;
 
+/// Userspace buffer. Note that you have to be careful with reading data and writing data
+/// from the SGX enclave to/from userspace, to avoid stale memory data attacks.
+/// Using `UserRef<[u8]>` to access the data is a safe choice, as it handles the nuances internally.
 pub struct UserBuf(UserBufKind);
 
 enum UserBufKind {
