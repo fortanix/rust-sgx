@@ -1,5 +1,5 @@
 use std::net::TcpStream;
-pub use error::{AesmError, Error, Result};
+pub use error::Result;
 mod aesm_protobuf;
 
 #[derive(Debug)]

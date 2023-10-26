@@ -1,5 +1,5 @@
 use imp::AesmClient;
-pub use error::{AesmError, Error, Result};
+pub use error::{Error, Result};
 use protobuf::Message;
 use std::io::{Read, Write};
 use std::mem::size_of;

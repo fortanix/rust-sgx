@@ -7,7 +7,7 @@ use unix_socket::UnixStream;
 #[cfg(feature = "sgxs")]
 use sgxs::sigstruct::{Attributes, Sigstruct};
 
-pub use error::{AesmError, Error, Result};
+pub use error::Result;
 
 mod aesm_protobuf;
 
