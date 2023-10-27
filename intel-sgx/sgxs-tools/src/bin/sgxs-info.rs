@@ -303,7 +303,7 @@ fn dump_mem<P: AsRef<Path>>(path: P) -> sgxs::Result<()> {
                 &mut stdout(),
             )
             .unwrap();
-            stdout().write(&data).unwrap();
+            stdout().write_all(&data).unwrap();
             last_offset = Some(eadd.offset);
         } else {
             break;
