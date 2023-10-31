@@ -26,6 +26,8 @@ pub mod error;
 pub use error::*;
 use yasna::models::TaggedDerValue;
 use yasna::tags::TAG_UTF8STRING;
+use sdkms::api_model::Blob;
+use std::collections::{BTreeMap, BTreeSet};
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -136,6 +138,38 @@ pub fn request_issue_certificate(url: &str, csr_pem: String) -> Result<models::I
     let client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
     client.issue_certificate(request).map_err(|e| Error::NodeAgentClient(Box::new(e)))
+}
+
+/// Computes application configuration hash
+pub fn compute_app_config_hash(app_config: &BTreeMap<String, em_client::models::ApplicationConfigContents>,
+                     labels: &BTreeMap<String, String>,
+                     zone_ca: &BTreeSet<String>,
+                     workflow: Option<&em_client::models::ApplicationConfigWorkflow>
+) -> Result<Blob> {
+
+    let hashed_config = HashedConfigRef {
+        app_config,
+        labels,
+        zone_ca,
+        workflow
+    };
+
+    let buffer = serde_json::to_string(&hashed_config).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+    let mut digest = vec![0; 32];
+    hash::Md::hash(hash::Type::Sha256, buffer.as_bytes(), &mut digest).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+    Ok(Blob::from(digest.to_vec()))
+}
+
+#[derive(Debug, Serialize)]
+struct HashedConfigRef<'a> {
+    pub app_config: &'a BTreeMap<String, em_client::models::ApplicationConfigContents>,
+    pub labels: &'a BTreeMap<String, String>,
+    pub zone_ca: &'a BTreeSet<String>,
+
+    #[serde(skip_serializing_if="Option::is_none")]
+    pub workflow: Option<&'a em_client::models::ApplicationConfigWorkflow>,
 }
 
 fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> {
