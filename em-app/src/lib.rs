@@ -140,9 +140,9 @@ pub fn request_issue_certificate(url: &str, csr_pem: String) -> Result<models::I
 }
 
 /// Computes application configuration hash from raw string
-pub fn compute_app_config_hash(app_config: &str) -> Result<Blob> {
+pub fn compute_app_config_hash(app_config: &str, hash_type: hash::Type) -> Result<Blob> {
     let mut digest = vec![0; 32];
-    hash::Md::hash(hash::Type::Sha256, app_config.as_bytes(), &mut digest).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+    hash::Md::hash(hash_type, app_config.as_bytes(), &mut digest).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
 
     Ok(Blob::from(digest.to_vec()))
 }
