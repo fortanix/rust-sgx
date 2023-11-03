@@ -26,6 +26,7 @@ pub mod error;
 pub use error::*;
 use yasna::models::TaggedDerValue;
 use yasna::tags::TAG_UTF8STRING;
+use sdkms::api_model::Blob;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -136,6 +137,14 @@ pub fn request_issue_certificate(url: &str, csr_pem: String) -> Result<models::I
     let client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
     client.issue_certificate(request).map_err(|e| Error::NodeAgentClient(Box::new(e)))
+}
+
+/// Computes application configuration hash from raw string
+pub fn compute_app_config_hash(app_config: &str, hash_type: hash::Type) -> Result<Blob> {
+    let mut digest = vec![0; 32];
+    hash::Md::hash(hash_type, app_config.as_bytes(), &mut digest).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+
+    Ok(Blob::from(digest.to_vec()))
 }
 
 fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> {
