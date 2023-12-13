@@ -13,7 +13,7 @@ keywords = [ "sgx" ]
 
 [dependencies]
 hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.7", default-features = false, features = ["sgx"] }
+mbedtls = { version = "0.12.1", default-features = false, features = ["sgx"] }
 b64-ct = "0.1.0"
 serde_bytes = "0.10"
 serde_json = "1.0"
