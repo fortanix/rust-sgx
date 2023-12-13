@@ -1,4 +1,5 @@
 use std::net::TcpStream;
+#[allow(unused_imports)]
 pub use error::{AesmError, Error, Result};
 mod aesm_protobuf;
 

@@ -1,4 +1,5 @@
 use imp::AesmClient;
+#[allow(unused_imports)]
 pub use error::{AesmError, Error, Result};
 use protobuf::Message;
 use std::io::{Read, Write};
