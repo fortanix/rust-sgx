@@ -13,12 +13,12 @@ keywords = [ "sgx" ]
 
 [dependencies]
 hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.12.1", default-features = false, features = ["sgx"] }
+mbedtls = { version = "0.12.1", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code" ], default-features = false }
 b64-ct = "0.1.0"
 serde_bytes = "0.10"
 serde_json = "1.0"
 sgx-isa = { version = "0.3", path = "../sgx-isa", features = ["sgxstd"], default-features = false }
 
 em-node-agent-client = "1.0.0"
-sgx_pkix = "0.1.0"
+sgx_pkix = { version = "0.1.0", path = "../sgx-pkix" }
 pkix = "0.1.1"

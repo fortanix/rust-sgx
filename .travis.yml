@@ -33,7 +33,7 @@ matrix:
         - cargo test --verbose --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
         - cargo test --verbose -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
-        - cargo test --verbose -p sgxs-tools --features pe2sgxs --bin isgx-pe2sgx
+        - cargo test --verbose -p sgxs-tools
         - cargo test --verbose -p dcap-ql --features link
         - cargo test --verbose -p dcap-ql --features verify
         - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
