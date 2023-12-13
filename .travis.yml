@@ -6,38 +6,54 @@ branches:
     - trying
     # Not really necessary, just to get a green badge on “master”
     - master
+    - mz/async-usercalls
 language: rust
 
 matrix:
   include:
     - os: linux
-      dist: xenial
+      dist: focal
       addons:
         apt:
           sources:
-            - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu xenial main'
+            - sourceline: 'deb https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main'
               key_url: 'https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key'
+            - sourceline: "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main"
+              key_url: "https://apt.llvm.org/llvm-snapshot.gpg.key"
           packages:
+            - faketime
             - protobuf-compiler
             - libsgx-dcap-ql-dev
-            - libclang-3.8-dev
+            - clang-11
             - musl-tools
       rust:
-        # This need to change back to `nightly` after https://github.com/fortanix/rust-sgx/issues/433 is fixed
-        - nightly-2023-01-31
+        - stable
       env:
-        - RUST_BACKTRACE=1 LLVM_CONFIG_PATH=llvm-3.8-config
+        - RUST_BACKTRACE=1
+        - CFLAGS_x86_64_fortanix_unknown_sgx="-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
+        - CC_x86_64_fortanix_unknown_sgx=clang-11
       before_script:
+        # Travis-CI supplies clang version 16 by itself, in /usr/local
+        # However, our current build fails if llvm-16 is also available in the system. This is likely a bug,
+        # created and reported here: https://github.com/fortanix/rust-sgx/issues/465
+        # Once this bug is solved, please feel free to remove this workaround.
+        #
+        # Note that this clang-16 is some Travis-CI magic and not a standard Debian/Ubuntu Apt package.
+        # We're thus forced to force-remove the underlying directory in /usr/local
+        - sudo rm -rf /usr/local/*clang*
         - rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
+        - rustup toolchain add nightly
+        - rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
       script:
         - cargo test --verbose --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
-        - cargo test --verbose -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
-        - cargo test --verbose -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+        - cargo +nightly test --verbose -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+        - cargo +nightly test --verbose -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
         - cargo test --verbose -p sgxs-tools
         - cargo test --verbose -p dcap-ql --features link
         - cargo test --verbose -p dcap-ql --features verify
-        - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
-        - cargo build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+        - cargo +nightly build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx
+        - cargo +nightly build --verbose -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
         # NOTE: linking glibc version of OpenSSL with musl binary.
         # Unlikely to produce a working binary, but at least the build succeeds.
-        - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude cargo build -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
+        - mkdir -p /tmp/muslinclude && ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl && PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=true cargo build --locked -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
+        - cargo +nightly test --manifest-path em-app/Cargo.toml --target=x86_64-fortanix-unknown-sgx --no-run
