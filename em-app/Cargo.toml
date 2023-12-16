@@ -13,7 +13,7 @@ keywords = [ "sgx" ]
 
 [dependencies]
 hyper = { version = "0.10", default-features = false }
-mbedtls = { version = "0.7", default-features = false, features = ["sgx"] }
+mbedtls = { version = "0.12.1", default-features = false, features = ["std", "ssl"] }
 b64-ct = "0.1.0"
 hex = ">=0.3, <0.5"
 serde_bytes = "0.10"
