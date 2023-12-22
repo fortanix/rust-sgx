@@ -1777,7 +1777,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.1.3"
+version = "0.1.2"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -3666,7 +3666,7 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.4.2"
+version = "0.4.1"
 dependencies = [
  "bitflags",
  "mbedtls",
