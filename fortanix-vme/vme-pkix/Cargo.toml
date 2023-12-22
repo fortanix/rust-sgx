@@ -1,6 +1,6 @@
 [package]
 name = "vme-pkix"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Fortanix, Inc."]
 edition = "2018"
 license = "MPL-2.0"
@@ -13,4 +13,4 @@ categories = ["cryptography"]
 
 [dependencies]
 lazy_static = "1"
-pkix = "0.1.1"
+pkix = ">=0.1, <0.3.0"

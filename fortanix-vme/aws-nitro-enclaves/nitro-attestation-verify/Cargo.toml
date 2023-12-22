@@ -1,6 +1,6 @@
 [package]
 name = "nitro-attestation-verify"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Adrian Cruceru <adrian.cruceru@fortanix.com>"]
 edition = "2018"
 
@@ -10,16 +10,14 @@ serde_cbor = "0.11"
 # Required until PR36 is accepted
 # https://github.com/awslabs/aws-nitro-enclaves-cose/pull/36
 aws-nitro-enclaves-cose = { version = "0.5.0", git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "raoul/crypto_abstraction_pinned", default-features = false }
-mbedtls = { version = ">=0.8.0, <0.10.0", features = ["rdrand", "std", "time"], default-features = false, optional = true }
+mbedtls = { version = "0.12.1", features = ["rdrand", "std", "time", "x509"], default-features = false, optional = true }
 num-bigint = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
-pkix = "0.1"
+pkix = ">=0.1, <0.3.0"
 yasna = { version = "0.4", features = ["num-bigint"] }
 
 [dev-dependencies]
-chrono = "0.4.0"
-pkix = "0.1"
 lazy_static = "1.3.0"
 
 [features]
