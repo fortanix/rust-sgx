@@ -1,6 +1,6 @@
 [package]
 name = "em-app"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
@@ -15,7 +15,7 @@ em-client = { version = "3.0.0", default-features = false, features = ["client"]
 em-node-agent-client = "1.0.0"
 hyper = { version = "0.10", default-features = false }
 mbedtls = { version = "0.12.1", features = [ "rdrand", "std", "force_aesni_support", "mpi_force_c_code", "ssl" ], default-features = false }
-pkix = "0.1.2"
+pkix = "0.2.1"
 
 rustc-serialize = "0.3.24"
 sdkms = { version = "0.2.1", default-features = false }
