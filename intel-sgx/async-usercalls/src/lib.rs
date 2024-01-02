@@ -222,7 +222,7 @@ impl CallbackHandler {
             ret_callbacks.push((ret, cb));
         }
         drop(guard);
-        // 4. execute the callbacks without hugging the mutex
+        // 4. execute the callbacks without holding the mutex
         let mut count = 0;
         for (ret, cb) in ret_callbacks {
             if let Some(cb) = cb {

@@ -14,7 +14,7 @@ impl<T: private::BatchDroppable> BatchDroppable for T {}
 /// userspace asynchronously. It is also guaranteed that the memory is freed if
 /// the current thread exits before there is a large enough batch.
 ///
-/// This is mainly an optimization to avoid exitting the enclave for each
+/// This is mainly an optimization to avoid exiting the enclave for each
 /// usercall. Note that even when sending usercalls asynchronously, if the
 /// usercall queue is empty we still need to exit the enclave to signal the
 /// userspace that the queue is not empty anymore. The batch send would send
@@ -42,6 +42,10 @@ mod private {
         }
 
         fn make_progress(&self, deferred: &[Identified<Usercall>]) -> usize {
+            if deferred.is_empty() {
+                return 0;
+            }
+
             let sent = self.core.try_send_multiple_usercalls(deferred);
             if sent == 0 {
                 self.core.send_usercall(deferred[0]);
@@ -56,9 +60,7 @@ mod private {
                 return;
             }
             let sent = self.make_progress(&self.deferred);
-            let mut not_sent = self.deferred.split_off(sent);
-            self.deferred.clear();
-            self.deferred.append(&mut not_sent);
+            self.deferred.drain(..sent);
         }
 
         pub fn free<T: UserSafe + ?Sized>(&mut self, buf: User<T>) {
@@ -104,7 +106,8 @@ mod tests {
     #[test]
     fn basic() {
         for _ in 0..100 {
-            batch_drop(User::<[u8]>::uninitialized(100));
+            let bytes = rand::random::<usize>() % 256;
+            batch_drop(User::<[u8]>::uninitialized(bytes));
         }
     }
 
@@ -115,7 +118,8 @@ mod tests {
         for _ in 0..THREADS {
             handles.push(thread::spawn(move || {
                 for _ in 0..1000 {
-                    batch_drop(User::<[u8]>::uninitialized(100));
+                    let bytes = rand::random::<usize>() % 256;
+                    batch_drop(User::<[u8]>::uninitialized(bytes));
                 }
             }));
         }
