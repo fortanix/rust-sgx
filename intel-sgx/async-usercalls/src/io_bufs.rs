@@ -115,7 +115,13 @@ impl WriteBuffer {
         }
         let mut wrote = 0;
         for buf in bufs {
-            wrote += self.write(buf);
+            let n = self.write(buf);
+            if n == 0 {
+                // Following writes are unlikely to succeed
+                return wrote;
+            } else {
+                wrote += n;
+            }
         }
         wrote
     }
