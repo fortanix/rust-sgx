@@ -205,16 +205,11 @@ impl CallbackHandler {
             0 => return 0,
             n => &returns[..n],
         };
-        // 2. try to lock the mutex, if successful, receive all pending callbacks and put them in the hash map
-        let mut guard = match self.callbacks.try_lock() {
-            Ok(mut callbacks) => {
-                for (id, cb) in self.callback_rx.try_iter() {
-                    callbacks.insert(id, cb);
-                }
-                callbacks
-            }
-            _ => self.callbacks.lock().unwrap(),
-        };
+        // 2. Receive all pending callbacks and put them in the hash map
+        let mut guard = self.callbacks.lock().unwrap();
+        for (id, cb) in self.callback_rx.try_iter() {
+            guard.insert(id, cb);
+        }
         // 3. remove callbacks for returns received in step 1 from the hash map
         let mut ret_callbacks = Vec::with_capacity(returns.len());
         for ret in returns {
