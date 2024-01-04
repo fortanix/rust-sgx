@@ -186,6 +186,9 @@ mod map {
                 let id = self.next_id;
                 // We intentionally ignore the overflow here, thus allowing `next_id` to jump back to 0
                 // after `u32::MAX` number of insertions.
+                // TODO: We should have a way of limiting the size of this queue to avoid
+                //   potentially checking 2^32 items and huge memory consumption
+                //   https://github.com/fortanix/rust-sgx/issues/550
                 self.next_id = self.next_id.overflowing_add(1).0;
                 if !self.map.contains_key(&id) {
                     self.map.insert(id, value);
