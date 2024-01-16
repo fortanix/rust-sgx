@@ -12,15 +12,10 @@ use hyper::client::Pool;
 use hyper::net::HttpsConnector;
 use em_client::{Api, Client};
 use mbedtls::alloc::{List as MbedtlsList};
-use mbedtls::cipher::raw::{CipherId, CipherMode};
-use mbedtls::cipher::{Decryption, Encryption, Fresh, Authenticated};
-use mbedtls::cipher;
 use mbedtls::pk::Pk;
-use mbedtls::rng::{Rdrand, Random};
 use mbedtls::ssl::Config;
 use mbedtls::ssl::config::{Endpoint, Preset, Transport, AuthMode, Version};
 use mbedtls::x509::{Certificate, Crl};
-use rustc_serialize::hex::FromHex;
 use sdkms::api_model::Blob;
 use uuid::Uuid;
 use url::Url;
@@ -163,53 +158,6 @@ pub fn https_put(url: Url,
     }
     
     Ok(())
-}
-
-const NONCE_SIZE : usize = 12;
-const TAG_SIZE : usize = 16;
-
-// Basic AES-256-GCM encrypt/decrypt utility functions.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CredentialsEncryption {
-    pub key: String,
-}
-
-pub fn encrypt_buffer(body: &[u8], encryption: &CredentialsEncryption) -> Result<Vec<u8>, String>{
-    let key = encryption.key.from_hex().map_err(|e| format!("Failed decoding key as a hex string: {:?}", e))?;
-
-    let mut nonce = [0; NONCE_SIZE];
-    Rdrand.random(&mut nonce[..]).map_err(|e| format!("Could not generate random nonce {}", e))?;
-
-    let cipher = cipher::Cipher::<Encryption, Authenticated, Fresh>::new(CipherId::Aes, CipherMode::GCM, 256).map_err(|e| format!("Failed creating cypher: {:?}", e))?;
-    let cipher_k = cipher.set_key_iv(&key, &nonce).map_err(|e| format!("Failed setting key, error: {:?}", e))?;
-
-    let mut output = Vec::new();
-    output.resize(body.len() + NONCE_SIZE + TAG_SIZE + cipher_k.block_size(), 0);
-
-    let size = cipher_k.encrypt_auth(&[], &body[..], &mut output[NONCE_SIZE..], TAG_SIZE).map_err(|e| format!("Failed encrypting body, error: {:?}", e))?.0;
-    output.resize(size + NONCE_SIZE, 0);
-
-    output[0..NONCE_SIZE].copy_from_slice(&nonce);
-
-    Ok(output)
-}
-
-pub fn decrypt_buffer(body: &Vec<u8>, encryption: &CredentialsEncryption) -> Result<Vec<u8>, String>{
-    let key = encryption.key.from_hex().map_err(|e| format!("Failed deconding key as a hex string: {:?}", e))?;
-    
-    let cipher = cipher::Cipher::<Decryption, Authenticated, Fresh>::new(CipherId::Aes, CipherMode::GCM, 256).map_err(|e| format!("Failed creating cypher: {:?}", e))?;
-    let cipher_k = cipher.set_key_iv(&key, &body[0..NONCE_SIZE]).map_err(|e| format!("Failed setting key, error: {:?}", e))?;
-    
-    let mut decrypted = Vec::new();
-    
-    // Allocate the length + 1 block size more to have enough space for decrypted content
-    decrypted.resize(body.len() + cipher_k.block_size(), 0);
-    
-    // Decrypt starting from byte 12 after our nonce and up to -TAG_SIZE which is 16 bytes
-    let (size, _cipher_f) = cipher_k.decrypt_auth(&[], &body[NONCE_SIZE..], &mut decrypted, TAG_SIZE).map_err(|e| format!("Failed decrypting body, error: {:?}", e))?;
-    
-    decrypted.resize(size, 0);
-    Ok(decrypted)
 }
 
 const CONNECTION_IDLE_TIMEOUT_SECS: u64 = 30;

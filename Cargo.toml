@@ -30,7 +30,6 @@ members = [
     "rs-libc",
     "em-app",
     "em-app/examples/get-certificate/",
-    "em-app/examples/harmonize/",
 ]
 exclude = ["examples"]
 
