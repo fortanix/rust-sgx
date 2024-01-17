@@ -38,7 +38,10 @@ unsafe fn _sanity_check_with_id() {
     let _: [u8; size_of::<fortanix_sgx_abi::WithId<()>>()] = [0u8; size_of::<UserSafeWithId<()>>()];
 }
 
+// `usize` is not `UserSafeSized` and thus cannot be used to copy data to/from userspace.
 #[cfg(target_env = "sgx")]
+#[allow(dead_code)] // Dead code analysis goes wrong here due to type casts; it's important that
+                    // `WrapUsize` has the same size as `usize`, even though it is not read
 #[repr(transparent)]
 #[derive(Copy, Clone)]
 struct WrapUsize(usize);
