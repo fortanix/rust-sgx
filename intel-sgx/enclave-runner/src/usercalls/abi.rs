@@ -29,7 +29,7 @@ type EnclaveAbort = super::EnclaveAbort<bool>;
 pub(crate) type UsercallResult<T> = ::std::result::Result<T, EnclaveAbort>;
 pub(crate) type DispatchResult = UsercallResult<(Register, Register)>;
 
-trait ReturnValue {
+pub(super) trait ReturnValue {
     fn into_registers(self) -> DispatchResult;
 }
 

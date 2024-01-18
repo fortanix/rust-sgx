@@ -48,7 +48,10 @@ jobs:
         rustup update
 
     - name: Cargo test --all --exclude sgxs-loaders
-      run: cargo test --verbose --locked --all --exclude sgxs-loaders && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
+      run: cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
+
+    - name: cargo test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+      run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
     - name: Cargo test -p dcap-ql --features link
       run: cargo test --verbose --locked -p dcap-ql --features link
