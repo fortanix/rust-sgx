@@ -13,14 +13,14 @@ use pkix::{DerWrite, ToDer};
 use pkix::bit_vec::BitVec;
 use pkix::pem::{pem_to_der, der_to_pem, PEM_CERTIFICATE, PEM_CERTIFICATE_REQUEST};
 use pkix::pkcs10::{CertificationRequest, CertificationRequestInfo};
-use pkix::types::{Attribute, Extension, RsaPkcs15, Sha256, DerSequence};
+use pkix::types::{Attribute, Extension, RsaPkcs15, Sha256, DerSequence, ObjectIdentifier};
 use pkix::x509::DnsAltNames;
 use pkix;
 use sgx_isa::{Report, Targetinfo};
 use sgx_pkix::attestation::{SgxName,AttestationInlineSgxLocal, AttestationEmbeddedFqpe};
 use sgx_pkix::oid;
 use std::borrow::Cow;
-use std::{error, fmt, iter};
+use std::{error, fmt};
 
 pub use mbedtls::rng::Rdrand as FtxRng;
 type Result<T> = std::result::Result<T, Error>;
@@ -151,35 +151,15 @@ pub fn get_certificate(
     let report = get_target_report(&mut client, &user_data)?;
 
     // Create attestation CSR request
-    let attributes = {
-        let attestation_attribute = Attribute {
-            oid: oid::attestationInlineSgxLocal.clone(),
-            value: vec![
-                AttestationInlineSgxLocal {
-                    keyid: Cow::Borrowed(&report.keyid),
-                    mac: Cow::Borrowed(&report.mac)
-                }.to_der().into()
-            ]
-        };
+    let attestation = AttestationInlineSgxLocal {
+        keyid: Cow::Borrowed(&report.keyid),
+        mac: Cow::Borrowed(&report.mac)
+    }.to_der().into();
 
-        let alt_name_extension_attribute = alt_names.map(|names| {
-            let extension_bytes = pkix::yasna::construct_der(|w| w.write_sequence(|w| {
-                Extension {
-                    oid: pkix::oid::subjectAltName.clone(),
-                    critical: false,
-                    value: pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)),
-                }.write(w.next())
-            }));
-            Attribute {
-                oid: pkix::oid::extensionRequest.clone(),
-                value: vec![extension_bytes.into()],
-            }
-        });
+    let attributes = vec![(oid::attestationInlineSgxLocal.clone(), vec![attestation])];
+    let extensions = get_extensions_from_alt_names(alt_names);
 
-        iter::once(attestation_attribute).chain(alt_name_extension_attribute.into_iter()).collect()
-    };
-    let csr = get_csr(common_name, &pub_key, &report, attributes);
-    let csr_pem = signer.sign_csr(&csr)?;
+    let csr_pem = get_csr(signer, common_name, &report, attributes, &extensions)?;
 
     // Send CSR to Node Agent and receive signed app/node/attestation certificates
     let (fqpe_cert, node_cert) = get_attestation_certificates(&mut client, &report, csr_pem)?;
@@ -189,9 +169,8 @@ pub fn get_certificate(
         app_cert: Cow::Borrowed(&fqpe_cert),
         node_cert: Cow::Borrowed(&node_cert)
     }.to_der().into();
-    let attributes = vec![Attribute { oid: oid::attestationEmbeddedFqpe.clone(), value: vec![attestation] }];
-    let csr = get_csr(common_name, &pub_key, &report, attributes);
-    let csr_pem = signer.sign_csr(&csr)?;
+    let attributes = vec![(oid::attestationEmbeddedFqpe.clone(), vec![attestation])];
+    let csr_pem = get_csr(signer, common_name, &report, attributes, &extensions)?;
 
     // Send the request
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
@@ -231,20 +210,61 @@ fn get_target_report(client: &mut Client, user_data: &[u8;64]) -> Result<sgx_isa
     Ok(sgx_isa::Report::for_target(&target_info, user_data))
 }
 
-fn get_csr<'a>(
+fn get_extensions_from_alt_names(alt_names: Option<Vec<Cow<str>>>) -> Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>> {
+    alt_names.and_then(|names| {
+        Some(vec![(
+            pkix::oid::subjectAltName.clone(),
+            false,
+            pkix::yasna::construct_der(|w| DnsAltNames { names }.write(w)).into(),
+        )])
+    })
+}
+
+fn get_csr(
+    signer: &mut dyn CsrSigner,
     common_name: &str,
-    pub_key_der: &'a [u8],
     report: &Report,
-    attributes: Vec<Attribute<'a>>
-) -> CertificationRequestInfo<'a, DerSequence<'a>> {
+    attributes: Vec<(ObjectIdentifier, Vec<Vec<u8>>)>,
+    extensions: &Option<Vec<(ObjectIdentifier, bool, Vec<u8>)>>
+) -> Result<String> {
     let mut sgx_name = SgxName::from_report(report, true);
     sgx_name.append(vec![(pkix::oid::commonName.clone(), common_name.to_string().into())]);
 
-    CertificationRequestInfo {
+    let pub_key_der = signer.get_public_key_der()?;
+
+    let mut attributes = attributes.iter().map(|&(ref oid,ref elems)| {
+        Attribute {
+            oid: oid.clone(),
+            value: elems.iter().map(|e| e[..].into()).collect(),
+        }
+    }).collect::<Vec<_>>();
+
+    let extension_bytes = extensions.as_ref().and_then(|ext| {
+        Some(pkix::yasna::construct_der(|w|w.write_sequence(|w|{
+            for &(ref oid, critical, ref value) in ext {
+                Extension {
+                    oid: oid.clone(),
+                    critical: critical,
+                    value: value[..].to_owned(),
+                }.write(w.next())
+            }
+        })))
+    });
+
+    if let Some(bytes) = &extension_bytes {
+        attributes.push(Attribute{
+            oid: pkix::oid::extensionRequest.clone(),
+            value: vec![bytes[..].into()],
+        });
+    }
+
+    let csr = CertificationRequestInfo {
         subject: sgx_name.to_name(),
         spki: DerSequence::from(&pub_key_der[..]),
-        attributes: attributes,
-    }
+        attributes,
+    };
+
+    signer.sign_csr(&csr)
 }
 
 fn get_attestation_certificates(client: &mut Client, report: &Report, csr_pem: String) -> Result<(Vec<u8>, Vec<u8>)> {
