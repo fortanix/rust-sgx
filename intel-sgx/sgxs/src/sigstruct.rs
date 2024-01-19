@@ -246,3 +246,17 @@ pub fn read<R: Read>(reader: &mut R) -> IoResult<Sigstruct> {
     reader.read_exact(&mut buf)?;
     Sigstruct::try_copy_from(&buf).ok_or_else(|| unreachable!())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EnclaveHash, Signer};
+
+    #[test]
+    fn signer() {
+        let signer = Signer::new(EnclaveHash::new([0; 32]));
+        assert!(signer.date & 0xff <= 0x31); // day
+        assert!(signer.date & 0xff00 <= 0x1200); // month
+        assert!(signer.date & 0xffff0000 >= 0x20240000); // year
+        assert!(signer.date & 0xffff0000 <= 0x20500000);
+    }
+}
