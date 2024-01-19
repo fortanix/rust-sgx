@@ -21,7 +21,7 @@ serde = { version = "1.0.7", features = ["derive"] }
 url = "2.2"
 
 mbedtls = { version = ">=0.8.0, <0.10.0", features = ["std"], default-features = false, optional = true }
-pkix = "0.1"
+pkix = "0.2"
 
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.2", path = "../sgx_pkix" }
