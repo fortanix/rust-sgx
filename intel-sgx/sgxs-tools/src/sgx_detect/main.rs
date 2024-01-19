@@ -288,7 +288,7 @@ impl SgxSupport {
             Ok(())
         })();
         let nodeagent_status = (|| {
-            let mut response = reqwest::get("http://localhost:9092/v1/sys/version")?;
+            let response = reqwest::blocking::get("http://localhost:9092/v1/sys/version")?;
             let ver: NodeAgentVersion = response.json()?;
             Ok(NodeAgentVersion { version: ver.version })
         })();

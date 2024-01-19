@@ -7,7 +7,8 @@
 use std::io::{Read, Result as IoResult, Write};
 
 use failure::Error;
-use time;
+use time::OffsetDateTime;
+use time::macros::format_description;
 
 use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
 pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
@@ -75,9 +76,15 @@ impl Signer {
     /// Create a new `Signer` with default attributes (64-bit, XFRM: `0x3`) and
     /// today's date.
     pub fn new(enclavehash: EnclaveHash) -> Signer {
+        let format = format_description!("[Year][month][day]");
+        // Unfortunately `OffsetDateTime::now_local()` doesn't work inside an SGX enclave
+        let now = OffsetDateTime::now_utc()
+            .format(&format)
+            .unwrap()
+            .to_string();
+
         Signer {
-            date: u32::from_str_radix(&time::strftime("%Y%m%d", &time::now()).unwrap(), 16)
-                .unwrap(),
+            date: u32::from_str_radix(&now, 16).unwrap(),
             swdefined: 0,
             miscselect: Miscselect::default(),
             miscmask: !0,
