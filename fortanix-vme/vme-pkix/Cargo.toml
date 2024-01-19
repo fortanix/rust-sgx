@@ -13,4 +13,4 @@ categories = ["cryptography"]
 
 [dependencies]
 lazy_static = "1"
-pkix = "0.1.1"
+pkix = "0.2"
