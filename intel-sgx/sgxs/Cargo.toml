@@ -18,7 +18,7 @@ sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
 byteorder = "1.0"                                     # Unlicense/MIT
-time = "0.1"                                          # MIT/Apache-2.0
+time = { version = "0.3", features = ["formatting", "local-offset", "macros", "std"] } # MIT/Apache-2.0
 failure = "0.1.1"                                     # MIT/Apache-2.0
 failure_derive = "0.1.1"                              # MIT/Apache-2.0
 openssl = { version = "0.10", optional = true }       # Apache-2.0
@@ -29,5 +29,5 @@ sha2 = { version = "0.8", optional = true }           # MIT OR Apache-2.0
 [features]
 crypto-openssl = ["openssl", "openssl-sys", "foreign-types"]
 
-[dev-dependencies]
+[target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
 crypto-hash = "0.3" # MIT

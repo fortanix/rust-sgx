@@ -163,7 +163,7 @@ fn get_pckcert(certdata: &quote::Qe3CertDataPpid) -> Result<PckCertInfo<'static>
     );
 
     // Send request
-    let mut response = reqwest::Client::new()
+    let mut response = reqwest::blocking::Client::new()
         .get(&*url)
         .header("Ocp-Apim-Subscription-Key", api_key)
         .query(&[
