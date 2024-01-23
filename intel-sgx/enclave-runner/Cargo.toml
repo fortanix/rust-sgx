@@ -1,6 +1,6 @@
 [package]
 name = "enclave-runner"
-version = "0.5.2"
+version = "0.6.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -35,7 +35,7 @@ nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
 crossbeam = "0.8.2"                             # MIT/Apache-2.0
 num_cpus = "1.10.0"                             # MIT/Apache-2.0
-tokio = { version = "0.2", features = ["full"] } # MIT
+tokio = { version = "1.35", features = ["full"] } # MIT
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
 
 [features]
