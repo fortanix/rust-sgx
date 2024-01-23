@@ -13,6 +13,7 @@ use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, IOHandlerInput};
+use tokio::io::ReadBuf;
 use futures::FutureExt;
 use futures::future::Future;
 
@@ -33,7 +34,11 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             unsafe {
                 let ret = match from_raw_parts_mut_nonnull(buf, len) {
-                    Ok(buf) => self.0.read(fd, buf).await,
+                    Ok(buf) => {
+                        let mut buf = ReadBuf::new(buf);
+                        self.0.read(fd, &mut buf).await
+                            .map(|_| buf.filled().len())
+                    },
                     Err(e) => Err(e),
                 };
                 return (self, Ok(ret.to_sgx_result()));
