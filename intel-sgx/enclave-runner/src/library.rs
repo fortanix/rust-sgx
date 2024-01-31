@@ -11,8 +11,7 @@ use failure::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
-use crate::usercalls::EnclaveState;
-use crate::usercalls::UsercallExtension;
+use crate::usercalls::{EnclaveState, EnclaveStdio, UsercallExtension};
 use std::fmt;
 use std::os::raw::c_void;
 
@@ -47,10 +46,11 @@ impl Library {
         address: *mut c_void,
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
+        stdio: EnclaveStdio,
         forward_panics: bool,
     ) -> Library {
         Library {
-            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics),
+            enclave: EnclaveState::library(tcss, usercall_ext, stdio, forward_panics),
             address,
             size,
         }

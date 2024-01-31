@@ -8,7 +8,7 @@ use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
 use std::os::raw::c_void;
 use std::path::Path;
-use std::{arch, str};
+use std::{arch, mem, str};
 
 use failure::{format_err, Error, ResultExt};
 use failure_derive::Fail;
@@ -23,9 +23,10 @@ use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::tcs::DebugBuffer;
-use crate::usercalls::UsercallExtension;
+use crate::usercalls::{EnclaveStdio, ReadOnlyStream, UsercallExtension, WriteOnlyStream};
 use crate::{Command, Library};
 
 enum EnclaveSource<'a> {
@@ -65,6 +66,7 @@ pub struct EnclaveBuilder<'a> {
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
+    stdio: EnclaveStdio,
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
     forward_panics: bool,
@@ -142,6 +144,7 @@ impl<'a> EnclaveBuilder<'a> {
             miscselect: None,
             signature: None,
             usercall_ext: None,
+            stdio: EnclaveStdio::default(),
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
@@ -256,6 +259,24 @@ impl<'a> EnclaveBuilder<'a> {
         self.usercall_ext = Some(extension.into());
     }
 
+    /// Redirect the enclave's stdin. Defaults to the current process stdin.
+    pub fn stdin(&mut self, stream: impl AsyncRead + Send + Sync + 'static) -> &mut Self {
+        self.stdio.stdin = Some(ReadOnlyStream::new(stream));
+        self
+    }
+
+    /// Redirect the enclave's stdout. Defaults to the current process stdout.
+    pub fn stdout(&mut self, stream: impl AsyncWrite + Send + Sync + 'static) -> &mut Self {
+        self.stdio.stdout = Some(WriteOnlyStream::new(stream));
+        self
+    }
+
+    /// Redirect the enclave's stderr. Defaults to the current process stderr.
+    pub fn stderr(&mut self, stream: impl AsyncWrite + Send + Sync + 'static) -> &mut Self {
+        self.stdio.stderr = Some(WriteOnlyStream::new(stream));
+        self
+    }
+
     /// Whether to panic the runner if any enclave thread panics.
     /// Defaults to `false`.
     /// Note: If multiple enclaves are loaded, and an enclave with this set to
@@ -335,8 +356,9 @@ impl<'a> EnclaveBuilder<'a> {
         self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
+        let io = mem::take(&mut self.stdio);
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
+            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, io, fp, args))
     }
 
     /// Panics if you have previously called [`arg`] or [`args`].
@@ -348,7 +370,8 @@ impl<'a> EnclaveBuilder<'a> {
             panic!("Command arguments do not apply to Library enclaves.");
         }
         let c = self.usercall_ext.take();
+        let io = mem::take(&mut self.stdio);
         self.load(loader)
-            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, io, fp))
     }
 }
