@@ -1372,6 +1372,13 @@ pub trait UsercallExtension: 'static + Send + Sync + std::fmt::Debug {
             Ok(None)
         }.boxed_local()
     }
+
+    fn insecure_time(&self) -> u64 {
+        let time = time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .unwrap();
+        (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000
+    }
 }
 
 impl<T: UsercallExtension> From<T> for Box<dyn UsercallExtension> {
@@ -1645,10 +1652,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 
     #[inline(always)]
     fn insecure_time(&mut self) -> u64 {
-        let time = time::SystemTime::now()
-            .duration_since(time::UNIX_EPOCH)
-            .unwrap();
-        (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000
+        self.enclave.usercall_ext.insecure_time()
     }
 
     #[inline(always)]
