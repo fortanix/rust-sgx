@@ -17,7 +17,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
 use std::{cmp, fmt, str};
 
-use failure::{self, bail};
+use failure::bail;
 use fnv::FnvHashMap;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
@@ -31,7 +31,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use fortanix_sgx_abi::*;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
 use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
 

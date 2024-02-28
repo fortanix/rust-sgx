@@ -10,7 +10,7 @@ use failure::Error;
 use time::OffsetDateTime;
 use time::macros::format_description;
 
-use abi::{self, SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
+use abi::{SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
 pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use crypto::{Hash, SgxHashOps, SgxRsaOps, SgxRsaPubOps};
 use sgxs::{copy_measured, SgxsRead};

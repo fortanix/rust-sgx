@@ -155,7 +155,7 @@ impl RawApi for AsyncUsercallProvider {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::RawApi;
     use crate::test_support::*;
     use crossbeam_channel as mpmc;
     use std::io;

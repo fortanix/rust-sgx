@@ -16,7 +16,12 @@ use std::sync::atomic::{AtomicUsize, Ordering, Ordering::SeqCst};
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
 
-use super::*;
+#[cfg(target_env = "sgx")]
+use super::{Identified, Transmittable, TryRecvError, TrySendError, UserRef, UserSafeSized};
+
+#[cfg(not(target_env = "sgx"))]
+use super::{AsyncReceiver, AsyncSender, AsyncSynchronizer, DescriptorGuard, Identified, Receiver, Sender,
+    Synchronizer, Transmittable, TryRecvError, TrySendError};
 
 // `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
 // This type has the same memory layout but is `Copy` and can be marked as

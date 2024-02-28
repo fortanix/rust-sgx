@@ -269,7 +269,7 @@ impl ReadBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{ReadBuffer, UserBuf, WriteBuffer};
     use std::os::fortanix_sgx::usercalls::alloc::User;
 
     #[test]
