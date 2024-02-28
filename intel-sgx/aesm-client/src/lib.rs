@@ -284,6 +284,7 @@ impl EinittokenProvider for AesmClient {
 trait AesmRequest: protobuf::Message + Into<Request> {
     type Response: protobuf::Message + FromResponse;
 
+    #[cfg(not(target_env = "sgx"))]
     fn get_timeout(&self) -> Option<u32>;
 }
 
@@ -297,6 +298,7 @@ macro_rules! define_aesm_message {
         impl AesmRequest for $request {
             type Response = $response;
 
+            #[cfg(not(target_env = "sgx"))]
             fn get_timeout(&self) -> Option<u32> {
                 if self.has_timeout() {
                     Some(Self::get_timeout(self))

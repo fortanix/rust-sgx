@@ -120,19 +120,6 @@ impl AsyncRead for Stdin {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
         const BUF_SIZE: usize = 8192;
 
-        trait AsIoResult<T> {
-            fn as_io_result(self) -> io::Result<T>;
-        }
-
-        impl<T> AsIoResult<T> for Poll<T> {
-            fn as_io_result(self) -> io::Result<T> {
-                match self {
-                    Poll::Ready(v) => Ok(v),
-                    Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
-                }
-            }
-        }
-
         struct AsyncStdin {
             rx: async_mpsc::Receiver<VecDeque<u8>>,
             buf: VecDeque<u8>,
