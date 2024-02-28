@@ -418,8 +418,8 @@ impl<W: Write> SgxsWrite for W {
         let mut buf = [0u8; 64];
         unsafe {
             let (tag, headerdst) = buf.split_at_mut(8);
-            let tag = &mut *(&mut tag[0] as *mut _ as *mut u64);
-            let headerdst = &mut headerdst[0] as *mut _;
+            let tag = &mut *(&mut tag[0..8] as *mut _ as *mut u64);
+            let headerdst = &mut headerdst[0..56] as *mut _;
 
             match meas {
                 &ECreate(ref header) => {
