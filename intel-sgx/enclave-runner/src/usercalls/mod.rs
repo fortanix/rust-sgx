@@ -17,7 +17,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
 use std::{cmp, fmt, str};
 
-use failure::{self, bail};
+use failure::bail;
 use fnv::FnvHashMap;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
@@ -31,7 +31,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::stream::Stream as TokioStream;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use fortanix_sgx_abi::*;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
 use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
 
@@ -119,19 +119,6 @@ struct Stdin;
 impl AsyncRead for Stdin {
     fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
         const BUF_SIZE: usize = 8192;
-
-        trait AsIoResult<T> {
-            fn as_io_result(self) -> io::Result<T>;
-        }
-
-        impl<T> AsIoResult<T> for Poll<T> {
-            fn as_io_result(self) -> io::Result<T> {
-                match self {
-                    Poll::Ready(v) => Ok(v),
-                    Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
-                }
-            }
-        }
 
         struct AsyncStdin {
             rx: async_mpsc::Receiver<VecDeque<u8>>,

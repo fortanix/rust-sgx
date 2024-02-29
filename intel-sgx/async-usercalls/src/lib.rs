@@ -231,7 +231,7 @@ impl CallbackHandler {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{AsyncUsercallProvider, UserBuf};
     use crate::test_support::*;
     use crate::utils::MakeSend;
     use crossbeam_channel as mpmc;

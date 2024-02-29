@@ -1,7 +1,7 @@
 use crate::provider_core::ProviderId;
 use crossbeam_channel as mpmc;
 use fortanix_sgx_abi::{EV_CANCELQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, EV_USERCALLQ_NOT_FULL};
-use ipc_queue::{self, Identified, QueueEvent, RecvError, SynchronizationError, Synchronizer};
+use ipc_queue::{Identified, QueueEvent, RecvError, SynchronizationError, Synchronizer};
 use lazy_static::lazy_static;
 use std::os::fortanix_sgx::usercalls::alloc::User;
 use std::os::fortanix_sgx::usercalls::raw::{

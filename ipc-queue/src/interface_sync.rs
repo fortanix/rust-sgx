@@ -6,7 +6,7 @@
 
 use fortanix_sgx_abi::FifoDescriptor;
 
-use super::*;
+use super::{Fifo, Identified, QueueEvent, Receiver, RecvError, Sender, SendError, SynchronizationError, Synchronizer, Transmittable, TryRecvError, TrySendError};
 
 unsafe impl<T: Send, S: Send> Send for Sender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for Sender<T, S> {}

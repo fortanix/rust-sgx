@@ -11,6 +11,7 @@
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
+#![allow(non_local_definitions)] // Required by failure
 #![deny(warnings)]
 
 extern crate byteorder;
@@ -284,6 +285,7 @@ impl EinittokenProvider for AesmClient {
 trait AesmRequest: protobuf::Message + Into<Request> {
     type Response: protobuf::Message + FromResponse;
 
+    #[cfg(not(target_env = "sgx"))]
     fn get_timeout(&self) -> Option<u32>;
 }
 
@@ -297,6 +299,7 @@ macro_rules! define_aesm_message {
         impl AesmRequest for $request {
             type Response = $response;
 
+            #[cfg(not(target_env = "sgx"))]
             fn get_timeout(&self) -> Option<u32> {
                 if self.has_timeout() {
                     Some(Self::get_timeout(self))
