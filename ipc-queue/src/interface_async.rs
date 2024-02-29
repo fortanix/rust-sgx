@@ -105,6 +105,7 @@ mod tests {
     use futures::future::FutureExt;
     use futures::lock::Mutex;
     use tokio::sync::broadcast;
+    use tokio::sync::broadcast::error::{SendError, RecvError};
 
     use crate::*;
     use crate::test_support::TestValue;
@@ -250,11 +251,11 @@ mod tests {
             }
         }
 
-        fn send(&self, val: T) -> Result<(), broadcast::SendError<T>> {
+        fn send(&self, val: T) -> Result<(), SendError<T>> {
             self.tx.send(val).map(|_| ())
         }
 
-        async fn recv(&self) -> Result<T, broadcast::RecvError> {
+        async fn recv(&self) -> Result<T, RecvError> {
             let mut rx = self.rx.lock().await;
             rx.recv().await
         }
