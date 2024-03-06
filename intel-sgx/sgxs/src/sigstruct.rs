@@ -6,7 +6,6 @@
 
 use std::io::{Read, Result as IoResult, Write};
 
-use failure::Error;
 use time::OffsetDateTime;
 use time::macros::format_description;
 
@@ -29,7 +28,7 @@ impl EnclaveHash {
         self.hash
     }
 
-    pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, Error> {
+    pub fn from_stream<R: SgxsRead, H: SgxHashOps>(stream: &mut R) -> Result<Self, anyhow::Error> {
         struct WriteToHasher<H> {
             hasher: H,
         }

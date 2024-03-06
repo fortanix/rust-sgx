@@ -15,9 +15,7 @@
 #![deny(warnings)]
 
 extern crate byteorder;
-pub extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+pub extern crate thiserror;
 #[macro_use]
 #[cfg(unix)]
 extern crate lazy_static;

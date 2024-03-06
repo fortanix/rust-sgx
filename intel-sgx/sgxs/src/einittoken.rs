@@ -7,8 +7,6 @@
 use std::fmt;
 use std::io::{Read, Result as IoResult};
 
-use failure::Error;
-
 pub use abi::Einittoken;
 use abi::{Attributes, Sigstruct};
 
@@ -24,7 +22,7 @@ pub trait EinittokenProvider: fmt::Debug {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         retry: bool,
-    ) -> Result<Einittoken, Error>;
+    ) -> Result<Einittoken, anyhow::Error>;
 
     /// Will this provider exhibit different behavior if `retry` is `true`?
     fn can_retry(&self) -> bool;

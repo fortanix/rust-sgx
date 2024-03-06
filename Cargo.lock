@@ -28,8 +28,6 @@ name = "aesm-client"
 version = "0.5.4"
 dependencies = [
  "byteorder 1.3.4",
- "failure",
- "failure_derive",
  "lazy_static",
  "libloading 0.5.2",
  "protobuf",
@@ -38,6 +36,7 @@ dependencies = [
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
+ "thiserror",
  "unix_socket2",
  "winapi",
 ]
@@ -3173,15 +3172,15 @@ dependencies = [
 name = "sgxs"
 version = "0.7.4"
 dependencies = [
+ "anyhow",
  "byteorder 1.3.4",
  "crypto-hash",
- "failure",
- "failure_derive",
  "foreign-types",
  "openssl",
  "openssl-sys",
  "sgx-isa",
  "sha2 0.8.2",
+ "thiserror",
  "time 0.3.26",
 ]
 

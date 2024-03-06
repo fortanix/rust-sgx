@@ -33,8 +33,7 @@ sgx-isa = { version = "0.4.0", path = "../sgx-isa"}
 byteorder = "1.0"          # Unlicense/MIT
 lazy_static = "1"          # MIT/Apache-2.0
 protobuf = "2.22.1"        # MIT/Apache-2.0
-failure = "0.1.1"          # MIT/Apache-2.0
-failure_derive = "0.1.1"   # MIT/Apache-2.0
+thiserror = "1.0"          # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 # We require a version of unix-socket with the following change:

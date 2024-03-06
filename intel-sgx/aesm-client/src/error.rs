@@ -6,6 +6,7 @@
 
 use std::io::Error as IoError;
 use std::result::Result as StdResult;
+use thiserror::Error as ThisError;
 
 pub type Result<T> = StdResult<T, Error>;
 
@@ -126,19 +127,19 @@ impl From<u32> for AesmError {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
-    #[fail(display = "aesm error code {:?}", _0)]
+    #[error("aesm error code {:?}", _0)]
     AesmCode(AesmError),
-    #[fail(display = "error communicating with aesm")]
-    AesmCommunication(#[cause] IoError),
-    #[fail(display = "missing expected {} payload in response from aesm", _0)]
+    #[error("error communicating with aesm")]
+    AesmCommunication(#[source] IoError),
+    #[error("missing expected {} payload in response from aesm", _0)]
     AesmBadResponse(String),
-    #[fail(display = "invalid quote type {}", _0)]
+    #[error("invalid quote type {}", _0)]
     InvalidQuoteType(u32),
-    #[fail(display = "invalid quote size")]
+    #[error("invalid quote size")]
     InvalidQuoteSize,
-    #[fail(display = "invalid token size")]
+    #[error("invalid token size")]
     InvalidTokenSize,
 }
 
