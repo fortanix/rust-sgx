@@ -11,8 +11,7 @@ use std::path::Path;
 use std::{arch, str};
 
 use thiserror::Error as ThisError;
-use anyhow::Context;
-use anyhow::anyhow;
+use anyhow::{Context, format_err};
 
 #[cfg(feature = "crypto-openssl")]
 use openssl::{
@@ -167,7 +166,7 @@ impl<'a> EnclaveBuilder<'a> {
         let mut enclave = self.enclave.try_clone().unwrap();
         let hash = match self.hash_enclave.take() {
             Some(f) => f(&mut enclave)?,
-            None => return Err(anyhow!("either compile with default features or use with_dummy_signature_signer()"))
+            None => return Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
         };
         let mut signer = Signer::new(hash);
 
@@ -185,7 +184,7 @@ impl<'a> EnclaveBuilder<'a> {
 
         match self.load_and_sign.take() {
             Some(f) => f(signer),
-            None => Err(anyhow!("either compile with default features or use with_dummy_signature_signer()"))
+            None => Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
         }
     }
 

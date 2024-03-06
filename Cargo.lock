@@ -925,28 +925,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2 1.0.78",
- "quote 1.0.35",
- "syn 1.0.81",
- "synstructure",
-]
-
-[[package]]
 name = "fake-simd"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3206,6 +3184,7 @@ name = "sgxs-tools"
 version = "0.8.6"
 dependencies = [
  "aesm-client",
+ "anyhow",
  "atty",
  "byteorder 1.3.4",
  "clap",
@@ -3213,8 +3192,6 @@ dependencies = [
  "dcap-ql",
  "enclave-runner",
  "env_logger 0.6.2",
- "failure",
- "failure_derive",
  "fnv",
  "lazy_static",
  "log 0.4.14",
@@ -3235,6 +3212,7 @@ dependencies = [
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
+ "thiserror",
  "winapi",
  "yansi",
 ]

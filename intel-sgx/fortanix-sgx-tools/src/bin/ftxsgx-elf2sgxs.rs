@@ -20,6 +20,7 @@ use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
 use crate::anyhow::Context;
+use anyhow::anyhow;
 
 use xmas_elf::dynamic::{Dynamic as DynEntry, Tag as DynTag};
 use xmas_elf::header::Class as HeaderClass;
@@ -127,13 +128,13 @@ macro_rules! read_syms {
         $(let mut $optional_name=None;)*
         for sym in $syms.iter().skip(1) {
             if sym.shndx()==SHN_UNDEF {
-                bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(err_msg)?);
-            } $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($mandatory_name) {
+                bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(|e| anyhow!(e))?);
+            } $(else if sym.get_name(&$elf).map_err(|e| anyhow!(e))?==stringify!($mandatory_name) {
                 if replace(&mut $mandatory_name,Some(sym)).is_some() {
                     bail!("Found symbol twice: {}", stringify!($mandatory_name));
                 }
             })*
-            $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($optional_name) {
+            $(else if sym.get_name(&$elf).map_err(|e| anyhow!(e))?==stringify!($optional_name) {
                 if replace(&mut $optional_name,Some(sym)).is_some() {
                     bail!("Found symbol twice: {}", stringify!($optional_name));
                 }
@@ -222,7 +223,7 @@ impl<'a> LayoutInfo<'a> {
             .ok_or_else(|| format_err!("Could not find dynamic symbol table!"))?;
 
         let syms =
-            if let SectionData::DynSymbolTable64(syms) = dynsym.get_data(&elf).map_err(err_msg)? {
+            if let SectionData::DynSymbolTable64(syms) = dynsym.get_data(&elf).map_err(|e| anyhow!(e))? {
                 syms
             } else {
                 bail!(".dynsym section is not a dynamic symbol table!");
@@ -290,7 +291,7 @@ impl<'a> LayoutInfo<'a> {
             .find(|ph| ph.get_type() == Ok(PhType::Dynamic))
             .ok_or_else(|| format_err!("Could not found dynamic section!"))?;
 
-        let dyns = if let SegmentData::Dynamic64(dyns) = dynh.get_data(&elf).map_err(err_msg)? {
+        let dyns = if let SegmentData::Dynamic64(dyns) = dynh.get_data(&elf).map_err(|e| anyhow!(e))? {
             dyns
         } else {
             bail!("PT_DYNAMIC segment is not a dynamic section!")
@@ -300,7 +301,7 @@ impl<'a> LayoutInfo<'a> {
         let mut relacount = None;
 
         for dynamic in dyns {
-            match dynamic.get_tag().map_err(err_msg)? {
+            match dynamic.get_tag().map_err(|e| anyhow!(e))? {
                 // Some entries for PLT/GOT checking are currently
                 // commented out. I *think* that if there were an actual
                 // PLT/GOT problem, that would be caught by the remaining
@@ -347,7 +348,7 @@ impl<'a> LayoutInfo<'a> {
 
         let mut count = 0;
         for section in elf.section_iter() {
-            if let SectionData::Rela64(relas) = section.get_data(&elf).map_err(err_msg)? {
+            if let SectionData::Rela64(relas) = section.get_data(&elf).map_err(|e| anyhow!(e))? {
                 count += relas.len();
                 for rela in relas {
                     let shind = rela.get_symbol_table_index();
@@ -501,7 +502,7 @@ impl<'a> LayoutInfo<'a> {
             let base = start & !0xfff;
             let mut end = start + ph.mem_size();
             let base_data;
-            if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(err_msg)? {
+            if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(|e| anyhow!(e))? {
                 base_data = data;
             } else {
                 // Reachable if xmas-elf changes definition of SegmentData
