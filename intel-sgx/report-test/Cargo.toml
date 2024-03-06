@@ -21,4 +21,4 @@ categories = ["development-tools"]
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
-failure = "0.1.1"   # MIT/Apache-2.0
+anyhow = "1.0"   # MIT/Apache-2.0

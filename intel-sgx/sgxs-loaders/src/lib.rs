@@ -10,8 +10,8 @@
 
 #[cfg(unix)] #[macro_use]
 extern crate nix;
-#[macro_use]
-extern crate failure_derive;
+
+extern crate thiserror;
 #[macro_use]
 extern crate bitflags;
 

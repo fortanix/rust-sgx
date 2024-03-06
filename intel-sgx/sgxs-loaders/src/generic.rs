@@ -7,19 +7,17 @@
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use failure::{Fail, ResultExt};
-
 use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, Sigstruct};
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
 use sgxs::sgxs::{
     CreateInfo, Error as SgxsError, MeasEAdd, MeasECreate, PageChunks, PageReader, SgxsRead,
 };
-
+use anyhow::Context;
 use crate::{MappingInfo, Tcs};
 
 pub(crate) trait EnclaveLoad: Debug + Sized + Send + Sync + 'static {
-    type Error: Fail + EinittokenError;
+    type Error: std::error::Error + EinittokenError + Send + Sync;
     type MapData: Debug + Send + Sync;
     fn new(
         device: Arc<Self>,
@@ -85,7 +83,7 @@ impl<D: EnclaveLoad> Device<D> {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> ::std::result::Result<LoadResult, ::failure::Error> {
+    ) -> ::std::result::Result<LoadResult, ::anyhow::Error> {
         let mut tokprov = self.einittoken_provider.as_mut();
         let mut tokprov_err = None;
         let einittoken = if let Some(ref mut p) = tokprov {

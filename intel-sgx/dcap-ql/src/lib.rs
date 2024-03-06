@@ -10,7 +10,7 @@
 
 extern crate byteorder;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 #[cfg(all(feature="bindings", not(feature = "link")))]
 #[macro_use]
 extern crate lazy_static;

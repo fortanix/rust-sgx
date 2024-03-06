@@ -15,6 +15,7 @@
 #![deny(warnings)]
 
 extern crate byteorder;
+pub extern crate anyhow;
 pub extern crate thiserror;
 #[macro_use]
 #[cfg(unix)]
@@ -267,7 +268,7 @@ impl EinittokenProvider for AesmClient {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         _retry: bool,
-    ) -> StdResult<Einittoken, ::failure::Error> {
+    ) -> StdResult<Einittoken, ::anyhow::Error> {
         let token = self.get_launch_token(
             sigstruct,
             attributes,

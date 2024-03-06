@@ -10,7 +10,7 @@ extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
 extern crate xmas_elf;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 
 use std::borrow::Borrow;
 use std::fs::File;
@@ -19,7 +19,7 @@ use std::mem::replace;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
-use failure::{err_msg, Error, ResultExt};
+use crate::anyhow::Context;
 
 use xmas_elf::dynamic::{Dynamic as DynEntry, Tag as DynTag};
 use xmas_elf::header::Class as HeaderClass;
@@ -182,7 +182,7 @@ macro_rules! check_size {
 
 impl<'a> LayoutInfo<'a> {
     // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S
-    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
+    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), anyhow::Error> {
         let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
             .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
 
@@ -216,7 +216,7 @@ impl<'a> LayoutInfo<'a> {
     }
     
     #[allow(non_snake_case)]
-    fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, Error> {
+    fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, anyhow::Error> {
         let dynsym = elf
             .find_section_by_name(".dynsym")
             .ok_or_else(|| format_err!("Could not find dynamic symbol table!"))?;
@@ -268,7 +268,7 @@ impl<'a> LayoutInfo<'a> {
         Ok(syms)
     }
 
-    fn check_section(elf: &ElfFile<'a>, section_name: &str) -> Result<SectionRange, Error> {
+    fn check_section(elf: &ElfFile<'a>, section_name: &str) -> Result<SectionRange, anyhow::Error> {
         let sec = elf
             .find_section_by_name(&section_name)
             .ok_or_else(|| format_err!("Could not find {}!", section_name))?;
@@ -278,7 +278,7 @@ impl<'a> LayoutInfo<'a> {
         })
     }
 
-    fn check_dynamic(elf: &ElfFile<'a>) -> Result<Option<Dynamic<'a>>, Error> {
+    fn check_dynamic(elf: &ElfFile<'a>) -> Result<Option<Dynamic<'a>>, anyhow::Error> {
         use xmas_elf::dynamic::Tag::*;
         const DT_RELACOUNT: DynTag<u64> = OsSpecific(0x6ffffff9);
         const DT_RELCOUNT: DynTag<u64> = OsSpecific(0x6ffffffa);
@@ -331,7 +331,7 @@ impl<'a> LayoutInfo<'a> {
         }
     }
 
-    fn check_relocs(elf: &ElfFile<'a>, dynamic: Option<&Dynamic<'a>>) -> Result<(), Error> {
+    fn check_relocs(elf: &ElfFile<'a>, dynamic: Option<&Dynamic<'a>>) -> Result<(), anyhow::Error> {
         const R_X86_64_RELATIVE: u32 = 8;
 
         let writable_ranges = elf
@@ -389,7 +389,7 @@ impl<'a> LayoutInfo<'a> {
         debug: bool,
         library: bool,
         sized: bool,
-    ) -> Result<LayoutInfo<'a>, Error> {
+    ) -> Result<LayoutInfo<'a>, anyhow::Error> {
         if let HeaderClass::SixtyFour = elf.header.pt1.class() {
         } else {
             bail!("Only 64-bit ELF supported!");
@@ -426,7 +426,7 @@ impl<'a> LayoutInfo<'a> {
         heap_addr: u64,
         memory_size: u64,
         enclave_size: Option<u64>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), anyhow::Error> {
         let mut splices = vec![
             Splice::for_sym_u64(self.sym.HEAP_BASE, heap_addr),
             Splice::for_sym_u64(self.sym.HEAP_SIZE, self.heap_size),
@@ -558,7 +558,7 @@ impl<'a> LayoutInfo<'a> {
         Ok(())
     }
 
-    pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(), anyhow::Error> {
         let max_addr = self
             .elf
             .program_iter()
@@ -719,7 +719,7 @@ fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, IoError> {
     Ok(buf)
 }
 
-fn main_result(args: ArgMatches) -> Result<(), Error> {
+fn main_result(args: ArgMatches) -> Result<(), anyhow::Error> {
     let ssaframesize = u32::parse_arg(args.value_of("ssaframesize").unwrap());
     let heap_size = u64::parse_arg(args.value_of("heap-size").unwrap());
     let stack_size = u64::parse_arg(args.value_of("stack-size").unwrap());

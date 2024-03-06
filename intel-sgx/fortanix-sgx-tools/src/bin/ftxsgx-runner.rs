@@ -12,7 +12,7 @@ use std::io::{stderr, Write};
 
 use aesm_client::AesmClient;
 use enclave_runner::EnclaveBuilder;
-use failure::{Error, ResultExt};
+use anyhow::Context;
 #[cfg(unix)]
 use libc::{c_int, c_void, siginfo_t};
 #[cfg(unix)]
@@ -47,7 +47,7 @@ fn catch_sigbus() {
     }
 }
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), anyhow::Error> {
     let args = App::new("ftxsgx-runner")
         .before_help("Runs an sgxs file, with support for ftxsgx usercalls. \
             See the Fortanix architecture and elf2sgxs for details.")

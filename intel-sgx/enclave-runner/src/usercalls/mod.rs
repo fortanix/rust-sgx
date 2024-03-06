@@ -17,7 +17,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
 use std::{cmp, fmt, str};
 
-use failure::bail;
+use anyhow::bail;
 use fnv::FnvHashMap;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
@@ -1086,7 +1086,7 @@ impl EnclaveState {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
         cmd_args: Vec<Vec<u8>>,
-    ) -> StdResult<(), failure::Error> {
+    ) -> StdResult<(), anyhow::Error> {
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
@@ -1184,7 +1184,7 @@ impl EnclaveState {
         p3: u64,
         p4: u64,
         p5: u64,
-    ) -> StdResult<(u64, u64), failure::Error> {
+    ) -> StdResult<(u64, u64), anyhow::Error> {
         let thread = enclave.threads_queue.pop().expect("threads queue empty");
         let work = Work {
             tcs: RunningTcs {

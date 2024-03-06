@@ -16,6 +16,7 @@ use sgx_isa::{Attributes, Einittoken, Miscselect, PageType, SecinfoFlags, Secs, 
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use thiserror::Error as ThisError;
 
 use crate::{MappingInfo, Tcs};
 use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
@@ -24,54 +25,54 @@ mod defs;
 
 use self::defs::*;
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 #[non_exhaustive]
 pub enum LibraryError {
-    #[fail(
-        display = "Enclave type not supported, Intel SGX not supported, or Intel SGX device not present"
+    #[error(
+        "Enclave type not supported, Intel SGX not supported, or Intel SGX device not present"
     )]
     NotSupported,
-    #[fail(display = "SGX - SIGSTRUCT contains an invalid value")]
+    #[error("SGX - SIGSTRUCT contains an invalid value")]
     InvalidSigstruct,
-    #[fail(display = "SGX - invalid signature or the SIGSTRUCT value")]
+    #[error("SGX - invalid signature or the SIGSTRUCT value")]
     InvalidSignature,
-    #[fail(display = "SGX - invalid SECS attribute")]
+    #[error("SGX - invalid SECS attribute")]
     InvalidAttribute,
-    #[fail(display = "SGX - invalid measurement")]
+    #[error("SGX - invalid measurement")]
     InvalidMeasurement,
-    #[fail(
-        display = "Enclave not authorized to run. For example, the enclave does not have a signing privilege required for a requested attribute."
+    #[error(
+        "Enclave not authorized to run. For example, the enclave does not have a signing privilege required for a requested attribute."
     )]
     NotAuthorized,
-    #[fail(display = "Address is not a valid enclave")]
+    #[error("Address is not a valid enclave")]
     InvalidEnclave,
-    #[fail(display = "SGX - enclave is lost (likely due to a power event)")]
+    #[error("SGX - enclave is lost (likely due to a power event)")]
     EnclaveLost,
-    #[fail(
-        display = "Invalid Parameter (unspecified) - may occur due to a wrong length or format type"
+    #[error(
+        "Invalid Parameter (unspecified) - may occur due to a wrong length or format type"
     )]
     InvalidParameter,
-    #[fail(
-        display = "Out of memory. May be a result of allocation failure in the API or internal function calls"
+    #[error(
+        "Out of memory. May be a result of allocation failure in the API or internal function calls"
     )]
     OutOfMemory,
-    #[fail(display = "Out of EPC memory")]
+    #[error("Out of EPC memory")]
     DeviceNoResources,
-    #[fail(display = "Enclave has already been initialized")]
+    #[error("Enclave has already been initialized")]
     AlreadyInitialized,
-    #[fail(display = "Address is not within a valid enclave / Address has already been committed")]
+    #[error("Address is not within a valid enclave / Address has already been committed")]
     InvalidAddress,
-    #[fail(display = "Please retry the operation - an unmasked event occurred in EINIT")]
+    #[error("Please retry the operation - an unmasked event occurred in EINIT")]
     Retry,
-    #[fail(display = "Invalid size")]
+    #[error("Invalid size")]
     InvalidSize,
-    #[fail(display = "Enclave is not initialized - the operation requires an initialized enclave")]
+    #[error("Enclave is not initialized - the operation requires an initialized enclave")]
     NotInitialized,
-    #[fail(display = "Unexpected error in the API")]
+    #[error("Unexpected error in the API")]
     Unexpected,
-    #[fail(display = "Unknown error ({}) in SGX device interface", _0)]
+    #[error("Unknown error ({}) in SGX device interface", _0)]
     Other(u32),
-    #[fail(display = "Failed to adjust the page table permissions: {}", _0)]
+    #[error("Failed to adjust the page table permissions: {}", _0)]
     PageTableFailure(IoError),
 }
 
@@ -101,14 +102,14 @@ impl From<u32> for LibraryError {
     }
 }
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
-    #[fail(display = "Failed to call ECREATE.")]
-    Create(#[cause] LibraryError),
-    #[fail(display = "Failed to call EADD.")]
-    Add(#[cause] LibraryError),
-    #[fail(display = "Failed to call EINIT.")]
-    Init(#[cause] LibraryError),
+    #[error("Failed to call ECREATE.")]
+    Create(#[source] LibraryError),
+    #[error("Failed to call EADD.")]
+    Add(#[source] LibraryError),
+    #[error("Failed to call EINIT.")]
+    Init(#[source] LibraryError),
 }
 
 impl EinittokenError for Error {
@@ -343,7 +344,7 @@ impl loader::Load for Library {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
+    ) -> ::std::result::Result<loader::Mapping<Self>, ::anyhow::Error> {
         self.inner
             .load(reader, sigstruct, attributes, miscselect)
             .map(Into::into)
