@@ -1,6 +1,6 @@
 [package]
 name = "dcap-retrieve-pckid"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
