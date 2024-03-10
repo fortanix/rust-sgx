@@ -1,6 +1,6 @@
 [package]
 name = "report-test"
-version = "0.3.3"
+version = "0.4.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
