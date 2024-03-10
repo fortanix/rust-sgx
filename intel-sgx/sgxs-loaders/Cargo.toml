@@ -25,7 +25,7 @@ no_sgx_enclave_common = []
 
 [dependencies]
 # Project dependencies
-"sgxs" = { version = "0.7.0", path = "../sgxs" }
+"sgxs" = { version = "0.8.0", path = "../sgxs" }
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
@@ -40,5 +40,5 @@ winapi = { version = "0.3.7", features = ["enclaveapi","memoryapi","processthrea
 
 [dev-dependencies]
 # Project dependencies
-"report-test" = { version = "0.3.0", path = "../report-test" }
-"aesm-client" = { version = "0.5.0", path = "../aesm-client", features = ["sgxs"] }
+"report-test" = { version = "0.4.0", path = "../report-test" }
+"aesm-client" = { version = "0.6.0", path = "../aesm-client", features = ["sgxs"] }

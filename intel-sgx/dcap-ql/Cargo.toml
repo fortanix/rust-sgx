@@ -37,7 +37,7 @@ verify = ["mbedtls", "num", "yasna"]
 [dependencies]
 # Project dependencies
 "dcap-ql-sys" = { version = "0.2.0", path = "../dcap-ql-sys", optional = true }
-"sgxs-loaders" = { version = "0.3.0", path = "../sgxs-loaders", optional = true }
+"sgxs-loaders" = { version = "0.4.0", path = "../sgxs-loaders", optional = true }
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
@@ -54,7 +54,7 @@ yasna = { version = "0.3", features = ["num-bigint", "bit-vec"], optional = true
 
 [dev-dependencies]
 mbedtls = { version = ">=0.8.0, <0.10.0" }
-report-test = { version = "0.3.1", path = "../report-test" }
-sgxs = { version = "0.7.0", path = "../sgxs" }
+report-test = { version = "0.4.1", path = "../report-test" }
+sgxs = { version = "0.8.0", path = "../sgxs" }
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = { version = "1.0" }
