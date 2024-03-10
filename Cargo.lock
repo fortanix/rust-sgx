@@ -25,7 +25,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aesm-client"
-version = "0.5.5"
+version = "0.5.4"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.3.8"
+version = "0.3.7"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.1.4"
+version = "0.1.3"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner"
-version = "0.5.3"
+version = "0.5.2"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.5.2"
+version = "0.5.1"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -2817,7 +2817,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.3.4"
+version = "0.3.3"
 dependencies = [
  "anyhow",
  "enclave-runner",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.7.5"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -3165,7 +3165,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.3.4"
+version = "0.3.3"
 dependencies = [
  "aesm-client",
  "anyhow",
