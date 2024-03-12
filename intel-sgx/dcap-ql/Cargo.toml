@@ -1,6 +1,6 @@
 [package]
 name = "dcap-ql"
-version = "0.4.7"
+version = "0.4.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -54,7 +54,7 @@ yasna = { version = "0.3", features = ["num-bigint", "bit-vec"], optional = true
 
 [dev-dependencies]
 mbedtls = { version = ">=0.8.0, <0.10.0" }
-report-test = { version = "0.4.1", path = "../report-test" }
+report-test = { version = "0.4.0", path = "../report-test" }
 sgxs = { version = "0.8.0", path = "../sgxs" }
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = { version = "1.0" }
