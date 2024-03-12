@@ -54,5 +54,5 @@ protoc-rust = "2.8.0" # MIT/Apache-2.0
 
 [dev-dependencies]
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
-"report-test" = { version = "0.4.1", path = "../report-test" }
+"report-test" = { version = "0.4.0", path = "../report-test" }
 "sgxs-loaders" = { version = "0.4.0", path = "../sgxs-loaders" }

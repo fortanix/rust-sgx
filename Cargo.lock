@@ -612,7 +612,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.4.7"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -643,7 +643,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.2.3"
+version = "0.2.0"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -822,7 +822,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner"
-version = "0.6.2"
+version = "0.6.0"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -1017,7 +1017,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.6.1"
+version = "0.6.0"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -2817,7 +2817,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.4.3"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "enclave-runner",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.8.4"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -3165,7 +3165,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.4.3"
+version = "0.4.0"
 dependencies = [
  "aesm-client",
  "anyhow",
