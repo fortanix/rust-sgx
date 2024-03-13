@@ -25,11 +25,10 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aesm-client"
-version = "0.5.4"
+version = "0.6.0"
 dependencies = [
+ "anyhow",
  "byteorder 1.3.4",
- "failure",
- "failure_derive",
  "lazy_static",
  "libloading 0.5.2",
  "protobuf",
@@ -38,6 +37,7 @@ dependencies = [
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
+ "thiserror",
  "unix_socket2",
  "winapi",
 ]
@@ -598,7 +598,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-provider"
-version = "0.3.1"
+version = "0.3.0"
 dependencies = [
  "byteorder 1.3.4",
  "dcap-ql",
@@ -612,11 +612,11 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.3.7"
+version = "0.4.0"
 dependencies = [
+ "anyhow",
  "byteorder 1.3.4",
  "dcap-ql-sys",
- "failure",
  "lazy_static",
  "libc",
  "mbedtls",
@@ -643,11 +643,11 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "aesm-client",
+ "anyhow",
  "dcap-ql",
- "failure",
  "report-test",
  "sgx-isa",
  "sgxs-loaders",
@@ -822,11 +822,10 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner"
-version = "0.5.2"
+version = "0.6.0"
 dependencies = [
+ "anyhow",
  "crossbeam",
- "failure",
- "failure_derive",
  "fnv",
  "fortanix-sgx-abi",
  "futures 0.3.17",
@@ -838,6 +837,7 @@ dependencies = [
  "openssl",
  "sgx-isa",
  "sgxs",
+ "thiserror",
  "tokio",
 ]
 
@@ -920,28 +920,6 @@ dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
  "rustversion",
- "syn 1.0.81",
- "synstructure",
-]
-
-[[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2 1.0.78",
- "quote 1.0.35",
  "syn 1.0.81",
  "synstructure",
 ]
@@ -1039,13 +1017,12 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.5.1"
+version = "0.6.0"
 dependencies = [
  "aesm-client",
+ "anyhow",
  "clap",
  "enclave-runner",
- "failure",
- "failure_derive",
  "libc",
  "nix 0.13.1",
  "num_cpus",
@@ -1054,6 +1031,7 @@ dependencies = [
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
+ "thiserror",
  "toml 0.4.10",
  "xmas-elf",
 ]
@@ -2839,10 +2817,10 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
+ "anyhow",
  "enclave-runner",
- "failure",
  "sgx-isa",
  "sgxs",
 ]
@@ -3171,33 +3149,33 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.7.4"
+version = "0.8.0"
 dependencies = [
+ "anyhow",
  "byteorder 1.3.4",
  "crypto-hash",
- "failure",
- "failure_derive",
  "foreign-types",
  "openssl",
  "openssl-sys",
  "sgx-isa",
  "sha2 0.8.2",
+ "thiserror",
  "time 0.3.26",
 ]
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "aesm-client",
+ "anyhow",
  "bitflags",
- "failure",
- "failure_derive",
  "libloading 0.5.2",
  "nix 0.15.0",
  "report-test",
  "sgx-isa",
  "sgxs",
+ "thiserror",
  "winapi",
 ]
 
@@ -3206,6 +3184,7 @@ name = "sgxs-tools"
 version = "0.8.6"
 dependencies = [
  "aesm-client",
+ "anyhow",
  "atty",
  "byteorder 1.3.4",
  "clap",
@@ -3213,8 +3192,6 @@ dependencies = [
  "dcap-ql",
  "enclave-runner",
  "env_logger 0.6.2",
- "failure",
- "failure_derive",
  "fnv",
  "lazy_static",
  "log 0.4.14",
@@ -3235,6 +3212,7 @@ dependencies = [
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
+ "thiserror",
  "winapi",
  "yansi",
 ]

@@ -7,8 +7,6 @@
 use std::fmt::Debug;
 use std::os::raw::c_void;
 
-use failure::Error;
-
 use abi::{Attributes, Miscselect, Sigstruct};
 use sgxs::SgxsRead;
 
@@ -47,5 +45,5 @@ pub trait Load {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> Result<Mapping<Self>, Error>;
+    ) -> Result<Mapping<Self>, anyhow::Error>;
 }

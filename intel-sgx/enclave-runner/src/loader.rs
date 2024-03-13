@@ -10,8 +10,8 @@ use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
 
-use failure::{format_err, Error, ResultExt};
-use failure_derive::Fail;
+use thiserror::Error as ThisError;
+use anyhow::{Context, format_err};
 
 #[cfg(feature = "crypto-openssl")]
 use openssl::{
@@ -65,23 +65,23 @@ pub struct EnclaveBuilder<'a> {
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
-    load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
-    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
+    load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, anyhow::Error>>>,
+    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
     forward_panics: bool,
     cmd_args: Option<Vec<Vec<u8>>>,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, ThisError)]
 pub enum EnclavePanic {
     /// The first byte of the debug buffer was 0
-    #[fail(display = "Enclave panicked.")]
+    #[error("Enclave panicked.")]
     NoDebugBuf,
     /// The debug buffer could be interpreted as a zero-terminated UTF-8 string
-    #[fail(display = "Enclave panicked: {}", _0)]
+    #[error("Enclave panicked: {}", _0)]
     DebugStr(String),
     /// The first byte of the debug buffer was not 0, but it was also not a
     /// zero-terminated UTF-8 string
-    #[fail(display = "Enclave panicked: {:?}", _0)]
+    #[error("Enclave panicked: {:?}", _0)]
     DebugBuf(Vec<u8>),
 }
 
@@ -158,7 +158,7 @@ impl<'a> EnclaveBuilder<'a> {
         ret
     }
 
-    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, Error> {
+    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, anyhow::Error> {
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
@@ -309,7 +309,7 @@ impl<'a> EnclaveBuilder<'a> {
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), Error> {
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), anyhow::Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -331,7 +331,7 @@ impl<'a> EnclaveBuilder<'a> {
         ))
     }
 
-    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, anyhow::Error> {
         self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
@@ -343,7 +343,7 @@ impl<'a> EnclaveBuilder<'a> {
     ///
     /// [`arg`]: struct.EnclaveBuilder.html#method.arg
     /// [`args`]: struct.EnclaveBuilder.html#method.args
-    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
+    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, anyhow::Error> {
         if self.cmd_args.is_some() {
             panic!("Command arguments do not apply to Library enclaves.");
         }

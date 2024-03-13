@@ -1,6 +1,6 @@
 [package]
 name = "aesm-client"
-version = "0.5.4"
+version = "0.6.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -26,15 +26,15 @@ test-sgx = []
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.7.0", path = "../sgxs", optional = true }
+sgxs = { version = "0.8.0", path = "../sgxs", optional = true }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa"}
 
 # External dependencies
 byteorder = "1.0"          # Unlicense/MIT
 lazy_static = "1"          # MIT/Apache-2.0
 protobuf = "2.22.1"        # MIT/Apache-2.0
-failure = "0.1.1"          # MIT/Apache-2.0
-failure_derive = "0.1.1"   # MIT/Apache-2.0
+thiserror = "1.0"          # MIT/Apache-2.0
+anyhow = "1.0"             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 # We require a version of unix-socket with the following change:
@@ -54,5 +54,5 @@ protoc-rust = "2.8.0" # MIT/Apache-2.0
 
 [dev-dependencies]
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
-"report-test" = { version = "0.3.1", path = "../report-test" }
-"sgxs-loaders" = { version = "0.3.0", path = "../sgxs-loaders" }
+"report-test" = { version = "0.4.0", path = "../report-test" }
+"sgxs-loaders" = { version = "0.4.0", path = "../sgxs-loaders" }

@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sgx_isa::Report;
 use std::borrow::Cow;
 use std::mem;
+use anyhow::bail;
 
 // ====================================================
 // ================= TYPE DEFINITIONS =================
@@ -93,7 +94,7 @@ pub struct Qe3CertDataPckCertChain<'a> {
 
 pub type RawQe3CertData<'a> = Cow<'a, [u8]>;
 
-pub type Result<T> = ::std::result::Result<T, ::failure::Error>;
+pub type Result<T> = ::std::result::Result<T, anyhow::Error>;
 
 // ===========================================
 // ================= PARSING =================

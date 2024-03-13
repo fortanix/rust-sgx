@@ -9,7 +9,7 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 extern crate byteorder;
-extern crate failure;
+extern crate thiserror;
 #[cfg(feature = "crypto-openssl")]
 extern crate foreign_types;
 #[cfg(feature = "crypto-openssl")]
@@ -20,8 +20,6 @@ extern crate sgx_isa as abi;
 #[cfg(feature = "sha2")]
 extern crate sha2;
 extern crate time;
-#[macro_use]
-extern crate failure_derive;
 
 pub mod crypto;
 pub mod einittoken;

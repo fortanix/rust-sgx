@@ -32,10 +32,9 @@
 
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+
+extern crate anyhow;
+extern crate thiserror;
 #[macro_use]
 extern crate mopa;
 #[macro_use]
@@ -52,7 +51,6 @@ use std::rc::Rc;
 use std::process::Command;
 use std::io::{self, BufRead, Error as IOError, ErrorKind};
 use reqwest;
-use failure::Error;
 use yansi::Paint;
 use aesm_client::AesmClient;
 use sgx_isa::{Sigstruct, Attributes, Einittoken};
@@ -63,6 +61,8 @@ use sgxs_loaders::isgx::Device as SgxDevice;
 use sgxs_loaders::enclaveapi::Sgx as SgxDevice;
 use sgxs_loaders::sgx_enclave_common::Library as EnclCommonLib;
 use proc_mounts::MountList;
+use anyhow::{bail, Error, format_err};
+use thiserror::Error as ThisError;
 
 mod interpret;
 #[cfg(windows)]
@@ -79,15 +79,15 @@ mod tests;
 use crate::interpret::*;
 use crate::tests::Tests;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, ThisError)]
 enum DetectError {
-    #[fail(display = "CPUID leaf {:x}h is not valid", leaf)]
+    #[error("CPUID leaf {:x}h is not valid", leaf)]
     CpuidLeafInvalid { leaf: u32 },
-    #[fail(display = "Failed access EFI variables")]
-    EfiFsError(#[cause] io::Error),
-    #[fail(display = "Failed to read EFI variable")]
-    EfiVariableError(#[cause] io::Error),
-    #[fail(display = "Not available when using JSON tests")]
+    #[error("Failed access EFI variables")]
+    EfiFsError(#[source] io::Error),
+    #[error("Failed to read EFI variable")]
+    EfiVariableError(#[source] io::Error),
+    #[error("Not available when using JSON tests")]
     NotAvailableInTest,
 }
 
@@ -104,7 +104,7 @@ fn cpuid(eax: u32, ecx: u32) -> Result<CpuidResult, Error> {
 mod detect_result {
     use std::rc::Rc;
 
-    use failure::{Error, err_msg};
+    use anyhow::{Error, anyhow};
     use serde::ser::{Serialize, Serializer};
     use serde::de::{Deserialize, Deserializer};
 
@@ -115,7 +115,7 @@ mod detect_result {
     pub fn deserialize<'de, T: Deserialize<'de>, D: Deserializer<'de>>(deserializer: D) -> Result<Result<T, Rc<Error>>, D::Error> {
         match Result::<T, String>::deserialize(deserializer) {
             Ok(Ok(v)) => Ok(Ok(v)),
-            Ok(Err(e)) => Ok(Err(Rc::new(err_msg(e)))),
+            Ok(Err(e)) => Ok(Err(Rc::new(anyhow!(e)))),
             Err(e) => Err(e),
         }
     }
@@ -168,7 +168,7 @@ struct FailTrace<'a>(pub &'a Error);
 impl<'a> fmt::Display for FailTrace<'a> {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(fmt, "{}", self.0)?;
-        for cause in self.0.iter_causes() {
+        for cause in self.0.chain() {
             write!(fmt, "\ncause: {}", cause)?;
         }
         Ok(())
@@ -267,7 +267,7 @@ impl SgxSupport {
                 while let Some(p) = path.parent() {
                     if let Some(mount_info) = mount_list.0.iter().find(|&x| x.dest == p) {
                         if mount_info.options.iter().any(|o| o == "noexec") {
-                            return Err(failure::format_err!("{:?} mounted with `noexec` option", mount_info.dest));
+                            return Err(format_err!("{:?} mounted with `noexec` option", mount_info.dest));
                         }
                     }
                     path = p;

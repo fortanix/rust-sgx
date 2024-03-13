@@ -10,7 +10,7 @@ extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
 extern crate xmas_elf;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 
 use std::borrow::Borrow;
 use std::fs::File;
@@ -19,7 +19,8 @@ use std::mem::replace;
 use std::num::ParseIntError;
 use std::path::{Path, PathBuf};
 
-use failure::{err_msg, Error, ResultExt};
+use crate::anyhow::Context;
+use anyhow::anyhow;
 
 use xmas_elf::dynamic::{Dynamic as DynEntry, Tag as DynTag};
 use xmas_elf::header::Class as HeaderClass;
@@ -127,13 +128,13 @@ macro_rules! read_syms {
         $(let mut $optional_name=None;)*
         for sym in $syms.iter().skip(1) {
             if sym.shndx()==SHN_UNDEF {
-                bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(err_msg)?);
-            } $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($mandatory_name) {
+                bail!("Found undefined dynamic symbol: {}", sym.get_name(&$elf).map_err(|e| anyhow!(e))?);
+            } $(else if sym.get_name(&$elf).map_err(|e| anyhow!(e))?==stringify!($mandatory_name) {
                 if replace(&mut $mandatory_name,Some(sym)).is_some() {
                     bail!("Found symbol twice: {}", stringify!($mandatory_name));
                 }
             })*
-            $(else if sym.get_name(&$elf).map_err(err_msg)?==stringify!($optional_name) {
+            $(else if sym.get_name(&$elf).map_err(|e| anyhow!(e))?==stringify!($optional_name) {
                 if replace(&mut $optional_name,Some(sym)).is_some() {
                     bail!("Found symbol twice: {}", stringify!($optional_name));
                 }
@@ -182,7 +183,7 @@ macro_rules! check_size {
 
 impl<'a> LayoutInfo<'a> {
     // Check version defined in rust-lang assembly code is supported, see .note.x86_64-fortanix-unknown-sgx section in https://github.com/rust-lang/rust/blob/master/library/std/src/sys/sgx/abi/entry.S
-    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), Error> {
+    fn check_toolchain_version(elf: &ElfFile<'a>) -> Result<(), anyhow::Error> {
         let note_header = elf.find_section_by_name(".note.x86_64-fortanix-unknown-sgx")
             .ok_or_else(|| format_err!("Could not find .note.x86_64-fortanix-unknown-sgx header!"))?;
 
@@ -216,13 +217,13 @@ impl<'a> LayoutInfo<'a> {
     }
     
     #[allow(non_snake_case)]
-    fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, Error> {
+    fn check_symbols(elf: &ElfFile<'a>) -> Result<Symbols<'a>, anyhow::Error> {
         let dynsym = elf
             .find_section_by_name(".dynsym")
             .ok_or_else(|| format_err!("Could not find dynamic symbol table!"))?;
 
         let syms =
-            if let SectionData::DynSymbolTable64(syms) = dynsym.get_data(&elf).map_err(err_msg)? {
+            if let SectionData::DynSymbolTable64(syms) = dynsym.get_data(&elf).map_err(|e| anyhow!(e))? {
                 syms
             } else {
                 bail!(".dynsym section is not a dynamic symbol table!");
@@ -268,7 +269,7 @@ impl<'a> LayoutInfo<'a> {
         Ok(syms)
     }
 
-    fn check_section(elf: &ElfFile<'a>, section_name: &str) -> Result<SectionRange, Error> {
+    fn check_section(elf: &ElfFile<'a>, section_name: &str) -> Result<SectionRange, anyhow::Error> {
         let sec = elf
             .find_section_by_name(&section_name)
             .ok_or_else(|| format_err!("Could not find {}!", section_name))?;
@@ -278,7 +279,7 @@ impl<'a> LayoutInfo<'a> {
         })
     }
 
-    fn check_dynamic(elf: &ElfFile<'a>) -> Result<Option<Dynamic<'a>>, Error> {
+    fn check_dynamic(elf: &ElfFile<'a>) -> Result<Option<Dynamic<'a>>, anyhow::Error> {
         use xmas_elf::dynamic::Tag::*;
         const DT_RELACOUNT: DynTag<u64> = OsSpecific(0x6ffffff9);
         const DT_RELCOUNT: DynTag<u64> = OsSpecific(0x6ffffffa);
@@ -290,7 +291,7 @@ impl<'a> LayoutInfo<'a> {
             .find(|ph| ph.get_type() == Ok(PhType::Dynamic))
             .ok_or_else(|| format_err!("Could not found dynamic section!"))?;
 
-        let dyns = if let SegmentData::Dynamic64(dyns) = dynh.get_data(&elf).map_err(err_msg)? {
+        let dyns = if let SegmentData::Dynamic64(dyns) = dynh.get_data(&elf).map_err(|e| anyhow!(e))? {
             dyns
         } else {
             bail!("PT_DYNAMIC segment is not a dynamic section!")
@@ -300,7 +301,7 @@ impl<'a> LayoutInfo<'a> {
         let mut relacount = None;
 
         for dynamic in dyns {
-            match dynamic.get_tag().map_err(err_msg)? {
+            match dynamic.get_tag().map_err(|e| anyhow!(e))? {
                 // Some entries for PLT/GOT checking are currently
                 // commented out. I *think* that if there were an actual
                 // PLT/GOT problem, that would be caught by the remaining
@@ -331,7 +332,7 @@ impl<'a> LayoutInfo<'a> {
         }
     }
 
-    fn check_relocs(elf: &ElfFile<'a>, dynamic: Option<&Dynamic<'a>>) -> Result<(), Error> {
+    fn check_relocs(elf: &ElfFile<'a>, dynamic: Option<&Dynamic<'a>>) -> Result<(), anyhow::Error> {
         const R_X86_64_RELATIVE: u32 = 8;
 
         let writable_ranges = elf
@@ -347,7 +348,7 @@ impl<'a> LayoutInfo<'a> {
 
         let mut count = 0;
         for section in elf.section_iter() {
-            if let SectionData::Rela64(relas) = section.get_data(&elf).map_err(err_msg)? {
+            if let SectionData::Rela64(relas) = section.get_data(&elf).map_err(|e| anyhow!(e))? {
                 count += relas.len();
                 for rela in relas {
                     let shind = rela.get_symbol_table_index();
@@ -389,7 +390,7 @@ impl<'a> LayoutInfo<'a> {
         debug: bool,
         library: bool,
         sized: bool,
-    ) -> Result<LayoutInfo<'a>, Error> {
+    ) -> Result<LayoutInfo<'a>, anyhow::Error> {
         if let HeaderClass::SixtyFour = elf.header.pt1.class() {
         } else {
             bail!("Only 64-bit ELF supported!");
@@ -426,7 +427,7 @@ impl<'a> LayoutInfo<'a> {
         heap_addr: u64,
         memory_size: u64,
         enclave_size: Option<u64>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), anyhow::Error> {
         let mut splices = vec![
             Splice::for_sym_u64(self.sym.HEAP_BASE, heap_addr),
             Splice::for_sym_u64(self.sym.HEAP_SIZE, self.heap_size),
@@ -501,7 +502,7 @@ impl<'a> LayoutInfo<'a> {
             let base = start & !0xfff;
             let mut end = start + ph.mem_size();
             let base_data;
-            if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(err_msg)? {
+            if let SegmentData::Undefined(data) = ph.get_data(&self.elf).map_err(|e| anyhow!(e))? {
                 base_data = data;
             } else {
                 // Reachable if xmas-elf changes definition of SegmentData
@@ -558,7 +559,7 @@ impl<'a> LayoutInfo<'a> {
         Ok(())
     }
 
-    pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(), Error> {
+    pub fn write<W: SgxsWrite>(&self, writer: &mut W) -> Result<(), anyhow::Error> {
         let max_addr = self
             .elf
             .program_iter()
@@ -719,7 +720,7 @@ fn read_file<P: AsRef<Path>>(path: P) -> Result<Vec<u8>, IoError> {
     Ok(buf)
 }
 
-fn main_result(args: ArgMatches) -> Result<(), Error> {
+fn main_result(args: ArgMatches) -> Result<(), anyhow::Error> {
     let ssaframesize = u32::parse_arg(args.value_of("ssaframesize").unwrap());
     let heap_size = u64::parse_arg(args.value_of("heap-size").unwrap());
     let stack_size = u64::parse_arg(args.value_of("stack-size").unwrap());

@@ -23,6 +23,7 @@ use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigs
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use thiserror::Error as ThisError;
 
 use crate::{MappingInfo, Tcs};
 use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
@@ -60,28 +61,28 @@ pub enum DriverFamily {
 
 use self::DriverFamily::*;
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum SgxIoctlError {
-    #[fail(display = "I/O ctl failed.")]
-    Io(#[cause] IoError),
-    #[fail(display = "The SGX instruction returned an error: {:?}.", _0)]
+    #[error("I/O ctl failed.")]
+    Io(#[source] IoError),
+    #[error("The SGX instruction returned an error: {:?}.", _0)]
     Ret(ErrorCode),
-    #[fail(display = "The enclave was destroyed because the CPU was powered down.")]
+    #[error("The enclave was destroyed because the CPU was powered down.")]
     PowerLostEnclave,
-    #[fail(display = "Launch enclave version rollback detected.")]
+    #[error("Launch enclave version rollback detected.")]
     LeRollback,
 }
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
-    #[fail(display = "Failed to map enclave into memory.")]
-    Map(#[cause] IoError),
-    #[fail(display = "Failed to call ECREATE.")]
-    Create(#[cause] SgxIoctlError),
-    #[fail(display = "Failed to call EADD.")]
-    Add(#[cause] SgxIoctlError),
-    #[fail(display = "Failed to call EINIT.")]
-    Init(#[cause] SgxIoctlError),
+    #[error("Failed to map enclave into memory.")]
+    Map(#[source] IoError),
+    #[error("Failed to call ECREATE.")]
+    Create(#[source] SgxIoctlError),
+    #[error("Failed to call EADD.")]
+    Add(#[source] SgxIoctlError),
+    #[error("Failed to call EINIT.")]
+    Init(#[source] SgxIoctlError),
 }
 
 impl Error {
@@ -493,7 +494,7 @@ impl loader::Load for Device {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
+    ) -> ::std::result::Result<loader::Mapping<Self>, ::anyhow::Error> {
         self.inner
             .load(reader, sigstruct, attributes, miscselect)
             .map(Into::into)

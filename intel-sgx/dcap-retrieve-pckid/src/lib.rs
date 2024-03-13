@@ -8,9 +8,9 @@
 use std::convert::TryInto;
 use std::fmt;
 
+use anyhow::anyhow;
 use aesm_client::AesmClient;
 use dcap_ql::quote::{Qe3CertDataPpid, Quote, Quote3SignatureEcdsaP256, QuoteHeader};
-use failure::Error as FailureError;
 use sgx_isa::Targetinfo;
 #[cfg(windows)]
 use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
@@ -54,11 +54,11 @@ impl ToString for PckId {
     }
 }
 
-pub fn retrieve_pckid_str() -> Result<PckId, FailureError> {
+pub fn retrieve_pckid_str() -> Result<PckId, anyhow::Error> {
     const SGX_QL_ALG_ECDSA_P256: u32 = 2;
 
     let mut device = IsgxDevice::new()
-        .map_err(|err| FailureError::from(err).context("Error opening SGX device"))?
+        .map_err(|err| anyhow::Error::from(err).context("Error opening SGX device"))?
         .einittoken_provider(AesmClient::new())
         .build();
 
@@ -66,23 +66,23 @@ pub fn retrieve_pckid_str() -> Result<PckId, FailureError> {
 
     let key_ids = client
         .get_supported_att_key_ids()
-        .map_err(|err| FailureError::from(err).context("AESM communication error getting attestation key ID"))?;
+        .map_err(|err| anyhow::Error::from(err).context("AESM communication error getting attestation key ID"))?;
 
     let ecdsa_key_id = key_ids
         .into_iter()
         .find(|id| SGX_QL_ALG_ECDSA_P256 == get_algorithm_id(id))
-        .ok_or(::failure::err_msg("No appropriate attestation key ID"))?;
+        .ok_or(anyhow!("No appropriate attestation key ID"))?;
 
     let quote_info = client
         .init_quote_ex(ecdsa_key_id.clone())
-        .map_err(|err| FailureError::from(err).context("Error during quote initialization"))?;
+        .map_err(|err| anyhow::Error::from(err).context("Error during quote initialization"))?;
 
     let ti = Targetinfo::try_copy_from(quote_info.target_info()).unwrap();
     let report = report_test::report(&ti, &mut device).unwrap();
 
     let res = client
         .get_quote_ex(ecdsa_key_id, report.as_ref().to_owned(), None, vec![0; 16])
-        .map_err(|err| FailureError::from(err).context("Error obtaining quote"))?;
+        .map_err(|err| anyhow::Error::from(err).context("Error obtaining quote"))?;
 
     let quote = Quote::parse(res.quote()).map_err(|err| err.context("Error parsing quote"))?;
     let QuoteHeader::V3 { user_data, .. } = quote.header();

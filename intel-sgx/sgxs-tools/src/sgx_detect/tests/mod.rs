@@ -7,13 +7,14 @@ use std::io::ErrorKind;
 use std::io::Error as IoError;
 use std::process;
 
-use failure::Error;
+use anyhow::Error;
 use petgraph::visit::EdgeRef;
 
 use enclave_runner::EnclaveBuilder;
 use report_test::ReportBuilder;
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::loader::Load;
+use anyhow::format_err;
 
 mod debug;
 #[macro_use]

@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use failure::Error;
+use anyhow::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};

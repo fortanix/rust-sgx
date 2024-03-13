@@ -7,10 +7,8 @@
 extern crate byteorder;
 extern crate sgx_isa;
 extern crate sgxs as sgxs_crate;
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+extern crate anyhow;
+extern crate thiserror;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -22,16 +20,17 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use byteorder::{LittleEndian, WriteBytesExt};
-use failure::{Error, ResultExt};
 
 use sgx_isa::{PageType, SecinfoFlags};
 use crate::sgxs_crate::sgxs::{
     CanonicalSgxsReader, Meas, PageChunk, SecinfoTruncated, SgxsRead, SgxsWrite,
 };
 use crate::sgxs_crate::util::size_fit_natural;
+use anyhow::{Context, Error, bail, format_err};
+use thiserror::Error as ThisError;
 
-#[derive(Debug, Fail)]
-#[fail(display = "Usage error")]
+#[derive(Debug, ThisError)]
+#[error("Usage error")]
 struct UsageError(Cow<'static, str>);
 
 struct NamedFile {

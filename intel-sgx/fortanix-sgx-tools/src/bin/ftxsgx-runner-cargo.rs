@@ -1,15 +1,17 @@
 #[macro_use]
 extern crate serde_derive;
+
+extern crate anyhow;
 #[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate failure_derive;
+extern crate thiserror;
 
 use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::process::{self, Command, ExitStatus};
-use failure::{Error, ResultExt};
+use anyhow::Context;
+use anyhow::format_err;
+use thiserror::Error as ThisError;
 
 const HEAP_SIZE: u64 = 0x2000000;
 const SSAFRAMESIZE: u32 = 1;
@@ -46,11 +48,11 @@ struct Config {
     package: Package
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, ThisError)]
 enum CommandFail {
-    #[fail(display = "failed to run {}, {}", _0, _1)]
+    #[error("failed to run {}, {}", _0, _1)]
     Io(String, io::Error),
-    #[fail(display = "while running {} got {}", _0, _1)]
+    #[error("while running {} got {}", _0, _1)]
     Status(String, ExitStatus),
 }
 
@@ -62,7 +64,7 @@ fn run_command(mut cmd: Command) -> Result<(), CommandFail> {
     }
 }
 
-fn run() -> Result<(), Error> {
+fn run() -> Result<(), anyhow::Error> {
     let key = "CARGO_MANIFEST_DIR";
     let mut filepath = env::var_os(key)
         .ok_or_else(|| format_err!("{} is not defined in the environment.", key))?;
