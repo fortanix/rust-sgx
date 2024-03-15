@@ -99,3 +99,6 @@ jobs:
     - name: Generate API docs
       run: ./doc/generate-api-docs.sh
 
+    - name: Run memory allocator stress test
+      run: cd ./examples/mem-alloc-test && cargo run
+
