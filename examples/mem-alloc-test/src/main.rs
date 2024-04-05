@@ -1,9 +1,9 @@
 use rand::Rng;
-use num_cpus;
+use std::alloc::{alloc, dealloc, Layout};
+use std::ptr;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
-use std::time::{Instant};
-
+use std::time::Instant;
 #[derive(Debug, PartialEq)]
 enum MemSize {
     Large,
@@ -29,7 +29,6 @@ const TO_KB: usize = 1024;
 const TO_MB: usize = TO_KB * 1024;
 const TO_GB: usize = TO_MB * 1024;
 
-
 /* Set of configurable parameters. These will adjusted as necessary while
  * recording the performance numbers
  */
@@ -54,7 +53,6 @@ const MAX_INDEX_CHECKS_PER_BUFFER: usize = 32;
 
 fn calculate_and_print_stat(
     shared_mutex_clone: Arc<Mutex<Counters>>,
-    tid: i32,
     memsize: &MemSize,
     avg_thread_latency: f64,
 ) {
@@ -62,7 +60,7 @@ fn calculate_and_print_stat(
      * than just average, such as standard deviation, minimum and maximum time,
      * and p95/p99/p99.9 latency
      */
-    //println!("thread {} took {}\n", tid, avg_thread_latency);
+    //println!("thread {} took {}\n", _tid, avg_thread_latency);
     let mut data = shared_mutex_clone.lock().unwrap();
     /* Please note this is an intermediate value. Once we get the sum of individual
      * averages of all the threads, then we will divide it by the frequency of
@@ -103,22 +101,22 @@ fn wakeup_all_child_threads(pair_clone: Arc<(Mutex<bool>, Condvar)>) {
     drop(started);
 }
 
-fn traverse_buffer(buf: &mut Vec<i32>, scan_interval: usize) {
-    let mut ptr = 0;
+fn traverse_buffer(buf: *mut u8, size: usize, _scan_interval: usize) {
     let num_indices_checks = get_random_num(1, MAX_INDEX_CHECKS_PER_BUFFER);
-    for i in 1..=num_indices_checks {
+    for _i in 1..=num_indices_checks {
         /* Check for random indices and number of such indices is  num_indices_checks
          * Please note that depending on the number random number generator, we
          * can check for the same index multiple times. We could have checked
          * for all the indices but that would be too time consuming
          */
-        let index = get_random_num(0, buf.len() - 1);
-        buf[index] = buf[index] * 2;
+        let index = get_random_num(0, size - 1);
+        unsafe {
+            ptr::write(buf.offset(index as isize), 1);
+        }
     }
 }
 
 fn worker_thread(
-    tid: i32,
     shared_mutex_clone: Arc<Mutex<Counters>>,
     memsize: MemSize,
     pair_clone: Arc<(Mutex<bool>, Condvar)>,
@@ -166,14 +164,22 @@ fn worker_thread(
         let start_time = Instant::now();
 
         /* Create an array of x GB where x is a random number between 1 to 4 */
-        let mut large_vector = Vec::with_capacity(size);
-        large_vector.resize(size, 0);
+
+        // Create a layout based on the size and alignment
+        let align = get_random_num(2, PAGE_SIZE).next_power_of_two();
+        let layout = Layout::from_size_align(size, align).unwrap();
+
+        // Allocate memory using the global allocator
+        let ptr = unsafe { alloc(layout) };
+        assert!(!ptr.is_null());
 
         /* Traverse and access the entire buffer so that pages are allocated */
-        traverse_buffer(&mut large_vector, scan_interval);
+        traverse_buffer(ptr, size, scan_interval);
 
         /* deallocate */
-        drop(large_vector);
+        unsafe {
+            dealloc(ptr, layout);
+        }
 
         /* calculate the metrics */
         let end_time = Instant::now();
@@ -181,7 +187,7 @@ fn worker_thread(
         tot_time_ns += duration.as_nanos();
 
         count = count + 1;
-        if (count >= limit) {
+        if count >= limit {
             break;
         }
     }
@@ -193,7 +199,7 @@ fn worker_thread(
     let avg_thread_latency = tot_time_ns as f64 / count as f64;
 
     let shared_mutex_clone_2 = Arc::clone(&shared_mutex_clone);
-    calculate_and_print_stat(shared_mutex_clone_2, tid, &memsize, avg_thread_latency);
+    calculate_and_print_stat(shared_mutex_clone_2, &memsize, avg_thread_latency);
 }
 
 fn spawn_threads(thread_count: i32) {
@@ -211,13 +217,12 @@ fn spawn_threads(thread_count: i32) {
         let shared_mutex_clone = Arc::clone(&shared_variable);
         // Spawn a thread that waits until the condition is met
         let pair_clone = Arc::clone(&pair);
-        let mut memtype;
+        let memtype;
 
         match i % 2 {
             0 => {
                 memtype = MemSize::Small;
                 num_small_threads += 1;
-
             }
             1 => {
                 memtype = MemSize::Medium;
@@ -231,7 +236,7 @@ fn spawn_threads(thread_count: i32) {
         };
 
         let handle = thread::spawn(move || {
-            worker_thread(i, shared_mutex_clone, memtype, pair_clone);
+            worker_thread(shared_mutex_clone, memtype, pair_clone);
         });
         handles.push(handle);
     }
@@ -246,17 +251,20 @@ fn spawn_threads(thread_count: i32) {
 
     /* Calculate final means */
     let mut data = shared_variable.lock().unwrap();
-    if (num_large_threads != 0) {
+    if num_large_threads != 0 {
         data.avg_duration_large_thread = data.avg_duration_large_thread / num_large_threads as f64;
     }
     data.avg_duration_medium_thread = data.avg_duration_medium_thread / num_medium_threads as f64;
     data.avg_duration_small_thread = data.avg_duration_small_thread / num_small_threads as f64;
 
-    data.global_average = (data.avg_duration_small_thread * num_small_threads as f64 * LIMIT_SMALL_THREAD as f64
+    data.global_average = (data.avg_duration_small_thread
+        * num_small_threads as f64
+        * LIMIT_SMALL_THREAD as f64
         + data.avg_duration_medium_thread * num_medium_threads as f64 * LIMIT_MEDIUM_THREAD as f64
         + data.avg_duration_large_thread * num_large_threads as f64 * LIMIT_LARGE_THREAD as f64)
-        / (num_large_threads * LIMIT_LARGE_THREAD +
-            num_medium_threads * LIMIT_MEDIUM_THREAD + num_small_threads * LIMIT_SMALL_THREAD) as f64;
+        / (num_large_threads * LIMIT_LARGE_THREAD
+            + num_medium_threads * LIMIT_MEDIUM_THREAD
+            + num_small_threads * LIMIT_SMALL_THREAD) as f64;
     println!(
         "{},{},{},{},{}",
         thread_count,
@@ -280,9 +288,9 @@ fn get_num_processors() -> usize {
  */
 fn start_tests() {
     println!("NUM_THREADS,LATENCY_SMALL_THREADS,LATENCY_MEDIUM_THREADS,LATENCY_LARGE_THREADS,GLOBAL_AVERAGE");
-    let mut num_processors = get_num_processors();
+    let num_processors = get_num_processors();
     let mut num_threads = num_processors * 2;
-    while (num_threads >= 3) {
+    while num_threads >= 3 {
         spawn_threads(num_threads as i32);
         num_threads = num_threads >> 1;
     }
