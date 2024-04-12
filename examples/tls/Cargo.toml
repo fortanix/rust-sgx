@@ -3,7 +3,8 @@ name = "tls"
 version = "0.1.0"
 authors = ["fortanix.com"]
 edition = "2018"
+publish = false
 
 [dependencies]
 chrono = "0.4"
-mbedtls = {version="0.5", default-features = false, features = ["sgx"]}
+mbedtls = { version = "0.12", default-features = false, features = ["std"] }

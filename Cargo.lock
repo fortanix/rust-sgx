@@ -753,7 +753,7 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.5.0"
+version = "0.4.0"
 dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "b64-ct",
@@ -1447,7 +1447,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -1713,9 +1713,9 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "mbedtls"
-version = "0.9.1"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77f2c88dbe2fcc6fddc0dc33eb2694471fef46f48b2081996335adb2f8085c53"
+checksum = "8730cf71e8d79ba70b3b7986af7af7629c0c4ee58b59e4a2e30d855cc31552e8"
 dependencies = [
  "bitflags",
  "byteorder 1.3.4",
