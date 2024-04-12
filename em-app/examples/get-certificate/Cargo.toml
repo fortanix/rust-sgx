@@ -4,6 +4,7 @@ version = "0.2.0"
 authors = ["fortanix.com"]
 edition = "2018"
 license = "MPL-2.0"
+publish = false
 
 [dependencies]
 em-app = { path = "../../" }

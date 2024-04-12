@@ -3,6 +3,7 @@ name = "nitro-attestation-verify"
 version = "0.1.1"
 authors = ["Adrian Cruceru <adrian.cruceru@fortanix.com>"]
 edition = "2018"
+publish = false
 
 [dependencies]
 chrono = "0.4"
