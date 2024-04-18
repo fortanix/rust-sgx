@@ -29,11 +29,11 @@ no_sgx_enclave_common = []
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
-bitflags = "1"           # MIT/Apache-2.0
+bitflags = "2"           # MIT/Apache-2.0
 nix = "0.15"             # MIT
 anyhow = "1.0"           # MIT/Apache-2.0
 thiserror = "1.0"        # MIT/Apache-2.0
-libloading = "0.5"       # ISC
+libloading = "0.7"       # ISC
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.7", features = ["enclaveapi","memoryapi","processthreadsapi"] }
