@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -3852,7 +3852,7 @@ checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
 
 [[package]]
 name = "vme-pkix"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "lazy_static",
  "pkix",
