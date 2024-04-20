@@ -1,6 +1,6 @@
 [package]
 name = "ias"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -21,7 +21,7 @@ serde = { version = "1.0.7", features = ["derive"] }
 url = "2.2"
 
 mbedtls = { version = "0.12", features = ["std"], default-features = false, optional = true }
-pkix = "0.1"
+pkix = ">=0.1.0, <0.3.0"
 
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.2", path = "../sgx_pkix" }
