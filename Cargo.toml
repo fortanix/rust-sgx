@@ -30,9 +30,20 @@ members = [
     "ipc-queue",
     "rs-libc",
     "em-app",
-    "em-app/examples/get-certificate/",
+    "em-app/examples/get-certificate",
+    "examples/mem-correctness-test",
+    "examples/mem-alloc-test",
 ]
-exclude = ["examples/*"]
+exclude = [
+    "examples/usercall-extension-bind/runner",
+    "examples/usercall-extension-bind/app",
+    "examples/usercall-extension/runner",
+    "examples/usercall-extension/app",
+    "examples/unit_tests",
+    "examples/mpsc-crypto-mining",
+    "examples/tls",
+    "examples/backtrace_panic",
+]
 resolver = "2"
 
 [patch.crates-io]
