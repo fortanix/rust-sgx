@@ -33,9 +33,9 @@ lazy_static = "1.2.0"                           # MIT/Apache-2.0
 libc = "0.2.48"                                 # MIT/Apache-2.0
 nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
-crossbeam = "0.8.2"                             # MIT/Apache-2.0
+crossbeam = "0.8.4"                             # MIT/Apache-2.0
 num_cpus = "1.10.0"                             # MIT/Apache-2.0
-tokio = { version = "1.35", features = ["full"] } # MIT
+tokio = { version = "1.37", features = ["full"] } # MIT
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
 
 [features]

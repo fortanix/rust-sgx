@@ -13,34 +13,34 @@ keywords = [ "sgx" ]
 b64-ct = "0.1.0"
 em-client = { version = "3.0.0", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
-hyper = { version = "0.10", default-features = false }
+hyper = { version = "0.14", default-features = false }
 mbedtls = { version = "0.12", default-features = false, features = ["rdrand", "std", "ssl"] }
 pkix = ">=0.1.2, <0.3.0"
 
 rustc-serialize = "0.3.24"
-sdkms = { version = "0.2.1", default-features = false }
+sdkms = { version = "0.3.0", default-features = false }
 serde = "1.0.123"
 serde_bytes = "0.11"
 serde_derive = "1.0.123"
 serde_json = "1.0"
-url = "1"
-uuid = { version = "0.6.3", features = ["v4", "serde"] }
+url = "2"
+uuid = { version = "0.8.2", features = ["v4", "serde"] }
 uuid_sdkms = { package = "uuid", version = "0.7.4", features = ["v4", "serde"] }
 
-yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+yasna = { version = "0.4", features = ["num-bigint", "bit-vec"] }
 
 [target.x86_64-fortanix-unknown-sgx.dependencies]
 sgx_pkix = { version = "0.2.0", path = "../intel-sgx/sgx_pkix" }
 sgx-isa = { version = "0.4", path = "../intel-sgx/sgx-isa", default-features = false }
 
 [target.x86_64-unknown-linux-musl.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = "0.4.0"
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = "0.4.0"
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-fortanixvme.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = "0.4.0"
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }

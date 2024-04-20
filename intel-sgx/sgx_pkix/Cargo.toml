@@ -11,8 +11,8 @@ keywords = [ "certificate-handling", "sgx" ]
 categories = ["cryptography"]
 
 [dependencies]
-byteorder = "1.0"
+byteorder = "1.5"
 pkix = ">=0.1.1, <0.3.0"
 sgx-isa = { version = "0.4", path = "../sgx-isa" }
-quick-error = "1.1.0"
+quick-error = "2.0.1"
 lazy_static = "1"
