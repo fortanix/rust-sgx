@@ -3,5 +3,6 @@ name = "backtrace_panic"
 version = "0.1.0"
 authors = ["Fortanix, Inc."]
 edition = "2018"
+publish = false
 
 [dependencies]
