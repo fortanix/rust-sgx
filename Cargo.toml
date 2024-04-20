@@ -43,6 +43,7 @@ exclude = [
     "examples/mpsc-crypto-mining",
     "examples/tls",
     "examples/backtrace_panic",
+    "intel-sgx/sgxs-loaders/tests/driver-crawler",
 ]
 resolver = "2"
 
