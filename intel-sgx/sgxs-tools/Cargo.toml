@@ -34,29 +34,29 @@ path = "src/sgx_detect/main.rs"
 
 # External dependencies
 lazy_static = "1"                                # MIT/Apache-2.0
-clap = "2.2.5"                                   # MIT
-reqwest = { version = "0.11", features = ["blocking", "json"] } # MIT/Apache-2.0
+clap = "4.5.4"                                   # MIT
+reqwest = { version = "0.12", features = ["blocking", "json"] } # MIT/Apache-2.0
 regex = "1"                                      # MIT/Apache-2.0
-num = "0.2"                                      # MIT/Apache-2.0
-byteorder = "1.1.0"                              # Unlicense/MIT
+num = "0.4"                                      # MIT/Apache-2.0
+byteorder = "1.5.0"                              # Unlicense/MIT
 openssl = "0.10"                                 # Apache-2.0
 anyhow = "1.0"                                   # MIT/Apache-2.0
 thiserror = "1.0"                                # MIT/Apache-2.0
 crypto-hash = "0.3"                              # MIT
 log = "0.4"                                      # MIT/Apache-2.0
-env_logger = "0.6"                               # MIT/Apache-2.0
-yansi = "0.5"                                    # MIT/Apache-2.0
+env_logger = "0.9"                               # MIT/Apache-2.0
+yansi = "1.0"                                    # MIT/Apache-2.0
 atty = "0.2"                                     # MIT
-quote = "0.6"                                    # MIT/Apache-2.0
-proc-macro2 = "0.4"                              # MIT/Apache-2.0
-petgraph = "0.4"                                 # MIT/Apache-2.0
+quote = "1.0"                                    # MIT/Apache-2.0
+proc-macro2 = "1.0"                              # MIT/Apache-2.0
+petgraph = "0.6"                                 # MIT/Apache-2.0
 mopa = "0.2"                                     # MIT/Apache-2.0
-syn = { version = "0.15", features = ["full"] }  # MIT/Apache-2.0
+syn = { version = "2.0", features = ["full"] }  # MIT/Apache-2.0
 fnv = "1"                                        # MIT/Apache-2.0
-proc-mounts = "0.2.4"                            # MIT
+proc-mounts = "0.3.0"                            # MIT
 serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
-serde_yaml = "0.8.8"                             # MIT/Apache-2.0
+serde_yaml = "0.9.34"                             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 "dcap-ql" = { version = "0.4.0", path = "../dcap-ql" }

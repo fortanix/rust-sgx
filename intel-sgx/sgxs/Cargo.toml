@@ -17,14 +17,14 @@ categories = ["parsing", "encoding"]
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
-byteorder = "1.0"                                     # Unlicense/MIT
+byteorder = "1.5"                                     # Unlicense/MIT
 time = { version = "0.3", features = ["formatting", "local-offset", "macros", "std"] } # MIT/Apache-2.0
 thiserror = "1.0"                                     # MIT/Apache-2.0
 anyhow = "1.0"                                        # MIT/Apache-2.0
 openssl = { version = "0.10", optional = true }       # Apache-2.0
 openssl-sys = { version = "0.9.24", optional = true } # Apache-2.0
-foreign-types = { version = "0.3", optional = true }  # MIT/Apache-2.0
-sha2 = { version = "0.8", optional = true }           # MIT OR Apache-2.0
+foreign-types = { version = "0.5", optional = true }  # MIT/Apache-2.0
+sha2 = { version = "0.10", optional = true }           # MIT OR Apache-2.0
 
 [features]
 crypto-openssl = ["openssl", "openssl-sys", "foreign-types"]

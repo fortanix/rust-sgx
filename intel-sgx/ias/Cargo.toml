@@ -9,13 +9,13 @@ description = "API definitions, tools, and client for the Intel Attestation Serv
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-base64 = { version = "0.13", optional = true }
-bitflags = "1"
-byteorder = "1.0"
+base64 = { version = "0.22", optional = true }
+bitflags = "2"
+byteorder = "1.5"
 log = "0.4"
-percent-encoding = "2.1"
+percent-encoding = "2.3"
 serde_bytes = "0.11"
-serde-bytes-repr = { version = "0.1", optional = true }
+serde-bytes-repr = { version = "0.2", optional = true }
 serde_json = { version = "1", optional = true }
 serde = { version = "1.0.7", features = ["derive"] }
 url = "2.2"
@@ -27,7 +27,7 @@ sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.2", path = "../sgx_pkix" }
 
 [target.'cfg(not(target_env="sgx"))'.dependencies]
-reqwest = { version = "0.11", features = ["json"], optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
 
 [features]
 client = ["reqwest", "base64", "serde-bytes-repr", "serde_json"]
@@ -39,7 +39,7 @@ tokio = { version = "1", features = ["macros"] }
 env_logger = "0.9.0"
 
 [target.'cfg(not(target_env="sgx"))'.dev-dependencies]
-clap = "2.23.3"
+clap = "4.5.4"
 
 report-test = { version = "0.4", path = "../report-test" }
 aesm-client = { version = "0.6", features = ["sgxs"], path = "../aesm-client" }
