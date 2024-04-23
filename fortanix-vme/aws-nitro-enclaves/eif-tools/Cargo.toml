@@ -16,7 +16,7 @@ categories = ["command-line-utilities"]
 [dependencies]
 anyhow = "1.0"
 cargo_toml = "0.10.3"
-clap = "2.33"
+clap = "4.5"
 elf = "0.0.10"
 env_logger = "0.9"
 log = "0.4"

@@ -34,7 +34,7 @@ path = "src/sgx_detect/main.rs"
 
 # External dependencies
 lazy_static = "1"                                # MIT/Apache-2.0
-clap = "2.2.5"                                   # MIT
+clap = "4.5.4"                                   # MIT
 reqwest = { version = "0.11", features = ["blocking", "json"] } # MIT/Apache-2.0
 regex = "1"                                      # MIT/Apache-2.0
 num = "0.2"                                      # MIT/Apache-2.0
