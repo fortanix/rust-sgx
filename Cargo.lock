@@ -143,9 +143,9 @@ dependencies = [
 
 [[package]]
 name = "b64-ct"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac1e8deebfdca687fcef6fe024fc92cf8183f203075ce4fda263ae6ea13a8dc3"
+checksum = "32261e5a95e234446dd31774ef4305dc164039370fe2622fd3e935a0f2730689"
 
 [[package]]
 name = "backtrace"
