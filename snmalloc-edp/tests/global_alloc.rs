@@ -68,9 +68,9 @@ fn test() {
         struct Page([u8; 0x1000]);
 
         // allocate a dummy heap
-        let heap = (*Box::into_raw(vec![Page([0; 4096]); 100].into_boxed_slice())).as_mut_ptr_range();
+        let _heap = (*Box::into_raw(vec![Page([0; 4096]); 100].into_boxed_slice())).as_mut_ptr_range();
 
-        sn_global_init(heap.start as _, heap.end as _);
+        sn_global_init();
     }
 
     type AllocTestType = [u64; 20];

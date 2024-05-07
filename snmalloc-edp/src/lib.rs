@@ -1,7 +1,5 @@
 #![no_std]
 
-use core::ffi::c_void;
-
 #[repr(C)]
 pub struct Alloc {
     _data: [u8; 0],
@@ -11,7 +9,7 @@ pub struct Alloc {
 
 #[link(name = "snmalloc-edp", kind = "static")]
 extern {
-    pub fn sn_global_init(heap_start_address: *mut c_void, heap_end_address: *mut c_void);
+    pub fn sn_global_init();
     pub fn sn_thread_init(allocator: *mut Alloc);
     pub fn sn_thread_cleanup(allocator: *mut Alloc);
     pub static sn_alloc_size: usize;
