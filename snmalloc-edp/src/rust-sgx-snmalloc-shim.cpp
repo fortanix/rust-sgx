@@ -11,10 +11,10 @@
 // to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 // copies of the Software, and to permit persons to whom the Software is
 // furnished to do so, subject to the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be included in all
 // copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -87,7 +87,8 @@ class EdpErrorHandler {
 using EdpBasePAL = PALNoAlloc<EdpErrorHandler>;
 
 class PALEdpSgx : public EdpBasePAL {
-  public:
+   public:
+    const static size_t RAND_NUM_GEN_MAX_RETRIES = 64;
     using ThreadIdentity = size_t;
     static constexpr uint64_t pal_features = EdpBasePAL::pal_features | Entropy;
 
@@ -97,9 +98,11 @@ class PALEdpSgx : public EdpBasePAL {
     }
 
     static inline uint64_t get_entropy64() {
+        long long unsigned int retry_count = 0;
         long long unsigned int result = 0;
-        while (_rdrand64_step(&result) != 1)
-            ;
+        while (_rdrand64_step(&result) != 1 && retry_count < RAND_NUM_GEN_MAX_RETRIES) {
+            retry_count++;
+        }
         return result;
     }
 
