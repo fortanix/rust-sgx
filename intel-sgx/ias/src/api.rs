@@ -192,7 +192,7 @@ pub trait VerificationType {}
 pub struct VerifiedSig {}
 impl VerificationType for VerifiedSig {}
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash)]
 pub(crate) struct Unverified {}
 impl VerificationType for Unverified {}
 
