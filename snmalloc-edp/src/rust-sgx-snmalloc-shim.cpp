@@ -103,12 +103,13 @@ class PALEdpSgx : public EdpBasePAL {
     }
 
     static inline uint64_t get_entropy64() {
-        long long unsigned int retry_count = 0;
-        long long unsigned int result = 0;
-        while (_rdrand64_step(&result) != 1 && retry_count < RAND_NUM_GEN_MAX_RETRIES) {
-            retry_count++;
+        for (size_t retry_count = 0; retry_count < RAND_NUM_GEN_MAX_RETRIES; retry_count++) {
+            long long unsigned int result;
+            if (_rdrand64_step(&result) == 1) {
+                return result;
+            }
         }
-        return result;
+        EdpErrorHandler::error("no entropy available");
     }
 
     static inline ThreadIdentity get_tid() noexcept {
