@@ -193,7 +193,7 @@ pub struct VerifiedSig {}
 impl VerificationType for VerifiedSig {}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub(crate) struct Unverified {}
+pub enum Unverified {}
 impl VerificationType for Unverified {}
 
 trait SafeToDeserializeInto {}
