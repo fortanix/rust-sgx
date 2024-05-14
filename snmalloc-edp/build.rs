@@ -13,6 +13,10 @@ fn main() {
     dst.push("build");
     println!("cargo:rustc-link-search=native={}", dst.display());
 
+    // ideally, the cmake crate would have a way to output this
+    println!("cargo:rerun-if-changed=CMakeLists.txt");
+    println!("cargo:rerun-if-changed=src/rust-sgx-snmalloc-shim.cpp");
+
     // # Extract the static library archive into a temporary directory
     let mut objs = out_dir.clone();
     objs.push("objs");
