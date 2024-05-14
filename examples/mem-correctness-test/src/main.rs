@@ -13,7 +13,10 @@
         }
     }
 }
- * So this basically runs for a long time and should never crash
+ * So this basically runs for a long time and should never crash.
+ * The todos before running this test is there in the description of
+ * https://fortanix.atlassian.net/browse/RTE-39 (under the heading
+ * "Instructions on how to run the test:" )
  */
 
 use core::arch::asm;
