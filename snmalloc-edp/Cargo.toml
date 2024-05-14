@@ -11,3 +11,11 @@ build = "build.rs"
 cc = "1.0.86"
 cmake = "0.1.50"
 elf = "0.7"
+
+[dependencies]
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+compiler_builtins = { version = "0.1.0", optional = true }
+
+[features]
+docs = []
+rustc-dep-of-std = ["core", "compiler_builtins/rustc-dep-of-std"]
