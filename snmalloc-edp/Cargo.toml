@@ -8,4 +8,6 @@ edition = "2021"
 build = "build.rs"
 
 [build-dependencies]
+cc = "1.0.86"
 cmake = "0.1.50"
+elf = "0.7"

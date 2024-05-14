@@ -43,17 +43,14 @@ unsafe impl alloc::GlobalAlloc for System {
 // allocator shouldn't be used outside of this function
 unsafe fn with_thread_allocator<F: FnOnce() -> R, R>(f: F) -> R {
     unsafe {
-        let layout = alloc::Layout::from_size_align(sn_alloc_size, sn_alloc_align).unwrap();
-        // TODO: bootstrap the thread-local allocator allocation a different way
-        let allocator = alloc::alloc(layout) as *mut Alloc;
-        sn_thread_init(allocator);
-        THREAD_ALLOC.set(allocator);
+        let mut allocator = std::mem::MaybeUninit::<Alloc>::uninit();
+        sn_thread_init(allocator.as_mut_ptr());
+        THREAD_ALLOC.set(allocator.as_mut_ptr());
 
         let r = f();
 
         THREAD_ALLOC.set(ptr::null_mut());
-        sn_thread_cleanup(allocator);
-        alloc::dealloc(allocator as _, layout);
+        sn_thread_cleanup(allocator.as_mut_ptr());
 
         r
     }

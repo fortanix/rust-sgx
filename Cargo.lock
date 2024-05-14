@@ -724,7 +724,7 @@ dependencies = [
  "anyhow",
  "cargo_toml",
  "clap",
- "elf",
+ "elf 0.0.10",
  "env_logger 0.9.0",
  "log 0.4.21",
  "nitro-cli",
@@ -784,6 +784,12 @@ checksum = "4841de15dbe0e49b9b62a417589299e3be0d557e0900d36acb87e6dae47197f5"
 dependencies = [
  "byteorder 0.5.3",
 ]
+
+[[package]]
+name = "elf"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b"
 
 [[package]]
 name = "em-app"
@@ -3370,7 +3376,9 @@ checksum = "1ecab6c735a6bb4139c0caafd0cc3635748bbb3acf4550e8138122099251f309"
 name = "snmalloc-edp"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "cmake",
+ "elf 0.7.4",
 ]
 
 [[package]]
