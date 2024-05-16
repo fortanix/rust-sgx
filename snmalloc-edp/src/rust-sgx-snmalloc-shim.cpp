@@ -52,11 +52,6 @@ extern "C" inline int * __attribute_const__ __errno_location (void) __THROW {
     return &errno;
 }
 
-extern "C" {
-    static size_t HEAP_BASE;
-    static size_t HEAP_SIZE;
-};
-
 /***********************************/
 /*** snmalloc SGX PAL definition ***/
 /***********************************/
@@ -134,8 +129,8 @@ using Alloc = LocalAllocator<Globals>;
 /// to any other snmalloc function calls.
 // TODO: this function shouldn't need the addresses passed in, these can be
 // obtained from the HEAP_* symbols
-extern "C" void sn_global_init() {
-    Globals::init(nullptr, (void *)HEAP_BASE, HEAP_SIZE);
+extern "C" void sn_global_init(void* heap_base, size_t heap_size) {
+    Globals::init(nullptr, heap_base, heap_size);
 }
 
 /// Construct a thread-local allocator object in place

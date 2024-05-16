@@ -4,7 +4,7 @@ include!(concat!(env!("OUT_DIR"), "/alloc-type.rs"));
 
 #[link(name = "snmalloc-edp", kind = "static")]
 extern {
-    pub fn sn_global_init();
+    pub fn sn_global_init(heap_base: *const u8, heap_size: usize);
     pub fn sn_thread_init(allocator: *mut Alloc);
     pub fn sn_thread_cleanup(allocator: *mut Alloc);
 
