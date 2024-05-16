@@ -3378,7 +3378,9 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "cmake",
+ "compiler_builtins",
  "elf 0.7.4",
+ "rustc-std-workspace-core",
 ]
 
 [[package]]

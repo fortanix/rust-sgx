@@ -1,3 +1,20 @@
+/* Test description:
+ * This test tries to record the performance numbers with the memory allocator
+ * used in EDP. The steps are as follows:
+ * Create n threads. Each threads will continuosly allocate a randomly sized
+ * buffer, traverse random locations in the buffer and then free it.
+ *
+ * There are 3 types of threads, small, medium and large. Depending on the type
+ * the small threads will allocate and deallocate small sized buffers, and the
+ * large threads will allocate and deallocate large sized buffers. The buffer
+ * sizes and number of checks are all controlled by some parameters/constants
+ * which are there a couple of lines below.
+ *
+ * The todos before running this test is there in the description of
+ * https://fortanix.atlassian.net/browse/RTE-36 (under the heading
+ * "Instructions on how to run the test:" )
+ */
+
 use rand::Rng;
 use std::alloc::{alloc, dealloc, Layout};
 use std::ptr;
@@ -30,25 +47,63 @@ const TO_MB: usize = TO_KB * 1024;
 const TO_GB: usize = TO_MB * 1024;
 
 /* Set of configurable parameters. These will adjusted as necessary while
- * recording the performance numbers
+ * recording the performance numbers.
+ * TODO: Replace the hard coded parameters with command line arguments.
+ */
+
+/* This denotes the number of cpus in the system in which the test is being run.
+ * This test will create as many number of threads as there are number of CPUs.
  */
 const NUM_CPUS: usize = 2;
 
+/* This thread creates 3 types of threads. Small, medium and large. Each type of
+ * thread will run the loop of allocation and deallocation different number of
+ * times. LIMIT_SMALL_THREAD, LIMIT_MEDIUM_THREAD, LIMIT_LARGE_THREAD denotes
+ * the number of times small threads, medium threads and large threads run the
+ * loop respectively.
+ */
 const LIMIT_SMALL_THREAD: i32 = 2;
 const LIMIT_MEDIUM_THREAD: i32 = 2;
 const LIMIT_LARGE_THREAD: i32 = 2;
 
+/* Each type of thread namely, small, medium and large allocates different sizes
+ * of memory and hence they have different scan intervals. This scan interval is
+ * used in the traverse_buffer function. Large threads have large buffers and
+ * their intervals are larger compared to small threads which allocate smaller
+ * buffer. SCAN_INTERVAL_SMALL_THREAD, SCAN_INTERVAL_MEDIUM_THREAD, and
+ * SCAN_INTERVAL_LARGE_THREAD denote the scan intervals for small threads,
+ * medium threads and large threads respectively.
+ */
 const SCAN_INTERVAL_SMALL_THREAD: usize = 1 * TO_KB;
 const SCAN_INTERVAL_MEDIUM_THREAD: usize = 1 * TO_MB;
 const SCAN_INTERVAL_LARGE_THREAD: usize = 1 * TO_MB;
 
-const SMALL_THREAD_MEM_START: usize = 1;
-const SMALL_THREAD_MEM_END: usize = 512;
-const MEDIUM_THREAD_MEM_START: usize = 1;
-const MEDIUM_THREAD_MEM_END: usize = 2;
-const LARGE_THREAD_MEM_START: usize = 1;
-const LARGE_THREAD_MEM_END: usize = 2;
 
+/* Each thread allocates a random sized buffer. The range of the random sizes
+ * depend on the thread type namely small, medium and large.
+ * SMALL_THREAD_MEM_START and SMALL_THREAD_MEM_END denote the minium and maximum
+ * buffer size of small threads in KB respectively.
+ *
+ * MEDIUM_THREAD_MEM_START and MEDIUM_THREAD_MEM_END denote the minium and maximum
+ * buffer size of medium threads in MB respectively.
+ * LARGE_THREAD_MEM_START and LARGE_THREAD_MEM_END denote the minium and maximum
+ * buffer size of large threads in GB respectively.
+ */
+const SMALL_THREAD_MEM_START: usize = 1; // in KB
+const SMALL_THREAD_MEM_END: usize = 512; // in KB
+const MEDIUM_THREAD_MEM_START: usize = 1; // in MB
+const MEDIUM_THREAD_MEM_END: usize = 2; // in MB
+const LARGE_THREAD_MEM_START: usize = 1; // in GB
+const LARGE_THREAD_MEM_END: usize = 2; // in GB
+
+/* In traverse_buffer function, we randomly pick up random number of indices in
+ * in the buffer and access them. MAX_INDEX_CHECKS_PER_BUFFER denotes the maximum
+ * number of checks per buffer. We don't traverse the entire buffer as it will
+ * slow down each thread and the threads won't be able to exihibit concurrency
+ * during thread allocation and de allocation. Higher the value of
+ * MAX_INDEX_CHECKS_PER_BUFFER, slower will be the threads and lesser will be
+ * the concurrency.
+ */
 const MAX_INDEX_CHECKS_PER_BUFFER: usize = 32;
 
 fn calculate_and_print_stat(
@@ -136,7 +191,6 @@ fn worker_thread(
         /* Create a random size depending on the memory type */
         let (scan_interval, size, limit) = match memsize {
             MemSize::Large => {
-                /* buffer size will be from 1GB to 4GB */
                 (
                     SCAN_INTERVAL_LARGE_THREAD,
                     TO_GB * get_random_num(LARGE_THREAD_MEM_START, LARGE_THREAD_MEM_END),
@@ -144,7 +198,6 @@ fn worker_thread(
                 )
             }
             MemSize::Medium => {
-                /* buffer size will be from 8MB to 128 */
                 (
                     SCAN_INTERVAL_MEDIUM_THREAD,
                     TO_MB * get_random_num(MEDIUM_THREAD_MEM_START, MEDIUM_THREAD_MEM_END),
@@ -152,7 +205,6 @@ fn worker_thread(
                 )
             }
             MemSize::Small => {
-                /* buffer size will be from 1KB to 512KB */
                 (
                     SCAN_INTERVAL_SMALL_THREAD,
                     TO_KB * get_random_num(SMALL_THREAD_MEM_START, SMALL_THREAD_MEM_END),
