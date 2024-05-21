@@ -60,9 +60,6 @@ extern "C" inline int * __attribute_const__ __errno_location (void) __THROW {
 #define SNMALLOC_SGX
 #define SNMALLOC_USE_SMALL_CHUNKS
 #define SNMALLOC_MEMORY_PROVIDER PALEdpSgx
-#define OPEN_ENCLAVE
-// needed for openenclave header:
-#define OE_OK 0
 
 #include "../snmalloc/src/snmalloc/pal/pal_noalloc.h"
 
@@ -127,8 +124,6 @@ using Alloc = LocalAllocator<Globals>;
 
 /// Do global initialization for snmalloc. Should be called exactly once prior
 /// to any other snmalloc function calls.
-// TODO: this function shouldn't need the addresses passed in, these can be
-// obtained from the HEAP_* symbols
 extern "C" void sn_global_init(void* heap_base, size_t heap_size) {
     Globals::init(nullptr, heap_base, heap_size);
 }
