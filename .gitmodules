@@ -1,0 +1,3 @@
+[submodule "snmalloc-edp/snmalloc"]
+	path = snmalloc-edp/snmalloc
+	url = https://github.com/microsoft/snmalloc
