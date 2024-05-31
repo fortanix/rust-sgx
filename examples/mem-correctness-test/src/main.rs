@@ -49,12 +49,12 @@ static HEAP_ALLOCATED: AtomicUsize = AtomicUsize::new(0);
  * recording the performance numbers. Since this test will be in CI, I have
  * kept the parameters to be less memory intensive.
  */
-const NUM_THREADS: usize = 2;
+const NUM_THREADS: usize = 100;
 /* PER_THREAD_PER_BUFFER_MAX_SIZE is max size of a buffer that a thread can allocate
  * on each call to add_new_buffer() function. Higher the value, more will be
  * the total memory consumption and more time taken by the test.
  */
-const PER_THREAD_PER_BUFFER_MAX_SIZE: usize = 4 * TO_KB;
+const PER_THREAD_PER_BUFFER_MAX_SIZE: usize = 18 * TO_MB;
 /* MAX_BUFFER_CHECKS_PER_THREAD_ITERATION is the maximum number of buffers to
  * check on each call to select_and_check_random_buffer_contents()
  */

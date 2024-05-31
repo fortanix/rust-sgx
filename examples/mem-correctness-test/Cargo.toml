@@ -14,5 +14,5 @@ sha2 = "0.10"
 
 [package.metadata.fortanix-sgx]
 # heap size (in bytes), the default heap size is 0x2000000.
-heap-size=0x20000000
+heap-size=0x80001000
 debug=false
