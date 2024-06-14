@@ -858,7 +858,7 @@ impl EnclaveState {
     ) -> EnclaveResult {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
-        let mut rt = RuntimeBuilder::new_current_thread()
+        let mut rt = RuntimeBuilder::new_multi_thread()
             .enable_all()
             .build()
             .expect("failed to create tokio Runtime");
