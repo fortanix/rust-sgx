@@ -858,11 +858,10 @@ impl EnclaveState {
     ) -> EnclaveResult {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
-        let mut rt = RuntimeBuilder::new_multi_thread()
+        let rt = RuntimeBuilder::new_multi_thread()
             .enable_all()
             .build()
             .expect("failed to create tokio Runtime");
-        let local_set = tokio::task::LocalSet::new();
 
         let return_future = async move {
             while let Some((my_result, mode)) = rx_return_channel.recv().await {
@@ -1034,7 +1033,7 @@ impl EnclaveState {
                 }
             });
 
-        local_set.block_on(&mut rt, select_fut.unit_error()).unwrap()
+        rt.block_on(select_fut.unit_error()).unwrap()
     }
 
     fn run(
