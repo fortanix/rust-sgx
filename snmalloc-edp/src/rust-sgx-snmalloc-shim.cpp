@@ -34,7 +34,7 @@
 extern "C" size_t get_tcs_addr();
 
 // from Rust std
-extern "C" void __rust_print_err(const char *m, size_t s);
+extern "C" void __rust_print_err(const char* m, size_t s);
 extern "C" [[noreturn]] void __rust_abort();
 
 /*******************************************************/
@@ -46,7 +46,7 @@ extern "C" [[noreturn]] void abort() __THROW {
     __rust_abort();
 }
 
-// definition needs to match GNU header
+// definition needs to match GNU header and will not return an actual errno
 extern "C" inline int * __attribute_const__ __errno_location (void) __THROW {
     static int errno;
     return &errno;
@@ -65,7 +65,7 @@ extern "C" inline int * __attribute_const__ __errno_location (void) __THROW {
 
 namespace snmalloc {
 void register_clean_up() {
-    // TODO: not sure what this is supposed to do
+    // Unused on SGX
     abort();
 }
 
@@ -73,7 +73,7 @@ class EdpErrorHandler {
   public:
     static void print_stack_trace() {}
 
-    [[noreturn]] static void error(const char *const str) {
+    [[noreturn]] static void error(const char* const str) {
         __rust_print_err(str, strlen(str));
         abort();
     }

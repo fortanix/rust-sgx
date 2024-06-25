@@ -1,3 +1,5 @@
+use elf::ElfStream;
+use elf::endian::LittleEndian;
 use std::fs::{DirEntry, File};
 use std::path::{Path, PathBuf};
 
@@ -35,6 +37,7 @@ fn main() {
     assert!(ar.status().unwrap().success());
 
     // # Read the symbols from the shim ELF object
+    assert_eq!(files_in_dir(&objs).count(), 1);
     let f = files_in_dir(&objs).next().unwrap();
     let mut elf = elf::ElfStream::<elf::endian::LittleEndian, _>::open_stream(File::open(f.path()).unwrap()).unwrap();
     let (symtab, strtab) = elf.symbol_table().unwrap().unwrap();
@@ -50,19 +53,19 @@ fn main() {
     let sn_alloc_size = sn_alloc_size.expect("sn_alloc_size");
     let sn_alloc_align = sn_alloc_align.expect("sn_alloc_align");
 
-    let mut get_u64_at_symbol = |sym: elf::symbol::Symbol| {
-        assert_eq!(sym.st_size, 8);
-        let (data, _) = elf.section_data(&elf.section_headers()[sym.st_shndx as usize].clone()).unwrap();
-        let data: &[u8; 8] = data.split_at(8).0.try_into().unwrap();
-        u64::from_le_bytes(*data)
-    };
-
-    let sn_alloc_size = get_u64_at_symbol(sn_alloc_size);
-    let sn_alloc_align = get_u64_at_symbol(sn_alloc_align);
+    let sn_alloc_size = get_u64_at_symbol(sn_alloc_size, &mut elf);
+    let sn_alloc_align = get_u64_at_symbol(sn_alloc_align, &mut elf);
 
     // # Write the type
     let contents = format!("#[repr(align({}), C)] pub struct Alloc {{ _0: [u8; {}] }}", sn_alloc_align, sn_alloc_size);
     let mut alloc_type_rs = out_dir.clone();
     alloc_type_rs.push("alloc-type.rs");
     std::fs::write(alloc_type_rs, contents).unwrap();
+}
+
+fn get_u64_at_symbol(sym: elf::symbol::Symbol, elf: &mut ElfStream<LittleEndian, File>) -> u64 {
+    assert_eq!(sym.st_size, 8);
+    let (data, _) = elf.section_data(&elf.section_headers()[sym.st_shndx as usize].clone()).unwrap();
+    let data: &[u8; 8] = data.split_at(8).0.try_into().unwrap();
+    u64::from_le_bytes(*data)
 }

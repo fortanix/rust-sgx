@@ -1,4 +1,5 @@
 use std::{alloc::{self, GlobalAlloc}, cell::Cell, ptr};
+use std::ptr::null_mut;
 
 use snmalloc_edp::*;
 
@@ -49,7 +50,7 @@ unsafe fn with_thread_allocator<F: FnOnce() -> R, R>(f: F) -> R {
 
         let r = f();
 
-        THREAD_ALLOC.set(ptr::null_mut());
+        THREAD_ALLOC.set(null_mut());
         sn_thread_cleanup(allocator.as_mut_ptr());
 
         r
@@ -64,13 +65,14 @@ fn test() {
         #[repr(align(0x1000))]
         struct Page([u8; 0x1000]);
 
-        // allocate a dummy heap
-        let heap = (*Box::into_raw(vec![Page([0; 4096]); 100].into_boxed_slice())).as_mut_ptr_range();
-
-        sn_global_init(heap.start as _, heap.end as _);
+            // allocate a dummy heap
+            let heap = (*Box::into_raw(vec![Page([0; 4096]); 100].into_boxed_slice())).as_mut_ptr_range();
+            let heap_size = heap.end as usize - heap.start as usize;
+            sn_global_init(heap.start as _, heap_size);
     }
 
-    type AllocTestType = [u64; 20];
+    const TEST_ARRAY_SIZE :usize = 20;
+    type AllocTestType = [u64; TEST_ARRAY_SIZE];
 
     let barrier = std::sync::Barrier::new(2);
 
@@ -79,10 +81,17 @@ fn test() {
         let barrier = &barrier;
         s.spawn(move || {
             unsafe {
+                // Initialize thread allocator and perform alloc/alloc_zeroed
                 with_thread_allocator(|| {
                     let p1 = System.alloc(alloc::Layout::new::<AllocTestType>());
                     barrier.wait();
-                    let p2 = System.alloc(alloc::Layout::new::<AllocTestType>());
+                    let p2 = System.alloc_zeroed(alloc::Layout::new::<AllocTestType>());
+
+                    let p2_slice = std::slice::from_raw_parts_mut(p2, TEST_ARRAY_SIZE);
+                    for i in 0..TEST_ARRAY_SIZE {
+                        assert_eq!(p2_slice[i], 0);
+                    }
+
                     tx.send((p1 as usize, p2 as usize)).unwrap();
                 })
             };
@@ -93,9 +102,15 @@ fn test() {
                 let p1 = System.alloc(alloc::Layout::new::<AllocTestType>());
                 barrier.wait();
                 let p2 = System.alloc(alloc::Layout::new::<AllocTestType>());
+
+                // Test realloc
+                let p3 = System.realloc(p1, alloc::Layout::new::<AllocTestType>(), TEST_ARRAY_SIZE * 2);
+                assert_ne!(p3, p2);
+
                 (p1 as usize, p2 as usize)
             })
         };
+
         let (p3, p4) = rx.recv().unwrap();
         assert_ne!(p1, p2);
         assert_ne!(p1, p3);
@@ -103,6 +118,7 @@ fn test() {
         assert_ne!(p2, p3);
         assert_ne!(p2, p4);
         assert_ne!(p3, p4);
+
     })
 
 }
