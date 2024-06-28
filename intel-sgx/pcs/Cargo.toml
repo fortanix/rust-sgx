@@ -1,0 +1,33 @@
+[package]
+name = "pcs"
+version = "0.1.0"
+authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
+edition = "2018"
+description = "Provisioning Certification Service. Offline attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...). This crate provides an easy interface for these artifacts"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sgx-isa = { path = "../sgx-isa", default-features = true }
+pkix = "0.2.0"
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+rustc-serialize = "0.3"
+serde = { version = "1.0.7", features = ["derive"] }
+sgx_pkix = "0.2"
+serde_json = { version = "1.0", features = ["raw_value"] }
+percent-encoding = "2.1.0"
+base16 = "0.2"
+b64-ct = "0.1.0"
+failure = "0.1.1"
+anyhow = { version = "1", optional = true }
+dcap-ql = { path = "../dcap-ql" }
+quick-error = "1.2.3"
+num = "0.2"
+mbedtls = { version = "0.12.3", features = ["std", "time"], default-features = false, optional = true }
+
+[dev-dependencies]
+hex = "0.4.2"
+
+[features]
+verify = ["anyhow", "dcap-ql/verify", "mbedtls", "mbedtls/x509"]
+sgx = []

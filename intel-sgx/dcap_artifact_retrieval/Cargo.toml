@@ -1,0 +1,38 @@
+[package]
+name = "dcap_artifact_retrieval"
+version = "0.1.0"
+authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
+edition = "2018"
+
+[dependencies]
+backoff = "0.4.0"
+clap = { version = "2.23.3", optional = true }
+lazy_static = "1"
+lru-cache = "0.1.2"
+mbedtls = { version = "0.12.3", features = [
+    "x509",
+    "ssl",
+    "std",
+], default-features = false }
+num_enum = { version = "0.7", features = ["complex-expressions"] }
+pcs = { path = "../pcs" }
+percent-encoding = "2.1.0"
+pkix = "0.2.0"
+quick-error = "1.1.0"
+rustc-serialize = "0.3"
+reqwest = { version = "0.12", features = ["blocking", "native-tls"], optional = true }
+serde_cbor = "0.11"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["clap", "reqwest"]
+
+[dev-dependencies]
+yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+pcs = { path = "../pcs", features = ["verify"] }
+
+[build-dependencies]
+mbedtls = { version = "0.12.3", features = ["ssl", "x509"] }
+pkix = "0.2.0"
+serde_cbor = "0.11"
