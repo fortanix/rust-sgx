@@ -11,16 +11,11 @@ use std::str::Utf8Error;
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient};
 use pcs::Error as OAError;
-use pkix::ASN1Error;
 use quick_error::quick_error;
 
 quick_error! {
     #[derive(Debug)]
     pub enum Error {
-        PckIdParseError(msg: &'static str) {
-            description("Error during parsing PCKID file")
-            display("Error parsing PCKID file: {}", msg)
-        }
         ReadResponseError(msg: Cow<'static, str>) {
             from()
             display("{}", msg)
@@ -36,10 +31,6 @@ quick_error! {
             description("Certification services returned an unexpected response")
             display("{}", msg)
         }
-        PCSParseError(err: serde_json::error::Error) {
-            description("Intel PCS response failed to parse correctly")
-            display("json parse error: {}", err)
-        }
         PCSDecodeError(error: Cow<'static, str>) {
             description("Intel PCS response could not be decoded")
             display("percent decoding failed: {}", error)
@@ -52,40 +43,17 @@ quick_error! {
             description("Intel certification services returned a header that could not be decoded")
             display("Failed to decode header")
         }
-        HeaderParseError(msg : &'static str) {
-            description("Header could not be parsed")
-            display("Failed to parse header {}", msg)
-        }
         CertificateParseError(msg: &'static str) {
             description("Certificate could not be parsed")
             display("Failed to parse certificate {}", msg)
-        }
-        CertificateEncodingError(err: ASN1Error) {
-            from()
         }
         NoEncPPID {
             description("Enc_ppid is required, but not provided")
             display("No enc_ppid was provided")
         }
-        NoCPUSVN {
-            description("CPU_svn is required, but not provided")
-            display("No cpu_svn was provided")
-        }
-        NoPCEISVSVN {
-            description("PCE ISVSVN is required, but not provided")
-            display("No pce_isvsvn was provided")
-        }
-        NoPCEID {
-            description("PCEID is required, but not provided")
-            display("No pce_id was provided")
-        }
         NoQeID {
             description("QEID is required, but not provided")
             display("No QE ID was provided")
-        }
-        NoAPIKey {
-            description("PCS key is required, but not provided")
-            display("No api_key was provided")
         }
         OfflineAttestationError(err: OAError) {
             from()
