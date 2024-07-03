@@ -14,6 +14,11 @@
  * https://fortanix.atlassian.net/browse/RTE-36 (under the heading
  * "Instructions on how to run the test:" )
  */
+/*
+The performance results produced by this test were quite random to get a clear picture of
+improvements between dlmalloc and snmalloc allocator. In order to reduce the randomness
+of the tests, use feature flag "reduce_randomness" - RTE-85
+*/
 
 use rand::Rng;
 use std::alloc::{alloc, dealloc, Layout};
@@ -157,14 +162,30 @@ fn wakeup_all_child_threads(pair_clone: Arc<(Mutex<bool>, Condvar)>) {
 }
 
 fn traverse_buffer(buf: *mut u8, size: usize, _scan_interval: usize) {
-    let num_indices_checks = get_random_num(1, MAX_INDEX_CHECKS_PER_BUFFER);
+    let num_indices_checks: usize;
+    #[cfg(feature = "reduce_randomness")]
+    {
+        num_indices_checks = 10;
+    }
+    #[cfg(not(feature = "reduce_randomness"))]
+    {
+        num_indices_checks= get_random_num(1, MAX_INDEX_CHECKS_PER_BUFFER);
+    }
     for _i in 1..=num_indices_checks {
         /* Check for random indices and number of such indices is  num_indices_checks
          * Please note that depending on the number random number generator, we
          * can check for the same index multiple times. We could have checked
          * for all the indices but that would be too time consuming
          */
-        let index = get_random_num(0, size - 1);
+        let index: usize;
+        #[cfg(feature = "reduce_randomness")]
+        {
+            index = _i * 10 % size;
+        }
+        #[cfg(not(feature = "reduce_randomness"))]
+        {
+            index = get_random_num(0, size - 1);
+        }
         unsafe {
             ptr::write(buf.offset(index as isize), 1);
         }
@@ -189,7 +210,7 @@ fn worker_thread(
      */
     loop {
         /* Create a random size depending on the memory type */
-        let (scan_interval, size, limit) = match memsize {
+        let (scan_interval, mut size, limit) = match memsize {
             MemSize::Large => {
                 (
                     SCAN_INTERVAL_LARGE_THREAD,
@@ -218,7 +239,21 @@ fn worker_thread(
         /* Create an array of x GB where x is a random number between 1 to 4 */
 
         // Create a layout based on the size and alignment
-        let align = get_random_num(2, PAGE_SIZE).next_power_of_two();
+        let align: usize;
+        #[cfg(feature = "reduce_randomness")]
+        {
+            align = PAGE_SIZE;
+            size = match memsize {
+                MemSize::Large => crate::TO_GB * 1,
+                MemSize::Medium =>  crate::TO_MB * 1,
+                MemSize::Small => crate::TO_KB * 1
+            }
+        }
+        #[cfg(not(feature = "reduce_randomness"))]
+        {
+            align = get_random_num(2, PAGE_SIZE).next_power_of_two();
+
+        }
         let layout = Layout::from_size_align(size, align).unwrap();
 
         // Allocate memory using the global allocator
