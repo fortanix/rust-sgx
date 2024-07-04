@@ -10,7 +10,6 @@ use std::str::Utf8Error;
 
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient};
-use pcs::Error as OAError;
 use quick_error::quick_error;
 
 quick_error! {
@@ -55,12 +54,8 @@ quick_error! {
             description("QEID is required, but not provided")
             display("No QE ID was provided")
         }
-        OfflineAttestationError(err: OAError) {
+        PCSProvisioningError(err: pcs::Error) {
             from()
-        }
-        BadRequest(err: &'static str) {
-            description("Bad Request")
-            display("{}", err)
         }
         RequestNotSupported {
             description("Client does not support this request")
