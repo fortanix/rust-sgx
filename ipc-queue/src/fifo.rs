@@ -356,10 +356,12 @@ impl Offsets {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn read_high_bit(&self) -> bool {
         self.read & self.len == self.len
     }
 
+    #[allow(dead_code)]
     pub(crate) fn write_high_bit(&self) -> bool {
         self.write & self.len == self.len
     }
