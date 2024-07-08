@@ -130,7 +130,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
 
     fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
         let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-Certificate-Issuer-Chain")?;
-        PckCerts::parse(&response_body, ca_chain).map_err(|e| Error::PCSProvisioningError(e))
+        PckCerts::parse(&response_body, ca_chain).map_err(|e| Error::PckCertsParseError(e))
     }
 }
 

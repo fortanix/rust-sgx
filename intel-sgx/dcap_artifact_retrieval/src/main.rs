@@ -65,7 +65,7 @@ pub fn download_dcap_artifacts(
 
         let fmspc = pckcerts.fmspc()?;
         let tcbinfo = prov_client.tcbinfo(&fmspc)?;
-        let tcbinfo_file = tcbinfo.store(output_dir).map_err(|e| Error::PCSProvisioningError(e))?;
+        let tcbinfo_file = tcbinfo.store(output_dir)?;
 
         if verbose {
             println!("   tcb info:    {}\n", tcbinfo_file);

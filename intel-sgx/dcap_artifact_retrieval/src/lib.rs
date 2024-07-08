@@ -54,7 +54,7 @@ quick_error! {
             description("QEID is required, but not provided")
             display("No QE ID was provided")
         }
-        PCSProvisioningError(err: pcs::Error) {
+        PckCertsParseError(err: pcs::Error) {
             from()
         }
         RequestNotSupported {
