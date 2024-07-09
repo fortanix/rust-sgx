@@ -330,13 +330,8 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
         &self.service.service()
     }
 
-    fn calculate_key<'a>(&'a self, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<String, Error> {
-        let (url, _headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
-        Ok(url)
-    }
-
     pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
-        let key = self.calculate_key(input)?;
+        let key = input.as_key();
         let mut cache = self.cache.lock().unwrap();
         if let Some((value, time)) = cache.get_mut(&key) {
             if Self::CACHE_SHELFTIME < time.elapsed().unwrap_or(Duration::MAX) {
@@ -477,7 +472,7 @@ impl<'req> Fetcher<'req> for ReqwestClient {
 
 
 pub trait ProvisioningServiceApi<'inp> {
-    type Input: 'inp + WithApiVersion;
+    type Input: 'inp + WithApiVersion + CacheKey;
     type Output;
 
     fn build_request(&'inp self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error>;
