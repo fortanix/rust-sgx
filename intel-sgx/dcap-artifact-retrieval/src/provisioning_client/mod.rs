@@ -1,7 +1,9 @@
 use std::convert::TryFrom;
 use std::io::Read;
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 
+use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified};
 #[cfg(feature = "reqwest")]
@@ -307,12 +309,60 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
     }
 }
 
+struct CachedService<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> {
+    service: BackoffService<T>,
+    cache: Mutex<LruCache<String, (O, SystemTime)>>,
+}
+
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
+    pub fn new(service: BackoffService<T>) -> Self {
+        Self {
+            service,
+            cache: Mutex::new(LruCache::new(5)),
+        }
+    }
+}
+
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
+    const CACHE_SHELFTIME: Duration = Duration::from_secs(120);
+
+    pub(crate) fn service(&self) -> &T {
+        &self.service.service()
+    }
+
+    fn calculate_key<'a>(&'a self, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<String, Error> {
+        let (url, _headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
+        Ok(url)
+    }
+
+    pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+        let key = self.calculate_key(input)?;
+        let mut cache = self.cache.lock().unwrap();
+        if let Some((value, time)) = cache.get_mut(&key) {
+            if Self::CACHE_SHELFTIME < time.elapsed().unwrap_or(Duration::MAX) {
+                cache.remove(&key);
+            } else {
+                return Ok(value.to_owned());
+            }
+        }
+        let value = self.service.call_service::<F>(fetcher, input)?;
+        cache.insert(key, (value.clone(), SystemTime::now()));
+        Ok(value)
+    }
+}
+
+trait CacheKey {
+    fn as_key(&self) -> String {
+        String::new()
+    }
+}
+
 pub struct Client<F: for<'a> Fetcher<'a>> {
-    pckcerts_service: BackoffService<dyn for<'a> PckCertsService<'a> + Sync + Send>,
-    pckcert_service: BackoffService<dyn for<'a> PckCertService<'a> + Sync + Send>,
-    pckcrl_service: BackoffService<dyn for<'a> PckCrlService<'a> + Sync + Send>,
-    qeid_service: BackoffService<dyn for<'a> QeIdService<'a> + Sync + Send>,
-    tcbinfo_service: BackoffService<dyn for<'a> TcbInfoService<'a> + Sync + Send>,
+    pckcerts_service: CachedService<PckCerts, dyn for<'a> PckCertsService<'a> + Sync + Send>,
+    pckcert_service: CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
+    pckcrl_service: CachedService<PckCrl, dyn for<'a> PckCrlService<'a> + Sync + Send>,
+    qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
+    tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
     fetcher: F,
 }
 
@@ -326,11 +376,11 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
     TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     {
         Client {
-            pckcerts_service: BackoffService::new(Service::new(Box::new(pckcerts_service)), retry_timeout.clone()),
-            pckcert_service: BackoffService::new(Service::new(Box::new(pckcert_service)), retry_timeout.clone()),
-            pckcrl_service: BackoffService::new(Service::new(Box::new(pckcrl_service)), retry_timeout.clone()),
-            qeid_service: BackoffService::new(Service::new(Box::new(qeid_service)), retry_timeout.clone()),
-            tcbinfo_service: BackoffService::new(Service::new(Box::new(tcbinfo_service)), retry_timeout.clone()),
+            pckcerts_service: CachedService::new(BackoffService::new(Service::new(Box::new(pckcerts_service)), retry_timeout.clone())),
+            pckcert_service: CachedService::new(BackoffService::new(Service::new(Box::new(pckcert_service)), retry_timeout.clone())),
+            pckcrl_service: CachedService::new(BackoffService::new(Service::new(Box::new(pckcrl_service)), retry_timeout.clone())),
+            qeid_service: CachedService::new(BackoffService::new(Service::new(Box::new(qeid_service)), retry_timeout.clone())),
+            tcbinfo_service: CachedService::new(BackoffService::new(Service::new(Box::new(tcbinfo_service)), retry_timeout.clone())),
             fetcher,
         }
     }
