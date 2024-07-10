@@ -666,6 +666,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "dcap-artifact-retrieval"
+version = "0.1.0"
+dependencies = [
+ "backoff",
+ "clap",
+ "lazy_static",
+ "lru-cache",
+ "mbedtls",
+ "num_enum",
+ "pcs",
+ "percent-encoding 2.3.1",
+ "pkix 0.2.1",
+ "quick-error",
+ "reqwest 0.12.0",
+ "rustc-serialize",
+ "serde 1.0.185",
+ "serde_cbor",
+ "serde_json",
+ "yasna 0.3.2",
+]
+
+[[package]]
 name = "dcap-provider"
 version = "0.4.0"
 dependencies = [
@@ -720,28 +742,6 @@ dependencies = [
  "report-test",
  "sgx-isa 0.4.1",
  "sgxs-loaders",
-]
-
-[[package]]
-name = "dcap_artifact_retrieval"
-version = "0.1.0"
-dependencies = [
- "backoff",
- "clap",
- "lazy_static",
- "lru-cache",
- "mbedtls",
- "num_enum",
- "pcs",
- "percent-encoding 2.3.1",
- "pkix 0.2.1",
- "quick-error",
- "reqwest 0.12.0",
- "rustc-serialize",
- "serde 1.0.185",
- "serde_cbor",
- "serde_json",
- "yasna 0.3.2",
 ]
 
 [[package]]

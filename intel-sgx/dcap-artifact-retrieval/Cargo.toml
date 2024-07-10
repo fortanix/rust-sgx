@@ -1,5 +1,5 @@
 [package]
-name = "dcap_artifact_retrieval"
+name = "dcap-artifact-retrieval"
 version = "0.1.0"
 authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
 edition = "2018"

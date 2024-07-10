@@ -17,7 +17,7 @@ members = [
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",
-    "intel-sgx/dcap_artifact_retrieval",
+    "intel-sgx/dcap-artifact-retrieval",
     "intel-sgx/dcap-provider",
     "intel-sgx/dcap-ql-sys",
     "intel-sgx/dcap-ql",
