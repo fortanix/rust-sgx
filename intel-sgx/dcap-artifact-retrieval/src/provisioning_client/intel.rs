@@ -419,7 +419,7 @@ mod tests {
         test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient
     };
 
-    const IAS_TEST_KEY: &str = "<redacted>"; // Primary API key of raoul.strackx@fortanix.com
+    const PCS_API_KEY: &str = "<redacted>"; // Primary API key of raoul.strackx@fortanix.com
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
@@ -430,7 +430,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(IAS_TEST_KEY.to_string());
+                intel_builder.set_api_key(PCS_API_KEY.to_string());
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
@@ -451,7 +451,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(IAS_TEST_KEY.to_string());
+                intel_builder.set_api_key(PCS_API_KEY.to_string());
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
@@ -471,7 +471,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(IAS_TEST_KEY.to_string());
+                intel_builder.set_api_key(PCS_API_KEY.to_string());
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
@@ -490,7 +490,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(IAS_TEST_KEY.to_string());
+                intel_builder.set_api_key(PCS_API_KEY.to_string());
             }
             let client = intel_builder.build(reqwest_client());
             assert!(client
@@ -506,7 +506,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(IAS_TEST_KEY.to_string());
+                intel_builder.set_api_key(PCS_API_KEY.to_string());
             }
             let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity();
