@@ -352,6 +352,34 @@ trait CacheKey {
     }
 }
 
+impl CacheKey<'i> for QeIdIn<'i> {
+    fn key(&self) -> String {
+        // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        self.as_key()
+    }
+}
+
+impl CacheKey<'i> for PckCrlIn<'i> {
+    fn key(&self) -> String {
+        // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        self.as_key()
+    }
+}
+
+impl<'i> CacheKey for TcbInfoIn<'i> {
+    fn key(&self) -> String {
+        // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        self.as_key()
+    }
+}
+
+impl<'i> CacheKey for PckCertIn<'i> {
+    fn key(&self) -> String {
+        // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        self.as_key()
+    }
+}
+
 pub struct Client<F: for<'a> Fetcher<'a>> {
     pckcerts_service: CachedService<PckCerts, dyn for<'a> PckCertsService<'a> + Sync + Send>,
     pckcert_service: CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
