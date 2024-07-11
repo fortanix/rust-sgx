@@ -9,7 +9,7 @@ use std::io::Error as IoError;
 use std::str::Utf8Error;
 
 #[cfg(feature = "reqwest")]
-use reqwest::blocking::{Client as ReqwestClient};
+pub use reqwest::blocking::{Client as ReqwestClient};
 use pcs::Error as OAError;
 use pkix::ASN1Error;
 use quick_error::quick_error;
