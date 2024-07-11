@@ -3,7 +3,7 @@ name = "pcs"
 version = "0.1.0"
 authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
 edition = "2018"
-description = "Provisioning Certification Service. Offline attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...). This crate provides an easy interface for these artifacts"
+description = "Datastructures related to the Intel Provisioning Certification Service. DCAP attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...). This crate provides an easy interface for these artifacts"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
