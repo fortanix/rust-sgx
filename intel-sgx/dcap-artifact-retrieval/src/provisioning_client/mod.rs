@@ -330,17 +330,18 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
         &self.service.service()
     }
 
+    // Raoul: This is a generic function that will call individual Rest APIs of the PCS service.
     pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
-        let key = input.as_key();
+        let key = input.as_key(); // Raoul: Turns the input into a key
         let mut cache = self.cache.lock().unwrap();
-        if let Some((value, time)) = cache.get_mut(&key) {
+        if let Some((value, time)) = cache.get_mut(&key) { // Raoul: Check whether the result is in the cache
             if Self::CACHE_SHELFTIME < time.elapsed().unwrap_or(Duration::MAX) {
                 cache.remove(&key);
             } else {
                 return Ok(value.to_owned());
             }
         }
-        let value = self.service.call_service::<F>(fetcher, input)?;
+        let value = self.service.call_service::<F>(fetcher, input)?; // Raoul: Actually do the REST API call
         cache.insert(key, (value.clone(), SystemTime::now()));
         Ok(value)
     }
@@ -348,13 +349,14 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
 
 trait CacheKey {
     fn as_key(&self) -> String {
-        String::new()
+        String::new() // Raoul: This is the default implementation for the trait. But it's wrong; for a specific type that represents input, we need to turn it into a key that can be used by the caching service. You should remove the body of this function.
     }
 }
 
 impl CacheKey for QeIdIn {
     fn as_key(&self) -> String {
         // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        // Raoul: It's the other way around, see comments above
         self.as_key()
     }
 }
