@@ -352,29 +352,36 @@ trait CacheKey {
     }
 }
 
-impl CacheKey<'i> for QeIdIn<'i> {
-    fn key(&self) -> String {
+impl CacheKey for QeIdIn {
+    fn as_key(&self) -> String {
         // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
         self.as_key()
     }
 }
 
-impl CacheKey<'i> for PckCrlIn<'i> {
-    fn key(&self) -> String {
+impl<'i> CacheKey for PckCrlIn {
+    fn as_key(&self) -> String {
         // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
         self.as_key()
     }
 }
 
 impl<'i> CacheKey for TcbInfoIn<'i> {
-    fn key(&self) -> String {
+    fn as_key(&self) -> String {
         // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
         self.as_key()
     }
 }
 
 impl<'i> CacheKey for PckCertIn<'i> {
-    fn key(&self) -> String {
+    fn as_key(&self) -> String {
+        // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
+        self.as_key()
+    }
+}
+
+impl<'i> CacheKey for PckCertsIn<'i> {
+    fn as_key(&self) -> String {
         // TO DO: Is this where we contact the CacheKey service?Implementation for generating a key
         self.as_key()
     }
