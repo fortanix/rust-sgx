@@ -212,22 +212,22 @@ impl ClientBuilder {
 
     pub(crate) fn build<PSS, PS, PC, QS, TS, F>(self, pckcerts_service: PSS, pckcert_service: PS, pckcrl_service: PC, qeid_service: QS, tcbinfo_service: TS, fetcher: F) -> Client<F>
     where
-    PSS: for<'a> PckCertsService<'a> + 'static,
-    PS: for<'a> PckCertService<'a> + 'static,
-    PC: for<'a> PckCrlService<'a> + 'static,
-    QS: for<'a> QeIdService<'a> + 'static,
-    TS: for<'a> TcbInfoService<'a> + 'static,
+    PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
+    PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
+    PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
+    QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
+    TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     F: for<'a> Fetcher<'a>,
     {
         Client::new(pckcerts_service, pckcert_service, pckcrl_service, qeid_service, tcbinfo_service, fetcher, self.retry_timeout)
     }
 }
 
-struct Service<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> {
+struct Service<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Box<T>,
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> Service<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     pub fn new(service: Box<T>) -> Self {
         Self {
             service,
@@ -235,7 +235,7 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> Service<T> {
     }
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> Service<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     pub(crate) fn service(&self) -> &T {
         &self.service
     }
@@ -252,12 +252,12 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> Service<T> {
     }
 }
 
-struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> {
+struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Service<T>,
     retry_timeout: Option<Duration>,
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> BackoffService<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
     pub fn new(service: Service<T>, retry_timeout: Option<Duration>) -> Self {
         Self {
             service,
@@ -266,7 +266,7 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> BackoffService<T> {
     }
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> BackoffService<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
     const RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(2);
     const RETRY_INTERVAL_MULTIPLIER: f64 = 2.0;
 
@@ -308,22 +308,22 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + ?Sized> BackoffService<T> {
 }
 
 pub struct Client<F: for<'a> Fetcher<'a>> {
-    pckcerts_service: BackoffService<dyn for<'a> PckCertsService<'a>>,
-    pckcert_service: BackoffService<dyn for<'a> PckCertService<'a>>,
-    pckcrl_service: BackoffService<dyn for<'a> PckCrlService<'a>>,
-    qeid_service: BackoffService<dyn for<'a> QeIdService<'a>>,
-    tcbinfo_service: BackoffService<dyn for<'a> TcbInfoService<'a>>,
+    pckcerts_service: BackoffService<dyn for<'a> PckCertsService<'a> + Sync + Send>,
+    pckcert_service: BackoffService<dyn for<'a> PckCertService<'a> + Sync + Send>,
+    pckcrl_service: BackoffService<dyn for<'a> PckCrlService<'a> + Sync + Send>,
+    qeid_service: BackoffService<dyn for<'a> QeIdService<'a> + Sync + Send>,
+    tcbinfo_service: BackoffService<dyn for<'a> TcbInfoService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
     fn new<PSS, PS, PC, QS, TS>(pckcerts_service: PSS, pckcert_service: PS, pckcrl_service: PC, qeid_service: QS, tcbinfo_service: TS, fetcher: F,retry_timeout: Option<Duration>) -> Client<F>
     where
-    PSS: for<'a> PckCertsService<'a> + 'static,
-    PS: for<'a> PckCertService<'a> + 'static,
-    PC: for<'a> PckCrlService<'a> + 'static,
-    QS: for<'a> QeIdService<'a> + 'static,
-    TS: for<'a> TcbInfoService<'a> + 'static,
+    PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
+    PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
+    PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
+    QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
+    TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     {
         Client {
             pckcerts_service: BackoffService::new(Service::new(Box::new(pckcerts_service)), retry_timeout.clone()),
