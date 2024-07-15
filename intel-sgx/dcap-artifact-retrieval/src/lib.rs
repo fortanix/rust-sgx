@@ -103,6 +103,7 @@ quick_error! {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[cfg(feature = "reqwest")]
 pub fn reqwest_client() -> ReqwestClient {
     ReqwestClient::builder()
         .use_native_tls()

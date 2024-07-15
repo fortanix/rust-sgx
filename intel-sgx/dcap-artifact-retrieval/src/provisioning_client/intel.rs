@@ -407,7 +407,8 @@ fn parse_issuer_header(headers: &Vec<(String, String)>, header: &'static str) ->
     Ok(chain)
 }
 
-#[cfg(test)]
+
+#[cfg(all(test, feature = "reqwest"))]
 mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
