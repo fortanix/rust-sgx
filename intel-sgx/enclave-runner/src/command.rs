@@ -23,6 +23,7 @@ pub struct Command {
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     forward_panics: bool,
     cmd_args: Vec<Vec<u8>>,
+    num_worker_threads: usize,
 }
 
 impl MappingInfo for Command {
@@ -45,6 +46,7 @@ impl Command {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
         cmd_args: Vec<Vec<u8>>,
+        num_worker_threads: usize,
     ) -> Command {
         let main = tcss.remove(0);
         Command {
@@ -55,6 +57,7 @@ impl Command {
             usercall_ext,
             forward_panics,
             cmd_args,
+            num_worker_threads,
         }
     }
 
@@ -63,6 +66,6 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args, self.num_worker_threads)
     }
 }
