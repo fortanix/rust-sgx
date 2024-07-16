@@ -2619,7 +2619,6 @@ dependencies = [
  "anyhow",
  "b64-ct",
  "base16",
- "dcap-ql",
  "failure",
  "hex 0.4.3",
  "mbedtls",

@@ -20,7 +20,6 @@ base16 = "0.2"
 b64-ct = "0.1.0"
 failure = "0.1.1"
 anyhow = { version = "1", optional = true }
-dcap-ql = { path = "../dcap-ql" }
 quick-error = "1.2.3"
 num = "0.2"
 mbedtls = { version = "0.12.3", features = ["std", "time"], default-features = false, optional = true }
@@ -29,5 +28,5 @@ mbedtls = { version = "0.12.3", features = ["std", "time"], default-features = f
 hex = "0.4.2"
 
 [features]
-verify = ["anyhow", "dcap-ql/verify", "mbedtls", "mbedtls/x509"]
+verify = ["anyhow", "mbedtls", "mbedtls/x509"]
 sgx = []
