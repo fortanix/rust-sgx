@@ -307,7 +307,7 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    /// Sets the number of wroker threads used to run the enclave.
+    /// Sets the number of worker threads used to run the enclave.
     ///
     /// **NOTE:** This is only applicable to [`Command`] enclaves.
     /// Setting this and then calling [`build_library`](Self::build_library) will cause a panic.
@@ -342,10 +342,11 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, anyhow::Error> {
-        let num_cpus = num_cpus::get();
-        let num_worker_threads = self.num_worker_threads.unwrap_or(num_cpus);
-        anyhow::ensure!(num_worker_threads > 0, "`num_worker_threads` cannot be zero");
-        anyhow::ensure!(num_worker_threads <= num_cpus, "`num_worker_threads` cannot exceed number of logical cores (`num_cpus::get()`)");
+        if let Some(num_worker_threads) = self.num_worker_threads {
+            anyhow::ensure!(num_worker_threads > 0, "`num_worker_threads` cannot be zero");
+            anyhow::ensure!(num_worker_threads <= 65536, "`num_worker_threads` cannot exceed 65536");
+        }
+        let num_worker_threads = self.num_worker_threads.unwrap_or_else(num_cpus::get);
 
         self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
