@@ -1,7 +1,7 @@
 [package]
 name = "pcs"
 version = "0.1.0"
-authors = ["Raoul Strackx <raoul.strackx@fortanix.com>"]
+authors = ["Raoul Strackx <raoul.strackx@fortanix.com>", "Nikita Shyrei <nikita.shyrei@fortanix.com>"]
 edition = "2018"
 description = "Datastructures related to the Intel Provisioning Certification Service. DCAP attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...). This crate provides an easy interface for these artifacts"
 
