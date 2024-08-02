@@ -793,7 +793,7 @@ dependencies = [
  "b64-ct",
  "em-client",
  "em-node-agent-client",
- "hyper 0.10.16",
+ "hyper 0.14.15",
  "mbedtls",
  "pkix",
  "rustc-serialize",
