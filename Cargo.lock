@@ -108,7 +108,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ced66cf8fabb128c1f9aa335bdacf3009fbc4b6ad66bd42fa447f6a219736bfc"
 dependencies = [
  "openssl",
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
  "serde_cbor",
  "serde_repr",
@@ -120,7 +120,7 @@ name = "aws-nitro-enclaves-cose"
 version = "0.5.0"
 source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#1021a397acc56d4d3ed935991f205754e5a2d2c5"
 dependencies = [
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
  "serde_cbor",
  "serde_repr",
@@ -136,7 +136,7 @@ dependencies = [
  "libc",
  "log 0.4.21",
  "nix 0.20.2",
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
  "serde_cbor",
 ]
@@ -337,8 +337,8 @@ version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "363c7cfaa15f101415c4ac9e68706ca4a2277773932828b33f96e59d28c68e62"
 dependencies = [
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "toml 0.5.8",
 ]
 
@@ -378,7 +378,7 @@ dependencies = [
  "libc",
  "num-integer",
  "num-traits",
- "serde",
+ "serde 1.0.171",
  "time 0.1.44",
  "winapi",
 ]
@@ -648,7 +648,7 @@ dependencies = [
  "num-derive 0.2.5",
  "num-traits",
  "report-test",
- "serde",
+ "serde 1.0.171",
  "serde_json",
  "sgx-isa",
  "sgxs",
@@ -729,7 +729,7 @@ dependencies = [
  "log 0.4.21",
  "nitro-cli",
  "once_cell",
- "serde",
+ "serde 1.0.171",
  "sha2 0.9.8",
  "tempdir",
  "thiserror",
@@ -743,7 +743,7 @@ dependencies = [
  "byteorder 1.3.4",
  "num-derive 0.3.3",
  "num-traits",
- "serde",
+ "serde 1.0.171",
  "serde_json",
  "sha2 0.9.8",
 ]
@@ -771,7 +771,7 @@ dependencies = [
  "hex 0.3.2",
  "log 0.4.21",
  "openssl",
- "serde",
+ "serde 1.0.171",
  "serde_cbor",
  "sha2 0.9.8",
 ]
@@ -798,9 +798,9 @@ dependencies = [
  "pkix",
  "rustc-serialize",
  "sdkms",
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.171",
  "serde_json",
  "sgx-isa",
  "sgx_pkix",
@@ -825,8 +825,8 @@ dependencies = [
  "lazy_static",
  "log 0.3.9",
  "mime 0.2.6",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "serde_ignored",
  "serde_json",
  "url 1.7.2",
@@ -846,8 +846,8 @@ dependencies = [
  "lazy_static",
  "log 0.3.9",
  "mime 0.2.6",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "serde_ignored",
  "serde_json",
  "url 1.7.2",
@@ -886,7 +886,7 @@ dependencies = [
  "eif_utils",
  "futures 0.3.17",
  "log 0.4.21",
- "serde",
+ "serde 1.0.171",
  "serde_json",
  "serde_yaml",
  "sha2 0.9.8",
@@ -1052,8 +1052,8 @@ dependencies = [
  "libc",
  "nix 0.13.1",
  "num_cpus",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
@@ -1069,7 +1069,7 @@ dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "serde",
+ "serde 1.0.204",
  "vsock 0.2.4",
 ]
 
@@ -1082,7 +1082,7 @@ dependencies = [
  "fortanix-vme-abi",
  "log 0.4.21",
  "nix 0.22.2",
- "serde",
+ "serde 1.0.171",
  "serde_cbor",
  "vsock 0.2.4",
 ]
@@ -1500,7 +1500,7 @@ dependencies = [
  "pkix",
  "report-test",
  "reqwest",
- "serde",
+ "serde 1.0.171",
  "serde-bytes-repr",
  "serde_bytes",
  "serde_json",
@@ -1769,8 +1769,8 @@ dependencies = [
  "mbedtls-platform-support",
  "mbedtls-sys-auto",
  "rs-libc 0.2.3",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "yasna 0.2.2",
 ]
 
@@ -1941,7 +1941,7 @@ dependencies = [
  "mbedtls",
  "num-bigint 0.4.3",
  "pkix",
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
  "serde_cbor",
  "yasna 0.4.0",
@@ -1970,7 +1970,7 @@ dependencies = [
  "once_cell",
  "openssl",
  "page_size",
- "serde",
+ "serde 1.0.171",
  "serde_cbor",
  "serde_json",
  "sha2 0.9.8",
@@ -2069,7 +2069,7 @@ version = "0.1.0"
 source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
 dependencies = [
  "log 0.4.21",
- "serde",
+ "serde 1.0.171",
  "serde_bytes",
  "serde_cbor",
 ]
@@ -2892,7 +2892,7 @@ dependencies = [
  "native-tls",
  "percent-encoding 2.1.0",
  "pin-project-lite",
- "serde",
+ "serde 1.0.171",
  "serde_json",
  "serde_urlencoded",
  "tokio",
@@ -2991,20 +2991,19 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "sdkms"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c843377a2ed87d63e487c7b41b1a82446ab7dc836addd66d63010ea05b14aaf7"
+checksum = "5b12e3cb05862db268118482cbad26eee384b479de1924fe5404028e3444481a"
 dependencies = [
  "bitflags 1.2.1",
  "chrono",
  "hyper 0.10.16",
  "log 0.4.21",
  "rustc-serialize",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
  "serde_json",
  "url 1.7.2",
- "uuid 0.7.4",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3032,13 +3031,22 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.171"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30e27d1e4fd7659406c492fd6cfaf2066ba8773de45ca75e855590f856dc34a9"
+dependencies = [
+ "serde_derive 1.0.171",
+]
+
+[[package]]
+name = "serde"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "serde_derive 1.0.130",
+ "serde_derive 1.0.204",
 ]
 
 [[package]]
@@ -3049,7 +3057,7 @@ checksum = "9eb83481bce328081ced4404f986de002bf2e08865bec386734595ebf3b2c425"
 dependencies = [
  "base64 0.13.0",
  "hex 0.4.3",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3058,7 +3066,7 @@ version = "0.11.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "16ae07dd2f88a366f15bd0632ba725227018c69a1c8550a927324f8eb8368bb9"
 dependencies = [
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3068,28 +3076,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2bef2ebfde456fb76bbcf9f59315333decc4fda0b2b44b420243c11e0f5ec1f5"
 dependencies = [
  "half",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
-dependencies = [
- "proc-macro2 1.0.78",
- "quote 1.0.35",
- "syn 1.0.81",
-]
-
-[[package]]
-name = "serde_derive"
-version = "1.0.132"
+version = "1.0.171"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc0db5cb2556c0e558887d9bbdcf6ac4471e83ff66cf696e5419024d1606276"
+checksum = "389894603bd18c46fa56231694f8d827779c0951a667087194cf9de94ed24682"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
- "syn 1.0.81",
+ "syn 2.0.50",
+]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
+dependencies = [
+ "proc-macro2 1.0.78",
+ "quote 1.0.35",
+ "syn 2.0.50",
 ]
 
 [[package]]
@@ -3098,7 +3106,7 @@ version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190e9765dcedb56be63b6e0993a006c7e3b071a016a304736e4a315dc01fb142"
 dependencies = [
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3109,7 +3117,7 @@ checksum = "ee2bb9cd061c5865d345bb02ca49fcef1391741b672b54a0bf7b679badec3142"
 dependencies = [
  "itoa 1.0.1",
  "ryu",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3132,7 +3140,7 @@ dependencies = [
  "form_urlencoded",
  "itoa 1.0.1",
  "ryu",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3142,7 +3150,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edeeaecd5445109b937a3a335dc52780ca7779c4b4b7374cc6340dedfe44cfca"
 dependencies = [
  "rustversion",
- "serde",
+ "serde 1.0.171",
  "serde_with_macros",
 ]
 
@@ -3166,7 +3174,7 @@ checksum = "ae3e2dd40a7cdc18ca80db804b7f461a39bb721160a85c9a1fa30134bf3c02a5"
 dependencies = [
  "dtoa",
  "linked-hash-map",
- "serde",
+ "serde 1.0.171",
  "yaml-rust",
 ]
 
@@ -3176,7 +3184,7 @@ version = "0.4.1"
 dependencies = [
  "bitflags 1.2.1",
  "mbedtls",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3248,8 +3256,8 @@ dependencies = [
  "regex",
  "report-test",
  "reqwest",
- "serde",
- "serde_derive 1.0.132",
+ "serde 1.0.171",
+ "serde_derive 1.0.171",
  "serde_yaml",
  "sgx-isa",
  "sgxs",
@@ -3316,7 +3324,7 @@ dependencies = [
  "mime 0.3.16",
  "openssl",
  "pin-project 1.0.8",
- "serde",
+ "serde 1.0.171",
  "serde_json",
  "tar",
  "tokio",
@@ -3540,7 +3548,7 @@ dependencies = [
  "itoa 1.0.1",
  "libc",
  "num_threads",
- "serde",
+ "serde 1.0.171",
  "time-core",
  "time-macros",
 ]
@@ -3649,7 +3657,7 @@ version = "0.4.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "758664fc71a3a69038656bee8b6be6477d2a6c315a6b81f7081f591bffa4111f"
 dependencies = [
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3658,7 +3666,7 @@ version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a31142970826733df8241ef35dc040ef98c679ab14d7c3e54d827099b3acecaa"
 dependencies = [
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3838,7 +3846,7 @@ checksum = "e1436e58182935dcd9ce0add9ea0b558e8a87befe01c1a301e6020aeb0876363"
 dependencies = [
  "cfg-if 0.1.10",
  "rand 0.4.6",
- "serde",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -3848,7 +3856,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "90dbc611eb48397705a6b0f6e917da23ae517e4d127123d2cf7674206627d32a"
 dependencies = [
  "rand 0.6.5",
- "serde",
+ "serde 1.0.171",
+]
+
+[[package]]
+name = "uuid"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
+dependencies = [
+ "getrandom 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.171",
 ]
 
 [[package]]
@@ -4221,3 +4239,8 @@ name = "zeroize"
 version = "1.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a0956f1ba7c7909bfb66c2e9e4124ab6f6482560f6628b5aaeba39207c9aad9"
+
+[[patch.unused]]
+name = "serde"
+version = "1.0.130"
+source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
