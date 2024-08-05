@@ -338,7 +338,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "363c7cfaa15f101415c4ac9e68706ca4a2277773932828b33f96e59d28c68e62"
 dependencies = [
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "toml 0.5.8",
 ]
 
@@ -621,28 +621,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dcap-artifact-retrieval"
-version = "0.1.0"
-dependencies = [
- "backoff",
- "clap",
- "lazy_static",
- "lru-cache",
- "mbedtls",
- "num_enum",
- "pcs",
- "percent-encoding 2.3.1",
- "pkix 0.2.1",
- "quick-error",
- "reqwest 0.12.0",
- "rustc-serialize",
- "serde 1.0.185",
- "serde_cbor",
- "serde_json",
- "yasna 0.3.2",
-]
-
-[[package]]
 name = "dcap-provider"
 version = "0.4.0"
 dependencies = [
@@ -704,6 +682,9 @@ name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
+dependencies = [
+ "powerfmt",
+]
 
 [[package]]
 name = "digest"
@@ -822,7 +803,7 @@ dependencies = [
  "sdkms",
  "serde",
  "serde_bytes",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
  "sgx-isa",
  "sgx_pkix",
@@ -848,7 +829,7 @@ dependencies = [
  "log 0.3.9",
  "mime 0.2.6",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_ignored",
  "serde_json",
  "url 1.7.2",
@@ -869,7 +850,7 @@ dependencies = [
  "log 0.3.9",
  "mime 0.2.6",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_ignored",
  "serde_json",
  "url 1.7.2",
@@ -1075,7 +1056,7 @@ dependencies = [
  "nix 0.13.1",
  "num_cpus",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
@@ -1647,7 +1628,7 @@ name = "iron"
 version = "0.1.0"
 dependencies = [
  "iron 0.6.1",
- "time 0.3.26",
+ "time 0.3.36",
 ]
 
 [[package]]
@@ -1792,7 +1773,7 @@ dependencies = [
  "mbedtls-sys-auto",
  "rs-libc 0.2.3",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "yasna 0.2.2",
 ]
 
@@ -2149,6 +2130,12 @@ dependencies = [
  "autocfg 1.0.1",
  "num-traits",
 ]
+
+[[package]]
+name = "num-conv"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
 name = "num-derive"
@@ -2523,6 +2510,12 @@ checksum = "1a6a0dc3910bc8db877ffed8e457763b317cf880df4ae19109b9f77d277cf6e0"
 dependencies = [
  "typemap",
 ]
+
+[[package]]
+name = "powerfmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "ppv-lite86"
@@ -3023,7 +3016,7 @@ dependencies = [
  "log 0.4.21",
  "rustc-serialize",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
  "url 1.7.2",
  "uuid 0.7.4",
@@ -3054,13 +3047,13 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "serde_derive 1.0.130",
+ "serde_derive 1.0.204 (git+https://github.com/fortanix/serde.git?branch=master)",
 ]
 
 [[package]]
@@ -3095,23 +3088,23 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.204"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e0cd7e117be63d3c3678776753929474f3b04a43a080c744d6b0ae2a8c28e222"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
- "syn 1.0.81",
+ "syn 2.0.50",
 ]
 
 [[package]]
 name = "serde_derive"
-version = "1.0.132"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc0db5cb2556c0e558887d9bbdcf6ac4471e83ff66cf696e5419024d1606276"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
- "syn 1.0.81",
+ "syn 2.0.50",
 ]
 
 [[package]]
@@ -3225,7 +3218,7 @@ dependencies = [
  "sgx-isa",
  "sha2 0.8.2",
  "thiserror",
- "time 0.3.26",
+ "time 0.3.36",
 ]
 
 [[package]]
@@ -3271,7 +3264,7 @@ dependencies = [
  "report-test",
  "reqwest",
  "serde",
- "serde_derive 1.0.132",
+ "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml",
  "sgx-isa",
  "sgxs",
@@ -3554,14 +3547,16 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.26"
+version = "0.3.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a79d09ac6b08c1ab3906a2f7cc2e81a0e27c7ae89c63812df75e52bef0751e07"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa 1.0.1",
  "libc",
+ "num-conv",
  "num_threads",
+ "powerfmt",
  "serde",
  "time-core",
  "time-macros",
@@ -3569,16 +3564,17 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7300fbefb4dadc1af235a9cef3737cea692a9d97e1b9cbcd4ebdae6f8868e6fb"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "time-macros"
-version = "0.2.12"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75c65469ed6b3a4809d987a41eb1dc918e9bc1d92211cbad7ae82931846f7451"
+checksum = "3f252a68540fde3a3877aeea552b832b40ab9a69e318efd078774a01ddee1ccf"
 dependencies = [
+ "num-conv",
  "time-core",
 ]
 
