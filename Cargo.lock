@@ -117,9 +117,10 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-enclaves-cose"
-version = "0.5.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#1021a397acc56d4d3ed935991f205754e5a2d2c5"
+version = "0.4.0"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=aj/RTE-126#3464a6388380788136e3c20db7757f45ba1a2438"
 dependencies = [
+ "openssl",
  "serde",
  "serde_bytes",
  "serde_cbor",
@@ -1938,7 +1939,7 @@ dependencies = [
 name = "nitro-attestation-verify"
 version = "0.1.1"
 dependencies = [
- "aws-nitro-enclaves-cose 0.5.0",
+ "aws-nitro-enclaves-cose 0.4.0",
  "chrono",
  "lazy_static",
  "mbedtls",
