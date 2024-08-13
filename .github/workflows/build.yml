@@ -43,8 +43,8 @@ jobs:
     - name: Setup Rust toolchain
       run: |
         rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
-        rustup toolchain add nightly
-        rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
+        rustup toolchain add nightly-2024-05-14
+        rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly-2024-05-14
         rustup update
 
     - name: Cargo test --all --exclude sgxs-loaders
