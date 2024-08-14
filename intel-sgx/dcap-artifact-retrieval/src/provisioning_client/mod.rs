@@ -7,7 +7,7 @@
 
 use std::convert::TryFrom;
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use num_enum::TryFromPrimitive;
 use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified};
@@ -21,6 +21,10 @@ mod intel;
 
 pub use azure::AzureProvisioningClientBuilder;
 pub use intel::IntelProvisioningClientBuilder;
+use std::sync::Mutex;
+use lru_cache::LruCache;
+use std::clone::Clone;
+use std::hash::{Hash, DefaultHasher, Hasher};
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 #[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -259,6 +263,53 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     }
 }
 
+struct CachedService<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> {
+    service: BackoffService<T>,
+    cache: Mutex<LruCache<u64, (<T as ProvisioningServiceApi<'b>>::Output, SystemTime)>>,
+}
+
+impl<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> CachedService<'b, T> {
+    pub fn new(service: BackoffService<T>) -> Self {
+        Self {
+            service,
+            cache: Mutex::new(LruCache::new(5)),
+        }
+    }
+}
+
+impl<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> CachedService<'b, T> {
+    const CACHE_SHELFTIME: Duration = Duration::from_secs(120);
+
+    pub(crate) fn service(&self) -> &T {
+        &self.service.service()
+    }
+
+    fn calculate_key<'a>(&'a self, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<String, Error> {
+        let (url, _headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
+        Ok(url)
+    }
+
+    pub fn call_service<'a: 'b, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+        let key = {
+            let mut hasher =  DefaultHasher::new();
+            input.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let mut cache = self.cache.lock().unwrap();
+        if let Some((value, time)) = cache.get_mut(&key) {
+            if Self::CACHE_SHELFTIME < time.elapsed().unwrap_or(Duration::MAX) {
+                cache.remove(&key);
+            } else {
+                return Ok(value.to_owned());
+            }
+        }
+        let value = self.service.call_service::<F>(fetcher, input)?;
+        cache.insert(key, (value.clone(), SystemTime::now()));
+        Ok(value)
+    }
+}
+
 struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Service<T>,
     retry_timeout: Option<Duration>,
@@ -435,7 +486,7 @@ impl<'req> Fetcher<'req> for ReqwestClient {
 
 pub trait ProvisioningServiceApi<'inp> {
     type Input: 'inp + WithApiVersion;
-    type Output;
+    type Output: Clone;
 
     fn build_request(&'inp self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error>;
     fn validate_response(&'inp self, code: StatusCode) -> Result<(), Error>;
