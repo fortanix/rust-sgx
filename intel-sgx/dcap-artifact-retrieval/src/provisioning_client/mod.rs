@@ -109,7 +109,7 @@ pub enum StatusCode {
     Unassigned = 599,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PcsVersion {
     V3 = 3,
     V4 = 4,
@@ -125,6 +125,7 @@ impl WithApiVersion for PcsVersion {
     }
 }
 
+#[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
     pce_id: PceId,
@@ -142,6 +143,7 @@ pub trait PckCertsService<'inp> : ProvisioningServiceApi<'inp, Input = PckCertsI
     fn build_input(&'inp self, enc_ppid: &'inp EncPpid, pce_id: PceId) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct PckCertIn<'a> {
     encrypted_ppid: Option<&'a EncPpid>,
     pce_id: &'a PceId,
@@ -162,6 +164,7 @@ pub trait PckCertService<'inp> : ProvisioningServiceApi<'inp, Input = PckCertIn<
     fn build_input(&'inp self, encrypted_ppid: Option<&'inp EncPpid>, pce_id: &'inp PceId, cpu_svn: &'inp CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&'inp QeId>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct PckCrlIn {
     api_version: PcsVersion,
 }
@@ -176,6 +179,7 @@ pub trait PckCrlService<'inp> : ProvisioningServiceApi<'inp, Input = PckCrlIn, O
     fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct QeIdIn {
     pub api_version: PcsVersion,
 }
@@ -190,7 +194,7 @@ pub trait QeIdService<'inp> : ProvisioningServiceApi<'inp, Input = QeIdIn, Outpu
     fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
-
+#[derive(Hash)]
 pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
     pub(crate) fmspc: &'i Vec<u8>,
@@ -263,31 +267,22 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     }
 }
 
-struct CachedService<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> {
-    service: BackoffService<T>,
+struct CachedService<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
+    service: Service<T>,
     cache: Mutex<LruCache<u64, (<T as ProvisioningServiceApi<'b>>::Output, SystemTime)>>,
 }
 
-impl<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> CachedService<'b, T> {
-    pub fn new(service: BackoffService<T>) -> Self {
+impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
+    pub fn new(service: Service<T>, capacity: usize) -> Self {
         Self {
             service,
-            cache: Mutex::new(LruCache::new(5)),
+            cache: Mutex::new(LruCache::new(capacity)),
         }
     }
 }
 
-impl<'b, T: for<'a> ProvisioningServiceApi<'a, Input: Hash> + Sync + ?Sized> CachedService<'b, T> {
+impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
     const CACHE_SHELFTIME: Duration = Duration::from_secs(120);
-
-    pub(crate) fn service(&self) -> &T {
-        &self.service.service()
-    }
-
-    fn calculate_key<'a>(&'a self, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<String, Error> {
-        let (url, _headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
-        Ok(url)
-    }
 
     pub fn call_service<'a: 'b, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
         let key = {
@@ -485,7 +480,7 @@ impl<'req> Fetcher<'req> for ReqwestClient {
 
 
 pub trait ProvisioningServiceApi<'inp> {
-    type Input: 'inp + WithApiVersion;
+    type Input: 'inp + WithApiVersion + Hash;
     type Output: Clone;
 
     fn build_request(&'inp self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error>;
@@ -504,5 +499,138 @@ mod test_helpers {
         let cert = pkix::x509::GenericCertificate::from_ber(&cert).unwrap();
         let name = cert.tbscert.subject.get(&*pkix::oid::commonName).unwrap();
         String::from_utf8_lossy(&name.value()).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::string::String;
+
+
+    struct MockService;
+
+    #[derive(Hash, Clone, PartialEq, Eq, Debug)]
+    struct MockInput(u64);
+
+    impl WithApiVersion for MockInput {
+        fn api_version(&self) -> PcsVersion {
+            PcsVersion::V3
+        }
+    }
+
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    struct MockOutput(String);
+
+    impl<'a> ProvisioningServiceApi<'a> for MockService {
+        type Input = MockInput;
+        type Output = MockOutput;
+
+        fn build_request(&'a self, _input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+            Ok((_input.0.to_string(), vec![]))
+        }
+
+        fn validate_response(&'a self, _code: StatusCode) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn parse_response(&'a self, response_body: String, _response_headers: Vec<(std::string::String, std::string::String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+            Ok(MockOutput(response_body))
+        }
+    }
+
+    struct MockFetcher;
+
+    impl<'req> Fetcher<'req> for MockFetcher {
+        type Request = String;
+        type Response = String;
+
+        fn build_request(&'req self, url: &String, _headers: Vec<(String, String)>) -> Result<Self::Request, Error> {
+            Ok(url.clone())
+        }
+
+        fn send(&'req self, request: Self::Request) -> Result<(StatusCode, Self::Response), Error> {
+            Ok((StatusCode::Ok, request))
+        }
+
+        fn parse_response(&'req self, response: Self::Response) -> Result<(String, Vec<(String, String)>), Error> {
+            Ok((response, vec![]))
+        }
+    }
+
+    #[test]
+    fn test_call_service_cache_miss() {
+        let service = Service { service: Box::new(MockService) };
+        let cached_service = CachedService::new(service, 5);
+        let fetcher = MockFetcher;
+        let input_a = MockInput(42);
+        let input_b = MockInput(420);
+
+        // Initial call to populate the cache for `input_a`
+        cached_service.call_service(&fetcher, &input_a).unwrap();
+
+        // input_b should provoke cache miss and add new key to the cache
+        let result = cached_service.call_service(&fetcher, &input_b).unwrap();
+
+        let (cached_value, _) = {
+            let mut cache = cached_service.cache.lock().unwrap();
+            cache.get_mut(&calculate_key(&input_b)).unwrap().to_owned()
+        };
+
+        assert_eq!(result, cached_value);
+    }
+
+    #[test]
+    fn test_call_service_cache_hit() {
+        let service = Service { service: Box::new(MockService) };
+        let cached_service = CachedService::new(service, 5);
+        let fetcher = MockFetcher;
+        let input = MockInput(42);
+
+        // Initial call to populate the cache
+        let _ = cached_service.call_service(&fetcher, &input).unwrap();
+
+        // Now the service should not be called, and the cached result should be returned
+        let (cached_value, _) = {
+            let mut cache = cached_service.cache.lock().unwrap();
+            cache.get_mut(&calculate_key(&input)).unwrap().to_owned()
+        };
+
+        let result = cached_service.call_service(&fetcher, &input).unwrap();
+        assert_eq!(result, cached_value);
+    }
+
+    #[test]
+    fn test_cache_capacity_eviction() {
+        let service = Service { service: Box::new(MockService) };
+        let cached_service = CachedService::new(service, 2);
+        let fetcher = MockFetcher;
+
+        // Insert entries into the cache, exceeding its capacity
+        for i in 0..3 {
+            let input = MockInput(i);
+            let _ = cached_service.call_service(&fetcher, &input).unwrap();
+        }
+
+        // At this point, the cache should have evicted the first inserted entry (MockInput(0))
+        let mut cache = cached_service.cache.lock().unwrap();
+
+        // The cache should only have 2 items (capacity is 2)
+        assert_eq!(cache.len(), 2);
+
+        // The first inserted key (MockInput(0)) should be evicted
+        let key_first = calculate_key(&MockInput(0));
+        assert!(!cache.contains_key(&key_first));
+
+        // The last inserted key (MockInput(2)) should be present
+        let key_last = calculate_key(&MockInput(2));
+        assert!(cache.contains_key(&key_last));
+    }
+
+    // Helper function to calculate the cache key based on the input
+    fn calculate_key(input: &MockInput) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        hasher.finish()
     }
 }
