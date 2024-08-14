@@ -104,8 +104,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced66cf8fabb128c1f9aa335bdacf3009fbc4b6ad66bd42fa447f6a219736bfc"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/0.1.1#fe2558390c13cbd0e82f9c1610e74c4a4ddfd7e1"
 dependencies = [
  "openssl",
  "serde",
@@ -118,7 +117,7 @@ dependencies = [
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.5.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#1021a397acc56d4d3ed935991f205754e5a2d2c5"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#917f95a5e0c69e81a573ada98a5047e7080b44c3"
 dependencies = [
  "serde",
  "serde_bytes",

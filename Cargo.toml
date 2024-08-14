@@ -48,6 +48,8 @@ exclude = [
 resolver = "2"
 
 [patch.crates-io]
+aws-nitro-enclaves-cose_0_1 = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "raoul/0.1.1", package = "aws-nitro-enclaves-cose" }
+aws-nitro-enclaves-cose_0_5 = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "raoul/crypto_abstraction_pinned", package = "aws-nitro-enclaves-cose" }
 libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
 nix = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
