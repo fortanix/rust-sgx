@@ -808,7 +808,7 @@ dependencies = [
  "sgx_pkix",
  "url 1.7.2",
  "uuid 0.6.5",
- "uuid 0.7.4",
+ "uuid 0.8.2",
  "vme-pkix",
  "yasna 0.3.2",
 ]
@@ -3005,9 +3005,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "sdkms"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c843377a2ed87d63e487c7b41b1a82446ab7dc836addd66d63010ea05b14aaf7"
+checksum = "5b12e3cb05862db268118482cbad26eee384b479de1924fe5404028e3444481a"
 dependencies = [
  "bitflags 1.2.1",
  "chrono",
@@ -3015,10 +3015,9 @@ dependencies = [
  "log 0.4.21",
  "rustc-serialize",
  "serde",
- "serde_derive 1.0.132",
  "serde_json",
  "url 1.7.2",
- "uuid 0.7.4",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3860,11 +3859,11 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "0.7.4"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90dbc611eb48397705a6b0f6e917da23ae517e4d127123d2cf7674206627d32a"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
- "rand 0.6.5",
+ "getrandom 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
 ]
 
