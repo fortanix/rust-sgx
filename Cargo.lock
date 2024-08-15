@@ -104,7 +104,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/0.1.1#fe2558390c13cbd0e82f9c1610e74c4a4ddfd7e1"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=v0.1.0-patched#fe2558390c13cbd0e82f9c1610e74c4a4ddfd7e1"
 dependencies = [
  "openssl",
  "serde",
@@ -116,8 +116,9 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-enclaves-cose"
-version = "0.5.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#917f95a5e0c69e81a573ada98a5047e7080b44c3"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ce1d9954a5cb2841ad8ab206a050cd07ed34200ea6aafb7fa73a33771aaf48c"
 dependencies = [
  "serde",
  "serde_bytes",
@@ -1937,7 +1938,7 @@ dependencies = [
 name = "nitro-attestation-verify"
 version = "0.1.1"
 dependencies = [
- "aws-nitro-enclaves-cose 0.5.0",
+ "aws-nitro-enclaves-cose 0.5.1",
  "chrono",
  "lazy_static",
  "mbedtls",
