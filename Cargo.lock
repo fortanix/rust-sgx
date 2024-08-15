@@ -104,8 +104,7 @@ checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 [[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ced66cf8fabb128c1f9aa335bdacf3009fbc4b6ad66bd42fa447f6a219736bfc"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=v0.1.0-patched#fe2558390c13cbd0e82f9c1610e74c4a4ddfd7e1"
 dependencies = [
  "openssl",
  "serde",
@@ -117,8 +116,9 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-enclaves-cose"
-version = "0.5.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=raoul/crypto_abstraction_pinned#1021a397acc56d4d3ed935991f205754e5a2d2c5"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ce1d9954a5cb2841ad8ab206a050cd07ed34200ea6aafb7fa73a33771aaf48c"
 dependencies = [
  "serde",
  "serde_bytes",
@@ -682,6 +682,9 @@ name = "deranged"
 version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b42b6fa04a440b495c8b04d0e71b707c585f83cb9cb28cf8cd0d976c315e31b4"
+dependencies = [
+ "powerfmt",
+]
 
 [[package]]
 name = "digest"
@@ -806,7 +809,7 @@ dependencies = [
  "sgx_pkix",
  "url 1.7.2",
  "uuid 0.6.5",
- "uuid 0.7.4",
+ "uuid 0.8.2",
  "vme-pkix",
  "yasna 0.3.2",
 ]
@@ -1625,7 +1628,7 @@ name = "iron"
 version = "0.1.0"
 dependencies = [
  "iron 0.6.1",
- "time 0.3.26",
+ "time 0.3.36",
 ]
 
 [[package]]
@@ -1935,7 +1938,7 @@ dependencies = [
 name = "nitro-attestation-verify"
 version = "0.1.1"
 dependencies = [
- "aws-nitro-enclaves-cose 0.5.0",
+ "aws-nitro-enclaves-cose 0.5.1",
  "chrono",
  "lazy_static",
  "mbedtls",
@@ -2127,6 +2130,12 @@ dependencies = [
  "autocfg 1.0.1",
  "num-traits",
 ]
+
+[[package]]
+name = "num-conv"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
 name = "num-derive"
@@ -2501,6 +2510,12 @@ checksum = "1a6a0dc3910bc8db877ffed8e457763b317cf880df4ae19109b9f77d277cf6e0"
 dependencies = [
  "typemap",
 ]
+
+[[package]]
+name = "powerfmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "439ee305def115ba05938db6eb1644ff94165c5ab5e9420d1c1bcedbba909391"
 
 [[package]]
 name = "ppv-lite86"
@@ -2991,9 +3006,9 @@ checksum = "d29ab0c6d3fc0ee92fe66e2d99f700eab17a8d57d1c1d3b748380fb20baa78cd"
 
 [[package]]
 name = "sdkms"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c843377a2ed87d63e487c7b41b1a82446ab7dc836addd66d63010ea05b14aaf7"
+checksum = "5b12e3cb05862db268118482cbad26eee384b479de1924fe5404028e3444481a"
 dependencies = [
  "bitflags 1.2.1",
  "chrono",
@@ -3001,10 +3016,9 @@ dependencies = [
  "log 0.4.21",
  "rustc-serialize",
  "serde",
- "serde_derive 1.0.132",
  "serde_json",
  "url 1.7.2",
- "uuid 0.7.4",
+ "uuid 0.8.2",
 ]
 
 [[package]]
@@ -3032,13 +3046,13 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
 dependencies = [
  "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
- "serde_derive 1.0.130",
+ "serde_derive 1.0.204",
 ]
 
 [[package]]
@@ -3073,8 +3087,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.130"
-source = "git+https://github.com/fortanix/serde.git?branch=master#80449547025fc4a016a333e96c0cdaf7e4a96f67"
+version = "1.0.132"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ecc0db5cb2556c0e558887d9bbdcf6ac4471e83ff66cf696e5419024d1606276"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
@@ -3083,13 +3098,12 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.132"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ecc0db5cb2556c0e558887d9bbdcf6ac4471e83ff66cf696e5419024d1606276"
+version = "1.0.204"
+source = "git+https://github.com/fortanix/serde.git?branch=master#1755f934942d36f9caf6cb73177fda1d25ca20f4"
 dependencies = [
  "proc-macro2 1.0.78",
  "quote 1.0.35",
- "syn 1.0.81",
+ "syn 2.0.50",
 ]
 
 [[package]]
@@ -3203,7 +3217,7 @@ dependencies = [
  "sgx-isa",
  "sha2 0.8.2",
  "thiserror",
- "time 0.3.26",
+ "time 0.3.36",
 ]
 
 [[package]]
@@ -3532,14 +3546,16 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.26"
+version = "0.3.36"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a79d09ac6b08c1ab3906a2f7cc2e81a0e27c7ae89c63812df75e52bef0751e07"
+checksum = "5dfd88e563464686c916c7e46e623e520ddc6d79fa6641390f2e3fa86e83e885"
 dependencies = [
  "deranged",
  "itoa 1.0.1",
  "libc",
+ "num-conv",
  "num_threads",
+ "powerfmt",
  "serde",
  "time-core",
  "time-macros",
@@ -3547,16 +3563,17 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7300fbefb4dadc1af235a9cef3737cea692a9d97e1b9cbcd4ebdae6f8868e6fb"
+checksum = "ef927ca75afb808a4d64dd374f00a2adf8d0fcff8e7b184af886c3c87ec4a3f3"
 
 [[package]]
 name = "time-macros"
-version = "0.2.12"
+version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75c65469ed6b3a4809d987a41eb1dc918e9bc1d92211cbad7ae82931846f7451"
+checksum = "3f252a68540fde3a3877aeea552b832b40ab9a69e318efd078774a01ddee1ccf"
 dependencies = [
+ "num-conv",
  "time-core",
 ]
 
@@ -3843,11 +3860,11 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "0.7.4"
+version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "90dbc611eb48397705a6b0f6e917da23ae517e4d127123d2cf7674206627d32a"
+checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
- "rand 0.6.5",
+ "getrandom 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde",
 ]
 
