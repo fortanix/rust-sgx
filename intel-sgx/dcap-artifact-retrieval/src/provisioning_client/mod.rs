@@ -13,18 +13,18 @@ use num_enum::TryFromPrimitive;
 use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified};
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
-
-use crate::Error;
-
-mod azure;
-mod intel;
-
 pub use azure::AzureProvisioningClientBuilder;
 pub use intel::IntelProvisioningClientBuilder;
 use std::sync::Mutex;
 use lru_cache::LruCache;
 use std::clone::Clone;
 use std::hash::{Hash, DefaultHasher, Hasher};
+use crate::Error;
+
+mod azure;
+mod intel;
+
+
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 #[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -270,19 +270,20 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
 struct CachedService<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Service<T>,
     cache: Mutex<LruCache<u64, (<T as ProvisioningServiceApi<'b>>::Output, SystemTime)>>,
+    cache_shelf_time: Duration
 }
 
 impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
-    pub fn new(service: Service<T>, capacity: usize) -> Self {
+    pub fn new(service: Service<T>, capacity: usize, cache_shelf_time: u64) -> Self {
         Self {
             service,
             cache: Mutex::new(LruCache::new(capacity)),
+            cache_shelf_time: Duration::from_secs(cache_shelf_time)
         }
     }
 }
 
 impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
-    const CACHE_SHELFTIME: Duration = Duration::from_secs(120);
 
     pub fn call_service<'a: 'b, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
         let key = {
@@ -293,7 +294,7 @@ impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b
 
         let mut cache = self.cache.lock().unwrap();
         if let Some((value, time)) = cache.get_mut(&key) {
-            if Self::CACHE_SHELFTIME < time.elapsed().unwrap_or(Duration::MAX) {
+            if self.cache_shelf_time < time.elapsed().unwrap_or(Duration::MAX) {
                 cache.remove(&key);
             } else {
                 return Ok(value.to_owned());
@@ -535,7 +536,7 @@ mod tests {
         }
 
         fn parse_response(&'a self, response_body: String, _response_headers: Vec<(std::string::String, std::string::String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
-            Ok(MockOutput(response_body))
+            Ok(MockOutput(format!("response to: {}", response_body)))
         }
     }
 
@@ -561,7 +562,7 @@ mod tests {
     #[test]
     fn test_call_service_cache_miss() {
         let service = Service { service: Box::new(MockService) };
-        let cached_service = CachedService::new(service, 5);
+        let cached_service = CachedService::new(service, 5, 120);
         let fetcher = MockFetcher;
         let input_a = MockInput(42);
         let input_b = MockInput(420);
@@ -583,7 +584,7 @@ mod tests {
     #[test]
     fn test_call_service_cache_hit() {
         let service = Service { service: Box::new(MockService) };
-        let cached_service = CachedService::new(service, 5);
+        let cached_service = CachedService::new(service, 5, 120);
         let fetcher = MockFetcher;
         let input = MockInput(42);
 
@@ -603,7 +604,7 @@ mod tests {
     #[test]
     fn test_cache_capacity_eviction() {
         let service = Service { service: Box::new(MockService) };
-        let cached_service = CachedService::new(service, 2);
+        let cached_service = CachedService::new(service, 2, 120);
         let fetcher = MockFetcher;
 
         // Insert entries into the cache, exceeding its capacity
