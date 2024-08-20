@@ -238,11 +238,11 @@ impl ClientBuilder {
     }
 }
 
-struct Service<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
+struct PcsService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Box<T>,
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
     pub fn new(service: Box<T>) -> Self {
         Self {
             service,
@@ -250,7 +250,7 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     }
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
     pub(crate) fn pcs_service(&self) -> &T {
         &self.service
     }
@@ -268,13 +268,13 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
 }
 
 struct CachedService<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> {
-    service: Service<T>,
+    service: PcsService<T>,
     cache: Mutex<LruCache<u64, (O, SystemTime)>>,
     cache_shelf_time: Duration
 }
 
 impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
-    pub fn new(service: Service<T>, capacity: usize, cache_shelf_time: u64) -> Self {
+    pub fn new(service: PcsService<T>, capacity: usize, cache_shelf_time: u64) -> Self {
         Self {
             service,
             cache: Mutex::new(LruCache::new(capacity)),
@@ -307,12 +307,12 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
 }
 
 struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
-    service: Service<T>,
+    service: PcsService<T>,
     retry_timeout: Option<Duration>,
 }
 
 impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
-    pub fn new(service: Service<T>, retry_timeout: Option<Duration>) -> Self {
+    pub fn new(service: PcsService<T>, retry_timeout: Option<Duration>) -> Self {
         Self {
             service,
             retry_timeout
@@ -380,11 +380,11 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
     TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     {
         Client {
-            pckcerts_service: BackoffService::new(Service::new(Box::new(pckcerts_service)), retry_timeout.clone()),
-            pckcert_service: BackoffService::new(Service::new(Box::new(pckcert_service)), retry_timeout.clone()),
-            pckcrl_service: BackoffService::new(Service::new(Box::new(pckcrl_service)), retry_timeout.clone()),
-            qeid_service: BackoffService::new(Service::new(Box::new(qeid_service)), retry_timeout.clone()),
-            tcbinfo_service: BackoffService::new(Service::new(Box::new(tcbinfo_service)), retry_timeout.clone()),
+            pckcerts_service: BackoffService::new(PcsService::new(Box::new(pckcerts_service)), retry_timeout.clone()),
+            pckcert_service: BackoffService::new(PcsService::new(Box::new(pckcert_service)), retry_timeout.clone()),
+            pckcrl_service: BackoffService::new(PcsService::new(Box::new(pckcrl_service)), retry_timeout.clone()),
+            qeid_service: BackoffService::new(PcsService::new(Box::new(qeid_service)), retry_timeout.clone()),
+            tcbinfo_service: BackoffService::new(PcsService::new(Box::new(tcbinfo_service)), retry_timeout.clone()),
             fetcher,
         }
     }
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_miss() {
-        let service = Service { service: Box::new(MockService) };
+        let service = PcsService { service: Box::new(MockService) };
         let cached_service = CachedService::new(service, 5, 120);
         let fetcher = MockFetcher;
         let input_a = MockInput(42);
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_hit() {
-        let service = Service { service: Box::new(MockService) };
+        let service = PcsService { service: Box::new(MockService) };
         let cached_service = CachedService::new(service, 5, 120);
         let fetcher = MockFetcher;
         let input = MockInput(42);
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn test_cache_capacity_eviction() {
-        let service = Service { service: Box::new(MockService) };
+        let service = PcsService { service: Box::new(MockService) };
         let cached_service = CachedService::new(service, 2, 120);
         let fetcher = MockFetcher;
 
