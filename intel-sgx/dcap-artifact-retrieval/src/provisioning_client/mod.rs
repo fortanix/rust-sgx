@@ -251,19 +251,19 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
 }
 
 impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
-    pub(crate) fn service(&self) -> &T {
+    pub(crate) fn pcs_service(&self) -> &T {
         &self.service
     }
 
     fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
-        let (url, headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
+        let (url, headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.pcs_service(), input)?;
         let req = fetcher.build_request(&url, headers)?;
         let api_version = input.api_version();
 
         let (status_code, resp) = fetcher.send(req)?;
-        <T as ProvisioningServiceApi<'a>>::validate_response(self.service(), status_code)?;
+        <T as ProvisioningServiceApi<'a>>::validate_response(self.pcs_service(), status_code)?;
         let (response_body, response_headers) = fetcher.parse_response(resp)?;
-        <T as ProvisioningServiceApi<'a>>::parse_response(self.service(), response_body, response_headers, api_version)
+        <T as ProvisioningServiceApi<'a>>::parse_response(self.pcs_service(), response_body, response_headers, api_version)
     }
 }
 
@@ -324,8 +324,8 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
     const RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(2);
     const RETRY_INTERVAL_MULTIPLIER: f64 = 2.0;
 
-    pub(crate) fn service(&self) -> &T {
-        &self.service.service()
+    pub(crate) fn pcs_service(&self) -> &T {
+        &self.service.pcs_service()
     }
 
     pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
@@ -404,27 +404,27 @@ pub trait ProvisioningClient {
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
-        let input = self.pckcerts_service.service().build_input(encrypted_ppid, pce_id);
+        let input = self.pckcerts_service.pcs_service().build_input(encrypted_ppid, pce_id);
         self.pckcerts_service.call_service(&self.fetcher, &input)
     }
 
     fn pckcert(&self, encrypted_ppid: Option<&EncPpid>, pce_id: &PceId, cpu_svn: &CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&QeId>) -> Result<PckCert<Unverified>, Error> {
-        let input = self.pckcert_service.service().build_input(encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id);
+        let input = self.pckcert_service.pcs_service().build_input(encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id);
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
     fn tcbinfo(&self, fmspc: &Vec<u8>) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.service().build_input(fmspc);
+        let input = self.tcbinfo_service.pcs_service().build_input(fmspc);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
     fn pckcrl(&self) -> Result<PckCrl, Error> {
-        let input = self.pckcrl_service.service().build_input();
+        let input = self.pckcrl_service.pcs_service().build_input();
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.service().build_input();
+        let input = self.qeid_service.pcs_service().build_input();
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 }
