@@ -267,13 +267,13 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     }
 }
 
-struct CachedService<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
+struct CachedService<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> {
     service: Service<T>,
-    cache: Mutex<LruCache<u64, (<T as ProvisioningServiceApi<'b>>::Output, SystemTime)>>,
+    cache: Mutex<LruCache<u64, (O, SystemTime)>>,
     cache_shelf_time: Duration
 }
 
-impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
     pub fn new(service: Service<T>, capacity: usize, cache_shelf_time: u64) -> Self {
         Self {
             service,
@@ -283,9 +283,9 @@ impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b
     }
 }
 
-impl<'b, T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> CachedService<'b, T> {
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
 
-    pub fn call_service<'a: 'b, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+    pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
         let key = {
             let mut hasher =  DefaultHasher::new();
             input.hash(&mut hasher);
