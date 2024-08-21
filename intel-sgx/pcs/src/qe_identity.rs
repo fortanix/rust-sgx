@@ -226,7 +226,7 @@ where
     serializer.serialize_str(&miscselect)
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub struct QeIdentitySigned {
     raw_enclave_identity: String,
     signature: Vec<u8>,
