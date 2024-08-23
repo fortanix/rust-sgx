@@ -89,7 +89,7 @@ struct IntelSgxTcbComponentsV3 {
 
 /// TCB component as specified in TcbInfo (version 3) of the PCS version 4 API
 /// https://api.trustedservices.intel.com/documents/PCS_V3-V4_migration_guide.pdf
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 struct IntelSgxTcbComponentV4 {
     svn: u8,
     #[serde(default)]
@@ -108,7 +108,7 @@ impl From<u8> for IntelSgxTcbComponentV4 {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 struct IntelSgxTcbComponentsV4 {
     pub sgxtcbcomponents: [IntelSgxTcbComponentV4; 16],
     pub pcesvn: u16,
@@ -121,7 +121,7 @@ enum IntelSgxTcbComponents {
     V4(IntelSgxTcbComponentsV4),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
 #[serde(from = "IntelSgxTcbComponents")]
 pub struct TcbComponents(IntelSgxTcbComponentsV4);
 
@@ -246,14 +246,14 @@ impl Serialize for PckCertValue {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PckCertBodyItem {
     tcb: TcbComponents,
     tcbm: String,
     cert: PckCertValue,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PckCerts {
     pck_data: Vec<PckCertBodyItem>,
     ca_chain: Vec<String>,

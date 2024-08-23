@@ -134,7 +134,7 @@ impl<V: VerificationType> TcbData<V> {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct TcbInfo {
     raw_tcb_info: String,
     signature: Vec<u8>,

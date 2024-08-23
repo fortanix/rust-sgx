@@ -419,6 +419,8 @@ fn parse_issuer_header(headers: &Vec<(String, String)>, header: &'static str) ->
 mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
+    use std::hash::Hash;
+    use std::hash::Hasher;
 
     use pcs::PckID;
 
@@ -426,6 +428,7 @@ mod tests {
     use crate::provisioning_client::{
         test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient
     };
+    use std::hash::DefaultHasher;
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
@@ -444,6 +447,7 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
+
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
                 let pcks = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
                 assert_eq!(
@@ -452,6 +456,47 @@ mod tests {
                 );
                 pcks.fmspc().unwrap();
                 pcks.store(OUTPUT_TEST_DIR, pckid.qe_id.as_slice()).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    pub fn pcks_cached() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            if api_version == PcsVersion::V3 {
+                intel_builder.set_api_key(pcs_api_key());
+            }
+            let client = intel_builder.build(reqwest_client());
+
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
+                let pcks = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.pckcerts_service.cache.lock().unwrap();
+
+                    assert!(cache.len() > 0);
+
+                    let (cached_pcks, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.pckcerts_service.pcs_service().build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                        input.hash(&mut hasher);
+
+                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                    };
+
+                    assert_eq!(pcks.fmspc().unwrap(), cached_pcks.fmspc().unwrap());
+                    assert_eq!(pcks, cached_pcks);
+                }
+
+                // Second service call should return value from cache
+                let pcks_from_service = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .unwrap();
+
+                assert_eq!(pcks, pcks_from_service);
+                assert_eq!(pcks.fmspc().unwrap(), pcks_from_service.fmspc().unwrap());
             }
         }
     }
@@ -477,6 +522,47 @@ mod tests {
     }
 
     #[test]
+    pub fn pck_cached() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            if api_version == PcsVersion::V3 {
+                intel_builder.set_api_key(pcs_api_key());
+            }
+            let client = intel_builder.build(reqwest_client());
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
+                let pck = client.pckcert(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None)
+                    .unwrap();
+
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.pckcert_service.cache.lock().unwrap();
+
+                    assert!(cache.len() > 0);
+
+                    let (cached_pck, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.pckcert_service.pcs_service().build_input(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None);
+                        input.hash(&mut hasher);
+
+                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                    };
+
+                    assert_eq!(pck.fmspc().unwrap(), cached_pck.fmspc().unwrap());
+                    assert_eq!(pck.ca_chain(), cached_pck.ca_chain());
+                }
+
+                // Second service call should return value from cache
+                let pck_from_service = client.pckcert(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None)
+                    .unwrap();
+
+                assert_eq!(pck.fmspc().unwrap(), pck_from_service.fmspc().unwrap());
+                assert_eq!(pck.ca_chain(), pck_from_service.ca_chain());
+            }
+        }
+    }
+
+    #[test]
     pub fn tcb_info() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -491,6 +577,45 @@ mod tests {
                     .tcbinfo(&pckcerts.fmspc().unwrap())
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
+            }
+        }
+    }
+
+    #[test]
+    pub fn tcb_info_cached() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            if api_version == PcsVersion::V3 {
+                intel_builder.set_api_key(pcs_api_key());
+            }
+            let client = intel_builder.build(reqwest_client());
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
+                let pckcerts = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+                let fmspc = pckcerts.fmspc().unwrap();
+                let tcb_info = client.tcbinfo(&fmspc).unwrap();
+
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.tcbinfo_service.cache.lock().unwrap();
+
+                    assert!(cache.len() > 0);
+
+                    let (cached_tcb_info, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc);
+                        input.hash(&mut hasher);
+
+                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                    };
+
+                    assert_eq!(tcb_info, cached_tcb_info);
+                }
+
+                // Second service call should return value from cache
+                let tcb_info_from_service = client.tcbinfo(&fmspc).unwrap();
+
+                assert_eq!(tcb_info, tcb_info_from_service);
             }
         }
     }
@@ -512,6 +637,42 @@ mod tests {
     }
 
     #[test]
+    pub fn pckcrl_cached() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            if api_version == PcsVersion::V3 {
+                intel_builder.set_api_key(pcs_api_key());
+            }
+            let client = intel_builder.build(reqwest_client());
+            let pckcrl = client.pckcrl().unwrap();
+
+            // The cache should be populated after initial service call
+            {
+                let mut cache = client.pckcrl_service.cache.lock().unwrap();
+
+                assert!(cache.len() > 0);
+
+                let (cached_pckcrl, _) = {
+                    let mut hasher = DefaultHasher::new();
+                    let input = client.pckcrl_service.pcs_service().build_input();
+                    input.hash(&mut hasher);
+
+                    cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                };
+
+                assert_eq!(pckcrl, cached_pckcrl);
+            }
+
+            // Second service call should return value from cache
+            let pckcrl_from_service = client.pckcrl()
+                .unwrap();
+
+            assert_eq!(pckcrl, pckcrl_from_service);
+        }
+    }
+
+    #[test]
     pub fn qe_identity() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -523,6 +684,42 @@ mod tests {
             let qe_id = client.qe_identity();
             assert!(qe_id.is_ok());
             assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+        }
+    }
+
+    #[test]
+    pub fn qe_identity_cached() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            if api_version == PcsVersion::V3 {
+                intel_builder.set_api_key(pcs_api_key());
+            }
+            let client = intel_builder.build(reqwest_client());
+            let qe_id = client.qe_identity().unwrap();
+
+            // The cache should be populated after initial service call
+            {
+                let mut cache = client.qeid_service.cache.lock().unwrap();
+
+                assert!(cache.len() > 0);
+
+                let (cached_qeid, _) = {
+                    let mut hasher = DefaultHasher::new();
+                    let input = client.qeid_service.pcs_service().build_input();
+                    input.hash(&mut hasher);
+
+                    cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                };
+
+                assert_eq!(qe_id, cached_qeid);
+            }
+
+            // Second service call should return value from cache
+            let qeid_from_service = client.qe_identity()
+                .unwrap();
+
+            assert_eq!(qe_id, qeid_from_service);
         }
     }
 }

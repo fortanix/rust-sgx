@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::io::{self};
 use crate::Error;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct PckCrl {
     crl: String,
     ca_chain: Vec<String>,

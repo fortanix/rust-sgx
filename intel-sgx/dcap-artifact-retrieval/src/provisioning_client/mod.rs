@@ -7,20 +7,24 @@
 
 use std::convert::TryFrom;
 use std::io::Read;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use num_enum::TryFromPrimitive;
 use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified};
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
-
+pub use azure::AzureProvisioningClientBuilder;
+pub use intel::IntelProvisioningClientBuilder;
+use std::sync::Mutex;
+use lru_cache::LruCache;
+use std::clone::Clone;
+use std::hash::{Hash, DefaultHasher, Hasher};
 use crate::Error;
 
 mod azure;
 mod intel;
 
-pub use azure::AzureProvisioningClientBuilder;
-pub use intel::IntelProvisioningClientBuilder;
+
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 #[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -105,7 +109,7 @@ pub enum StatusCode {
     Unassigned = 599,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PcsVersion {
     V3 = 3,
     V4 = 4,
@@ -121,6 +125,7 @@ impl WithApiVersion for PcsVersion {
     }
 }
 
+#[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
     pce_id: PceId,
@@ -138,6 +143,7 @@ pub trait PckCertsService<'inp> : ProvisioningServiceApi<'inp, Input = PckCertsI
     fn build_input(&'inp self, enc_ppid: &'inp EncPpid, pce_id: PceId) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct PckCertIn<'a> {
     encrypted_ppid: Option<&'a EncPpid>,
     pce_id: &'a PceId,
@@ -158,6 +164,7 @@ pub trait PckCertService<'inp> : ProvisioningServiceApi<'inp, Input = PckCertIn<
     fn build_input(&'inp self, encrypted_ppid: Option<&'inp EncPpid>, pce_id: &'inp PceId, cpu_svn: &'inp CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&'inp QeId>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct PckCrlIn {
     api_version: PcsVersion,
 }
@@ -172,6 +179,7 @@ pub trait PckCrlService<'inp> : ProvisioningServiceApi<'inp, Input = PckCrlIn, O
     fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
 pub struct QeIdIn {
     pub api_version: PcsVersion,
 }
@@ -186,7 +194,7 @@ pub trait QeIdService<'inp> : ProvisioningServiceApi<'inp, Input = QeIdIn, Outpu
     fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
-
+#[derive(Hash)]
 pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
     pub(crate) fmspc: &'i Vec<u8>,
@@ -202,9 +210,20 @@ pub trait TcbInfoService<'inp> : ProvisioningServiceApi<'inp, Input = TcbInfoIn<
     fn build_input(&'inp self, fmspc: &'inp Vec<u8>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
-#[derive(Default)]
 pub struct ClientBuilder {
     retry_timeout: Option<Duration>,
+    cache_capacity: usize,
+    cache_shelf_time: Duration,
+}
+
+impl Default for ClientBuilder {
+    fn default() -> Self {
+        ClientBuilder {
+            retry_timeout: None,
+            cache_capacity: 10,
+            cache_shelf_time: Duration::from_secs(60),
+        }
+    }
 }
 
 impl ClientBuilder {
@@ -226,15 +245,15 @@ impl ClientBuilder {
     TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     F: for<'a> Fetcher<'a>,
     {
-        Client::new(pckcerts_service, pckcert_service, pckcrl_service, qeid_service, tcbinfo_service, fetcher, self.retry_timeout)
+        Client::new(pckcerts_service, pckcert_service, pckcrl_service, qeid_service, tcbinfo_service, fetcher, self.retry_timeout, self.cache_capacity, self.cache_shelf_time)
     }
 }
 
-struct Service<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
+struct PcsService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
     service: Box<T>,
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
     pub fn new(service: Box<T>) -> Self {
         Self {
             service,
@@ -242,30 +261,72 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
     }
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> Service<T> {
-    pub(crate) fn service(&self) -> &T {
+impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
+    pub(crate) fn pcs_service(&self) -> &T {
         &self.service
     }
 
     fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
-        let (url, headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.service(), input)?;
+        let (url, headers) = <T as ProvisioningServiceApi<'a>>::build_request(&self.pcs_service(), input)?;
         let req = fetcher.build_request(&url, headers)?;
         let api_version = input.api_version();
 
         let (status_code, resp) = fetcher.send(req)?;
-        <T as ProvisioningServiceApi<'a>>::validate_response(self.service(), status_code)?;
+        <T as ProvisioningServiceApi<'a>>::validate_response(self.pcs_service(), status_code)?;
         let (response_body, response_headers) = fetcher.parse_response(resp)?;
-        <T as ProvisioningServiceApi<'a>>::parse_response(self.service(), response_body, response_headers, api_version)
+        <T as ProvisioningServiceApi<'a>>::parse_response(self.pcs_service(), response_body, response_headers, api_version)
+    }
+}
+
+struct CachedService<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> {
+    service: BackoffService<T>,
+    cache: Mutex<LruCache<u64, (O, SystemTime)>>,
+    cache_shelf_time: Duration
+}
+
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
+    pub fn new(service: BackoffService<T>, capacity: usize, cache_shelf_time: Duration) -> Self {
+        Self {
+            service,
+            cache: Mutex::new(LruCache::new(capacity)),
+            cache_shelf_time,
+        }
+    }
+}
+
+impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> CachedService<O, T> {
+    pub(crate) fn pcs_service(&self) -> &T {
+        &self.service.pcs_service()
+    }
+
+    pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+        let key = {
+            let mut hasher =  DefaultHasher::new();
+            input.hash(&mut hasher);
+            hasher.finish()
+        };
+
+        let mut cache = self.cache.lock().unwrap();
+        if let Some((value, time)) = cache.get_mut(&key) {
+            if self.cache_shelf_time < time.elapsed().unwrap_or(Duration::MAX) {
+                cache.remove(&key);
+            } else {
+                return Ok(value.to_owned());
+            }
+        }
+        let value = self.service.call_service::<F>(fetcher, input)?;
+        cache.insert(key, (value.clone(), SystemTime::now()));
+        Ok(value)
     }
 }
 
 struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
-    service: Service<T>,
+    service: PcsService<T>,
     retry_timeout: Option<Duration>,
 }
 
 impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
-    pub fn new(service: Service<T>, retry_timeout: Option<Duration>) -> Self {
+    pub fn new(service: PcsService<T>, retry_timeout: Option<Duration>) -> Self {
         Self {
             service,
             retry_timeout
@@ -277,8 +338,8 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
     const RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(2);
     const RETRY_INTERVAL_MULTIPLIER: f64 = 2.0;
 
-    pub(crate) fn service(&self) -> &T {
-        &self.service.service()
+    pub(crate) fn pcs_service(&self) -> &T {
+        &self.service.pcs_service()
     }
 
     pub fn call_service<'a, F: Fetcher<'a>>(&'a self, fetcher: &'a F, input: &<T as ProvisioningServiceApi<'a>>::Input) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
@@ -315,16 +376,16 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
 }
 
 pub struct Client<F: for<'a> Fetcher<'a>> {
-    pckcerts_service: BackoffService<dyn for<'a> PckCertsService<'a> + Sync + Send>,
-    pckcert_service: BackoffService<dyn for<'a> PckCertService<'a> + Sync + Send>,
-    pckcrl_service: BackoffService<dyn for<'a> PckCrlService<'a> + Sync + Send>,
-    qeid_service: BackoffService<dyn for<'a> QeIdService<'a> + Sync + Send>,
-    tcbinfo_service: BackoffService<dyn for<'a> TcbInfoService<'a> + Sync + Send>,
+    pckcerts_service: CachedService<PckCerts, dyn for<'a> PckCertsService<'a> + Sync + Send>,
+    pckcert_service: CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
+    pckcrl_service: CachedService<PckCrl, dyn for<'a> PckCrlService<'a> + Sync + Send>,
+    qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
+    tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS>(pckcerts_service: PSS, pckcert_service: PS, pckcrl_service: PC, qeid_service: QS, tcbinfo_service: TS, fetcher: F,retry_timeout: Option<Duration>) -> Client<F>
+    fn new<PSS, PS, PC, QS, TS>(pckcerts_service: PSS, pckcert_service: PS, pckcrl_service: PC, qeid_service: QS, tcbinfo_service: TS, fetcher: F,retry_timeout: Option<Duration>, cache_capacity: usize, cache_shelf_time: Duration) -> Client<F>
     where
     PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
     PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
@@ -333,11 +394,11 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
     TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
     {
         Client {
-            pckcerts_service: BackoffService::new(Service::new(Box::new(pckcerts_service)), retry_timeout.clone()),
-            pckcert_service: BackoffService::new(Service::new(Box::new(pckcert_service)), retry_timeout.clone()),
-            pckcrl_service: BackoffService::new(Service::new(Box::new(pckcrl_service)), retry_timeout.clone()),
-            qeid_service: BackoffService::new(Service::new(Box::new(qeid_service)), retry_timeout.clone()),
-            tcbinfo_service: BackoffService::new(Service::new(Box::new(tcbinfo_service)), retry_timeout.clone()),
+            pckcerts_service: CachedService::new(BackoffService::new(PcsService::new(Box::new(pckcerts_service)), retry_timeout.clone()), cache_capacity, cache_shelf_time),
+            pckcert_service: CachedService::new(BackoffService::new(PcsService::new(Box::new(pckcert_service)), retry_timeout.clone()), cache_capacity, cache_shelf_time),
+            pckcrl_service: CachedService::new(BackoffService::new(PcsService::new(Box::new(pckcrl_service)), retry_timeout.clone()), cache_capacity, cache_shelf_time),
+            qeid_service: CachedService::new(BackoffService::new(PcsService::new(Box::new(qeid_service)), retry_timeout.clone()), cache_capacity, cache_shelf_time),
+            tcbinfo_service: CachedService::new(BackoffService::new(PcsService::new(Box::new(tcbinfo_service)), retry_timeout.clone()),  cache_capacity, cache_shelf_time),
             fetcher,
         }
     }
@@ -357,27 +418,27 @@ pub trait ProvisioningClient {
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
-        let input = self.pckcerts_service.service().build_input(encrypted_ppid, pce_id);
+        let input = self.pckcerts_service.pcs_service().build_input(encrypted_ppid, pce_id);
         self.pckcerts_service.call_service(&self.fetcher, &input)
     }
 
     fn pckcert(&self, encrypted_ppid: Option<&EncPpid>, pce_id: &PceId, cpu_svn: &CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&QeId>) -> Result<PckCert<Unverified>, Error> {
-        let input = self.pckcert_service.service().build_input(encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id);
+        let input = self.pckcert_service.pcs_service().build_input(encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id);
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
     fn tcbinfo(&self, fmspc: &Vec<u8>) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.service().build_input(fmspc);
+        let input = self.tcbinfo_service.pcs_service().build_input(fmspc);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
     fn pckcrl(&self) -> Result<PckCrl, Error> {
-        let input = self.pckcrl_service.service().build_input();
+        let input = self.pckcrl_service.pcs_service().build_input();
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.service().build_input();
+        let input = self.qeid_service.pcs_service().build_input();
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 }
@@ -434,8 +495,8 @@ impl<'req> Fetcher<'req> for ReqwestClient {
 
 
 pub trait ProvisioningServiceApi<'inp> {
-    type Input: 'inp + WithApiVersion;
-    type Output;
+    type Input: 'inp + WithApiVersion + Hash;
+    type Output: Clone;
 
     fn build_request(&'inp self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error>;
     fn validate_response(&'inp self, code: StatusCode) -> Result<(), Error>;
@@ -453,5 +514,141 @@ mod test_helpers {
         let cert = pkix::x509::GenericCertificate::from_ber(&cert).unwrap();
         let name = cert.tbscert.subject.get(&*pkix::oid::commonName).unwrap();
         String::from_utf8_lossy(&name.value()).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::string::String;
+
+
+    struct MockService;
+
+    #[derive(Hash, Clone, PartialEq, Eq, Debug)]
+    struct MockInput(u64);
+
+    impl WithApiVersion for MockInput {
+        fn api_version(&self) -> PcsVersion {
+            PcsVersion::V3
+        }
+    }
+
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    struct MockOutput(String);
+
+    impl<'a> ProvisioningServiceApi<'a> for MockService {
+        type Input = MockInput;
+        type Output = MockOutput;
+
+        fn build_request(&'a self, _input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+            Ok((_input.0.to_string(), vec![]))
+        }
+
+        fn validate_response(&'a self, _code: StatusCode) -> Result<(), Error> {
+            Ok(())
+        }
+
+        fn parse_response(&'a self, response_body: String, _response_headers: Vec<(std::string::String, std::string::String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+            Ok(MockOutput(format!("response to: {}", response_body)))
+        }
+    }
+
+    struct MockFetcher;
+
+    impl<'req> Fetcher<'req> for MockFetcher {
+        type Request = String;
+        type Response = String;
+
+        fn build_request(&'req self, url: &String, _headers: Vec<(String, String)>) -> Result<Self::Request, Error> {
+            Ok(url.clone())
+        }
+
+        fn send(&'req self, request: Self::Request) -> Result<(StatusCode, Self::Response), Error> {
+            Ok((StatusCode::Ok, request))
+        }
+
+        fn parse_response(&'req self, response: Self::Response) -> Result<(String, Vec<(String, String)>), Error> {
+            Ok((response, vec![]))
+        }
+    }
+
+    #[test]
+    fn test_call_service_cache_miss() {
+        let service = PcsService { service: Box::new(MockService) };
+        let service = BackoffService::new(service, None);
+        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let fetcher = MockFetcher;
+        let input_a = MockInput(42);
+        let input_b = MockInput(420);
+
+        // Initial call to populate the cache for `input_a`
+        cached_service.call_service(&fetcher, &input_a).unwrap();
+
+        // input_b should provoke cache miss and add new key to the cache
+        let result = cached_service.call_service(&fetcher, &input_b).unwrap();
+
+        let (cached_value, _) = {
+            let mut cache = cached_service.cache.lock().unwrap();
+            cache.get_mut(&calculate_key(&input_b)).unwrap().to_owned()
+        };
+
+        assert_eq!(result, cached_value);
+    }
+
+    #[test]
+    fn test_call_service_cache_hit() {
+        let service = PcsService { service: Box::new(MockService) };
+        let service = BackoffService::new(service, None);
+        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let fetcher = MockFetcher;
+        let input = MockInput(42);
+
+        // Initial call to populate the cache
+        let _ = cached_service.call_service(&fetcher, &input).unwrap();
+
+        // Now the service should not be called, and the cached result should be returned
+        let (cached_value, _) = {
+            let mut cache = cached_service.cache.lock().unwrap();
+            cache.get_mut(&calculate_key(&input)).unwrap().to_owned()
+        };
+
+        let result = cached_service.call_service(&fetcher, &input).unwrap();
+        assert_eq!(result, cached_value);
+    }
+
+    #[test]
+    fn test_cache_capacity_eviction() {
+        let service = PcsService { service: Box::new(MockService) };
+        let service = BackoffService::new(service, None);
+        let cached_service = CachedService::new(service, 2, Duration::from_secs(120));
+        let fetcher = MockFetcher;
+
+        // Insert entries into the cache, exceeding its capacity
+        for i in 0..3 {
+            let input = MockInput(i);
+            let _ = cached_service.call_service(&fetcher, &input).unwrap();
+        }
+
+        // At this point, the cache should have evicted the first inserted entry (MockInput(0))
+        let mut cache = cached_service.cache.lock().unwrap();
+
+        // The cache should only have 2 items (capacity is 2)
+        assert_eq!(cache.len(), 2);
+
+        // The first inserted key (MockInput(0)) should be evicted
+        let key_first = calculate_key(&MockInput(0));
+        assert!(!cache.contains_key(&key_first));
+
+        // The last inserted key (MockInput(2)) should be present
+        let key_last = calculate_key(&MockInput(2));
+        assert!(cache.contains_key(&key_last));
+    }
+
+    // Helper function to calculate the cache key based on the input
+    fn calculate_key(input: &MockInput) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        input.hash(&mut hasher);
+        hasher.finish()
     }
 }
