@@ -10,17 +10,17 @@ description = "API definitions, tools, and client for the Intel Attestation Serv
 
 [dependencies]
 base64 = { version = "0.13", optional = true }
-bitflags = "1"
+bitflags = "2.6"
 byteorder = "1.0"
 log = "0.4"
 percent-encoding = "2.1"
 serde_bytes = "0.11"
 serde-bytes-repr = { version = "0.1", optional = true }
 serde_json = { version = "1", optional = true }
-serde = { version = "1.0.7", features = ["derive"] }
+serde = { version = "1.0.203", features = ["derive"] }
 url = "2.2"
 
-mbedtls = { version = "0.12", features = ["std"], default-features = false, optional = true }
+mbedtls = { version = "0.12", git = "https://github.com/fortanix/rust-mbedtls.git", branch = "mridul/yasna-0.5-crate-update", features = ["std"], default-features = false, optional = true }
 pkix = ">=0.1.0, <0.3.0"
 
 sgx-isa = { version = "0.4", path = "../sgx-isa" }

@@ -17,12 +17,12 @@ categories = ["hardware-support"]
 
 [dev-dependencies]
 # External dependencies
-mbedtls = { version = "0.12", default-features = false, features = ["std"] }
+mbedtls = { version = "0.12", git = "https://github.com/fortanix/rust-mbedtls.git", branch = "mridul/yasna-0.5-crate-update", default-features = false, features = ["std"] }
 
 [dependencies]
 # External dependencies
 bitflags = "1" # MIT/Apache-2.0
-serde = { version = "1.0.104", features = ["derive"], optional = true } # MIT/Apache-2.0
+serde = { version = "1.0.203", features = ["derive"], optional = true } # MIT/Apache-2.0
 
 [features]
 large_array_derive = []

@@ -54,8 +54,8 @@ mopa = "0.2"                                     # MIT/Apache-2.0
 syn = { version = "0.15", features = ["full"] }  # MIT/Apache-2.0
 fnv = "1"                                        # MIT/Apache-2.0
 proc-mounts = "0.3.0"                            # MIT
-serde = "1.0.84"                                 # MIT/Apache-2.0
-serde_derive = "1.0.84"                          # MIT/Apache-2.0
+serde = "1.0.203"                                 # MIT/Apache-2.0
+serde_derive = "1.0.203"                          # MIT/Apache-2.0
 serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
