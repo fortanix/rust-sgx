@@ -11,7 +11,7 @@ keywords = [ "sgx" ]
 
 [dependencies]
 b64-ct = "0.1.0"
-em-client = { version = "3.0.0", default-features = false, features = ["client"] }
+em-client = { git = "https://github.com/fortanix/em-client-rust", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
 hyper = { version = "0.10", default-features = false }
 mbedtls = { version = "0.12", default-features = false, features = ["rdrand", "std", "ssl"] }
