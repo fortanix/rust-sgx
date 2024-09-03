@@ -33,6 +33,7 @@ members = [
     "intel-sgx/sgxs",
     "ipc-queue",
     "rs-libc",
+    "snmalloc-edp",
 ]
 exclude = [
     "examples/backtrace_panic",
