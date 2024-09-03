@@ -816,9 +816,8 @@ dependencies = [
 
 [[package]]
 name = "em-client"
-version = "3.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0bd923300728ad79f8c36f689f96d928d224524a2120a204fa2bb7801991e7c"
+version = "4.0.0"
+source = "git+https://github.com/fortanix/em-client-rust#60c5764e78a24caa80591d79a260fcd83359319b"
 dependencies = [
  "base64 0.10.1",
  "bitflags 1.2.1",
@@ -827,6 +826,7 @@ dependencies = [
  "hyper 0.10.16",
  "lazy_static",
  "log 0.3.9",
+ "mbedtls",
  "mime 0.2.6",
  "serde",
  "serde_derive 1.0.132",

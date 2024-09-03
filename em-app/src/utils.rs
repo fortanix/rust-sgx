@@ -16,6 +16,7 @@ use mbedtls::pk::Pk;
 use mbedtls::ssl::Config;
 use mbedtls::ssl::config::{Endpoint, Preset, Transport, AuthMode, Version};
 use mbedtls::x509::{Certificate, Crl};
+use mbedtls::hash::{Md, Type};
 use sdkms::api_model::Blob;
 use uuid::Uuid;
 use url::Url;
@@ -28,13 +29,23 @@ pub fn convert_uuid(api_uuid: Uuid) -> SdkmsUuid {
     SdkmsUuid::from_bytes(*api_uuid.as_bytes())
 }
 
+/// Computes a Sha256 hash of an input
+pub fn compute_sha256(input: &[u8]) -> Result<[u8; 32], String> {
+    let mut digest = [0; 32];
+    Md::hash(Type::Sha256, input, &mut digest)
+        .map_err(|e| format!("Error in calculating digest: {:?}", e))?;
+
+    Ok(digest)
+}
+
 pub fn get_runtime_configuration(
     server: &str,
     port: u16,
     cert: Arc<MbedtlsList<Certificate>>,
     key: Arc<Pk>,
     ca_cert_list: Option<Arc<MbedtlsList<Certificate>>>,
-    ca_crl: Option<Arc<Crl>>
+    ca_crl: Option<Arc<Crl>>,
+    expected_hash: &[u8; 32]
 ) -> Result<models::RuntimeAppConfig, String> {
 
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
@@ -54,7 +65,7 @@ pub fn get_runtime_configuration(
     let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(format!("nodes.{}", server)));
     let connector = HttpsConnector::new(ssl);
     let client = Client::try_new_with_connector(&format!("https://{}:{}/v1/runtime/app_configs", server, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
-    let response = client.get_runtime_application_config().map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
+    let response = client.get_runtime_application_config(expected_hash).map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
 
     Ok(response)
 }
