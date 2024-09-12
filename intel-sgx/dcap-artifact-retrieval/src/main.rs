@@ -5,9 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#[cfg(not(target_env = "sgx"))]
+use clap::clap_app;
+
 use std::path::{Path, PathBuf};
 
-use clap::clap_app;
 use dcap_artifact_retrieval::{
     AzureProvisioningClientBuilder, IntelProvisioningClientBuilder, ProvisioningClient, PcsVersion,
 };
@@ -92,6 +94,7 @@ pub fn download_dcap_artifacts(
     Ok(())
 }
 
+#[cfg(not(target_env = "sgx"))]
 fn main() {
     fn is_directory(directory_path: String) -> std::result::Result<(), String> {
         let path = Path::new(&directory_path);
@@ -111,7 +114,7 @@ fn main() {
         }
     }
 
-    let matches = clap_app!(tool =>
+    let matches = clap::clap_app!(tool =>
         (author: "Fortanix")
         (about: "Fortanix ecdsa artifact retrieval tool for DCAP attestation")
             (@arg ORIGIN: --("origin") +takes_value validator(|s| parse_origin(s.as_str()).map(|_| ())) "Location from where artifacts need to be fetched. Options are: \"intel\" and \"azure\". Note that Azure does not provide access to all artifacts. Intel will be contacted as a fallback (default: \"intel\")")

@@ -57,7 +57,7 @@ jobs:
       run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
     - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
-      run: cargo +nightly --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+      run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
 
     - name: Cargo test -p dcap-ql --features link
       run: cargo test --verbose --locked -p dcap-ql --features link

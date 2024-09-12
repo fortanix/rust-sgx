@@ -190,7 +190,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "reqwest"))]
 mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
