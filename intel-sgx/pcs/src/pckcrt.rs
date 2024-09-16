@@ -35,7 +35,7 @@ use crate::{CpuSvn, Error, Unverified, VerificationType, Verified};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
 ///
-/// Ref: https://api.trustedservices.intel.com/documents/Intel_SGX_PCK_Certificate_CRL_Spec-1.5.pdf
+/// Ref: <https://api.trustedservices.intel.com/documents/Intel_SGX_PCK_Certificate_CRL_Spec-1.5.pdf>
 #[derive(Debug, Serialize, Deserialize, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 #[serde(rename_all = "kebab-case")]
 pub enum SGXType {
@@ -338,7 +338,7 @@ impl PckCerts {
     }
 
     /// Given the cpusvn, pcesvn and qe_id, searches for the best PCK certificate
-    /// Code re-implements https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441
+    /// Code re-implements <https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441>
     pub fn select_pck<V: VerificationType>(
         &self,
         tcb_info: &TcbData<V>,
@@ -440,7 +440,7 @@ impl PckCert<Unverified> {
 
 impl PckCert<Verified> {
     /// Selects the highest matching TCB level
-    /// see https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2
+    /// see <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2>
     pub fn find_tcb_state<V: VerificationType>(&self, tcb_data: &TcbData<V>) -> Option<TcbLevel> {
         let idx = self.find_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
@@ -637,7 +637,7 @@ pub struct SGXPCKCertificateExtension {
 
 impl SGXPCKCertificateExtension {
     /// Parses an SGX PCK Certificate extension as define in Section 3.5
-    /// https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/SGX_PCK_Certificate_CRL_Spec-1.4.pdf
+    /// <https://download.01.org/intel-sgx/latest/dcap-latest/linux/docs/SGX_PCK_Certificate_CRL_Spec-1.4.pdf>
     pub fn parse_extension(extension: &[u8]) -> ASN1Result<Self> {
         yasna::parse_der(extension, |reader| {
             reader.read_sequence(|reader| {
