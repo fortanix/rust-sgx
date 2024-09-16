@@ -23,6 +23,9 @@ jobs:
     name: Build+Test
     runs-on: ubuntu-20.04
 
+    env:
+      PCS_API_KEY: ${{ secrets.PCS_API_KEY }}
+
     steps:
     - uses: actions/checkout@v4
 
@@ -53,6 +56,9 @@ jobs:
     - name: cargo test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
       run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
+    - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+      run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+
     - name: Cargo test -p dcap-ql --features link
       run: cargo test --verbose --locked -p dcap-ql --features link
 
@@ -75,6 +81,12 @@ jobs:
 
     - name: Nightly test -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
       run: cargo +nightly test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+
+    - name: Nightly test -p pcs --target x86_64-fortanix-unknown-sgx
+      run: cargo +nightly test --verbose --locked -p pcs --target x86_64-fortanix-unknown-sgx --no-run
+
+    - name: Nightly test -p pcs --features verify
+      run: cargo +nightly test --verbose --locked -p pcs --features verify
 
     # Unfortunately running `faketime '2021-09-10 11:00:00 GMT' cargo test -p nitro-attestation-verify` causes a segmentation
     #  fault while compiling. We only execute `faketime` during the tests
