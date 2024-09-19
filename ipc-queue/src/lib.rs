@@ -146,11 +146,13 @@ pub trait AsyncSynchronizer: Clone {
     fn notify(&self, event: QueueEvent);
 }
 
+#[allow(dead_code)]
 pub struct AsyncSender<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
 }
 
+#[allow(dead_code)]
 pub struct AsyncReceiver<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
@@ -159,6 +161,7 @@ pub struct AsyncReceiver<T: 'static, S> {
 
 /// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
 /// to remain valid as long as the DescriptorGuard is not dropped.
+#[allow(dead_code)]
 pub struct DescriptorGuard<T> {
     descriptor: FifoDescriptor<T>,
     #[cfg(not(target_env = "sgx"))]
