@@ -459,9 +459,9 @@ dependencies = [
 
 [[package]]
 name = "cmake"
-version = "0.1.44"
+version = "0.1.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e56268c17a6248366d66d4a47a3381369d068cce8409bb1716ed77ea32163bb"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
 dependencies = [
  "cc",
 ]
@@ -788,7 +788,7 @@ dependencies = [
  "anyhow",
  "cargo_toml",
  "clap",
- "elf",
+ "elf 0.0.10",
  "env_logger 0.9.0",
  "log 0.4.21",
  "nitro-cli",
@@ -848,6 +848,12 @@ checksum = "4841de15dbe0e49b9b62a417589299e3be0d557e0900d36acb87e6dae47197f5"
 dependencies = [
  "byteorder 0.5.3",
 ]
+
+[[package]]
+name = "elf"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4445909572dbd556c457c849c4ca58623d84b27c8fff1e74b0b4227d8b90d17b"
 
 [[package]]
 name = "em-app"
@@ -3761,6 +3767,15 @@ name = "smallvec"
 version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c5e1a9a646d36c3599cd173a41282daf47c44583ad367b8e6837255952e5c67"
+
+[[package]]
+name = "snmalloc-edp"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "cmake",
+ "elf 0.7.4",
+]
 
 [[package]]
 name = "socket2"
