@@ -107,6 +107,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
         let url = format!(
             "https://api.trustedservices.intel.com/sgx/certification/v{api_version}/pckcerts?encrypted_ppid={encrypted_ppid}&pceid={pceid}",
         );
+        println!("url = {}", url);
         let headers = if let Some(api_key) = &input.api_key {
             vec![("Ocp-Apim-Subscription-Key".to_owned(), api_key.to_string())]
         } else {

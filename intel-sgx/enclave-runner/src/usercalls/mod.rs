@@ -11,7 +11,7 @@ use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
@@ -31,6 +31,7 @@ use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use tokio::sync::broadcast::error::RecvError;
 use fortanix_sgx_abi::*;
+use insecure_time::Freq;
 use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
 use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -49,6 +50,20 @@ mod interface;
 lazy_static! {
     static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
 }
+
+static mut TIME_INFO: LazyLock<InsecureTimeInfo> = LazyLock::new(|| {
+    if let Ok(frequency) = Freq::get() {
+        InsecureTimeInfo {
+            version: 0,
+            frequency: frequency.as_u64(),
+        }
+    } else {
+        InsecureTimeInfo {
+            version: 0,
+            frequency: 0,
+        }
+    }
+});
 
 // This is not an event in the sense that it could be passed to `send()` or
 // `wait()` usercalls in enclave code. However, it's easier for the enclave
@@ -1633,11 +1648,13 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn insecure_time(&mut self) -> u64 {
+    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
         let time = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap();
-        (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000
+        let t = (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000;
+        let info = unsafe { &*TIME_INFO };
+        (t, info)
     }
 
     #[inline(always)]

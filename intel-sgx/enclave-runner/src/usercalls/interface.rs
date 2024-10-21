@@ -222,7 +222,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
 
     fn insecure_time(
         self,
-    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<u64>)> + 'future>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<(u64, *const InsecureTimeInfo)>)> + 'future>> {
         async move {
             let ret = Ok(self.0.insecure_time());
             return (self, ret);

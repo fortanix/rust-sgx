@@ -71,25 +71,6 @@ pub fn download_dcap_artifacts(
         if verbose {
             println!("   pckcerts:    {}", pckcerts_file);
         }
-
-        let fmspc = pckcerts.fmspc()?;
-        let tcbinfo = prov_client.tcbinfo(&fmspc)?;
-        let tcbinfo_file = tcbinfo.store(output_dir).map_err(|e| Error::OfflineAttestationError(e))?;
-
-        if verbose {
-            println!("   tcb info:    {}\n", tcbinfo_file);
-        }
-    }
-    let pckcrl = prov_client
-        .pckcrl()
-        .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
-    let qe_identity = prov_client
-        .qe_identity()
-        .and_then(|qe_id| qe_id.write_to_file(output_dir).map_err(|e| e.into()))?;
-    if verbose {
-        println!("==[ generic ]==");
-        println!("   pckcrl:      {}", pckcrl);
-        println!("   QE identity: {}", qe_identity);
     }
     Ok(())
 }
