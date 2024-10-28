@@ -111,7 +111,7 @@ impl Ticks {
     }
 
     pub fn now() -> Self {
-        Ticks(rdtscp().into())
+        Ticks(Rdtscp::read().into())
     }
 
     pub fn abs_diff(&self, t1: &Ticks) -> Ticks {
@@ -154,10 +154,26 @@ impl Ticks {
     }
 }
 
-#[inline(never)]
-pub fn rdtscp() -> u64 {
-    let mut aux: u32 = 0;
-    unsafe { __rdtscp(&mut aux) }
+pub struct Rdtscp;
+
+impl Rdtscp {
+    #[inline(never)]
+    pub fn read() -> u64 {
+        let mut aux: u32 = 0;
+        unsafe { __rdtscp(&mut aux) }
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    pub fn is_supported() -> bool {
+        let mut eax = 0;
+        let mut ebx = 0;
+        let mut ecx = 0;
+        let mut edx = 0;
+
+        cpuid(0x12, &mut eax, &mut ebx, &mut ecx, &mut edx);
+        eax & (0x1 << 1) != 0x0
+
+    }
 }
 
 pub struct Freq(AtomicU64);

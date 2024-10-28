@@ -31,7 +31,7 @@ use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use tokio::sync::broadcast::error::RecvError;
 use fortanix_sgx_abi::*;
-use insecure_time::Freq;
+use insecure_time::{Freq, Rdtscp};
 use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
 use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -52,16 +52,18 @@ lazy_static! {
 }
 
 static mut TIME_INFO: LazyLock<InsecureTimeInfo> = LazyLock::new(|| {
-    if let Ok(frequency) = Freq::get() {
-        InsecureTimeInfo {
-            version: 0,
-            frequency: frequency.as_u64(),
+    if Rdtscp::is_supported() {
+        if let Ok(frequency) = Freq::get() {
+            return InsecureTimeInfo {
+                version: 0,
+                frequency: frequency.as_u64(),
+            }
         }
-    } else {
-        InsecureTimeInfo {
-            version: 0,
-            frequency: 0,
-        }
+    }
+
+    InsecureTimeInfo {
+        version: 0,
+        frequency: 0,
     }
 });
 
