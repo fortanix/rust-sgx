@@ -1,8 +1,10 @@
 #[cfg(all(feature = "std", not(target_env = "sgx")))]
 use {
-    insecure_time::{FixedFreqTscBuilder, Tsc, TscBuilder, Freq},
+    insecure_time::{FixedFreqTscBuilder, Ticks, Tsc, TscBuilder, Freq},
     std::time::{Duration, SystemTime},
 };
+#[cfg(all(feature = "std", feature = "clap"))]
+use clap::Parser;
 
 #[cfg(all(feature = "std", not(target_env = "sgx")))]
 fn diff_system_time(t0: SystemTime, t1: SystemTime) -> Duration {
@@ -10,8 +12,15 @@ fn diff_system_time(t0: SystemTime, t1: SystemTime) -> Duration {
     diff.unwrap()
 }
 
+#[cfg(all(feature = "std", feature = "clap"))]
+#[derive(Parser)]
+enum Cli {
+    TestFixedFreqDrift,
+    EstimateFreq,
+}
+
 #[cfg(all(feature = "std", not(target_env = "sgx")))]
-fn main() {
+fn test_fixed_frequency_drift() {
     let freq_reported = Freq::get().expect("Failure, the processor doesn't (fully) report the TSC speed");
 
     // Don't resync clocks and don't learn frequency
@@ -30,6 +39,30 @@ fn main() {
         assert!(drift < Duration::from_secs(100), "Found diff between clocks of {:?} after {:?}", drift, diff_system_time(t0.0, t1.0));
 
         std::thread::sleep(Duration::from_secs(100));
+    }
+}
+
+#[cfg(all(feature = "std", not(target_env = "sgx")))]
+fn estimate_frequency() {
+    let t0 = (SystemTime::now(), Ticks::now());
+    let reported_freq = Freq::get().expect("Couldn't get reported frequency");
+
+    loop {
+        let t1 = (SystemTime::now(), Ticks::now());
+        let test_duration = diff_system_time(t0.0, t1.0);
+
+        println!("{:?}: Estimated frequency = {:?}, reported frequency = {:?}", test_duration, Freq::estimate(t1.1.abs_diff(&t0.1), test_duration), &reported_freq);
+        std::thread::sleep(Duration::from_secs(10));
+    }
+}
+
+#[cfg(all(feature = "std", not(target_env = "sgx")))]
+fn main() {
+    let cli = Cli::parse();
+
+    match cli {
+        Cli::TestFixedFreqDrift => test_fixed_frequency_drift(),
+        Cli::EstimateFreq => estimate_frequency(),
     }
 }
 
