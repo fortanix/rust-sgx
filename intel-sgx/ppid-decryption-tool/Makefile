@@ -9,7 +9,7 @@ OBJECTS              = main.o
 SUBDIRS              = Enclave
 LIB_SGX_URTS         = -lsgx_urts
 LIB_UAE_SERVICE      = -lsgx_uae_service
-LIBS                 = -lppid_retrieval_proxy $(LIB_SGX_URTS) $(LIB_UAE_SERVICE) -lpthread
+LIBS                 = -lid_enclave_proxy $(LIB_SGX_URTS) $(LIB_UAE_SERVICE) -lpthread
 LIB_DIRS             = $(SUBDIRS:%=-L %)                                            \
 			$(patsubst %,-L%,$(subst :, ,$(SGX_LIBS)))
 BUILDDIRS            = $(SUBDIRS:%=build-%)
