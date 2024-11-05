@@ -20,6 +20,7 @@ PRIVATE_KEY       = private_key.pem
 PUBLIC_KEY        = public_key.pem
 KEY_SIZE          = 3072
 ENCLAVE_EDL       = $(ENCLAVE).edl
+PCE_ENCLAVE_EDL   = pce.edl
 ENCLAVE_CONFIG    = $(ENCLAVE).config.xml
 OUTPUT_T          = $(ENCLAVE).so
 OUTPUT_T_UNSIG    = $(ENCLAVE).unsigned.so
@@ -30,26 +31,26 @@ LD_FLAGS	  = -Wl,--no-undefined -nostdlib -nodefaultlibs -nostartfiles \
                     -Wl,--no-whole-archive -Wl,--start-group $(ENCLAVE_LIB_PARTS) -Wl,--end-group \
                     -Wl,-Bstatic -Wl,-Bsymbolic -Wl,--no-undefined \
                     -Wl,-pie,-eenclave_entry -Wl,--export-dynamic  \
-                    -Wl,--defsym,__ImageBase=0
+                    -Wl,--defsym,__ImageBase=0 
 TRUSTED_OBJECTS   = $(ENCLAVE)_t.o
-UNTRUSTED_OBJECTS = $(ENCLAVE)_u.o
+UNTRUSTED_OBJECTS = $(ENCLAVE)_u.o $(PCE_ENCLAVE)_u.o
 TRUSTED_CODE      = $(ENCLAVE)_t.h $(ENCLAVE)_t.c
-UNTRUSTED_CODE    = $(ENCLAVE)_u.h $(ENCLAVE)_u.c
+UNTRUSTED_CODE    = $(ENCLAVE)_u.h $(ENCLAVE)_u.c $(PCE_ENCLAVE)_u.h $(PCE_ENCLAVE)_u.c
 
 #.SILENT:
 all: $(OUTPUT_T) $(OUTPUT_U)
 
 $(OUTPUT_T) : $(TRUSTED_OBJECTS) $(OBJECTS)
 	echo "$(INDENT)[LD]  " $(OBJECTS) $(TRUSTED_OBJECTS) $(ENCLAVE_LIBS) $(ENCLAVE_LIBS_PARTS) $(OUTPUT_T_UNSIG)
-	$(LD) $(OBJECTS) $(TRUSTED_OBJECTS) $(LD_FLAGS) $(LIB_DIRS) -o $(OUTPUT_T_UNSIG)
+	$(LD) $(OBJECTS) $(TRUSTED_OBJECTS) $(LD_FLAGS) $(LIB_DIRS) -o $(OUTPUT_T_UNSIG) 
 
 	echo "$(INDENT)[SGN]" $(OUTPUT_T_UNSIG)
 	$(SIGNER) sign -key $(PRIVATE_KEY) -enclave $(OUTPUT_T_UNSIG) -out $(OUTPUT_T) -config $(ENCLAVE_CONFIG) > /dev/null 2> /dev/null
 
-$(OUTPUT_U) : $(UNTRUSTED_OBJECTS)
+$(OUTPUT_U) : $(UNTRUSTED_OBJECTS) 
 	echo "$(INDENT)[AR]  " $(OUTPUT_U)
-	$(AR) $(AR_FLAGS) $(OUTPUT_U) $(UNTRUSTED_OBJECTS)
-
+	$(AR) $(AR_FLAGS) $(OUTPUT_U) $(UNTRUSTED_OBJECTS) 
+	
 %_t.o : $(subst .o,.c,$@) edger
 	echo "$(INDENT)[CC] " $(subst .o,.c,$@) "(trusted edge)"
 	touch $(subst .o,.c,$@)
@@ -67,6 +68,13 @@ $(OUTPUT_U) : $(UNTRUSTED_OBJECTS)
 edger: $(ENCLAVE).edl
 	echo "$(INDENT)[GEN]" $(EDGER) $(ENCLAVE_EDL)
 	$(EDGER) $(ENCLAVE_EDL)
+
+pce_u_c: $(PCE_ENCLAVE_EDL)
+	echo "$(INDENT)[GEN]" $(EDGER) $(PCE_ENCLAVE_EDL)
+	$(EDGER) --untrusted $(PCE_ENCLAVE_EDL)
+pce_u_o: pce_u_c
+	@echo "CC   <=  $<"
+	$(CC) -c $(INCLUDE) $(U_CFLAGS) $(subst .o,.c,pce_u.c)
 
 .PHONY: force_check
 force_check:
