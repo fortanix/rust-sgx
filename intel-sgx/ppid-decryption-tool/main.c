@@ -2,30 +2,12 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <sgx_urts.h>
-#include "Enclave/ppid_retrieval_u.h"
+#include "Enclave/id_enclave_u.h"
+#include "pce/pce_enclave_u.h"
 #include <stdint.h>
-#include <dlfcn.h>
 #include <unistd.h>
-#include <stdbool.h>
-
-#define PCE_ENCLAVE_NAME  "libsgx_pce.signed.so.1"
-#define ID_ENCLAVE_NAME   "libsgx_id_enclave.signed.so.1"
-#define SGX_URTS_LIBRARY "libsgx_urts.so"
-#define SGX_MULTI_PACKAGE_AGENT_UEFI_LIBRARY "libmpa_uefi.so.1"
-#define FINDFUNCTIONSYM   dlsym
-#define CLOSELIBRARYHANDLE  dlclose
-
-void* sgx_urts_handle = NULL;
 
 #define ENCRYPTED_PPID_LENGTH             384
-#define CPU_SVN_LENGTH                    16
-#define ISV_SVN_LENGTH                    2
-#define PCE_ID_LENGTH                     2
-#define DEFAULT_PLATFORM_ID_LENGTH        16
-#define PLATFORM_MANIFEST_LENGTH          28221
-
-/* PCE ID for the PCE in this library */
-#define PCE_ID 0
 
 /* Crypto_suite */
 #define PCE_ALG_RSA_OAEP_3072 1
@@ -39,12 +21,7 @@ void* sgx_urts_handle = NULL;
 #define REF_RSA_OAEP_3072_EXP_SIZE     4 //hardcode e size to be 4
 
 #define DEBUG_ENCLAVE 1
-
-/*type for Platform Certificate Enclave information*/
-typedef struct _pce_info_t{
-    sgx_isv_svn_t pce_isvn;  /*PCE ISVSVN*/
-    uint16_t      pce_id;
-}pce_info_t;
+#define RELEASE_ENCLAVE 0
 
 void print_decrypted_ppid(unsigned char decrypted_ppid[], size_t length) {
     printf("Decrypted PPID: ");
@@ -82,21 +59,21 @@ int main(int argc, char **argv)
 
     memset(decrypted_ppid, 0x00, 16);
 
+    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("Enclave/id_enclave.so", DEBUG_ENCLAVE, &token, &updated, &id_enclave_eid, NULL)))
+    {
+        fprintf(stderr, "Failed to create ID enclave. The error code is:  0x%04x.\n", sgx_status);
+        return -1;
+    }
+
+    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("pce/libsgx_pce.signed.so.1.25.100.1", RELEASE_ENCLAVE, &token, &updated, &pce_enclave_eid, NULL)))
+    {
+        fprintf(stderr, "Failed to create PCE enclave. The error code is:  0x%04x. \n", sgx_status);
+        return -1;
+    }
+
     if (SGX_SUCCESS != (sgx_status = sgx_get_target_info(pce_enclave_eid, &pce_target_info))) {
         fprintf(stderr, "Failed to get pce target info. The error code is:  0x%04x.\n", sgx_status);
         goto CLEANUP;
-    }
-
-    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave( "./Enclave/id_enclave.so", DEBUG_ENCLAVE, &token, &updated, &id_enclave_eid, NULL)))
-    {
-        printf("Failed to create ID enclave\n");
-        return -1;
-    }
-
-    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave( "./Enclave/pce_enclave.so", DEBUG_ENCLAVE, &token, &updated, &pce_enclave_eid, NULL)))
-    {
-        printf("Failed to create ID enclave\n");
-        return -1;
     }
 
     sgx_status = ide_get_pce_encrypt_key(id_enclave_eid,
