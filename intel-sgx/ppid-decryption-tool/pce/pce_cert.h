@@ -31,15 +31,6 @@
 #ifndef _PCE_CERT_H_
 #define _PCE_CERT_H_
 #include "sgx_tcrypto.h"
-const uint16_t CUR_PCE_ID = 0;
-
-/*crypto_suite*/
-#define ALG_RSA_OAEP_2048   0
-#define ALG_RSA_OAEP_3072   1
-
-/*signature_scheme*/
-#define NIST_P256_ECDSA_SHA256 0
-
 
 /*type for Platform Certificate Enclave information*/
 typedef struct _pce_info_t{

@@ -6,10 +6,10 @@ CFLAGS              += -g
 ARFLAGS              = -rcs
 INCLUDE              = -I ${SGX_SDK}/include
 OBJECTS              = main.o
-SUBDIRS              = Enclave
+SUBDIRS              = Enclave pce
 LIB_SGX_URTS         = -lsgx_urts
 LIB_UAE_SERVICE      = -lsgx_uae_service
-LIBS                 = -lid_enclave_proxy $(LIB_SGX_URTS) $(LIB_UAE_SERVICE) -lpthread
+LIBS                 = -lid_enclave_proxy $(LIB_SGX_URTS) $(LIB_UAE_SERVICE) -lpthread pce/pce_enclave_u.o
 LIB_DIRS             = $(SUBDIRS:%=-L %)                                            \
 			$(patsubst %,-L%,$(subst :, ,$(SGX_LIBS)))
 BUILDDIRS            = $(SUBDIRS:%=build-%)

@@ -84,6 +84,8 @@ typedef struct _ref_rsa_params_t {
 
 static ref_rsa_params_t g_rsa_key = { 0 };  // The private key used to encrypt the PPID.  Only used for PPID_CEARTEXT Cert_Data_Type
 
+#define DECRYPTED_PPID_LENGTH 16
+
 /**
  * External function exposed through the EDL used to return the QE report and the PPID encryption key required to get
  * the PCE identity information.  The PCE requires that the PPID be encrypted with a public key.  The reference supports
@@ -100,12 +102,6 @@ static ref_rsa_params_t g_rsa_key = { 0 };  // The private key used to encrypt t
  * @param crypto_suite
  *                 [In] Indicates the crypto algorithm to use to encrypt the PPID. Currently, only RSA3072 keys are
  *                 supported.  This is the type of key this function will generate.
- * @param cert_key_type
- *                 [In] Indicates whether to use the hard-coded public key or generate a new one.  This option allows
- *                  the reference to demonstrate creating an encryption key on-demand or to use the hard-coded value.
- *                  Using the hard-coded value typically means the PPID is to remain private on the platform. Must be
- *                  PPID_RSA3072_ENCRYPTED.
- *
  * @param key_size [In] The size in bytes of the supplied p_public_key buffer.  Currently, it must be equal to the size
  *                 of an RSA3072 public key. 4 bytes 'e' and 384 bytes 'n'.
  * @param p_public_key
@@ -149,10 +145,6 @@ sgx_status_t ide_get_pce_encrypt_key(
     if (key_size != sizeof(*p_rsa_pub_key)) {
         return SGX_ERROR_INVALID_PARAMETER;
     }
-    // Only PPID_RSA3072_ENCRYPTED is supported when using production mode PCE.
-    if (PPID_RSA3072_ENCRYPTED != cert_key_type) {
-        return SGX_ERROR_INVALID_PARAMETER;
-    }
 
     if ((p_pce_target_info->attributes.flags & SGX_FLAGS_PROVISION_KEY) != SGX_FLAGS_PROVISION_KEY ||
         (p_pce_target_info->attributes.flags & SGX_FLAGS_DEBUG) != 0)
@@ -164,12 +156,7 @@ sgx_status_t ide_get_pce_encrypt_key(
 
     g_rsa_key.e[0] = 0x10001;
     p_rsa_pub_key = (pce_rsaoaep_3072_encrypt_pub_key_t*)p_public_key;
-    //todo: Currenlty, the private key is stored temporarily in enclave global memory long enough
-    // to last between get_pce_encrypt_key() and store_cert_data().  These calls surround the call to the PCE
-    // get_pce_info() API.  There is a risk that if the enclave is unloaded directly or indirectly (by power state
-    // change) the private key will be lost.  There should be more documentation about this situation w/r/t
-    // detection and recovery.  Or, if that is not sufficient, then provide a way to store the key in the ECDSA
-    // blob.  Since PPID_CLEARTEXT cert_key_type is not supported at this time, we can push the solution for later.
+
     sgx_status = sgx_create_rsa_key_pair(REF_RSA_OAEP_3072_MOD_SIZE,
                                          REF_RSA_OAEP_3072_EXP_SIZE,
                                          (unsigned char*)g_rsa_key.n,
@@ -291,7 +278,7 @@ sgx_status_t ide_decrypt_ppid(uint32_t encrypted_ppid_size, uint8_t *p_encrypted
     }
 
     // Copy in the decrypted PPID
-    memcpy(ppid, dec_dat, 16);
+    memcpy(ppid, dec_dat, DECRYPTED_PPID_LENGTH);
 
     return sgx_status;
 }

@@ -7,7 +7,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#define ENCRYPTED_PPID_LENGTH             384
+#define ENCRYPTED_PPID_LENGTH 384
+#define DECRYPTED_PPID_LENGTH 16
 
 /* Crypto_suite */
 #define PCE_ALG_RSA_OAEP_3072 1
@@ -37,13 +38,8 @@ int main(int argc, char **argv)
     int updated = 0;
     sgx_status_t sgx_status = SGX_SUCCESS;
     sgx_status_t ecall_ret = SGX_SUCCESS;
-    int ppid_ret;
-    uint8_t decrypted_ppid[16];
+    uint8_t decrypted_ppid[DECRYPTED_PPID_LENGTH];
     sgx_enclave_id_t eid = 0;
-
-    sgx_key_128bit_t platform_id = { 0 };
-    uint32_t buffer_size = 0;
-    uint8_t * p_temp = NULL;
 
     sgx_enclave_id_t pce_enclave_eid = 0;
     sgx_enclave_id_t id_enclave_eid = 0;
@@ -57,22 +53,25 @@ int main(int argc, char **argv)
     uint8_t signature_scheme;
     sgx_target_info_t pce_target_info;
 
-    memset(decrypted_ppid, 0x00, 16);
+    memset(decrypted_ppid, 0x00, DECRYPTED_PPID_LENGTH);
 
     if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("Enclave/id_enclave.so", DEBUG_ENCLAVE, &token, &updated, &id_enclave_eid, NULL)))
     {
         fprintf(stderr, "Failed to create ID enclave. The error code is:  0x%04x.\n", sgx_status);
-        return -1;
+        sgx_status = -1;
+        goto CLEANUP;
     }
 
-    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("pce/libsgx_pce.signed.so.1.25.100.1", RELEASE_ENCLAVE, &token, &updated, &pce_enclave_eid, NULL)))
+    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("pce/libsgx_pce.signed.so", RELEASE_ENCLAVE, &token, &updated, &pce_enclave_eid, NULL)))
     {
         fprintf(stderr, "Failed to create PCE enclave. The error code is:  0x%04x. \n", sgx_status);
-        return -1;
+        sgx_status = -1;
+        goto CLEANUP;
     }
 
     if (SGX_SUCCESS != (sgx_status = sgx_get_target_info(pce_enclave_eid, &pce_target_info))) {
         fprintf(stderr, "Failed to get pce target info. The error code is:  0x%04x.\n", sgx_status);
+        sgx_status = -1;
         goto CLEANUP;
     }
 
@@ -81,11 +80,10 @@ int main(int argc, char **argv)
                                          &pce_target_info,
                                          &id_enclave_report,
                                          PCE_ALG_RSA_OAEP_3072,
-                                         PPID_RSA3072_ENCRYPTED,
                                          enc_key_size,
                                          enc_public_key);
     if (SGX_SUCCESS != sgx_status) {
-        fprintf(stderr, "Failed to call into the ID_ENCLAVE: get_report_and_pce_encrypt_key. The error code is: 0x%04x.\n", sgx_status);
+        fprintf(stderr, "Failed to call into the ID_ENCLAVE: ide_get_pce_encrypt_key. The error code is: 0x%04x.\n", sgx_status);
         sgx_status = -1;
         goto CLEANUP;
     }
@@ -113,6 +111,7 @@ int main(int argc, char **argv)
         sgx_status = -1;
         goto CLEANUP;
     }
+
     if (SGX_SUCCESS != ecall_ret) {
         fprintf(stderr, "Failed to get PCE info. The error code is: 0x%04x.\n", ecall_ret);
         sgx_status = -1;
@@ -132,8 +131,15 @@ int main(int argc, char **argv)
     }
 
     sgx_status = ide_decrypt_ppid(id_enclave_eid, &ecall_ret, ENCRYPTED_PPID_LENGTH, encrypted_ppid, decrypted_ppid);
+
     if (SGX_SUCCESS != sgx_status) {
         fprintf(stderr, "Failed to call into the ID_ENCLAVE: ide_decrypt_ppid. The error code is: 0x%04x.\n", sgx_status);
+        sgx_status = -1;
+        goto CLEANUP;
+    }
+
+    if (SGX_SUCCESS != ecall_ret) {
+        fprintf(stderr, "Failed to decrypt PPID. The error code is: 0x%04x.\n", ecall_ret);
         sgx_status = -1;
         goto CLEANUP;
     }
