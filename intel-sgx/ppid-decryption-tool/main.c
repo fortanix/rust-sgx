@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <sgx_urts.h>
-#include "Enclave/id_enclave_u.h"
+#include "Enclave/ppid_u.h"
 #include "pce/pce_enclave_u.h"
 #include <stdint.h>
 #include <unistd.h>
@@ -60,9 +60,9 @@ int main(int argc, char **argv)
 
     memset(decrypted_ppid, 0x00, DECRYPTED_PPID_LENGTH);
 
-    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("Enclave/id_enclave.so", DEBUG_ENCLAVE, &token, &updated, &id_enclave_eid, NULL)))
+    if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("Enclave/ppid.so", DEBUG_ENCLAVE, &token, &updated, &id_enclave_eid, NULL)))
     {
-        fprintf(stderr, "Failed to create ID enclave. The error code is:  0x%04x.\n", sgx_status);
+        fprintf(stderr, "Failed to create PPID enclave. The error code is:  0x%04x.\n", sgx_status);
         sgx_status = -1;
         goto CLEANUP;
     }
@@ -88,7 +88,7 @@ int main(int argc, char **argv)
                                          enc_key_size,
                                          enc_public_key);
     if (SGX_SUCCESS != sgx_status) {
-        fprintf(stderr, "Failed to call into the ID_ENCLAVE: ide_get_pce_encrypt_key. The error code is: 0x%04x.\n", sgx_status);
+        fprintf(stderr, "Failed to call into the PPID: ide_get_pce_encrypt_key. The error code is: 0x%04x.\n", sgx_status);
         sgx_status = -1;
         goto CLEANUP;
     }

@@ -14,13 +14,13 @@ INCLUDE           = -I${SGX_SDK}/include                               \
 T_CFLAGS	  = $(CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector -g
 U_CFLAGS	  = $(CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector -g
 AR_FLAGS	  = rcs
-OBJECTS		  = id_enclave.o
+OBJECTS		  = ppid.o
 LIB_SGX_TRTS      = -lsgx_trts
 LIB_SGX_TSERVICE  = -lsgx_tservice
 
 ENCLAVE_LIBS      = $(LIB_SGX_TRTS)
 ENCLAVE_LIB_PARTS = -lsgx_tstdc -lsgx_tcrypto $(LIB_SGX_TSERVICE)
-ENCLAVE	          = id_enclave
+ENCLAVE	          = ppid
 PCE_ENCLAVE		  = pce
 PRIVATE_KEY       = private_key.pem
 PUBLIC_KEY        = public_key.pem
@@ -116,5 +116,3 @@ clean:
 	
 	echo "$(INDENT)[RM]" $(OUTPUT_U)
 	$(RM) $(OUTPUT_U)
-	
-

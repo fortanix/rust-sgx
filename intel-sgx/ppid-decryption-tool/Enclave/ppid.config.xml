@@ -12,5 +12,4 @@
     <HeapMinSize>0x1000</HeapMinSize>
     <HeapMaxSize>0x100000</HeapMaxSize>
     <DisableDebug>0</DisableDebug>
-    
 </EnclaveConfiguration>
