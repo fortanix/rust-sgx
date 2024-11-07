@@ -4,12 +4,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <stdio.h>
-#include <inttypes.h>
-#include <sgx_urts.h>
 #include "Enclave/ppid_u.h"
 #include "pce/pce_enclave_u.h"
+#include <inttypes.h>
+#include <sgx_urts.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <unistd.h>
 
 #define ENCRYPTED_PPID_LENGTH 384

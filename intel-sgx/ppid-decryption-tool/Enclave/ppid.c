@@ -4,14 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <string.h>
 #include <inttypes.h>
 #include <sgx_error.h>
 #include <sgx_quote_3.h>
-#include <sgx_utils.h>
 #include <sgx_tcrypto.h>
 #include <sgx_trts.h>
+#include <sgx_utils.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define REF_N_SIZE_IN_BYTES    384
 #define REF_E_SIZE_IN_BYTES    4
@@ -173,8 +173,6 @@ sgx_status_t ide_get_pce_encrypt_key(
             sha_handle);
         if (SGX_SUCCESS != sgx_status)
             break;
-        // !!! This is the translation of C++ code into C code. The previous code looked like this:
-        // sgx_status = sgx_sha256_get_hash(sha_handle, (sgx_sha256_hash_t *)reinterpret_cast<sgx_sha256_hash_t *>(&report_data));
         sgx_status = sgx_sha256_get_hash(sha_handle, (sgx_sha256_hash_t *)&report_data);
     } while (0);
     if (SGX_SUCCESS != sgx_status) {
@@ -200,12 +198,38 @@ sgx_status_t ide_get_pce_encrypt_key(
     return sgx_status;
 }
 
+/**
+ * External function exposed through the EDL used to return the decrypted PPID
+ * @param encrypted_ppid_size
+ *                 [In] The size in bytes of the supplied p_encrypted_ppid buffer. Currently, it must be equal to the size
+ *                  of RSA modulus (REF_RSA_OAEP_3072_MOD_SIZE) which is 384 bytes.
+ * @param p_encrypted_ppid
+ *                 [In] Pointer to the buffer containing encrypted PPID data. It must not be NULL and full buffer
+ *                 must reside in the enclave's memory space.
+ * @param ppid
+ *                 [In, Out] Pointer to the buffer that will contain the decrypted PPID data. It must
+ *                 not be NULL and the buffer must reside within the enclave's memory space. The size of the buffer
+ *                 must always be equal to 16 bytes according to the official Intel documentation.
+
+ * @return SGX_SUCCESS Function successfully decrypts the encrypted PPID.
+ * @return SGX_ERROR_INVALID_PARAMETER Invalid parameter.
+ * @return SGX_ERROR_UNEXPECTED An internal error occurred.
+ */
 sgx_status_t ide_decrypt_ppid(uint32_t encrypted_ppid_size, uint8_t *p_encrypted_ppid, uint8_t* ppid)
 {
     sgx_status_t sgx_status = SGX_SUCCESS;
     void *rsa_key = NULL;
     unsigned char* dec_dat = NULL;
     size_t ppid_size = 0;
+
+    if (p_encrypted_ppid == NULL || !sgx_is_within_enclave(p_encrypted_ppid, sizeof(*p_encrypted_ppid))) {
+        return SGX_ERROR_INVALID_PARAMETER;
+    }
+
+    if (ppid == NULL || !sgx_is_within_enclave(ppid, sizeof(*ppid))) {
+        return SGX_ERROR_INVALID_PARAMETER;
+    }
+
     // Decrypt the PPID with the RSA private key generated with the new key and store it in the blob
     // Create a private key context
     sgx_status = sgx_create_rsa_priv2_key(REF_RSA_OAEP_3072_MOD_SIZE,
