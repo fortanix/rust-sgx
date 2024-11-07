@@ -12,7 +12,6 @@ trusted {
                             [in]const sgx_target_info_t *pce_target_info,
                             [out] sgx_report_t *p_ide_report,
                             uint8_t crypto_suite,
-                            uint16_t cert_key_type,
                             uint32_t key_size,
                             [out, size=key_size] uint8_t *p_public_key);
     public sgx_status_t ide_decrypt_ppid(

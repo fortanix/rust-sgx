@@ -14,13 +14,13 @@ INCLUDE           = -I${SGX_SDK}/include                               \
 T_CFLAGS	  = $(CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector -g
 U_CFLAGS	  = $(CFLAGS) -nostdinc -fvisibility=hidden -fpie -fstack-protector -g
 AR_FLAGS	  = rcs
-OBJECTS		  = pce_enclave_u.c pce_enclave_u.h pce_enclave_u.o
+OBJECTS		  = pce_u.c pce_u.h pce_u.o
 LIB_SGX_TRTS      = -lsgx_trts
 LIB_SGX_TSERVICE  = -lsgx_tservice
 
 ENCLAVE_LIBS      = $(LIB_SGX_TRTS)
 ENCLAVE_LIB_PARTS = -lsgx_tstdc -lsgx_tcrypto $(LIB_SGX_TSERVICE)
-ENCLAVE	          = pce_enclave
+ENCLAVE	          = pce
 ENCLAVE_EDL       = $(ENCLAVE).edl
 OUTPUT_U          = $(ENCLAVE)_u.o
 

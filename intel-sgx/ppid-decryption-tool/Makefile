@@ -14,8 +14,7 @@ INCLUDE              = -I ${SGX_SDK}/include
 OBJECTS              = main.o
 SUBDIRS              = Enclave pce
 LIB_SGX_URTS         = -lsgx_urts
-LIB_UAE_SERVICE      = -lsgx_uae_service
-LIBS                 = -lppid_proxy $(LIB_SGX_URTS) $(LIB_UAE_SERVICE) -lpthread pce/pce_enclave_u.o
+LIBS                 = -lppid_proxy $(LIB_SGX_URTS) -lpthread pce/pce_u.o
 LIB_DIRS             = $(SUBDIRS:%=-L %)                                            \
 			$(patsubst %,-L%,$(subst :, ,$(SGX_LIBS)))
 BUILDDIRS            = $(SUBDIRS:%=build-%)

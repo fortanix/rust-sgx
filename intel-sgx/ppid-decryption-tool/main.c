@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Enclave/ppid_u.h"
-#include "pce/pce_enclave_u.h"
+#include "pce/pce_u.h"
 #include <inttypes.h>
 #include <sgx_urts.h>
 #include <stdint.h>

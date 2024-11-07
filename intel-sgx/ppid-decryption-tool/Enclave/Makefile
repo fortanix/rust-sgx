@@ -49,6 +49,15 @@ $(OUTPUT_T) : $(TRUSTED_OBJECTS) $(OBJECTS)
 	echo "$(INDENT)[LD]  " $(OBJECTS) $(TRUSTED_OBJECTS) $(ENCLAVE_LIBS) $(ENCLAVE_LIBS_PARTS) $(OUTPUT_T_UNSIG)
 	$(LD) $(OBJECTS) $(TRUSTED_OBJECTS) $(LD_FLAGS) $(LIB_DIRS) -o $(OUTPUT_T_UNSIG)
 
+	echo "$(INDENT)[GEN] $(PRIVATE_KEY) ($(KEY_SIZE) bits)"
+
+	# generate 3072 bit private RSA key
+	openssl genrsa -out $(PRIVATE_KEY) -3 $(KEY_SIZE)
+
+	echo "$(INDENT)[EXT] $(PUBLIC_KEY)"
+	# extract public key
+	openssl rsa -in $(PRIVATE_KEY) -pubout -out $(PUBLIC_KEY)
+
 	echo "$(INDENT)[SGN]" $(OUTPUT_T_UNSIG)
 	$(SIGNER) sign -key $(PRIVATE_KEY) -enclave $(OUTPUT_T_UNSIG) -out $(OUTPUT_T) -config $(ENCLAVE_CONFIG) > /dev/null 2> /dev/null
 
