@@ -6,8 +6,11 @@
 
 enclave {
 include "sgx_report.h"
+include "../pce/pce_cert.h"
 
 trusted {
+    public sgx_status_t entry_point([out, size=16] uint8_t *decrypted_ppid);
+
     public sgx_status_t ide_get_pce_encrypt_key(
                             [in]const sgx_target_info_t *pce_target_info,
                             [out] sgx_report_t *p_ide_report,
@@ -19,4 +22,18 @@ trusted {
                                 [in, size=encrypted_ppid_size] uint8_t *p_encrypted_ppid,
                                 [out, size=16] uint8_t *ppid);
     };
+
+untrusted {
+    uint32_t pce_get_pc_info([in]const sgx_report_t *report,
+                                    [in, size=key_size]const uint8_t *public_key, uint32_t key_size,
+                                    uint8_t crypto_suite,
+                                    [out, size=encrypted_ppid_buf_size]uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
+                                    [out]uint32_t *encrypted_ppid_out_size,
+                                    [out]pce_info_t *pce_info,
+                                    [out] uint8_t *signature_scheme);
+
+    uint32_t pce_get_target_info([out]sgx_target_info_t *pce_target_info);
+
+    void print_err_status([in,string] char *str, sgx_status_t err_status);
+};
 };
