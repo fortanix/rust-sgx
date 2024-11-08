@@ -3,15 +3,15 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-
+#include <string.h>
 #include <inttypes.h>
 #include <sgx_error.h>
 #include <sgx_quote_3.h>
+#include <sgx_utils.h>
 #include <sgx_tcrypto.h>
 #include <sgx_trts.h>
-#include <sgx_utils.h>
 #include <stdlib.h>
-#include <string.h>
+#include "../pce/pce_cert.h"
 
 #define REF_N_SIZE_IN_BYTES    384
 #define REF_E_SIZE_IN_BYTES    4
@@ -24,6 +24,8 @@
 
 #define REF_RSA_OAEP_3072_MOD_SIZE   384 //hardcode n size to be 384
 #define REF_RSA_OAEP_3072_EXP_SIZE     4 //hardcode e size to be 4
+#define ENCRYPTED_PPID_LENGTH 384
+#define DECRYPTED_PPID_LENGTH 16
 
 /** Structure definition of the RSA key used to decrypt the PCE's PPID */
 typedef struct _pce_rsaoaep_3072_encrypt_pub_key_t {
@@ -51,9 +53,19 @@ typedef struct _ref_rsa_params_t {
     unsigned int iqmp[REF_IQMP_SIZE_IN_UINT];
 }ref_rsa_params_t;
 
-static ref_rsa_params_t g_rsa_key = { 0 };  // The private key used to encrypt the PPID.
+static ref_rsa_params_t g_rsa_key = { 0 };  // The private key used to encrypt the PPID.  Only used for PPID_CEARTEXT Cert_Data_Type
 
-#define DECRYPTED_PPID_LENGTH 16
+uint32_t pce_get_pc_info(const sgx_report_t *report,
+                         const uint8_t *public_key, uint32_t key_size,
+                         uint8_t crypto_suite,
+                         uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
+                         uint32_t *encrypted_ppid_out_size,
+                         pce_info_t *pce_info,
+                         uint8_t *signature_scheme);
+
+uint32_t pce_get_target_info(sgx_target_info_t *pce_target_info);
+
+void print_err_status(char *str, sgx_status_t status);
 
 /**
  * External function exposed through the EDL used to return the QE report and the PPID encryption key required to get
@@ -83,12 +95,11 @@ static ref_rsa_params_t g_rsa_key = { 0 };  // The private key used to encrypt t
  * @return SGX_ERROR_UNEXPECTED An internal error occurred.
  */
 sgx_status_t ide_get_pce_encrypt_key(
-    const sgx_target_info_t* p_pce_target_info,
-    sgx_report_t* p_ide_report,
-    uint8_t crypto_suite,
-    uint16_t cert_key_type,
-    uint32_t key_size,
-    uint8_t* p_public_key)
+        const sgx_target_info_t* p_pce_target_info,
+        sgx_report_t* p_ide_report,
+        uint8_t crypto_suite,
+        uint32_t key_size,
+        uint8_t* p_public_key)
 {
     sgx_status_t sgx_status = SGX_SUCCESS;
     sgx_report_data_t report_data = { 0 };
@@ -96,22 +107,27 @@ sgx_status_t ide_get_pce_encrypt_key(
     pce_rsaoaep_3072_encrypt_pub_key_t* p_rsa_pub_key;
 
     if (p_pce_target_info == NULL || !sgx_is_within_enclave(p_pce_target_info, sizeof(*p_pce_target_info))) {
+        print_err_status("p_pce_target_info is null or outside enclave memory. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     if (p_public_key == NULL || !sgx_is_within_enclave(p_public_key, key_size)) {
+        print_err_status("p_public_key is null or outside enclave memory. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     if (p_ide_report == NULL || !sgx_is_within_enclave(p_ide_report, sizeof(*p_ide_report))) {
+        print_err_status("p_ide_report is null or outside enclave memory. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     if (crypto_suite != PCE_ALG_RSA_OAEP_3072) {
+        print_err_status("crypto_suite is not a PCE_ALG_RSA_OAEP_3072. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     if (key_size != sizeof(*p_rsa_pub_key)) {
+        print_err_status("key_size doesn't equal the size of p_rsa_pub_key. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
@@ -120,6 +136,7 @@ sgx_status_t ide_get_pce_encrypt_key(
     {
         //PCE must have access to provisioning key
         //Can't be debug PCE
+        print_err_status("PCE enclave can't be a DEBUG enclave. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return(SGX_ERROR_INVALID_PARAMETER);
     }
 
@@ -137,6 +154,7 @@ sgx_status_t ide_get_pce_encrypt_key(
                                          (unsigned char*)g_rsa_key.dmq1,
                                          (unsigned char*)g_rsa_key.iqmp);
     if (sgx_status != SGX_SUCCESS) {
+        print_err_status("Failed to create RSA key in sgx_create_rsa_key_pair. The error code is: 0x%04x.\n", sgx_status);
         return sgx_status;
     }
 
@@ -178,11 +196,13 @@ sgx_status_t ide_get_pce_encrypt_key(
     if (SGX_SUCCESS != sgx_status) {
         if (SGX_ERROR_OUT_OF_MEMORY != sgx_status)
             sgx_status = SGX_ERROR_UNEXPECTED;
+        print_err_status("Unexpected error when decrypting ppid. The error code is: 0x%04x.\n", sgx_status);
         goto ret_point;
     }
 
     sgx_status = sgx_create_report(p_pce_target_info, &report_data, p_ide_report);
     if (SGX_SUCCESS != sgx_status && SGX_ERROR_OUT_OF_MEMORY != sgx_status) {
+        print_err_status("Unexpected error when creating sgx report in sgx_create_report. The error code is: 0x%04x.\n", sgx_status);
         sgx_status = SGX_ERROR_UNEXPECTED;
     }
 
@@ -223,26 +243,29 @@ sgx_status_t ide_decrypt_ppid(uint32_t encrypted_ppid_size, uint8_t *p_encrypted
     size_t ppid_size = 0;
 
     if (p_encrypted_ppid == NULL || !sgx_is_within_enclave(p_encrypted_ppid, sizeof(*p_encrypted_ppid))) {
+        print_err_status("p_encrypted_ppid is null or outside enclave memory. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     if (ppid == NULL || !sgx_is_within_enclave(ppid, sizeof(*ppid))) {
+        print_err_status("ppid is null or outside enclave memory. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
 
     // Decrypt the PPID with the RSA private key generated with the new key and store it in the blob
     // Create a private key context
     sgx_status = sgx_create_rsa_priv2_key(REF_RSA_OAEP_3072_MOD_SIZE,
-                                                REF_E_SIZE_IN_BYTES,
-                                                (const unsigned char*)g_rsa_key.e,
-                                                (const unsigned char*)g_rsa_key.p,
-                                                (const unsigned char*)g_rsa_key.q,
-                                                (const unsigned char*)g_rsa_key.dmp1,
-                                                (const unsigned char*)g_rsa_key.dmq1,
-                                                (const unsigned char*)g_rsa_key.iqmp,
-                                                &rsa_key);
+                                          REF_E_SIZE_IN_BYTES,
+                                          (const unsigned char*)g_rsa_key.e,
+                                          (const unsigned char*)g_rsa_key.p,
+                                          (const unsigned char*)g_rsa_key.q,
+                                          (const unsigned char*)g_rsa_key.dmp1,
+                                          (const unsigned char*)g_rsa_key.dmq1,
+                                          (const unsigned char*)g_rsa_key.iqmp,
+                                          &rsa_key);
 
     if (sgx_status != SGX_SUCCESS) {
+        print_err_status("Failed to create RSA private key in sgx_create_rsa_priv2_key. The error code is: 0x%04x.\n", sgx_status);
         return sgx_status;
     }
 
@@ -253,24 +276,95 @@ sgx_status_t ide_decrypt_ppid(uint32_t encrypted_ppid_size, uint8_t *p_encrypted
                                              REF_RSA_OAEP_3072_MOD_SIZE);
 
     if (sgx_status != SGX_SUCCESS) {
+        print_err_status("Failed to compute size of decrypted ppid in sgx_rsa_priv_decrypt_sha256. The error code is: 0x%04x.\n", sgx_status);
         return sgx_status;
     }
 
     if (!(dec_dat = (unsigned char*)malloc(ppid_size))) {
+        print_err_status("Failed to allocate memory for decrypted ppid. The error code is: 0x%04x.\n", SGX_ERROR_INVALID_PARAMETER);
         return SGX_ERROR_INVALID_PARAMETER;
     }
     sgx_status = sgx_rsa_priv_decrypt_sha256(rsa_key,
-                                                   dec_dat,
-                                                   (&ppid_size),
-                                                   p_encrypted_ppid,
-                                                   REF_RSA_OAEP_3072_MOD_SIZE);
+                                             dec_dat,
+                                             (&ppid_size),
+                                             p_encrypted_ppid,
+                                             REF_RSA_OAEP_3072_MOD_SIZE);
 
     if (sgx_status != SGX_SUCCESS) {
+        print_err_status("Failed to decrypt ppid in sgx_rsa_priv_decrypt_sha256. The error code is: 0x%04x.\n", sgx_status);
         return sgx_status;
     }
 
     // Copy in the decrypted PPID
     memcpy(ppid, dec_dat, DECRYPTED_PPID_LENGTH);
+
+    return sgx_status;
+}
+
+sgx_status_t entry_point(uint8_t *decrypted_ppid) {
+    sgx_status_t sgx_status = SGX_SUCCESS;
+    sgx_report_t id_enclave_report;
+    uint32_t enc_key_size = REF_RSA_OAEP_3072_MOD_SIZE + REF_RSA_OAEP_3072_EXP_SIZE;
+    uint8_t enc_public_key[REF_RSA_OAEP_3072_MOD_SIZE + REF_RSA_OAEP_3072_EXP_SIZE];
+    uint8_t encrypted_ppid[REF_RSA_OAEP_3072_MOD_SIZE];
+    uint32_t encrypted_ppid_ret_size;
+    pce_info_t pce_info;
+    uint8_t signature_scheme;
+    sgx_target_info_t* pce_target_info;
+
+    if (!(pce_target_info = (sgx_target_info_t*)malloc(sizeof(sgx_target_info_t)))) {
+        sgx_status = SGX_ERROR_INVALID_PARAMETER;
+        print_err_status("Failed to call into the PPID: failed to allocate memory for pce_target_info \n", sgx_status);
+        return sgx_status;
+    }
+
+    if (SGX_SUCCESS != (sgx_status = pce_get_target_info(pce_target_info))) {
+        print_err_status("Failed to call into the PCE: pce_get_target_info. The error code is: 0x%04x.\n", sgx_status);
+        return sgx_status;
+    }
+
+    sgx_status = ide_get_pce_encrypt_key(pce_target_info,
+                                         &id_enclave_report,
+                                         PCE_ALG_RSA_OAEP_3072,
+                                         enc_key_size,
+                                         enc_public_key);
+
+    if (SGX_SUCCESS != sgx_status) {
+        print_err_status("Failed to call into the PPID: ide_get_pce_encrypt_key. The error code is: 0x%04x.\n", sgx_status);
+        return sgx_status;
+    }
+
+    sgx_status = pce_get_pc_info(&id_enclave_report,
+                                 enc_public_key,
+                                 enc_key_size,
+                                 PCE_ALG_RSA_OAEP_3072,
+                                 encrypted_ppid,
+                                 REF_RSA_OAEP_3072_MOD_SIZE,
+                                 &encrypted_ppid_ret_size,
+                                 &pce_info,
+                                 &signature_scheme);
+
+    if (SGX_SUCCESS != sgx_status) {
+        print_err_status("Failed to call into the PCE: pce_get_pc_info. The error code is: 0x%04x.\n", sgx_status);
+        return sgx_status;
+    }
+
+    if (signature_scheme != PCE_NIST_P256_ECDSA_SHA256) {
+        sgx_status = -1;
+        print_err_status("PCE returned incorrect signature scheme.\n", sgx_status);
+        return sgx_status;
+    }
+
+    if (encrypted_ppid_ret_size != ENCRYPTED_PPID_LENGTH) {
+        sgx_status = -1;
+        print_err_status("PCE returned incorrect encrypted PPID size.\n", sgx_status);
+        return sgx_status;
+    }
+
+    if (SGX_SUCCESS != (sgx_status = ide_decrypt_ppid(ENCRYPTED_PPID_LENGTH, encrypted_ppid, decrypted_ppid))) {
+        print_err_status("Failed to call into the PPID: ide_decrypt_ppid. The error code is: 0x%04x.\n", sgx_status);
+        return sgx_status;
+    }
 
     return sgx_status;
 }
