@@ -21,7 +21,6 @@ LIB_SGX_TSERVICE  = -lsgx_tservice
 ENCLAVE_LIBS      = $(LIB_SGX_TRTS)
 ENCLAVE_LIB_PARTS = -lsgx_tstdc -lsgx_tcrypto $(LIB_SGX_TSERVICE)
 ENCLAVE	          = ppid
-PCE_ENCLAVE		  = pce
 PRIVATE_KEY       = private_key.pem
 PUBLIC_KEY        = public_key.pem
 KEY_SIZE          = 3072

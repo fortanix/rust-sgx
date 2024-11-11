@@ -53,7 +53,7 @@ typedef struct _ref_rsa_params_t {
     unsigned int iqmp[REF_IQMP_SIZE_IN_UINT];
 }ref_rsa_params_t;
 
-uint32_t pce_get_pc_info(const sgx_report_t *report,
+uint32_t get_encrypted_ppid(const sgx_report_t *report,
                          const uint8_t *public_key, uint32_t key_size,
                          uint8_t crypto_suite,
                          uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
@@ -74,7 +74,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
 
     if (!(pce_target_info = (sgx_target_info_t*)malloc(sizeof(sgx_target_info_t)))) {
         sgx_status = SGX_ERROR_INVALID_PARAMETER;
-        print_err_status("Failed to call into the PPID: failed to allocate memory for pce_target_info \n", sgx_status);
+        print_err_status("Failed to allocate memory for pce_target_info in PPID enclave \n", sgx_status);
         goto CLEANUP;
     }
 
@@ -153,7 +153,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
     if (SGX_SUCCESS != sgx_status) {
         if (SGX_ERROR_OUT_OF_MEMORY != sgx_status)
             sgx_status = SGX_ERROR_UNEXPECTED;
-        print_err_status("Unexpected error when decrypting ppid. The error code is: 0x%04x.\n", sgx_status);
+        print_err_status("Unexpected error when hashing with sgx_sha256. The error code is: 0x%04x.\n", sgx_status);
         goto CLEANUP;
     }
 
@@ -169,7 +169,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
     pce_info_t pce_info;
     uint8_t signature_scheme;
 
-    sgx_status = pce_get_pc_info(&id_enclave_report,
+    sgx_status = get_encrypted_ppid(&id_enclave_report,
                                  enc_public_key,
                                  enc_key_size,
                                  PCE_ALG_RSA_OAEP_3072,

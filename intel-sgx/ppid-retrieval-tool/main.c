@@ -21,7 +21,7 @@ void print_decrypted_ppid(unsigned char decrypted_ppid[], size_t length) {
     printf("\n");
 }
 
-uint32_t pce_get_pc_info(const sgx_report_t *report,
+uint32_t get_encrypted_ppid(const sgx_report_t *report,
                          const uint8_t *public_key, uint32_t key_size,
                          uint8_t crypto_suite,
                          uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
@@ -42,7 +42,7 @@ uint32_t pce_get_pc_info(const sgx_report_t *report,
         goto CLEANUP;
     }
 
-    sgx_status = get_pc_info(pce_enclave_eid,
+    sgx_status = get_encrypted_ppid(pce_enclave_eid,
                              (uint32_t*) &ecall_ret,
                              report,
                              public_key,

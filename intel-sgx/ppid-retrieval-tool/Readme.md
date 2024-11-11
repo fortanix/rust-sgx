@@ -1,10 +1,11 @@
-# PPID Decryption Tool
+# PPID Retrieval Tool
 
-This tool provides functionality to decrypt the **Platform Provisioning ID (PPID)** from the **Provisioning Certification Enclave (PCE)**.
+This tool provides functionality to retrieve the **Platform Provisioning ID (PPID)** from the **Provisioning Certification Enclave (PCE)**.
 
 ## Overview
 
-The tool is inspired by Intel's **PCKRetrievalTool**, which is used to retrieve platform-specific information from the PCE. However, Intel’s tool returns only an **encrypted version of the PPID**. This utility extends the functionality by enabling decryption of the PPID, allowing access to the data in an unencrypted form.
+The tool is inspired by Intel's **PCKRetrievalTool**, which is used to retrieve platform-specific information from the PCE. However, Intel’s tool only provides an API to get the encrypted PPID with given RSA 3072 public key.
+This tool follows similar process but uses it's own RSA key to decrypted the encrypted PPID from the PCE.
 
 ## How It Works
 
@@ -27,6 +28,7 @@ To use this tool:
 ### 1. PPID Enclave
 The PPID Enclave module contains:
 - **RSA Key-Pair Generation**: Creates a pair of RSA keys for the PCE enclave.
+- **Encrypted PPID retrieval**: Uses PCE enclave functions to retrieve an encrypted PPID.
 - **PPID Decryption**: Uses the RSA keys to decrypt the PPID retrieved from the PCE.
 
 Both functionalities are encapsulated within the PPID enclave to prevent adversaries from accessing the RSA parameters or the private key used for PPID decryption.
@@ -38,12 +40,12 @@ This module handles the **encrypted PPID retrieval**. It contains:
 The compiled C code for this enclave is provided by Intel as a prebuilt `.so` file. To integrate this with our tool, we supply an enclave definition file (`.edl`) and generate a C wrapper using the **sgx_edger8r** tool.
 
 ### 3. Main Program (`main.c`)
-- The main program serves as the **entry point** of the tool, located at the root of the project.
+- The main program functions as the starting point of the tool, located at the root of the project. The term **starting point** is used here to avoid confusion with the term **entry point** in the context of SGX enclaves.
 - It connects the ID and PCE enclaves and prints the decrypted PPID to the console.
 
 ## How It Works
 
-The tool’s decryption process involves the following steps:
+The tool’s retrieval process involves the following steps:
 1. The PPID enclave generates an RSA key-pair based on controlled parameters.
 2. The tool retrieves the encrypted PPID from the PCE enclave.
 3. The PPID enclave then decrypts this PPID and outputs it in plaintext form.
