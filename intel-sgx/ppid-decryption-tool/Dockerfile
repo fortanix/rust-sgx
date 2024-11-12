@@ -63,7 +63,7 @@ RUN bash -c 'rm -rf /run/systemd'
 
 # installed to:
 # ~/linux-sgx/SGXDataCenterAttestationPrimitives/tools/SGXPlatformRegistration/build/installer/
-
+From sgx_sdk as ppid-runtime
 # Install SGX runtime libraries
 USER root
 RUN apt-get install sudo
@@ -85,7 +85,7 @@ RUN bash -c 'chown -c ppid-tool /var/run/aesmd'
 USER root
 RUN bash -c 'apt-get install -y screen'
 
-From sgx_sdk
+From ppid-runtime
 USER root
 
 WORKDIR ppid-tool
@@ -94,6 +94,6 @@ COPY pce pce
 COPY main.c main.c
 COPY Makefile Makefile
 
-#RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make
+RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make
 
 ENTRYPOINT bash
