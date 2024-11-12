@@ -42,7 +42,7 @@ uint32_t get_encrypted_ppid(const sgx_report_t *report,
         goto CLEANUP;
     }
 
-    sgx_status = get_encrypted_ppid(pce_enclave_eid,
+    sgx_status = get_pc_info(pce_enclave_eid,
                              (uint32_t*) &ecall_ret,
                              report,
                              public_key,
@@ -73,19 +73,12 @@ uint32_t get_encrypted_ppid(const sgx_report_t *report,
     return sgx_status;
 }
 
-uint32_t pce_get_target_info(sgx_target_info_t *pce_target_info) {
+void pce_get_target_info(sgx_target_info_t *pce_target_info) {
     sgx_launch_token_t token = {0};
     int updated = 0;
     sgx_status_t sgx_status = SGX_SUCCESS;
     sgx_status_t ecall_ret = SGX_SUCCESS;
     sgx_enclave_id_t pce_enclave_eid = 0;
-    sgx_target_info_t pce_target_info_result;
-
-    if (pce_target_info == NULL) {
-        fprintf(stderr, "Error: pce_target_info is NULL.\n");
-        sgx_status = -1;
-        goto CLEANUP;
-    }
 
     if (SGX_SUCCESS != (sgx_status = sgx_create_enclave("pce/libsgx_pce.signed.so.1.25.100.1", RELEASE_ENCLAVE, &token, &updated, &pce_enclave_eid, NULL)))
     {
@@ -94,19 +87,16 @@ uint32_t pce_get_target_info(sgx_target_info_t *pce_target_info) {
         goto CLEANUP;
     }
 
-    if (SGX_SUCCESS != (sgx_status = sgx_get_target_info(pce_enclave_eid, &pce_target_info_result))) {
+    if (SGX_SUCCESS != (sgx_status = sgx_get_target_info(pce_enclave_eid, pce_target_info))) {
         fprintf(stderr, "Failed to get pce target info. The error code is:  0x%04x.\n", sgx_status);
         sgx_status = -1;
         goto CLEANUP;
     }
 
-    memcpy(pce_target_info, &pce_target_info_result, sizeof(sgx_target_info_t));
-
     CLEANUP:
     if(pce_enclave_eid != 0) {
         sgx_destroy_enclave(pce_enclave_eid);
     }
-    return sgx_status;
 }
 
 void print_err_status(char *str, sgx_status_t err_status) {

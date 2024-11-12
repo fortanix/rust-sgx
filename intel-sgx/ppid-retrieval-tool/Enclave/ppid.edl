@@ -21,7 +21,7 @@ untrusted {
                                     [out]pce_info_t *pce_info,
                                     [out] uint8_t *signature_scheme);
 
-    uint32_t pce_get_target_info([out]sgx_target_info_t *pce_target_info);
+    void pce_get_target_info([out]sgx_target_info_t* pce_target_info);
 
     void print_err_status([in,string] char *str, sgx_status_t err_status);
 };

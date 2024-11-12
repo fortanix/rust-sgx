@@ -12,6 +12,7 @@
 #include <sgx_trts.h>
 #include <stdlib.h>
 #include "../pce/pce_cert.h"
+#include "ppid_t.h"
 
 #define REF_N_SIZE_IN_BYTES    384
 #define REF_E_SIZE_IN_BYTES    4
@@ -53,38 +54,20 @@ typedef struct _ref_rsa_params_t {
     unsigned int iqmp[REF_IQMP_SIZE_IN_UINT];
 }ref_rsa_params_t;
 
-uint32_t get_encrypted_ppid(const sgx_report_t *report,
-                         const uint8_t *public_key, uint32_t key_size,
-                         uint8_t crypto_suite,
-                         uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
-                         uint32_t *encrypted_ppid_out_size,
-                         pce_info_t *pce_info,
-                         uint8_t *signature_scheme);
-
-uint32_t pce_get_target_info(sgx_target_info_t *pce_target_info);
-
-void print_err_status(char *str, sgx_status_t status);
-
 sgx_status_t entry_point(uint8_t *decrypted_ppid) {
     sgx_status_t sgx_status = SGX_SUCCESS;
     sgx_report_t id_enclave_report;
-
-    sgx_target_info_t* pce_target_info;
+    sgx_target_info_t pce_target_info;
     sgx_report_data_t report_data = { 0 };
 
-    if (!(pce_target_info = (sgx_target_info_t*)malloc(sizeof(sgx_target_info_t)))) {
-        sgx_status = SGX_ERROR_INVALID_PARAMETER;
-        print_err_status("Failed to allocate memory for pce_target_info in PPID enclave \n", sgx_status);
+    if (SGX_SUCCESS != (sgx_status = pce_get_target_info(&pce_target_info))) {
+        print_err_status("Failed to call in PPID: pce_get_target_info. The error code is: 0x%04x.\n", sgx_status);
         goto CLEANUP;
+
     }
 
-    if (SGX_SUCCESS != (sgx_status = pce_get_target_info(pce_target_info))) {
-        print_err_status("Failed to call into the PCE: pce_get_target_info. The error code is: 0x%04x.\n", sgx_status);
-        goto CLEANUP;
-    }
-
-    if ((pce_target_info->attributes.flags & SGX_FLAGS_PROVISION_KEY) != SGX_FLAGS_PROVISION_KEY ||
-        (pce_target_info->attributes.flags & SGX_FLAGS_DEBUG) != 0)
+    if ((pce_target_info.attributes.flags & SGX_FLAGS_PROVISION_KEY) != SGX_FLAGS_PROVISION_KEY ||
+        (pce_target_info.attributes.flags & SGX_FLAGS_DEBUG) != 0)
     {
         //PCE must have access to provisioning key
         //Can't be debug PCE
@@ -157,7 +140,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
         goto CLEANUP;
     }
 
-    sgx_status = sgx_create_report(pce_target_info, &report_data, &id_enclave_report);
+    sgx_status = sgx_create_report(&pce_target_info, &report_data, &id_enclave_report);
     if (SGX_SUCCESS != sgx_status && SGX_ERROR_OUT_OF_MEMORY != sgx_status) {
         print_err_status("Unexpected error when creating sgx report in sgx_create_report. The error code is: 0x%04x.\n", sgx_status);
         sgx_status = SGX_ERROR_UNEXPECTED;
@@ -168,8 +151,9 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
     uint32_t encrypted_ppid_ret_size;
     pce_info_t pce_info;
     uint8_t signature_scheme;
-
-    sgx_status = get_encrypted_ppid(&id_enclave_report,
+    // used only to satisfy the function signature
+    unsigned int ret_val = 0;
+    sgx_status = get_encrypted_ppid(&ret_val, &id_enclave_report,
                                  enc_public_key,
                                  enc_key_size,
                                  PCE_ALG_RSA_OAEP_3072,
@@ -226,15 +210,8 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
         goto CLEANUP;
     }
 
-    unsigned char* dec_dat = NULL;
-
-    if (!(dec_dat = (unsigned char*)malloc(ppid_size))) {
-        sgx_status = SGX_ERROR_INVALID_PARAMETER;
-        print_err_status("Failed to allocate memory for decrypted ppid. The error code is: 0x%04x.\n", sgx_status);
-        goto CLEANUP;
-    }
     sgx_status = sgx_rsa_priv_decrypt_sha256(rsa_key,
-                                             dec_dat,
+                                             decrypted_ppid,
                                              (&ppid_size),
                                              encrypted_ppid,
                                              REF_RSA_OAEP_3072_MOD_SIZE);
@@ -243,9 +220,6 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
         print_err_status("Failed to decrypt ppid in sgx_rsa_priv_decrypt_sha256. The error code is: 0x%04x.\n", sgx_status);
         goto CLEANUP;
     }
-
-    // Copy in the decrypted PPID
-    memcpy(decrypted_ppid, dec_dat, DECRYPTED_PPID_LENGTH);
 
     CLEANUP:
     // Clear critical output data on error
