@@ -4,24 +4,25 @@ RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" TZ="America/New_York" apt-get install -y git build-essential python
 
 # Install user
-RUN useradd -rm -d /home/raoul -s /bin/bash -g root -G sudo -u 1000 raoul
+RUN useradd -rm -d /home/ppid-tool -s /bin/bash -g root -G sudo -u 1000 ppid-tool
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN echo 'raoul:raoul' | chpasswd
-USER raoul
-WORKDIR /home/raoul
+RUN echo 'ppid-tool:ppid-tool' | chpasswd
+USER ppid-tool
+WORKDIR /home/ppid-tool
 
 # Install SGX Dev tools
 USER root
+RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" TZ="America/New_York" apt-get install -y build-essential ocaml ocamlbuild automake autoconf libtool wget python-is-python3 libssl-dev git cmake perl unzip libboost-dev libboost-system-dev libboost-thread-dev
 
-USER raoul
+USER ppid-tool
 RUN git clone https://github.com/intel/linux-sgx.git
 WORKDIR linux-sgx
 RUN make preparation
 RUN ls external/toolset/
 USER root
 RUN cp external/toolset/ubuntu20.04/* /usr/local/bin
-USER raoul
+USER ppid-tool
 
 RUN make sdk
 RUN make sdk_install_pkg
@@ -36,27 +37,27 @@ USER root
 RUN apt-get install -y protobuf-c-compiler libprotobuf-c-dev protobuf-compiler
 RUN apt-get install -y libboost-dev libboost-system-dev
 RUN apt-get install -y libcurl4-openssl-dev
-USER raoul
+USER ppid-tool
 RUN git clone https://github.com/intel/SGXDataCenterAttestationPrimitives.git
 WORKDIR SGXDataCenterAttestationPrimitives
 RUN git submodule update  --init
 RUN QuoteGeneration/download_prebuilt.sh
-RUN source /home/raoul/linux-sgx/sgxsdk/environment && make
+RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make
 
 WORKDIR tools/PCKCertSelection
 USER root
 RUN apt-get install -y zip
-USER raoul
+USER ppid-tool
 RUN make
 
 USER root
 RUN apt-get install -y debhelper
 # Bugfix: The `make deb_pkg` command results in a check whether systemd is installed
 RUN mkdir -p /run/systemd/system/
-USER raoul
+USER ppid-tool
 WORKDIR ../../tools/SGXPlatformRegistration
-RUN source /home/raoul/linux-sgx/sgxsdk/environment && make
-RUN source /home/raoul/linux-sgx/sgxsdk/environment && make deb_pkg
+RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make
+RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make deb_pkg
 USER root
 RUN bash -c 'rm -rf /run/systemd'
 
@@ -78,7 +79,7 @@ RUN apt-get install -y libsgx-urts libsgx-epid libsgx-quote-ex libsgx-dcap-ql
 # Setup aesmd service in container
 USER root
 RUN bash -c 'mkdir /var/run/aesmd'
-RUN bash -c 'chown -c raoul /var/run/aesmd'
+RUN bash -c 'chown -c ppid-tool /var/run/aesmd'
 
 # Preparing to run PCKIDRetrievalTool
 USER root
@@ -93,6 +94,6 @@ COPY pce pce
 COPY main.c main.c
 COPY Makefile Makefile
 
-RUN source /home/raoul/linux-sgx/sgxsdk/environment && make
+#RUN source /home/ppid-tool/linux-sgx/sgxsdk/environment && make
 
 ENTRYPOINT bash
