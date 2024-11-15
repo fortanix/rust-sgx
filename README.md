@@ -1,6 +1,6 @@
 # Fortanix Rust Enclave Development Platform
 
-[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack&logoColor=whitesmoke)](https://fortanix.com/runtime-encryption-slack) [![Build Status](https://travis-ci.com/fortanix/rust-sgx.svg?branch=master)](https://app.travis-ci.com/github/fortanix/rust-sgx/builds)
+[![Runtime Encryption Slack](https://img.shields.io/badge/Slack-%23rust--sgx-blue.svg?logo=slack&logoColor=whitesmoke)](https://fortanix.com/runtime-encryption-slack) [![CI](https://github.com/fortanix/rust-sgx/actions/workflows/build.yml/badge.svg)](https://github.com/fortanix/rust-sgx/actions/workflows/build.yml)
 
 The [Fortanix Rust EDP](https://edp.fortanix.com/) is the preferred way to write Intel SGX enclaves from scratch.
 
@@ -24,7 +24,7 @@ cargo run --target x86_64-fortanix-unknown-sgx
 [Documentation](https://edp.fortanix.com/docs/)
 
 Looking for the in-enclave source code? Check out the [rust-lang/rust
-repository](https://github.com/rust-lang/rust/tree/master/library/std/src/sys/sgx).
+repository](https://github.com/rust-lang/rust/tree/master/library/std/src/sys/pal/sgx).
 
 ## Note for maintenance
 
@@ -37,7 +37,7 @@ Release**](https://github.com/fortanix/rust-sgx/releases/new): please ensure the
 number}` , although in this workflow only ${crate name} is used, but {version
 number} is still required for keeping a good tag name.
 
-# Contributing
+## Contributing
 
 We gratefully accept contributions from the community.
 By participating in this community, you agree to abide by [Code of Conduct](./CODE_OF_CONDUCT.md).
@@ -77,6 +77,6 @@ personal information I submit with it, including my sign-off) is
 maintained indefinitely and may be redistributed consistent with
 this project or the open source license(s) involved.
 
-# License
+## License
 
 This project is primarily distributed under the terms of the Mozilla Public License (MPL) 2.0, see [LICENSE](./LICENSE) for details.
