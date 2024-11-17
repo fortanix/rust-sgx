@@ -1,4 +1,4 @@
-# This workflow is used to build docker images
+# This workflow is used to build docker image for ppid-retrieval-tool
 
 name: Docker Image CI
 
@@ -26,3 +26,4 @@ jobs:
         run: |
           cd intel-sgx/ppid-retrieval-tool
           docker build -t ppid-retrieval-tool:$(date +%s) .
+          

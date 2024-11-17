@@ -81,10 +81,7 @@ USER root
 RUN bash -c 'mkdir /var/run/aesmd'
 RUN bash -c 'chown -c ppid-tool /var/run/aesmd'
 
-# Preparing to run PCKIDRetrievalTool
-USER root
-RUN bash -c 'apt-get install -y screen'
-
+# Preparing to build PCKIDRetrievalTool
 From ppid-runtime
 USER root
 
