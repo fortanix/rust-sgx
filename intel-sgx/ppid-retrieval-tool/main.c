@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <sgx_urts.h>
 #include "Enclave/ppid_u.h"
-#include "pce/pce_enclave_u.h"
+#include "pce/pce_u.h"
 
 #define DECRYPTED_PPID_LENGTH 16
 
