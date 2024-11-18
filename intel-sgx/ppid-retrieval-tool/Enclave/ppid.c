@@ -25,8 +25,6 @@
 
 #define REF_RSA_OAEP_3072_MOD_SIZE   384 //hardcode n size to be 384
 #define REF_RSA_OAEP_3072_EXP_SIZE     4 //hardcode e size to be 4
-#define ENCRYPTED_PPID_LENGTH 384
-#define DECRYPTED_PPID_LENGTH 16
 
 /** Structure definition of the RSA key used to decrypt the PCE's PPID */
 typedef struct _pce_rsaoaep_3072_encrypt_pub_key_t {
@@ -151,7 +149,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
     uint32_t encrypted_ppid_ret_size;
     pce_info_t pce_info;
     uint8_t signature_scheme;
-    // used only to satisfy the function signature
+
     unsigned int ret_val = 0;
     sgx_status = get_encrypted_ppid(&ret_val, &id_enclave_report,
                                  enc_public_key,
@@ -162,6 +160,11 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
                                  &encrypted_ppid_ret_size,
                                  &pce_info,
                                  &signature_scheme);
+
+    if (SGX_SUCCESS != ret_val) {
+        print_err_status("PCE.pce_get_pc_info finished with failure. The error code is: 0x%04x.\n", ret_val);
+        goto CLEANUP;
+    }
 
     if (SGX_SUCCESS != sgx_status) {
         print_err_status("Failed to call into the PCE: pce_get_pc_info. The error code is: 0x%04x.\n", sgx_status);
@@ -174,7 +177,7 @@ sgx_status_t entry_point(uint8_t *decrypted_ppid) {
         goto CLEANUP;
     }
 
-    if (encrypted_ppid_ret_size != ENCRYPTED_PPID_LENGTH) {
+    if (encrypted_ppid_ret_size != REF_RSA_OAEP_3072_MOD_SIZE) {
         sgx_status = -1;
         print_err_status("PCE returned incorrect encrypted PPID size.\n", sgx_status);
         goto CLEANUP;
