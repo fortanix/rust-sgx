@@ -22,7 +22,7 @@ backoff = "0.4.0"
 clap = { version = "2.23.3", optional = true }
 lazy_static = "1"
 lru-cache = "0.1.2"
-mbedtls = { version = "0.12.3", features = [
+mbedtls = { version = "0.13.0", features = [
     "x509",
     "ssl",
     "std",
@@ -35,7 +35,7 @@ quick-error = "1.1.0"
 rustc-serialize = "0.3"
 reqwest = { version = "0.12", features = ["blocking", "native-tls"], optional = true }
 serde_cbor = "0.11"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0.214", features = ["derive"] }
 serde_json = "1.0"
 
 [features]
@@ -47,6 +47,6 @@ yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 pcs = { version = "0.7", path = "../pcs", features = ["verify"] }
 
 [build-dependencies]
-mbedtls = { version = "0.12.3", features = ["ssl", "x509"] }
+mbedtls = { version = "0.13.0", features = ["ssl", "x509"] }
 pkix = "0.2.0"
 serde_cbor = "0.11"
