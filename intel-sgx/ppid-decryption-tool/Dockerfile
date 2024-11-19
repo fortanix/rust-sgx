@@ -13,22 +13,25 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     wget
 
-RUN echo 'deb [arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu jammy main' > /etc/apt/sources.list.d/intel-sgx.list
-RUN wget -qO - https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key | apt-key add -
-RUN apt-get update
-
 # App build time dependencies
+RUN apt-get update
 RUN apt-get install -y build-essential
 
 WORKDIR /opt/intel
-RUN wget https://download.01.org/intel-sgx/sgx-linux/2.22/distro/ubuntu22.04-server/sgx_linux_x64_sdk_2.22.100.3.bin
-RUN chmod +x sgx_linux_x64_sdk_2.22.100.3.bin
-RUN echo 'yes' | ./sgx_linux_x64_sdk_2.22.100.3.bin
+RUN wget https://download.01.org/intel-sgx/sgx-linux/2.25/distro/ubuntu24.04-server/sgx_linux_x64_sdk_2.25.100.3.bin
+RUN chmod +x sgx_linux_x64_sdk_2.25.100.3.bin
+RUN echo 'yes' | ./sgx_linux_x64_sdk_2.25.100.3.bin
 
-# Setup aesmd service in container
+# Install SGX runtime libraries
 USER root
-RUN bash -c 'mkdir /var/run/aesmd'
-RUN bash -c 'chown -c ppid-tool /var/run/aesmd'
+RUN apt-get install -y sudo
+RUN echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' | sudo tee /etc/apt/sources.list.d/intel-sgx.list
+RUN wget https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+RUN cat intel-sgx-deb.key | sudo tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
+RUN apt-get update
+RUN apt-get upgrade -y
+RUN apt-get update
+RUN apt-get install -y libsgx-urts
 
 # Preparing to build PCKIDRetrievalTool
 FROM sgx_sdk
