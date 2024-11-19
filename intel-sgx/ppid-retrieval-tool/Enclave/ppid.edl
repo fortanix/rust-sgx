@@ -1,0 +1,28 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+enclave {
+include "sgx_report.h"
+include "../pce/pce_cert.h"
+
+trusted {
+    public sgx_status_t entry_point([out, size=16] uint8_t *decrypted_ppid);
+};
+
+untrusted {
+    uint32_t get_encrypted_ppid([in]const sgx_report_t *report,
+                                    [in, size=key_size]const uint8_t *public_key, uint32_t key_size,
+                                    uint8_t crypto_suite,
+                                    [out, size=encrypted_ppid_buf_size]uint8_t *encrypted_ppid, uint32_t encrypted_ppid_buf_size,
+                                    [out]uint32_t *encrypted_ppid_out_size,
+                                    [out]pce_info_t *pce_info,
+                                    [out] uint8_t *signature_scheme);
+
+    void pce_get_target_info([out]sgx_target_info_t* pce_target_info);
+
+    void print_err_status([in,string] char *str, sgx_status_t err_status);
+};
+};
