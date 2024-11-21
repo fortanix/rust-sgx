@@ -109,6 +109,12 @@ jobs:
     - name: Build em-app, get-certificate for x86_64-fortanix-unknown-sgx
       run: cargo build --verbose --locked -p em-app -p get-certificate --target=x86_64-fortanix-unknown-sgx
 
+    - name: insecure-time test
+      run: cargo +nightly test -p insecure-time --features estimate_crystal_clock_freq
+
+    - name: insecure-time build for SGX platform
+      run: cargo +nightly build -p insecure-time --features estimate_crystal_clock_freq --target x86_64-fortanix-unknown-sgx
+
     - name: Generate API docs
       run: ./doc/generate-api-docs.sh
 
