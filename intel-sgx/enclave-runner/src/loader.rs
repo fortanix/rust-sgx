@@ -146,7 +146,7 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
-            force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
+            force_time_usercalls: false,
             cmd_args: None,
         };
 
