@@ -39,8 +39,10 @@ impl NativeTime for SystemTime {
         SystemTime::UNIX_EPOCH
     }
 
-    fn abs_diff(&self, other: &Self) -> Duration {
-        match self.duration_since(*other) {
+    fn abs_diff(&self, earlier: &Self) -> Duration {
+        // When `earlier` is later than self, `duration_since` returns an error. The error itself
+        // includes the duration between the two `SystemTime`s
+        match self.duration_since(*earlier) {
             Ok(duration) => duration,
             Err(e) => e.duration()
         }
@@ -176,6 +178,7 @@ impl Rdtscp {
     }
 }
 
+/// Frequency in ticks per second
 pub struct Freq(AtomicU64);
 
 impl PartialEq<Freq> for Freq {
@@ -389,6 +392,11 @@ impl<T: NativeTime> TimeMode<T> {
     }
 }
 
+/// Some CPUs do report the speed of their TSC clock. Others do not or do it incomplete. This Tsc
+/// keeps track of the time, and has some capabilities to manage different hardware. Users are able
+/// to specify that the used frequency is more a guideline; that more exact frequency should be
+/// learned over time to avoid clock drift. There's also an initial time frame in which the
+/// frequency is deemed inaccurate, and shouldn't be used.
 pub struct Tsc<T: NativeTime> {
     t0: (Ticks, T),
     // The mode in which the Tsc operates
