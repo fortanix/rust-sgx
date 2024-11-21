@@ -1,6 +1,6 @@
 <EnclaveConfiguration>
     <IntelSigned>0</IntelSigned>
-    <ProvisionKey>0</ProvisionKey>
+    <ProvisionKey>1</ProvisionKey>
     <ProdID>0x1</ProdID>
     <ISVSVN>1</ISVSVN>
     <TCSNum>1</TCSNum>
