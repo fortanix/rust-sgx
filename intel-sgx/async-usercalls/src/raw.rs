@@ -1,6 +1,6 @@
 use crate::callback::*;
 use crate::{AsyncUsercallProvider, CancelHandle};
-use fortanix_sgx_abi::Fd;
+use fortanix_sgx_abi::{Fd, InsecureTimeInfo};
 use std::io;
 use std::os::fortanix_sgx::usercalls::raw::ByteBuffer;
 use std::os::fortanix_sgx::usercalls::raw::{Usercall, UsercallNrs};
@@ -51,7 +51,7 @@ pub trait RawApi {
         callback: Option<CbFn<io::Result<Fd>>>,
     ) -> CancelHandle;
 
-    unsafe fn raw_insecure_time(&self, callback: Option<CbFn<u64>>);
+    unsafe fn raw_insecure_time(&self, callback: Option<CbFn<(u64, *const InsecureTimeInfo)>>);
 
     unsafe fn raw_alloc(&self, size: usize, alignment: usize, callback: Option<CbFn<io::Result<*mut u8>>>);
 
@@ -137,7 +137,7 @@ impl RawApi for AsyncUsercallProvider {
         self.send_usercall(u, callback.map(|cb| Callback::connect_stream(cb)))
     }
 
-    unsafe fn raw_insecure_time(&self, callback: Option<CbFn<u64>>) {
+    unsafe fn raw_insecure_time(&self, callback: Option<CbFn<(u64, *const InsecureTimeInfo)>>) {
         let u = Usercall(UsercallNrs::insecure_time as _, 0, 0, 0, 0);
         self.send_usercall(u, callback.map(|cb| Callback::insecure_time(cb)));
     }
@@ -172,7 +172,7 @@ mod tests {
             let (tx, rx) = mpmc::bounded(N);
             for _ in 0..N {
                 let tx = tx.clone();
-                let cb = move |d| {
+                let cb = move |(d, _)| {
                     let system_time = UNIX_EPOCH + Duration::from_nanos(d);
                     tx.send(system_time).unwrap();
                 };
