@@ -9,9 +9,10 @@ use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
+use std::ptr;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
@@ -31,6 +32,7 @@ use tokio::runtime::Builder as RuntimeBuilder;
 use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
 use tokio::sync::broadcast::error::RecvError;
 use fortanix_sgx_abi::*;
+use insecure_time::{Freq, Rdtscp};
 use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
 use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
@@ -49,6 +51,20 @@ mod interface;
 lazy_static! {
     static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
 }
+
+const NANOS_PER_SEC: u64 = 1_000_000_000;
+
+static mut TIME_INFO: LazyLock<Option<InsecureTimeInfo>> = LazyLock::new(|| {
+    if Rdtscp::is_supported() {
+        if let Ok(frequency) = Freq::get() {
+            return Some(InsecureTimeInfo {
+                version: 0,
+                frequency: frequency.as_u64(),
+            })
+        }
+    }
+    None
+});
 
 // This is not an event in the sense that it could be passed to `send()` or
 // `wait()` usercalls in enclave code. However, it's easier for the enclave
@@ -645,6 +661,7 @@ pub(crate) struct EnclaveState {
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
     fifo_guards: Mutex<Option<FifoGuards>>,
     return_queue_tx: Mutex<Option<ipc_queue::AsyncSender<Return, QueueSynchronizer>>>,
@@ -718,6 +735,7 @@ impl EnclaveState {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         threads_vector: Vec<ErasedTcs>,
         forward_panics: bool,
+        force_time_usercalls: bool,
     ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
@@ -758,6 +776,7 @@ impl EnclaveState {
             usercall_ext,
             threads_queue,
             forward_panics,
+            force_time_usercalls,
             fifo_guards: Mutex::new(None),
             return_queue_tx: Mutex::new(None),
         })
@@ -1085,6 +1104,7 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
         cmd_args: Vec<Vec<u8>>,
     ) -> StdResult<(), anyhow::Error> {
         let mut event_queues =
@@ -1117,7 +1137,7 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
 
         let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
@@ -1168,12 +1188,13 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
     ) -> Arc<Self> {
         let event_queues = FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
 
         let kind = EnclaveKind::Library(Library {});
 
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
         return enclave;
     }
 
@@ -1633,11 +1654,20 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn insecure_time(&mut self) -> u64 {
+    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
         let time = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap();
-        (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000
+        let t = (time.subsec_nanos() as u64) + time.as_secs() * NANOS_PER_SEC;
+        let info = unsafe { match (*TIME_INFO, self.enclave.force_time_usercalls) {
+            (Some(info), false) => {
+                &info
+            },
+            _ => {
+                ptr::null()
+            }
+        } };
+        (t, info)
     }
 
     #[inline(always)]
