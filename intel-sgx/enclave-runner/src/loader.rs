@@ -278,6 +278,10 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    pub fn forced_insecure_time_usercalls(&self) -> bool {
+        self.force_time_usercalls
+    }
+
     fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
         self.cmd_args.get_or_insert_with(|| vec![b"enclave".to_vec()])
     }
