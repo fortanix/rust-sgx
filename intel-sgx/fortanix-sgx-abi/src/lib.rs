@@ -75,6 +75,7 @@
 //! synchronously or asynchronously.
 #![allow(unused)]
 #![no_std]
+#![cfg_attr(feature = "rustc-dep-of-std", allow(internal_features))]
 #![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
 #![cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
@@ -566,13 +567,21 @@ impl Usercalls {
     pub fn send(event_set: u64, tcs: Option<Tcs>) -> Result { unimplemented!() }
 }
 
+#[repr(C)]
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct InsecureTimeInfo {
+    pub version: u64,
+    pub frequency: u64,
+}
+
 /// # Miscellaneous
 impl Usercalls {
     /// This returns the number of nanoseconds since midnight UTC on January 1,
     /// 1970\. The enclave must not rely on the accuracy of this time for
     /// security purposes, such as checking credential expiry or preventing
     /// rollback.
-    pub fn insecure_time() -> u64 { unimplemented!() }
+    pub fn insecure_time() -> (u64, *const InsecureTimeInfo) { unimplemented!() }
 }
 
 /// # Memory

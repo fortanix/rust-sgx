@@ -41,7 +41,7 @@ impl Drop for AutoPollingProvider {
     fn drop(&mut self) {
         self.shutdown.store(true, Ordering::Relaxed);
         // send a usercall to ensure thread wakes up
-        self.provider.insecure_time(|_| {});
+        self.provider.insecure_time(|_, _| {});
         self.join_handle.take().unwrap().join().unwrap();
     }
 }

@@ -21,8 +21,9 @@ exclude = ["fake-vdso/.gitignore", "fake-vdso/Makefile", "fake-vdso/main.S"]
 [dependencies]
 # Project dependencies
 sgxs = { version = "0.8.0", path = "../sgxs" }
-fortanix-sgx-abi = { version = "0.5.0", path = "../fortanix-sgx-abi" }
+fortanix-sgx-abi = { version = "0.6.0", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
+insecure-time = { version = "0.1", path = "../insecure-time", features = ["estimate_crystal_clock_freq"] }
 ipc-queue = { version = "0.3.0", path = "../../ipc-queue" }
 
 # External dependencies
