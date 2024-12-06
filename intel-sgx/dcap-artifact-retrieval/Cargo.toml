@@ -1,8 +1,21 @@
 [package]
 name = "dcap-artifact-retrieval"
 version = "0.1.0"
-authors = ["Raoul Strackx <raoul.strackx@fortanix.com>", "Nikita Shyrei <nikita.shyrei@fortanix.com>"]
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
 edition = "2018"
+description = """
+DCAP artifact retrieval tool for Intel SGX remote attestation.
+
+DCAP attestations require access to Intel-signed artifacts. This library provides clients with
+access to these artifacts both from Intel directly, and from Microsoft Azure.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/api/dcap_artifact_retrieval/"
+homepage = "https://edp.fortanix.com/"
+keywords = ["sgx", "enclave", "dcap"]
+categories = ["os", "hardware-support"]
+
 
 [dependencies]
 backoff = "0.4.0"
