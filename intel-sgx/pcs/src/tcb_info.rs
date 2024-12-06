@@ -104,6 +104,12 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
     }
 }
 
+impl TcbData<Verified> {
+    pub fn fmspc(&self) -> &str {
+        &self.fmspc
+    }
+}
+
 impl TcbData<Unverified> {
     fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
         let data: TcbData<Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
