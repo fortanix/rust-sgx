@@ -17,6 +17,9 @@
  * In order to avoid CI failures, allow the below lint. */
 #![allow(renamed_and_removed_lints)]
 #![deny(warnings)]
+// To fix this error, which appears in generated code:
+// "lint `box_pointers` has been removed: it does not detect other kinds of allocations, and existed only for historical reasons."
+#![allow(renamed_and_removed_lints)]
 
 extern crate byteorder;
 pub extern crate anyhow;
