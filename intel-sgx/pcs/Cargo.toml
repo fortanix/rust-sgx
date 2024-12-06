@@ -1,11 +1,22 @@
 [package]
 name = "pcs"
 version = "0.1.0"
-authors = ["Raoul Strackx <raoul.strackx@fortanix.com>", "Nikita Shyrei <nikita.shyrei@fortanix.com>"]
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
 edition = "2018"
-description = "Datastructures related to the Intel Provisioning Certification Service. DCAP attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...). This crate provides an easy interface for these artifacts"
+description = """
+Provisioning Certification Service (PCS) data structures.
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+Data structures related to the Intel Provisioning Certification Service.
+DCAP attestation requires handling of DCAP artifacts (e.g., PCK certs, TCB info, ...).
+This crate provides an easy interface for these artifacts.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/api/pcs/"
+homepage = "https://edp.fortanix.com/"
+keywords = ["sgx", "enclave", "dcap"]
+categories = ["os", "hardware-support"]
+
 
 [dependencies]
 dcap-ql = { version = "0.4.0", path = "../dcap-ql", default-features = false }
