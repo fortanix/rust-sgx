@@ -5,10 +5,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+use std::convert::TryFrom;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
-use serde::{Deserialize, Deserializer, Serialize};
+use base16::DecodeError as Base16DecodeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::de::Error as _;
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
@@ -18,6 +21,80 @@ use {
 
 use crate::pckcrt::TcbComponents;
 use crate::{io, Error, TcbStatus, Unverified, VerificationType, Verified};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fmspc([u8; 6]);
+
+#[derive(Debug)]
+pub enum FmspcDecodeError {
+    InvalidHex,
+    InvalidFmspcLength,
+}
+
+impl From<Base16DecodeError> for FmspcDecodeError {
+    fn from(_value: Base16DecodeError) -> FmspcDecodeError {
+        FmspcDecodeError::InvalidHex
+    }
+}
+
+impl Fmspc {
+    pub const fn new(value: [u8; 6]) -> Self {
+        Fmspc(value)
+    }
+
+    pub fn as_bytes(&self) -> &[u8; 6] {
+        &self.0
+    }
+}
+
+impl From<[u8; 6]> for Fmspc {
+    fn from(value: [u8; 6]) -> Fmspc {
+        Fmspc::new(value)
+    }
+}
+
+impl TryFrom<&[u8]> for Fmspc {
+    type Error = FmspcDecodeError;
+
+    fn try_from(value: &[u8]) -> Result<Fmspc, FmspcDecodeError> {
+        let value = <[u8; 6]>::try_from(value).map_err(|_| FmspcDecodeError::InvalidFmspcLength)?;
+        Ok(Fmspc::new(value))
+    }
+}
+
+impl TryFrom<&str> for Fmspc {
+    type Error = FmspcDecodeError;
+
+    fn try_from(value: &str) -> Result<Fmspc, FmspcDecodeError> {
+        let value = base16::decode(value)?;
+        Fmspc::try_from(value.as_slice())
+    }
+}
+
+impl ToString for Fmspc {
+    fn to_string(&self) -> String {
+        base16::encode_lower(&self.0)
+    }
+}
+
+impl Serialize for Fmspc {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Fmspc {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let fmspc = <&str>::deserialize(deserializer)?;
+        Fmspc::try_from(fmspc).map_err(|_| D::Error::custom("Bad fmspc format"))
+    }
+}
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
