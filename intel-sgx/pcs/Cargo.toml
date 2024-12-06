@@ -8,8 +8,8 @@ description = "Datastructures related to the Intel Provisioning Certification Se
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dcap-ql = { path = "../dcap-ql", default-features = false }
-sgx-isa = { path = "../sgx-isa", default-features = true }
+dcap-ql = { version = "0.4.0", path = "../dcap-ql", default-features = false }
+sgx-isa = { version = "0.4.1", path = "../sgx-isa", default-features = true }
 pkix = "0.2.0"
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 rustc-serialize = "0.3"
