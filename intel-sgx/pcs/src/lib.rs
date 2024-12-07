@@ -29,7 +29,7 @@ use {
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{TcbInfo, TcbData};
+pub use crate::tcb_info::{Fmspc, TcbInfo, TcbData};
 
 mod io;
 mod pckcrl;
