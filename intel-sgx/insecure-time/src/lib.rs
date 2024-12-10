@@ -25,7 +25,7 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use core::time::Duration;
 use core::ops::Add;
 
-const NANOS_PER_SEC: u32 = 1_000_000_000;
+const NANOS_PER_SEC: u64 = 1_000_000_000;
 
 pub trait NativeTime: PartialOrd + Copy + Add<core::time::Duration, Output = Self> + ToOwned {
     fn minimum() -> Self;
@@ -135,7 +135,7 @@ impl Ticks {
     pub fn from_duration(duration: Duration, freq: &Freq) -> Self {
         let freq = freq.as_u64();
         let ticks_secs = duration.as_secs() * freq;
-        let ticks_nsecs = duration.subsec_nanos() as u64 * freq / NANOS_PER_SEC as u64;
+        let ticks_nsecs = duration.subsec_nanos() as u64 * freq / NANOS_PER_SEC;
         Ticks::new(ticks_secs + ticks_nsecs)
     }
 
@@ -144,7 +144,7 @@ impl Ticks {
         let ticks = self.0.load(Ordering::Relaxed);
 
         let time_secs = ticks / freq;
-        let time_nsecs = (ticks % freq * NANOS_PER_SEC as u64) / freq;
+        let time_nsecs = (ticks % freq * NANOS_PER_SEC) / freq;
         let time_nsecs: u32 = time_nsecs.try_into().expect("must be smaller than 1sec");
 
         Duration::new(time_secs, time_nsecs)
@@ -798,7 +798,7 @@ mod tests {
         type Output = RandTime;
 
         fn add(self, other: Duration) -> Self::Output {
-            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC as u64 + other.subsec_nanos() as u64;
+            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC + other.subsec_nanos() as u64;
             RandTime(t)
         }
     }
@@ -829,7 +829,7 @@ mod tests {
         type Output = SgxTime;
 
         fn add(self, other: Duration) -> Self::Output {
-            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC as u64 + other.subsec_nanos() as u64;
+            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC + other.subsec_nanos() as u64;
             SgxTime(t)
         }
     }
