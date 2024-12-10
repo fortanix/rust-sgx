@@ -116,10 +116,9 @@ fn sgx_platform() -> Platform {
     Platform::SGX
 }
 
-#[derive(Clone, Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub struct TcbData<V: VerificationType = Verified> {
-    #[serde(default = "sgx_platform")]
     id: Platform,
     version: u16,
     issue_date: String,
@@ -128,9 +127,7 @@ pub struct TcbData<V: VerificationType = Verified> {
     pce_id: String,
     tcb_type: u16,
     tcb_evaluation_data_number: u64,
-    #[serde(rename = "tcbLevels")]
     tcb_levels: Vec<TcbLevel>,
-    #[serde(skip)]
     type_: PhantomData<V>,
 }
 
