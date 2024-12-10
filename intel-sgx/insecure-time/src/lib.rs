@@ -61,6 +61,7 @@ pub enum Error {
     UnexpectedTscInfo,
     UnknownFrequency,
     FrequencyCannotBeDetermined,
+    TypeOverflow,
 }
 
 #[cfg(not(target_env = "sgx"))]
@@ -94,10 +95,14 @@ impl PartialOrd<Ticks> for Ticks {
 }
 
 impl Add for Ticks {
-    type Output = Ticks;
+    type Output = Result<Ticks, Error>;
 
     fn add(self, other: Self) -> Self::Output {
-        Ticks(AtomicU64::new(self.0.load(Ordering::Relaxed) + other.0.load(Ordering::Relaxed)))
+        let t0 = self.0.load(Ordering::Relaxed);
+        let t1 = other.0.load(Ordering::Relaxed);
+        t0.checked_add(t1)
+            .ok_or(Error::TypeOverflow)
+            .map(|sum| Ticks(AtomicU64::new(sum)))
     }
 }
 
@@ -112,7 +117,21 @@ impl Ticks {
         Ticks(AtomicU64::new(t))
     }
 
+    pub const fn max() -> Self {
+        Ticks(AtomicU64::new(u64::MAX))
+    }
+
     pub fn now() -> Self {
+        // The RDTSC instruction reads the time-stamp counter and is guaranteed to
+        // return a monotonically increasing unique value whenever executed, except
+        // for a 64-bit counter wraparound. Intel guarantees that the time-stamp
+        // counter will not wraparound within 10 years after being reset. The period
+        // for counter wrap is longer for Pentium 4, Intel Xeon, P6 family, and
+        // Pentium processors.
+        // Source: Intel x86 manual Volume 3 Chapter 19.17 (Time-stamp counter)
+        //
+        // However, note that an attacker may arbitarily set this value on the
+        // host/hypervisor
         Ticks(Rdtscp::read().into())
     }
 
@@ -132,11 +151,12 @@ impl Ticks {
         self.0.store(t, Ordering::Relaxed);
     }
 
-    pub fn from_duration(duration: Duration, freq: &Freq) -> Self {
+    pub fn from_duration(duration: Duration, freq: &Freq) -> Result<Self, Error> {
         let freq = freq.as_u64();
-        let ticks_secs = duration.as_secs() * freq;
-        let ticks_nsecs = duration.subsec_nanos() as u64 * freq / NANOS_PER_SEC;
-        Ticks::new(ticks_secs + ticks_nsecs)
+        let ticks_secs = duration.as_secs().checked_mul(freq).ok_or(Error::TypeOverflow)?;
+        let ticks_nsecs = (duration.subsec_nanos() as u64)
+            .checked_mul(freq).ok_or(Error::TypeOverflow)? / NANOS_PER_SEC;
+        Ok(Ticks::new(ticks_secs + ticks_nsecs))
     }
 
     pub fn as_duration_ex(&self, freq: &Freq) -> Duration {
@@ -613,7 +633,13 @@ impl<T: NativeTime> Tsc<T> {
                 } else {
                     // Re-estimate freq when a time threshold is reached
                     if let Ok(Some((now, next_sync_interval, estimated_freq))) = self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
-                        next_sync.set(tsc_now + Ticks::from_duration(next_sync_interval, &estimated_freq));
+                        // When `next_tsc` overflows, the system has been running for over 10
+                        // years, or an attacker manipulated the TSC value. As we can't trust TSC
+                        // anyway, we do the simple thing and continue trying to sync
+                        let duration = Ticks::from_duration(next_sync_interval, &estimated_freq);
+                        if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
+                            next_sync.set(next_tsc);
+                        }
                         frequency.set(&estimated_freq);
                         return now;
                     }
