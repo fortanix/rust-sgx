@@ -10,16 +10,18 @@ use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::time::Duration;
 
-use super::{Fetcher, ProvisioningServiceApi, StatusCode};
 use super::intel::{PckCrlApi, QeIdApi, TcbInfoApi};
-use crate::provisioning_client::{Client, ClientBuilder, PckCertService, PckCertsService, PckCertIn, PckCertsIn, PcsVersion};
+use super::{Fetcher, ProvisioningServiceApi, StatusCode};
+use crate::provisioning_client::{
+    Client, ClientBuilder, PckCertIn, PckCertService, PckCertsIn, PckCertsService, PcsVersion,
+};
 use crate::Error;
 
 /// A Provisioning Certificate client builder for Azure. It is based on the internal logic of the Azure DCAP
 /// provider. Only the PCK certificates are downloaded from Azure. For others Intel is contacted.
 /// This is required because Azure by default provides an older `tcbinfo` with a `next_update`
 /// field in the past (see PROD-5800).
-/// For info on the Azure DCAP provider: https://github.com/microsoft/Azure-DCAP-Client
+/// For info on the Azure DCAP provider: <https://github.com/microsoft/Azure-DCAP-Client>
 pub struct AzureProvisioningClientBuilder {
     api_version: PcsVersion,
     client_builder: ClientBuilder,
@@ -44,7 +46,8 @@ impl AzureProvisioningClientBuilder {
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        self.client_builder.build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
+        self.client_builder
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
     }
 }
 
@@ -54,14 +57,16 @@ pub struct PckCertsApi {
 
 impl PckCertsApi {
     pub(crate) fn new(api_key: Option<String>) -> PckCertsApi {
-        PckCertsApi {
-            api_key,
-        }
+        PckCertsApi { api_key }
     }
 }
 
 impl<'inp> PckCertsService<'inp> for PckCertsApi {
-    fn build_input(&'inp self, enc_ppid: &'inp EncPpid, pce_id: PceId) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(
+        &'inp self,
+        enc_ppid: &'inp EncPpid,
+        pce_id: PceId,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCertsIn {
             enc_ppid,
             pce_id,
@@ -72,12 +77,15 @@ impl<'inp> PckCertsService<'inp> for PckCertsApi {
 }
 
 /// Implementation of pckcerts
-/// https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4
+/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
     type Input = PckCertsIn<'inp>;
     type Output = PckCerts;
 
-    fn build_request(&self, _input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(
+        &self,
+        _input: &Self::Input,
+    ) -> Result<(String, Vec<(String, String)>), Error> {
         Err(Error::RequestNotSupported)
     }
 
@@ -85,11 +93,15 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
         Err(Error::RequestNotSupported)
     }
 
-    fn parse_response(&self, _response_body: String, _response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        _response_body: String,
+        _response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         Err(Error::RequestNotSupported)
     }
 }
-
 
 pub struct PckCertApi {
     api_version: PcsVersion,
@@ -105,14 +117,19 @@ impl PckCertApi {
 
 impl PckCertApi {
     pub(crate) fn new(api_version: PcsVersion) -> PckCertApi {
-        PckCertApi {
-            api_version,
-        }
+        PckCertApi { api_version }
     }
 }
 
 impl<'inp> PckCertService<'inp> for PckCertApi {
-    fn build_input(&'inp self, encrypted_ppid: Option<&'inp EncPpid>, pce_id: &'inp PceId, cpu_svn: &'inp CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&'inp QeId>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(
+        &'inp self,
+        encrypted_ppid: Option<&'inp EncPpid>,
+        pce_id: &'inp PceId,
+        cpu_svn: &'inp CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&'inp QeId>,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCertIn {
             encrypted_ppid,
             pce_id,
@@ -132,7 +149,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         // Re-implements `build_pck_cert_url` from Azure's DCAP Client
         // https://github.com/microsoft/Azure-DCAP-Client/blob/master/src/dcap_provider.cpp#L677
-        fn build_pck_cert_url(pce_id: &PceId, cpu_svn: &CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: &QeId, api_version: PcsVersion) -> String {
+        fn build_pck_cert_url(
+            pce_id: &PceId,
+            cpu_svn: &CpuSvn,
+            pce_isvsvn: PceIsvsvn,
+            qe_id: &QeId,
+            api_version: PcsVersion,
+        ) -> String {
             // Constants from the Azure DCAP client:
             // (host of primary URL is down)
             let base_url = PckCertApi::SECONDARY_CERT_URL;
@@ -147,7 +170,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
         }
 
         let qe_id = input.qe_id.ok_or(Error::NoQeID)?;
-        let url = build_pck_cert_url(input.pce_id, input.cpu_svn, input.pce_isvsvn, qe_id, input.api_version);
+        let url = build_pck_cert_url(
+            input.pce_id,
+            input.cpu_svn,
+            input.pce_isvsvn,
+            qe_id,
+            input.api_version,
+        );
         Ok((url, Vec::new()))
     }
 
@@ -159,14 +188,31 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "Cannot find the requested certificate")),
-            StatusCode::InternalServerError => Err(Error::PCSError(status_code, "PCS suffered from an internal server error")),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(status_code, "PCS is temporarily unavailable")),
-            __ => Err(Error::PCSError(status_code.clone(), "Unexpected response from PCS server")),
+            StatusCode::NotFound => Err(Error::PCSError(
+                status_code,
+                "Cannot find the requested certificate",
+            )),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code.clone(),
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, _response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<PckCert<Unverified>, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        _response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<PckCert<Unverified>, Error> {
         #[derive(Deserialize)]
         struct AzurePckCertResp {
             #[serde(rename = "pckCert")]
@@ -177,8 +223,11 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
             cert_chain: String,
         }
 
-        let AzurePckCertResp { pck_cert, cert_chain } =
-            serde_json::from_str(&response_body).map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))?;
+        let AzurePckCertResp {
+            pck_cert,
+            cert_chain,
+        } = serde_json::from_str(&response_body)
+            .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))?;
 
         let cert_chain: Vec<String> = percent_encoding::percent_decode_str(&cert_chain)
             .decode_utf8()
@@ -197,10 +246,10 @@ mod tests {
 
     use pcs::PckID;
 
-    use crate::reqwest_client;
     use crate::provisioning_client::{
-        AzureProvisioningClientBuilder, test_helpers, PcsVersion, ProvisioningClient
+        test_helpers, AzureProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
+    use crate::reqwest_client;
 
     const PCKID_TEST_FILE: &str = "./tests/data/azure_icelake_pckid.csv";
 
@@ -215,15 +264,29 @@ mod tests {
         let root_cas = [&root_ca[..]];
 
         // TODO [EDP-105] Enable `PcsVersion::V4` tests
-        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-            let pck = client.pckcert(None, &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, Some(&pckid.qe_id)).unwrap();
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pck = client
+                .pckcert(
+                    None,
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    Some(&pckid.qe_id),
+                )
+                .unwrap();
 
             let pck = pck.verify(&root_cas).unwrap();
             assert_eq!(
                 test_helpers::get_cert_subject(&pck.ca_chain().last().unwrap()),
                 "Intel SGX Root CA"
             );
-            assert_eq!(test_helpers::get_cert_subject(&pck.pck_pem()), "Intel SGX PCK Certificate");
+            assert_eq!(
+                test_helpers::get_cert_subject(&pck.pck_pem()),
+                "Intel SGX PCK Certificate"
+            );
 
             let fmspc = pck.fmspc().unwrap();
             assert!(client.tcbinfo(&fmspc).is_ok());
