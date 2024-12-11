@@ -30,7 +30,7 @@ use {
 };
 
 use crate::io::{self};
-use crate::tcb_info::{TcbData, TcbLevel};
+use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
 use crate::{CpuSvn, Error, Unverified, VerificationType, Verified};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
@@ -295,7 +295,7 @@ impl PckCerts {
         Ok(pcks)
     }
 
-    pub fn fmspc(&self) -> Result<Vec<u8>, Error> {
+    pub fn fmspc(&self) -> Result<Fmspc, Error> {
         let pck = self.iter().nth(0).ok_or(Error::NoPckCertData)?;
         let sgx_extension = SGXPCKCertificateExtension::try_from(pck).map_err(|e| Error::InvalidPckFormat(e))?;
         Ok(sgx_extension.fmspc)
@@ -458,6 +458,16 @@ impl PckCert<Verified> {
         let pk = cert.public_key();
         pk.ec_public()
     }
+
+    pub fn ppid(&self) -> Result<Vec<u8>, ASN1Error> {
+        let extension = self.sgx_extension()?;
+        Ok(extension.ppid)
+    }
+
+    pub fn fmspc(&self) -> Result<Fmspc, ASN1Error> {
+        let extension = self.sgx_extension()?;
+        Ok(extension.fmspc)
+    }
 }
 
 impl<V: VerificationType> PckCert<V> {
@@ -535,11 +545,6 @@ impl<V: VerificationType> PckCert<V> {
         } else {
             Err(Error::InvalidPck("PckCert isn't valid for provided TCB".into()))
         }
-    }
-
-    pub fn fmspc(&self) -> Result<Vec<u8>, Error> {
-        let sgx_extension = self.sgx_extension().map_err(|e| Error::InvalidPckFormat(e))?;
-        Ok(sgx_extension.fmspc)
     }
 }
 
@@ -624,12 +629,12 @@ impl BERDecodable for SGXPlatformConfiguration {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct SGXPCKCertificateExtension {
     pub ppid: Vec<u8>,
     pub tcb: PlatformTCB,
     pub pceid: u16,
-    pub fmspc: Vec<u8>,
+    pub fmspc: Fmspc,
     pub sgx_type: SGXType,
     pub platform_instance_id: Option<Vec<u8>>,
     pub configuration: Option<SGXPlatformConfiguration>,
@@ -679,11 +684,8 @@ impl SGXPCKCertificateExtension {
                     configuration = Some(reader.next(|reader| SGXPlatformConfiguration::decode_ber(reader))?);
                 }
 
-                if ppid.len() != 16
-                    || pceid.len() != 2
-                    || fmspc.len() != 6
-                    || platform_instance_id.as_ref().map_or(false, |id| id.len() != 16)
-                {
+                let fmspc = Fmspc::try_from(&fmspc).map_err(|_| ASN1Error::new(ASN1ErrorKind::Invalid))?;
+                if ppid.len() != 16 || pceid.len() != 2 || platform_instance_id.as_ref().map_or(false, |id| id.len() != 16) {
                     return Err(ASN1Error::new(ASN1ErrorKind::Invalid));
                 }
 
@@ -921,7 +923,7 @@ mod tests {
         assert_eq!(sgx_extension.tcb.tcb_components.0.pcesvn, 9);
         assert_eq!(sgx_extension.tcb.cpusvn, [13, 13, 2, 4, 1, 128, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(sgx_extension.pceid, 0);
-        assert_eq!(sgx_extension.fmspc, [0, 144, 110, 161, 0, 0]);
+        assert_eq!(sgx_extension.fmspc, Fmspc::new([0, 144, 110, 161, 0, 0]));
         assert_eq!(sgx_extension.sgx_type, SGXType::Standard);
         assert!(sgx_extension.platform_instance_id.is_none());
         assert!(sgx_extension.configuration.is_none());
@@ -957,7 +959,7 @@ mod tests {
         assert_eq!(sgx_extension.tcb.tcb_components.0.pcesvn, 10);
         assert_eq!(sgx_extension.tcb.cpusvn, [3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(sgx_extension.pceid, 0);
-        assert_eq!(sgx_extension.fmspc, [16, 96, 106, 0, 0, 0]);
+        assert_eq!(sgx_extension.fmspc, Fmspc::new([16, 96, 106, 0, 0, 0]));
         assert_eq!(sgx_extension.sgx_type, SGXType::Scalable);
         assert_eq!(
             sgx_extension.platform_instance_id.unwrap(),
@@ -998,7 +1000,7 @@ mod tests {
             assert_eq!(sgx_extension.tcb.tcb_components.0.pcesvn, 9);
             assert_eq!(sgx_extension.tcb.cpusvn, [13, 13, 2, 4, 1, 128, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
             assert_eq!(sgx_extension.pceid, 0);
-            assert_eq!(sgx_extension.fmspc, [0, 144, 110, 161, 0, 0]);
+            assert_eq!(sgx_extension.fmspc, Fmspc::new([0, 144, 110, 161, 0, 0]));
         }
     }
 
@@ -1010,7 +1012,7 @@ mod tests {
         let pck_chain: Qe3CertDataPckCertChain = sig.certification_data().unwrap();
         let pck = PckCert::from_pck_chain(pck_chain.certs.into()).unwrap();
         let sgx_extension = pck.sgx_extension().unwrap();
-        assert_eq!(sgx_extension.fmspc, [0, 144, 110, 161, 0, 0]);
+        assert_eq!(sgx_extension.fmspc, Fmspc::new([0, 144, 110, 161, 0, 0]));
     }
 
     #[test]
@@ -1041,7 +1043,7 @@ mod tests {
         assert_eq!(sgx_extension.tcb.tcb_components.0.pcesvn, 10);
         assert_eq!(sgx_extension.tcb.cpusvn, [14, 14, 2, 4, 1, 128, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(sgx_extension.pceid, 0);
-        assert_eq!(sgx_extension.fmspc, [0, 144, 110, 161, 0, 0]);
+        assert_eq!(sgx_extension.fmspc, Fmspc::new([0, 144, 110, 161, 0, 0]));
     }
 
     #[test]
