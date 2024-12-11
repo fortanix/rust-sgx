@@ -14,8 +14,8 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned,
-    TcbInfo, Unverified,
+    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
+    QeIdentitySigned, TcbInfo, Unverified,
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -224,7 +224,7 @@ pub trait QeIdService<'inp>:
 #[derive(Hash)]
 pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
-    pub(crate) fmspc: &'i Vec<u8>,
+    pub(crate) fmspc: &'i Fmspc,
 }
 
 impl WithApiVersion for TcbInfoIn<'_> {
@@ -236,10 +236,8 @@ impl WithApiVersion for TcbInfoIn<'_> {
 pub trait TcbInfoService<'inp>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
 {
-    fn build_input(
-        &'inp self,
-        fmspc: &'inp Vec<u8>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&'inp self, fmspc: &'inp Fmspc)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 pub struct ClientBuilder {
@@ -530,7 +528,7 @@ pub trait ProvisioningClient {
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error>;
 
-    fn tcbinfo(&self, fmspc: &Vec<u8>) -> Result<TcbInfo, Error>;
+    fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error>;
 
     fn pckcrl(&self) -> Result<PckCrl, Error>;
 
@@ -588,7 +586,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcbinfo(&self, fmspc: &Vec<u8>) -> Result<TcbInfo, Error> {
+    fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error> {
         let input = self.tcbinfo_service.pcs_service().build_input(fmspc);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }

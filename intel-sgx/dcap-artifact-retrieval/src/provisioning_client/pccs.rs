@@ -14,7 +14,8 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified,
+    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
+    Unverified,
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -260,7 +261,7 @@ impl TcbInfoApi {
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
     fn build_input(
         &'inp self,
-        fmspc: &'inp Vec<u8>,
+        fmspc: &'inp Fmspc,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version,
@@ -278,7 +279,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let fmspc = input.fmspc.to_hex();
+        let fmspc = input.fmspc.as_bytes().to_hex();
         let url = format!(
             "{}/sgx/certification/v{}/tcb?fmspc={}",
             self.base_url, api_version, fmspc
@@ -454,6 +455,8 @@ mod tests {
     #[test]
     #[ignore = "needs a running PCCS service"] // FIXME
     pub fn pck_cached() {
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
 
@@ -470,6 +473,8 @@ mod tests {
                         Some(&pckid.qe_id),
                     )
                     .unwrap();
+
+                let pck = pck.verify(&root_cas).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -494,7 +499,15 @@ mod tests {
                             .to_owned()
                     };
 
-                    assert_eq!(pck.fmspc().unwrap(), cached_pck.fmspc().unwrap());
+                    assert_eq!(
+                        pck.fmspc().unwrap(),
+                        cached_pck
+                            .clone()
+                            .verify(&root_cas)
+                            .unwrap()
+                            .fmspc()
+                            .unwrap()
+                    );
                     assert_eq!(pck.ca_chain(), cached_pck.ca_chain());
                 }
 
@@ -509,7 +522,15 @@ mod tests {
                     )
                     .unwrap();
 
-                assert_eq!(pck.fmspc().unwrap(), pck_from_service.fmspc().unwrap());
+                assert_eq!(
+                    pck.fmspc().unwrap(),
+                    pck_from_service
+                        .clone()
+                        .verify(&root_cas)
+                        .unwrap()
+                        .fmspc()
+                        .unwrap()
+                );
                 assert_eq!(pck.ca_chain(), pck_from_service.ca_chain());
             }
         }
