@@ -68,6 +68,7 @@ pub struct EnclaveBuilder<'a> {
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, anyhow::Error>>>,
     hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     cmd_args: Option<Vec<Vec<u8>>>,
 }
 
@@ -145,6 +146,7 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
+            force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
             cmd_args: None,
         };
 
@@ -266,6 +268,16 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    /// SGXv2 platforms allow enclaves to use the `rdtsc` instruction. This can speed up
+    /// performance significantly as enclave no longer need to call out to userspace to request the
+    /// current time. Unfortunately, older enclaves are not compatible with new enclave runners.
+    /// Also, sometimes the behavior of enclaves always calling out the userspace needs to be
+    /// simulated. This setting enforces the old behavior.
+    pub fn force_insecure_time_usercalls(&mut self, force_time_usercalls: bool) -> &mut Self {
+        self.force_time_usercalls = force_time_usercalls;
+        self
+    }
+
     fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
         self.cmd_args.get_or_insert_with(|| vec![b"enclave".to_vec()])
     }
@@ -309,7 +321,7 @@ impl<'a> EnclaveBuilder<'a> {
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), anyhow::Error> {
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool, bool), anyhow::Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -320,6 +332,7 @@ impl<'a> EnclaveBuilder<'a> {
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
         let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
         let forward_panics = self.forward_panics;
+        let force_time_usercalls = self.force_time_usercalls;
         if mapping.tcss.is_empty() {
             unimplemented!()
         }
@@ -328,6 +341,7 @@ impl<'a> EnclaveBuilder<'a> {
             mapping.info.address(),
             mapping.info.size(),
             forward_panics,
+            force_time_usercalls,
         ))
     }
 
@@ -336,7 +350,7 @@ impl<'a> EnclaveBuilder<'a> {
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
+            .map(|(t, a, s, fp, dti)| Command::internal_new(t, a, s, c, fp, dti, args))
     }
 
     /// Panics if you have previously called [`arg`] or [`args`].
@@ -349,6 +363,6 @@ impl<'a> EnclaveBuilder<'a> {
         }
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, fp, dti)| Library::internal_new(t, a, s, c, fp, dti))
     }
 }
