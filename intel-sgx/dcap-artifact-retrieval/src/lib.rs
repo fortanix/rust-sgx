@@ -8,18 +8,21 @@
 //! DCAP attestations require access to Intel-signed artifacts. This library provides clients to
 //! access these artifacts both from Intel directly, and from Microsoft Azure.
 
-mod provisioning_client;
-pub use provisioning_client::*;
+#[cfg(not(target_env = "sgx"))]
+pub mod cli;
+pub mod provisioning_client;
+
+pub use self::provisioning_client::*;
 
 use std::borrow::Cow;
 use std::io::Error as IoError;
 use std::str::Utf8Error;
 
-#[cfg(feature = "reqwest")]
-pub use reqwest::blocking::{Client as ReqwestClient};
 use pcs::Error as OAError;
 use pkix::ASN1Error;
 use quick_error::quick_error;
+#[cfg(feature = "reqwest")]
+pub use reqwest::blocking::Client as ReqwestClient;
 
 quick_error! {
     #[derive(Debug)]

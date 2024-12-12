@@ -7,16 +7,22 @@
 
 //! Interface to the Intel DCAP attestation API
 //! Origins:
-//!   - https://api.portal.trustedservices.intel.com/provisioning-certification
-//!   - https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf
+//! - <https://api.portal.trustedservices.intel.com/provisioning-certification>
+//! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
+use pcs::{
+    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo,
+    Unverified,
+};
 use percent_encoding::percent_decode;
-use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo, Unverified};
 use pkix::pem::PemBlock;
 use rustc_serialize::hex::ToHex;
 use std::time::Duration;
 
-use super::{Fetcher, PckCertIn, PckCertsIn, PckCertService, PckCertsService, PckCrlIn, PckCrlService, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService};
+use super::{
+    Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService, PckCrlIn, PckCrlService,
+    ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
+};
 use crate::provisioning_client::{Client, ClientBuilder, PcsVersion};
 use crate::Error;
 
@@ -51,7 +57,8 @@ impl IntelProvisioningClientBuilder {
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        self.client_builder.build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
+        self.client_builder
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
     }
 }
 
@@ -70,7 +77,11 @@ impl PckCertsApi {
 }
 
 impl<'inp> PckCertsService<'inp> for PckCertsApi {
-    fn build_input(&'inp self, enc_ppid: &'inp EncPpid, pce_id: PceId) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(
+        &'inp self,
+        enc_ppid: &'inp EncPpid,
+        pce_id: PceId,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCertsIn {
             enc_ppid,
             pce_id,
@@ -81,7 +92,14 @@ impl<'inp> PckCertsService<'inp> for PckCertsApi {
 }
 
 impl<'inp> PckCertService<'inp> for PckCertApi {
-    fn build_input(&'inp self, encrypted_ppid: Option<&'inp EncPpid>, pce_id: &'inp PceId, cpu_svn: &'inp CpuSvn, pce_isvsvn: PceIsvsvn, qe_id: Option<&'inp QeId>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(
+        &'inp self,
+        encrypted_ppid: Option<&'inp EncPpid>,
+        pce_id: &'inp PceId,
+        cpu_svn: &'inp CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&'inp QeId>,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCertIn {
             encrypted_ppid,
             pce_id,
@@ -95,7 +113,7 @@ impl<'inp> PckCertService<'inp> for PckCertApi {
 }
 
 /// Implementation of pckcerts
-/// https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4
+/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
     type Input = PckCertsIn<'inp>;
     type Output = PckCerts;
@@ -123,19 +141,32 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "Cannot find the requested certificate")),
+            StatusCode::NotFound => Err(Error::PCSError(
+                status_code,
+                "Cannot find the requested certificate",
+            )),
             StatusCode::TooManyRequests => Err(Error::PCSError(status_code, "Too many requests")),
-            StatusCode::InternalServerError => {
-                Err(Error::PCSError(status_code, "PCS suffered from an internal server error"))
-            }
-            StatusCode::ServiceUnavailable => {
-                Err(Error::PCSError(status_code, "PCS is temporarily unavailable"))
-            }
-            _ => Err(Error::PCSError(status_code, "Unexpected response from PCS server")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            _ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-Certificate-Issuer-Chain")?;
         PckCerts::parse(&response_body, ca_chain).map_err(|e| Error::OfflineAttestationError(e))
     }
@@ -156,14 +187,17 @@ impl PckCertApi {
 }
 
 /// Implementation of pckcert
-/// https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-certificate-v4
+/// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-certificate-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
     type Input = PckCertIn<'inp>;
     type Output = PckCert<Unverified>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let encrypted_ppid = input.encrypted_ppid.ok_or(Error::NoEncPPID).map(|e_ppid| e_ppid.to_hex())?;
+        let encrypted_ppid = input
+            .encrypted_ppid
+            .ok_or(Error::NoEncPPID)
+            .map(|e_ppid| e_ppid.to_hex())?;
         let cpusvn = input.cpu_svn.to_hex();
         let pcesvn = input.pce_isvsvn.to_le_bytes().to_hex();
         let pceid = input.pce_id.to_le_bytes().to_hex();
@@ -186,19 +220,32 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "Cannot find the requested certificate")),
+            StatusCode::NotFound => Err(Error::PCSError(
+                status_code,
+                "Cannot find the requested certificate",
+            )),
             StatusCode::TooManyRequests => Err(Error::PCSError(status_code, "Too many requests")),
-            StatusCode::InternalServerError => {
-                Err(Error::PCSError(status_code, "PCS suffered from an internal server error"))
-            }
-            StatusCode::ServiceUnavailable => {
-                Err(Error::PCSError(status_code, "PCS is temporarily unavailable"))
-            }
-            _ => Err(Error::PCSError(status_code, "Unexpected response from PCS server")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            _ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-Certificate-Issuer-Chain")?;
         Ok(PckCert::new(response_body, ca_chain))
     }
@@ -210,9 +257,7 @@ pub struct PckCrlApi {
 
 impl PckCrlApi {
     pub fn new(api_version: PcsVersion) -> Self {
-        PckCrlApi {
-            api_version,
-        }
+        PckCrlApi { api_version }
     }
 }
 
@@ -225,7 +270,7 @@ impl<'inp> PckCrlService<'inp> for PckCrlApi {
 }
 
 /// Implementation of pckcrl
-/// See: https://api.portal.trustedservices.intel.com/documentation#pcs-revocation-v4
+/// See: <https://api.portal.trustedservices.intel.com/documentation#pcs-revocation-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Input = PckCrlIn;
     type Output = PckCrl;
@@ -246,17 +291,27 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::InternalServerError => {
-                Err(Error::PCSError(status_code, "PCS suffered from an internal server error"))
-            }
-            StatusCode::ServiceUnavailable => {
-                Err(Error::PCSError(status_code, "PCS is temporarily unavailable"))
-            }
-            __ => Err(Error::PCSError(status_code, "Unexpected response from PCS server")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-CRL-Issuer-Chain")?;
         let crl = PckCrl::new(response_body, ca_chain)?;
         Ok(crl)
@@ -269,14 +324,15 @@ pub struct TcbInfoApi {
 
 impl TcbInfoApi {
     pub fn new(api_version: PcsVersion) -> Self {
-        TcbInfoApi {
-            api_version,
-        }
+        TcbInfoApi { api_version }
     }
 }
 
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
-    fn build_input(&'inp self, fmspc: &'inp Vec<u8>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(
+        &'inp self,
+        fmspc: &'inp Vec<u8>,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version.clone(),
             fmspc,
@@ -285,7 +341,7 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
 }
 
 // Implementation of Get TCB Info
-// https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4
+// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
 impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
     type Input = TcbInfoIn<'inp>;
     type Output = TcbInfo;
@@ -308,18 +364,30 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "QE identity Cannot be found")),
-            StatusCode::InternalServerError => {
-                Err(Error::PCSError(status_code, "PCS suffered from an internal server error"))
+            StatusCode::NotFound => {
+                Err(Error::PCSError(status_code, "QE identity Cannot be found"))
             }
-            StatusCode::ServiceUnavailable => {
-                Err(Error::PCSError(status_code, "PCS is temporarily unavailable"))
-            }
-            __ => Err(Error::PCSError(status_code, "Unexpected response from PCS server")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         let key = match api_version {
             PcsVersion::V3 => "SGX-TCB-Info-Issuer-Chain",
             PcsVersion::V4 => "TCB-Info-Issuer-Chain",
@@ -336,9 +404,7 @@ pub struct QeIdApi {
 
 impl QeIdApi {
     pub fn new(api_version: PcsVersion) -> Self {
-        QeIdApi {
-            api_version,
-        }
+        QeIdApi { api_version }
     }
 }
 
@@ -351,7 +417,7 @@ impl<'inp> QeIdService<'inp> for QeIdApi {
 }
 
 /// Implementation of qe/identity
-/// https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4
+/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     type Input = QeIdIn;
     type Output = QeIdentitySigned;
@@ -372,18 +438,30 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
                 status_code,
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "QE identity Cannot be found")),
-            StatusCode::InternalServerError => {
-                Err(Error::PCSError(status_code, "PCS suffered from an internal server error"))
+            StatusCode::NotFound => {
+                Err(Error::PCSError(status_code, "QE identity Cannot be found"))
             }
-            StatusCode::ServiceUnavailable => {
-                Err(Error::PCSError(status_code, "PCS is temporarily unavailable"))
-            }
-            __ => Err(Error::PCSError(status_code, "Unexpected response from PCS server")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
         }
     }
 
-    fn parse_response(&self, response_body: String, response_headers: Vec<(String, String)>, _api_version: PcsVersion) -> Result<Self::Output, Error> {
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
         let ca_chain = parse_issuer_header(&response_headers, "SGX-Enclave-Identity-Issuer-Chain")?;
         let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
         Ok(id)
@@ -391,7 +469,10 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 }
 
 /// Returns the certificate chain starting from the leaf CA
-fn parse_issuer_header(headers: &Vec<(String, String)>, header: &'static str) -> Result<Vec<String>, Error> {
+fn parse_issuer_header(
+    headers: &Vec<(String, String)>,
+    header: &'static str,
+) -> Result<Vec<String>, Error> {
     let certchain = headers
         .iter()
         .find_map(|(key, value)| {
@@ -414,20 +495,19 @@ fn parse_issuer_header(headers: &Vec<(String, String)>, header: &'static str) ->
     Ok(chain)
 }
 
-
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
-    use std::path::PathBuf;
-    use std::time::Duration;
     use std::hash::Hash;
     use std::hash::Hasher;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
     use pcs::PckID;
 
-    use crate::reqwest_client;
     use crate::provisioning_client::{
-        test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient
+        test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
+    use crate::reqwest_client;
     use std::hash::DefaultHasher;
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
@@ -448,8 +528,13 @@ mod tests {
             }
             let client = intel_builder.build(reqwest_client());
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pcks = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pcks = client
+                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .unwrap();
                 assert_eq!(
                     test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
                     "Intel SGX Root CA"
@@ -470,8 +555,13 @@ mod tests {
             }
             let client = intel_builder.build(reqwest_client());
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pcks = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pcks = client
+                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -481,10 +571,16 @@ mod tests {
 
                     let (cached_pcks, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcerts_service.pcs_service().build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                        let input = client
+                            .pckcerts_service
+                            .pcs_service()
+                            .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
                         input.hash(&mut hasher);
 
-                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
                     };
 
                     assert_eq!(pcks.fmspc().unwrap(), cached_pcks.fmspc().unwrap());
@@ -492,7 +588,8 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let pcks_from_service = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                let pcks_from_service = client
+                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 assert_eq!(pcks, pcks_from_service);
@@ -510,8 +607,18 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pck = client.pckcert(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None)
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pck = client
+                    .pckcert(
+                        Some(&pckid.enc_ppid),
+                        &pckid.pce_id,
+                        &pckid.cpu_svn,
+                        pckid.pce_isvsvn,
+                        None,
+                    )
                     .unwrap();
                 assert_eq!(
                     test_helpers::get_cert_subject(pck.ca_chain().last().unwrap()),
@@ -530,8 +637,18 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pck = client.pckcert(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None)
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pck = client
+                    .pckcert(
+                        Some(&pckid.enc_ppid),
+                        &pckid.pce_id,
+                        &pckid.cpu_svn,
+                        pckid.pce_isvsvn,
+                        None,
+                    )
                     .unwrap();
 
                 // The cache should be populated after initial service call
@@ -542,10 +659,19 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcert_service.pcs_service().build_input(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None);
+                        let input = client.pckcert_service.pcs_service().build_input(
+                            Some(&pckid.enc_ppid),
+                            &pckid.pce_id,
+                            &pckid.cpu_svn,
+                            pckid.pce_isvsvn,
+                            None,
+                        );
                         input.hash(&mut hasher);
 
-                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
                     };
 
                     assert_eq!(pck.fmspc().unwrap(), cached_pck.fmspc().unwrap());
@@ -553,7 +679,14 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let pck_from_service = client.pckcert(Some(&pckid.enc_ppid), &pckid.pce_id, &pckid.cpu_svn, pckid.pce_isvsvn, None)
+                let pck_from_service = client
+                    .pckcert(
+                        Some(&pckid.enc_ppid),
+                        &pckid.pce_id,
+                        &pckid.cpu_svn,
+                        pckid.pce_isvsvn,
+                        None,
+                    )
                     .unwrap();
 
                 assert_eq!(pck.fmspc().unwrap(), pck_from_service.fmspc().unwrap());
@@ -571,8 +704,13 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pckcerts = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pckcerts = client
+                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .unwrap();
                 assert!(client
                     .tcbinfo(&pckcerts.fmspc().unwrap())
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
@@ -590,8 +728,13 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap().iter() {
-                let pckcerts = client.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone()).unwrap();
+            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+                .unwrap()
+                .iter()
+            {
+                let pckcerts = client
+                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.tcbinfo(&fmspc).unwrap();
 
@@ -606,7 +749,10 @@ mod tests {
                         let input = client.tcbinfo_service.pcs_service().build_input(&fmspc);
                         input.hash(&mut hasher);
 
-                        cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
                     };
 
                     assert_eq!(tcb_info, cached_tcb_info);
@@ -658,15 +804,17 @@ mod tests {
                     let input = client.pckcrl_service.pcs_service().build_input();
                     input.hash(&mut hasher);
 
-                    cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                    cache
+                        .get_mut(&hasher.finish())
+                        .expect("Can't find key in cache")
+                        .to_owned()
                 };
 
                 assert_eq!(pckcrl, cached_pckcrl);
             }
 
             // Second service call should return value from cache
-            let pckcrl_from_service = client.pckcrl()
-                .unwrap();
+            let pckcrl_from_service = client.pckcrl().unwrap();
 
             assert_eq!(pckcrl, pckcrl_from_service);
         }
@@ -709,15 +857,17 @@ mod tests {
                     let input = client.qeid_service.pcs_service().build_input();
                     input.hash(&mut hasher);
 
-                    cache.get_mut(&hasher.finish()).expect("Can't find key in cache").to_owned()
+                    cache
+                        .get_mut(&hasher.finish())
+                        .expect("Can't find key in cache")
+                        .to_owned()
                 };
 
                 assert_eq!(qe_id, cached_qeid);
             }
 
             // Second service call should return value from cache
-            let qeid_from_service = client.qe_identity()
-                .unwrap();
+            let qeid_from_service = client.qe_identity().unwrap();
 
             assert_eq!(qe_id, qeid_from_service);
         }
