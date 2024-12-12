@@ -124,11 +124,22 @@ pub fn main() {
         };
     }
 
-    fn is_pckid_file(filename: String) -> Result<(), String> {
+    fn is_file(filename: String) -> Result<(), String> {
         if Path::new(&filename).exists() {
             Ok(())
         } else {
             Err(format!("Cannot open {}", filename))
+        }
+    }
+
+    fn parse_pcs_version(value: &str) -> Result<PcsVersion, String> {
+        match value {
+            "3" => Ok(PcsVersion::V3),
+            "4" => Ok(PcsVersion::V4),
+            _ => Err(format!(
+                "Expected 3 or 4, found `{}`",
+                value
+            )),
         }
     }
 
@@ -143,13 +154,18 @@ pub fn main() {
             )
             (
                 @arg PCKID_FILE: --("pckid-file") +takes_value +required requires("PCKID_FILE")
-                validator(is_pckid_file)
+                validator(is_file)
                 "File describing the PCK identity (outputted by PCKIDRetrievalTool)"
             )
             (
                 @arg OUTPUT_DIR: --("output-dir") +takes_value +required requires("OUTPUT_DIR")
                 validator(is_directory)
                 "Destination folder for data retrieved from Intel certification services"
+            )
+            (
+                @arg API_VERSION: --("api-version") +takes_value
+                validator(|s| parse_pcs_version(s.as_str()).map(|_| ()))
+                "API version for provisioning service, supported values are 3 and 4 (default: 3)"
             )
             (
                 @arg API_KEY: --("api-key") +takes_value
@@ -168,19 +184,23 @@ pub fn main() {
     ) {
         (Some(pckid_file), Some(output_dir)) => {
             let verboseness = matches.occurrences_of("VERBOSE");
+            let api_version = parse_pcs_version(matches.value_of("API_VERSION").unwrap_or("3"))
+                .expect("validated");
+
             let origin =
                 parse_origin(matches.value_of("ORIGIN").unwrap_or("intel")).expect("validated");
+
             let fetcher = crate::reqwest_client();
             let client: Box<dyn ProvisioningClient> = match origin {
                 Origin::Intel => {
-                    let mut client_builder = IntelProvisioningClientBuilder::new(PcsVersion::V3);
+                    let mut client_builder = IntelProvisioningClientBuilder::new(api_version);
                     if let Some(api_key) = matches.value_of("API_KEY") {
                         client_builder.set_api_key(api_key.into());
                     }
                     Box::new(client_builder.build(fetcher))
                 }
                 Origin::Azure => {
-                    let client_builder = AzureProvisioningClientBuilder::new(PcsVersion::V3);
+                    let client_builder = AzureProvisioningClientBuilder::new(api_version);
                     Box::new(client_builder.build(fetcher))
                 }
             };
