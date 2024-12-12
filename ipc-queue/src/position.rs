@@ -19,18 +19,22 @@ use std::sync::atomic::Ordering;
 /// arranged as a ring buffer, we can assign a position to each value written/
 /// read to/from the queue. This is useful in case we want to know whether or
 /// not a particular value written to the queue has been read.
+#[allow(dead_code)]
 pub struct PositionMonitor<T: 'static> {
     read_epoch: Arc<AtomicU64>,
     fifo: Fifo<T>,
 }
 
 /// A read position in a queue.
+#[allow(dead_code)]
 pub struct ReadPosition(u64);
 
 /// A write position in a queue.
+#[allow(dead_code)]
 pub struct WritePosition(u64);
 
 impl<T> PositionMonitor<T> {
+    #[allow(dead_code)]
     pub (crate) fn new(read_epoch: Arc<AtomicU64>,fifo: Fifo<T>) -> PositionMonitor<T> {
         PositionMonitor {
             read_epoch,
