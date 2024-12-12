@@ -26,6 +26,7 @@ members = [
     "intel-sgx/fortanix-sgx-abi",
     "intel-sgx/fortanix-sgx-tools",
     "intel-sgx/ias",
+    "intel-sgx/insecure-time",
     "intel-sgx/pcs",
     "intel-sgx/report-test",
     "intel-sgx/sgx_pkix",
