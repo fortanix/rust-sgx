@@ -5,7 +5,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-//! Interface to the Intel DCAP attestation API
+//! Interface to the Intel DCAP attestation API.
+//!
 //! Origins:
 //! - <https://api.portal.trustedservices.intel.com/provisioning-certification>
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
@@ -14,17 +15,19 @@ use pcs::{
     CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo,
     Unverified,
 };
-use percent_encoding::percent_decode;
-use pkix::pem::PemBlock;
 use rustc_serialize::hex::ToHex;
 use std::time::Duration;
 
+use super::common::*;
 use super::{
-    Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService, PckCrlIn, PckCrlService,
-    ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
+    TcbInfoIn, TcbInfoService,
 };
-use crate::provisioning_client::{Client, ClientBuilder, PcsVersion};
 use crate::Error;
+
+const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
+const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
 
 pub struct IntelProvisioningClientBuilder {
     api_key: Option<String>,
@@ -121,12 +124,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input.enc_ppid.to_hex();
-        let pceid = input.pce_id.to_le_bytes().to_hex();
+        let pce_id = input.pce_id.to_le_bytes().to_hex();
         let url = format!(
-            "https://api.trustedservices.intel.com/sgx/certification/v{api_version}/pckcerts?encrypted_ppid={encrypted_ppid}&pceid={pceid}",
+            "{}/sgx/certification/v{}/pckcerts?encrypted_ppid={}&pceid={}",
+            INTEL_BASE_URL, api_version, encrypted_ppid, pce_id,
         );
         let headers = if let Some(api_key) = &input.api_key {
-            vec![("Ocp-Apim-Subscription-Key".to_owned(), api_key.to_string())]
+            vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
         };
@@ -167,7 +171,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-Certificate-Issuer-Chain")?;
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
         PckCerts::parse(&response_body, ca_chain).map_err(|e| Error::OfflineAttestationError(e))
     }
 }
@@ -199,13 +203,14 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
             .ok_or(Error::NoEncPPID)
             .map(|e_ppid| e_ppid.to_hex())?;
         let cpusvn = input.cpu_svn.to_hex();
-        let pcesvn = input.pce_isvsvn.to_le_bytes().to_hex();
-        let pceid = input.pce_id.to_le_bytes().to_hex();
+        let pce_isvsvn = input.pce_isvsvn.to_le_bytes().to_hex();
+        let pce_id = input.pce_id.to_le_bytes().to_hex();
         let url = format!(
-            "https://api.trustedservices.intel.com/sgx/certification/v{api_version}/pckcert?encrypted_ppid={encrypted_ppid}&cpusvn={cpusvn}&pcesvn={pcesvn}&pceid={pceid}"
+            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}",
+            INTEL_BASE_URL, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id,
         );
         let headers = if let Some(api_key) = input.api_key {
-            vec![("Ocp-Apim-Subscription-Key".to_owned(), api_key.to_string())]
+            vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
         };
@@ -246,7 +251,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-Certificate-Issuer-Chain")?;
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
         Ok(PckCert::new(response_body, ca_chain))
     }
 }
@@ -277,8 +282,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!(
-            "https://api.trustedservices.intel.com/sgx/certification/v{}/pckcrl?ca=processor&encoding=pem",
-            input.api_version as u8
+            "{}/sgx/certification/v{}/pckcrl?ca=processor&encoding=pem",
+            INTEL_BASE_URL, input.api_version as u8,
         );
         Ok((url, Vec::new()))
     }
@@ -312,7 +317,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, "SGX-PCK-CRL-Issuer-Chain")?;
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CRL_ISSUER_CHAIN_HEADER)?;
         let crl = PckCrl::new(response_body, ca_chain)?;
         Ok(crl)
     }
@@ -350,8 +355,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.to_hex();
         let url = format!(
-            "https://api.trustedservices.intel.com/sgx/certification/v{}/tcb?fmspc={fmspc}",
-            api_version
+            "{}/sgx/certification/v{}/tcb?fmspc={}",
+            INTEL_BASE_URL, api_version, fmspc,
         );
         Ok((url, Vec::new()))
     }
@@ -389,8 +394,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
         api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
         let key = match api_version {
-            PcsVersion::V3 => "SGX-TCB-Info-Issuer-Chain",
-            PcsVersion::V4 => "TCB-Info-Issuer-Chain",
+            PcsVersion::V3 => TCB_INFO_ISSUER_CHAIN_HEADER_V3,
+            PcsVersion::V4 => TCB_INFO_ISSUER_CHAIN_HEADER_V4,
         };
         let ca_chain = parse_issuer_header(&response_headers, key)?;
         let tcb_info = TcbInfo::parse(&response_body, ca_chain)?;
@@ -425,7 +430,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = format!(
-            "https://api.trustedservices.intel.com/sgx/certification/v{api_version}/qe/identity",
+            "{}/sgx/certification/v{}/qe/identity",
+            INTEL_BASE_URL, api_version,
         );
         Ok((url, Vec::new()))
     }
@@ -462,37 +468,10 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, "SGX-Enclave-Identity-Issuer-Chain")?;
+        let ca_chain = parse_issuer_header(&response_headers, ENCLAVE_ID_ISSUER_CHAIN_HEADER)?;
         let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
         Ok(id)
     }
-}
-
-/// Returns the certificate chain starting from the leaf CA
-fn parse_issuer_header(
-    headers: &Vec<(String, String)>,
-    header: &'static str,
-) -> Result<Vec<String>, Error> {
-    let certchain = headers
-        .iter()
-        .find_map(|(key, value)| {
-            if key.to_lowercase() == header.to_lowercase() {
-                Some(value)
-            } else {
-                None
-            }
-        })
-        .ok_or(Error::HeaderMissing(header))?;
-    let certchain = percent_decode(certchain.as_bytes())
-        .decode_utf8()
-        .map_err(|e| Error::HeaderDecodeError(e))?;
-    let mut chain: Vec<String> = vec![];
-    for cert in PemBlock::new(certchain.as_bytes()) {
-        let cert = String::from_utf8(cert.to_vec())
-            .map_err(|_| Error::CertificateParseError("Cert could not be decoded into utf8"))?;
-        chain.push(cert);
-    }
-    Ok(chain)
 }
 
 #[cfg(all(test, feature = "reqwest"))]

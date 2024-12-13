@@ -5,18 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::convert::TryInto;
 use std::path::{Path, PathBuf};
 
 use clap::clap_app;
 use pcs::PckID;
+use reqwest::Url;
 use rustc_serialize::hex::ToHex;
 use serde::de::{value, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::{
-    AzureProvisioningClientBuilder, Error, IntelProvisioningClientBuilder, PcsVersion,
-    ProvisioningClient, StatusCode,
+    AzureProvisioningClientBuilder, Error, IntelProvisioningClientBuilder,
+    PccsProvisioningClientBuilder, PcsVersion, ProvisioningClient, StatusCode,
 };
 
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
@@ -24,6 +24,7 @@ use crate::{
 enum Origin {
     Intel,
     Azure,
+    Pccs,
 }
 
 fn str_deserialize(s: &str) -> value::StrDeserializer<value::Error> {
@@ -63,21 +64,10 @@ fn download_dcap_artifacts(
             println!(" Storing artifacts:");
         }
 
-        // Fetch pckcerts, note that Azure does not support this API, instead we mimic it
-        let pckcerts = match prov_client.pckcerts(&pckid.enc_ppid, pckid.pce_id) {
-            Ok(pckcerts) => pckcerts,
-            Err(Error::RequestNotSupported) => prov_client
-                .pckcert(
-                    None,
-                    &pckid.pce_id,
-                    &pckid.cpu_svn,
-                    pckid.pce_isvsvn,
-                    Some(&pckid.qe_id),
-                )?
-                .try_into()
-                .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))?,
-            Err(e) => return Err(e),
-        };
+        // Fetch pckcerts, note that Azure and PCCS do not support this API,
+        // instead we mimic it using pckcert API.
+        let pckcerts = prov_client.pckcerts_with_fallback(&pckid)?;
+
         let pckcerts_file = pckcerts.store(output_dir, pckid.qe_id.as_slice())?;
 
         if verbose {
@@ -136,11 +126,21 @@ pub fn main() {
         match value {
             "3" => Ok(PcsVersion::V3),
             "4" => Ok(PcsVersion::V4),
-            _ => Err(format!(
-                "Expected 3 or 4, found `{}`",
-                value
-            )),
+            _ => Err(format!("Expected 3 or 4, found `{}`", value)),
         }
+    }
+
+    fn is_url(value: String) -> Result<(), String> {
+        let url = Url::parse(&value)
+            .map_err(|e| format!("cannot parse `{}` as a valid URL: {}", value, e))?;
+
+        if url.scheme() != "http" && url.scheme() != "https" {
+            return Err(format!(
+                "Expected an http or https URL found: `{}`",
+                url.scheme()
+            ));
+        }
+        Ok(())
     }
 
     let matches = clap::clap_app!(("DCAP Artifact Retrieval Tool") =>
@@ -172,6 +172,15 @@ pub fn main() {
                 "API key for authenticating with Intel provisioning service"
             )
             (
+                @arg PCCS_URL: --("pccs-url") +takes_value required_if("ORIGIN", "pccs")
+                validator(is_url)
+                "PCCS base URL. This is relevant only when using `--origin pccs`."
+            )
+            (
+                @arg INSECURE: -k --insecure
+                "Do not verify that server's hostname matches their TLS certificate and accept self-signed certificates. This is insecure."
+            )
+            (
                 @arg VERBOSE: -v --verbose
                 "Print information of which files are fetched"
             )
@@ -190,7 +199,11 @@ pub fn main() {
             let origin =
                 parse_origin(matches.value_of("ORIGIN").unwrap_or("intel")).expect("validated");
 
-            let fetcher = crate::reqwest_client();
+            let fetcher = match matches.is_present("INSECURE") {
+                false => crate::reqwest_client(),
+                true => crate::reqwest_client_insecure_tls(),
+            };
+
             let client: Box<dyn ProvisioningClient> = match origin {
                 Origin::Intel => {
                     let mut client_builder = IntelProvisioningClientBuilder::new(api_version);
@@ -201,6 +214,11 @@ pub fn main() {
                 }
                 Origin::Azure => {
                     let client_builder = AzureProvisioningClientBuilder::new(api_version);
+                    Box::new(client_builder.build(fetcher))
+                }
+                Origin::Pccs => {
+                    let pccs_url = matches.value_of("PCCS_URL").expect("validated").to_owned();
+                    let client_builder = PccsProvisioningClientBuilder::new(api_version, pccs_url);
                     Box::new(client_builder.build(fetcher))
                 }
             };

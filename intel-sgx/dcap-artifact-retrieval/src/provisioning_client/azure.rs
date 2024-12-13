@@ -5,15 +5,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, QeId, Unverified};
+use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified};
 use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::time::Duration;
 
+use super::common::PckCertsApiNotSupported;
 use super::intel::{PckCrlApi, QeIdApi, TcbInfoApi};
-use super::{Fetcher, ProvisioningServiceApi, StatusCode};
-use crate::provisioning_client::{
-    Client, ClientBuilder, PckCertIn, PckCertService, PckCertsIn, PckCertsService, PcsVersion,
+use super::{
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PcsVersion, ProvisioningServiceApi,
+    StatusCode,
 };
 use crate::Error;
 
@@ -41,65 +42,13 @@ impl AzureProvisioningClientBuilder {
     }
 
     pub fn build<F: for<'a> Fetcher<'a>>(self, fetcher: F) -> Client<F> {
-        let pck_certs = PckCertsApi::new(None);
+        let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
         self.client_builder
             .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
-    }
-}
-
-pub struct PckCertsApi {
-    api_key: Option<String>,
-}
-
-impl PckCertsApi {
-    pub(crate) fn new(api_key: Option<String>) -> PckCertsApi {
-        PckCertsApi { api_key }
-    }
-}
-
-impl<'inp> PckCertsService<'inp> for PckCertsApi {
-    fn build_input(
-        &'inp self,
-        enc_ppid: &'inp EncPpid,
-        pce_id: PceId,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertsIn {
-            enc_ppid,
-            pce_id,
-            api_key: &self.api_key,
-            api_version: PcsVersion::V3,
-        }
-    }
-}
-
-/// Implementation of pckcerts
-/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
-    type Input = PckCertsIn<'inp>;
-    type Output = PckCerts;
-
-    fn build_request(
-        &self,
-        _input: &Self::Input,
-    ) -> Result<(String, Vec<(String, String)>), Error> {
-        Err(Error::RequestNotSupported)
-    }
-
-    fn validate_response(&self, _status_code: StatusCode) -> Result<(), Error> {
-        Err(Error::RequestNotSupported)
-    }
-
-    fn parse_response(
-        &self,
-        _response_body: String,
-        _response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        Err(Error::RequestNotSupported)
     }
 }
 
@@ -200,7 +149,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
                 status_code,
                 "PCS is temporarily unavailable",
             )),
-            __ => Err(Error::PCSError(
+            _ => Err(Error::PCSError(
                 status_code.clone(),
                 "Unexpected response from PCS server",
             )),
