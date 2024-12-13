@@ -3,7 +3,7 @@ use crate::io_bufs::UserBuf;
 use crate::raw::RawApi;
 use crate::utils::MakeSend;
 use crate::{AsyncUsercallProvider, CancelHandle};
-use fortanix_sgx_abi::Fd;
+use fortanix_sgx_abi::{Fd, InsecureTimeInfo};
 use std::io;
 use std::mem::{self, ManuallyDrop};
 use std::net::{TcpListener, TcpStream};
@@ -251,13 +251,15 @@ impl AsyncUsercallProvider {
     /// callbacks.
     pub fn insecure_time<F>(&self, callback: F)
         where
-            F: FnOnce(SystemTime) + Send + 'static,
+            F: FnOnce(SystemTime, *const InsecureTimeInfo) + Send + 'static,
     {
-        let cb = move |nanos_since_epoch| {
+        let cb = move |(nanos_since_epoch, insecure_time_info_ptr): (u64, *const InsecureTimeInfo)| {
             let t = UNIX_EPOCH + Duration::from_nanos(nanos_since_epoch);
-            callback(t);
+            callback(t, insecure_time_info_ptr);
         };
         unsafe {
+            // TODO We could detect if we're able to handle insecure time within the enclave, and
+            // avoid the async call
             self.raw_insecure_time(Some(cb.into()));
         }
     }

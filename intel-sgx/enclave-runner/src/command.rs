@@ -22,6 +22,7 @@ pub struct Command {
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     cmd_args: Vec<Vec<u8>>,
 }
 
@@ -44,6 +45,7 @@ impl Command {
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
         cmd_args: Vec<Vec<u8>>,
     ) -> Command {
         let main = tcss.remove(0);
@@ -54,6 +56,7 @@ impl Command {
             size,
             usercall_ext,
             forward_panics,
+            force_time_usercalls,
             cmd_args,
         }
     }
@@ -63,6 +66,6 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.force_time_usercalls, self.cmd_args)
     }
 }

@@ -1,4 +1,4 @@
-use fortanix_sgx_abi::{invoke_with_usercalls, Fd, Result};
+use fortanix_sgx_abi::{invoke_with_usercalls, Fd, Result, InsecureTimeInfo};
 use std::io;
 use std::os::fortanix_sgx::usercalls::raw::{Return, ReturnValue};
 use std::os::fortanix_sgx::usercalls::FromSgxResult;
@@ -21,21 +21,23 @@ impl<F, T> From<F> for CbFn<T>
 }
 
 macro_rules! cbfn_type {
-    ( )                      => { CbFn<()> };
-    ( -> ! )                 => { () };
-    ( -> u64 )               => { CbFn<u64> };
-    ( -> (Result, usize) )   => { CbFn<io::Result<usize>> };
-    ( -> (Result, u64) )     => { CbFn<io::Result<u64>> };
-    ( -> (Result, Fd) )      => { CbFn<io::Result<Fd>> };
-    ( -> (Result, *mut u8) ) => { CbFn<io::Result<*mut u8>> };
-    ( -> Result )            => { CbFn<io::Result<()>> };
+    ( )                                   => { CbFn<()> };
+    ( -> ! )                              => { () };
+    ( -> u64 )                            => { CbFn<u64> };
+    ( -> (u64, *const InsecureTimeInfo) ) => { CbFn<(u64, *const InsecureTimeInfo)> };
+    ( -> (Result, usize) )                => { CbFn<io::Result<usize>> };
+    ( -> (Result, u64) )                  => { CbFn<io::Result<u64>> };
+    ( -> (Result, Fd) )                   => { CbFn<io::Result<Fd>> };
+    ( -> (Result, *mut u8) )              => { CbFn<io::Result<*mut u8>> };
+    ( -> Result )                         => { CbFn<io::Result<()>> };
 }
 
 macro_rules! call_cbfn {
-    ( $cb:ident, $rv:expr, )          => { let x: () = $rv; $cb.call(x); };
-    ( $cb:ident, $rv:expr, -> ! )     => { let _: ! = $rv; };
-    ( $cb:ident, $rv:expr, -> u64 )   => { let x: u64 = $rv; $cb.call(x); };
-    ( $cb:ident, $rv:expr, -> $t:ty ) => { let x: $t = $rv; $cb.call(x.from_sgx_result()); };
+    ( $cb:ident, $rv:expr, )                                   => { let x: () = $rv; $cb.call(x); };
+    ( $cb:ident, $rv:expr, -> ! )                              => { let _: ! = $rv; };
+    ( $cb:ident, $rv:expr, -> u64 )                            => { let x: u64 = $rv; $cb.call(x); };
+    ( $cb:ident, $rv:expr, -> (u64, *const InsecureTimeInfo) ) => { let x: (u64, *const InsecureTimeInfo) = $rv; $cb.call(x); };
+    ( $cb:ident, $rv:expr, -> $t:ty )                          => { let x: $t = $rv; $cb.call(x.from_sgx_result()); };
 }
 
 macro_rules! define_callback {
