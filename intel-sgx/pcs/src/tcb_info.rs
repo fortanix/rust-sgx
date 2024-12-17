@@ -9,9 +9,7 @@ use std::convert::TryFrom;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
-use base16::DecodeError as Base16DecodeError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde::de::Error as _;
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
@@ -22,7 +20,7 @@ use {
 use crate::pckcrt::TcbComponents;
 use crate::{io, Error, TcbStatus, Unverified, VerificationType, Verified};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
 
 #[derive(Debug)]
@@ -31,8 +29,8 @@ pub enum FmspcDecodeError {
     InvalidFmspcLength,
 }
 
-impl From<Base16DecodeError> for FmspcDecodeError {
-    fn from(_value: Base16DecodeError) -> FmspcDecodeError {
+impl From<base16::DecodeError> for FmspcDecodeError {
+    fn from(_value: base16::DecodeError) -> FmspcDecodeError {
         FmspcDecodeError::InvalidHex
     }
 }
@@ -62,12 +60,28 @@ impl TryFrom<&[u8]> for Fmspc {
     }
 }
 
+impl TryFrom<&Vec<u8>> for Fmspc {
+    type Error = FmspcDecodeError;
+
+    fn try_from(value: &Vec<u8>) -> Result<Fmspc, FmspcDecodeError> {
+        Fmspc::try_from(value.as_slice())
+    }
+}
+
 impl TryFrom<&str> for Fmspc {
     type Error = FmspcDecodeError;
 
     fn try_from(value: &str) -> Result<Fmspc, FmspcDecodeError> {
         let value = base16::decode(value)?;
         Fmspc::try_from(value.as_slice())
+    }
+}
+
+impl TryFrom<&String> for Fmspc {
+    type Error = FmspcDecodeError;
+
+    fn try_from(value: &String) -> Result<Fmspc, FmspcDecodeError> {
+        Fmspc::try_from(value.as_str())
     }
 }
 
@@ -92,7 +106,7 @@ impl<'de> Deserialize<'de> for Fmspc {
         D: Deserializer<'de>,
     {
         let fmspc = <&str>::deserialize(deserializer)?;
-        Fmspc::try_from(fmspc).map_err(|_| D::Error::custom("Bad fmspc format"))
+        Fmspc::try_from(fmspc).map_err(|_| de::Error::custom("Bad fmspc format"))
     }
 }
 
@@ -123,7 +137,7 @@ pub struct TcbData<V: VerificationType = Verified> {
     version: u16,
     issue_date: String,
     next_update: String,
-    fmspc: String,
+    fmspc: Fmspc,
     pce_id: String,
     tcb_type: u16,
     tcb_evaluation_data_number: u64,
@@ -144,7 +158,7 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
             version: u16,
             issue_date: String,
             next_update: String,
-            fmspc: String,
+            fmspc: Fmspc,
             pce_id: String,
             tcb_type: u16,
             tcb_evaluation_data_number: u64,
@@ -179,7 +193,7 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
 }
 
 impl TcbData<Verified> {
-    pub fn fmspc(&self) -> &str {
+    pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
 }
@@ -250,20 +264,19 @@ impl TcbInfo {
 
     pub fn store(&self, output_dir: &str) -> Result<String, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc);
+        let filename = Self::create_filename(&data.fmspc.to_string());
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc);
+        let filename = Self::create_filename(&data.fmspc.to_string());
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn restore(input_dir: &str, fmspc: &[u8]) -> Result<Self, Error> {
-        let fmspc = &base16::encode_lower(&fmspc);
-        let filename = TcbInfo::create_filename(fmspc);
+    pub fn restore(input_dir: &str, fmspc: &Fmspc) -> Result<Self, Error> {
+        let filename = TcbInfo::create_filename(&fmspc.to_string());
         let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
         Ok(info)
     }
@@ -352,16 +365,16 @@ impl TcbInfo {
 #[cfg(test)]
 mod tests {
     #[cfg(not(target_env = "sgx"))]
-    use crate::tcb_info::TcbInfo;
+    use {
+        crate::tcb_info::{Fmspc, TcbInfo},
+        std::convert::TryFrom,
+    };
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info() {
-        let info = TcbInfo::restore(
-            "./tests/data/",
-            &base16::decode("00906ea10000".as_bytes()).expect("validated"),
-        )
-        .expect("validated");
+        let info =
+            TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc")).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         assert!(info.verify(&root_certificates).is_ok());
@@ -370,7 +383,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupt_tcb_info() {
-        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &base16::decode("00906ea10000".as_bytes()).unwrap()).unwrap();
+        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap()).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         assert!(tcb_info.verify(&root_certificates).is_err());

@@ -12,8 +12,8 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo,
-    Unverified,
+    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
+    TcbInfo, Unverified,
 };
 use rustc_serialize::hex::ToHex;
 use std::time::Duration;
@@ -336,7 +336,7 @@ impl TcbInfoApi {
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
     fn build_input(
         &'inp self,
-        fmspc: &'inp Vec<u8>,
+        fmspc: &'inp Fmspc,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version.clone(),
@@ -353,7 +353,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let fmspc = input.fmspc.to_hex();
+        let fmspc = input.fmspc.as_bytes().to_hex();
         let url = format!(
             "{}/sgx/certification/v{}/tcb?fmspc={}",
             INTEL_BASE_URL, api_version, fmspc,
@@ -610,6 +610,8 @@ mod tests {
     #[test]
     pub fn pck_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+            let root_cas = [&root_ca[..]];
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
@@ -629,6 +631,7 @@ mod tests {
                         None,
                     )
                     .unwrap();
+                let pck = pck.verify(&root_cas).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -653,7 +656,15 @@ mod tests {
                             .to_owned()
                     };
 
-                    assert_eq!(pck.fmspc().unwrap(), cached_pck.fmspc().unwrap());
+                    assert_eq!(
+                        pck.fmspc().unwrap(),
+                        cached_pck
+                            .clone()
+                            .verify(&root_cas)
+                            .unwrap()
+                            .fmspc()
+                            .unwrap()
+                    );
                     assert_eq!(pck.ca_chain(), cached_pck.ca_chain());
                 }
 
@@ -668,7 +679,15 @@ mod tests {
                     )
                     .unwrap();
 
-                assert_eq!(pck.fmspc().unwrap(), pck_from_service.fmspc().unwrap());
+                assert_eq!(
+                    pck.fmspc().unwrap(),
+                    pck_from_service
+                        .clone()
+                        .verify(&root_cas)
+                        .unwrap()
+                        .fmspc()
+                        .unwrap()
+                );
                 assert_eq!(pck.ca_chain(), pck_from_service.ca_chain());
             }
         }
