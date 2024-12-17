@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#[cfg(not(target_env = "sgx"))]
+#[cfg(all(not(target_env = "sgx"), feature = "reqwest"))]
 fn main() {
     dcap_artifact_retrieval::cli::main()
 }

@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
 use std::sync::Mutex;
@@ -14,8 +14,8 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned, TcbInfo,
-    Unverified,
+    CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned,
+    TcbInfo, Unverified,
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -23,10 +23,13 @@ use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
 use crate::Error;
 
 pub mod azure;
+pub(self) mod common;
 pub mod intel;
+pub mod pccs;
 
 pub use self::azure::AzureProvisioningClientBuilder;
 pub use self::intel::IntelProvisioningClientBuilder;
+pub use self::pccs::PccsProvisioningClientBuilder;
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 #[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -93,7 +96,10 @@ pub enum StatusCode {
     RequestHeaderFieldsTooLarge = 431,
     //432-450	Unassigned,
     UnavailableForLegalReasons = 451,
-    //452-499	Unassigned,
+    //452-460	Unassigned,
+    NonStandard461 = 461, // used by PCCS
+    NonStandard462 = 462, // used by PCCS
+    //463-499	Unassigned,
     InternalServerError = 500,
     NotImplemented = 501,
     BadGateway = 502,
@@ -107,7 +113,7 @@ pub enum StatusCode {
     NotExtended = 510, // OBSOLETED
     NetworkAuthenticationRequired = 511,
     //512-599	Unassigned
-    #[num_enum(alternatives = [104..=199, 209..=225, 227..=299, 309..=399, 419, 420, 427, 430, 432..=450, 452..=499, 509, 512..=598])]
+    #[num_enum(alternatives = [104..=199, 209..=225, 227..=299, 309..=399, 419, 420, 427, 430, 432..=450, 452..=460, 463..=499, 509, 512..=598])]
     Unassigned = 599,
 }
 
@@ -529,6 +535,30 @@ pub trait ProvisioningClient {
     fn pckcrl(&self) -> Result<PckCrl, Error>;
 
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error>;
+
+    /// Retrieve PCK certificates using `pckcerts()` and fallback to `pckcert()`
+    /// if provisioning client does not support pckcerts. Note that in case of
+    /// fallback the returned PckCerts will only contain a single certificate
+    /// associated with the highest TCB level applied to the platform.
+    fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        match self.pckcerts(&pck_id.enc_ppid, pck_id.pce_id) {
+            Ok(pck_certs) => return Ok(pck_certs),
+            Err(Error::RequestNotSupported) => {} // fallback below
+            Err(e) => return Err(e),
+        }
+        // fallback:
+        let pck_cert = self.pckcert(
+            Some(&pck_id.enc_ppid),
+            &pck_id.pce_id,
+            &pck_id.cpu_svn,
+            pck_id.pce_isvsvn,
+            Some(&pck_id.qe_id),
+        )?;
+
+        pck_cert
+            .try_into()
+            .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
+    }
 }
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {

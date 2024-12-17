@@ -8,7 +8,7 @@
 //! DCAP attestations require access to Intel-signed artifacts. This library provides clients to
 //! access these artifacts both from Intel directly, and from Microsoft Azure.
 
-#[cfg(not(target_env = "sgx"))]
+#[cfg(all(not(target_env = "sgx"), feature = "reqwest"))]
 pub mod cli;
 pub mod provisioning_client;
 
@@ -117,6 +117,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub fn reqwest_client() -> ReqwestClient {
     ReqwestClient::builder()
         .use_native_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
+#[cfg(feature = "reqwest")]
+#[doc(hidden)]
+pub fn reqwest_client_insecure_tls() -> ReqwestClient {
+    ReqwestClient::builder()
+        .use_native_tls()
+        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_hostnames(true)
         .build()
         .expect("Failed to build reqwest client")
 }
