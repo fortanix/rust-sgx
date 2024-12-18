@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include <stdio.h>
+#include <string.h>
 #include <sgx_urts.h>
 #include "Enclave/ppid_u.h"
 #include "pce/pce_u.h"
@@ -13,11 +14,14 @@
 #define DEBUG_ENCLAVE 1
 #define RELEASE_ENCLAVE 0
 
-void print_decrypted_ppid(unsigned char decrypted_ppid[], size_t length) {
-    printf("Decrypted PPID: ");
+void print_decrypted_ppid(unsigned char decrypted_ppid[], size_t length, int verbose) {
+    if (verbose)
+        printf("Plaintext PPID: ");
+
     for (size_t i = 0; i < length; ++i) {
         printf("%02x", decrypted_ppid[i]); // Print each byte in hex
     }
+
     printf("\n");
 }
 
@@ -111,6 +115,10 @@ int main(int argc, char **argv)
     sgx_status_t ecall_ret = SGX_SUCCESS;
     uint8_t decrypted_ppid[DECRYPTED_PPID_LENGTH];
     sgx_enclave_id_t ppid_enclave_eid = 0;
+    int verbose = 0;
+
+    if (argc == 2)
+        verbose = (strcmp(argv[1], "-v") == 0);
 
     memset(decrypted_ppid, 0x00, DECRYPTED_PPID_LENGTH);
 
@@ -135,7 +143,7 @@ int main(int argc, char **argv)
         goto CLEANUP;
     }
 
-    print_decrypted_ppid(decrypted_ppid, sizeof(decrypted_ppid));
+    print_decrypted_ppid(decrypted_ppid, sizeof(decrypted_ppid), verbose);
 
     CLEANUP:
     if(ppid_enclave_eid != 0) {
