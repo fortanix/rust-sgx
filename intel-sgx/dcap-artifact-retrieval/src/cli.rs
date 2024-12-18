@@ -19,6 +19,11 @@ use crate::{
     PccsProvisioningClientBuilder, PcsVersion, ProvisioningClient, StatusCode,
 };
 
+// NOTE: unfortunately these default values need to be repeated in arg
+// descriptions in `main`. Please keep them in sync.
+const DEFAULT_ORIGIN: &'static str = "intel";
+const DEFAULT_API_VERSION: &'static str = "4";
+
 #[derive(Debug, Deserialize, Copy, Clone, Eq, PartialEq, Hash)]
 #[serde(rename_all = "kebab-case")]
 enum Origin {
@@ -149,27 +154,28 @@ pub fn main() {
             (
                 @arg ORIGIN: --("origin") +takes_value
                 validator(|s| parse_origin(s.as_str()).map(|_| ()))
-                "Location from where artifacts need to be fetched. Options are: \"intel\" and \"azure\".\
-                 Note that Azure does not provide access to all artifacts. Intel will be contacted as a fallback (default: \"intel\")"
+                "Origin for downloading artifacts. Options are: \"intel\", \"azure\" and \"pccs\". \
+                 Note that Azure does not provide access to all artifacts. Intel will be contacted as a fallback. \
+                 Default: \"intel\"."
             )
             (
                 @arg PCKID_FILE: --("pckid-file") +takes_value +required requires("PCKID_FILE")
                 validator(is_file)
-                "File describing the PCK identity (outputted by PCKIDRetrievalTool)"
+                "File describing the PCK identity (outputted by PCKIDRetrievalTool)."
             )
             (
                 @arg OUTPUT_DIR: --("output-dir") +takes_value +required requires("OUTPUT_DIR")
                 validator(is_directory)
-                "Destination folder for data retrieved from Intel certification services"
+                "Destination folder for storing downloaded artifacts."
             )
             (
                 @arg API_VERSION: --("api-version") +takes_value
                 validator(|s| parse_pcs_version(s.as_str()).map(|_| ()))
-                "API version for provisioning service, supported values are 3 and 4 (default: 3)"
+                "API version for provisioning service, supported values are 3 and 4. Default: \"4\"."
             )
             (
                 @arg API_KEY: --("api-key") +takes_value
-                "API key for authenticating with Intel provisioning service"
+                "API key for authenticating with Intel provisioning service."
             )
             (
                 @arg PCCS_URL: --("pccs-url") +takes_value required_if("ORIGIN", "pccs")
@@ -182,7 +188,7 @@ pub fn main() {
             )
             (
                 @arg VERBOSE: -v --verbose
-                "Print information of which files are fetched"
+                "Print additional information abut files that are fetched."
             )
         )
         .get_matches();
@@ -193,11 +199,11 @@ pub fn main() {
     ) {
         (Some(pckid_file), Some(output_dir)) => {
             let verboseness = matches.occurrences_of("VERBOSE");
-            let api_version = parse_pcs_version(matches.value_of("API_VERSION").unwrap_or("3"))
+            let api_version = parse_pcs_version(matches.value_of("API_VERSION").unwrap_or(DEFAULT_API_VERSION))
                 .expect("validated");
 
             let origin =
-                parse_origin(matches.value_of("ORIGIN").unwrap_or("intel")).expect("validated");
+                parse_origin(matches.value_of("ORIGIN").unwrap_or(DEFAULT_ORIGIN)).expect("validated");
 
             let fetcher = match matches.is_present("INSECURE") {
                 false => crate::reqwest_client(),
