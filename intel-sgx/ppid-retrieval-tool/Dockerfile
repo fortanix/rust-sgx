@@ -45,3 +45,21 @@ COPY Makefile Makefile
 RUN source /opt/intel/sgxsdk/environment && make
 
 ENTRYPOINT bash
+
+# Stage 2: Running the ppid_retrieval tool
+FROM ubuntu:24.04 AS ppid_retrieval
+
+# Install Intel SGX runtime
+RUN apt-get update && apt-get upgrade -y && apt-get install -y wget
+RUN echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' | tee /etc/apt/sources.list.d/intel-sgx.list
+RUN wget https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+RUN cat intel-sgx-deb.key | tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
+RUN apt-get update
+RUN apt-get install -y libsgx-urts
+
+# Install ppid_retrieval tool
+COPY --from=ppid_retrieval_dev /opt/intel/ppid-tool/ppid_retrieval /ppid_retrieval
+COPY --from=ppid_retrieval_dev /opt/intel/ppid-tool/pce/libsgx_pce.signed.so.1.25.100.1 /pce/libsgx_pce.signed.so.1.25.100.1
+COPY --from=ppid_retrieval_dev /opt/intel/ppid-tool/Enclave/ppid.so /Enclave/ppid.so
+
+CMD ["/ppid_retrieval"]
