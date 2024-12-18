@@ -28,6 +28,7 @@ RUN echo 'yes' | ./sgx_linux_x64_sdk_2.25.100.3.bin
 USER root
 RUN echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' | sudo tee /etc/apt/sources.list.d/intel-sgx.list
 RUN wget https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+RUN echo 92f96f84281031d889deb81060c44325f0481aee621ae47a15ae1df4431b4a23 intel-sgx-deb.key | sha256sum -c
 RUN cat intel-sgx-deb.key | sudo tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
 RUN apt-get update
 RUN apt-get install -y libsgx-urts
@@ -53,6 +54,7 @@ FROM ubuntu:24.04 AS ppid_retrieval
 RUN apt-get update && apt-get upgrade -y && apt-get install -y wget
 RUN echo 'deb [signed-by=/etc/apt/keyrings/intel-sgx-keyring.asc arch=amd64] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main' | tee /etc/apt/sources.list.d/intel-sgx.list
 RUN wget https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+RUN echo 92f96f84281031d889deb81060c44325f0481aee621ae47a15ae1df4431b4a23 intel-sgx-deb.key | sha256sum -c
 RUN cat intel-sgx-deb.key | tee /etc/apt/keyrings/intel-sgx-keyring.asc > /dev/null
 RUN apt-get update
 RUN apt-get install -y libsgx-urts
