@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "verify")]
 use sgx_isa::Report;
 use std::borrow::Cow;
-use std::mem;
+use std::{cmp, mem};
 use anyhow::bail;
 
 // ====================================================
@@ -236,14 +236,19 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
             bail!("Invalid attestation key type: {:?}", type_)
         }
 
-        let sig_len = data.take_prefix(mem::size_of::<u32>()).map(|v| LE::read_u32(&v))?;
-        if sig_len as usize != data.len() {
+        let sig_len = data.take_prefix(mem::size_of::<u32>()).map(|v| LE::read_u32(&v))? as usize;
+        if sig_len > data.len() {
             bail!(
-                "Invalid signature length. Got {}, expected {}",
+                "Invalid signature length. Got {}, expected >= {}",
                 data.len(),
                 sig_len
             );
         }
+        // NOTE: data may contain trailing zeros due to `get_quote_size` and
+        // `get_quote` C APIs allowing larger than necessary buffer to be
+        // allocated to hold the quote.
+        data = data.take_prefix(cmp::min(data.len(), sig_len))?;
+
         let signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?;
         let attestation_public_key = data.take_prefix(ECDSA_P256_PUBLIC_KEY_LEN)?;
         let qe3_report = data.take_prefix(REPORT_BODY_LEN)?;
@@ -773,5 +778,57 @@ mod tests {
         };
         #[cfg(feature = "verify")]
         assert!(Quote::verify::<Quote3SignatureEcdsaP256>(TEST_QUOTE, &mut verifier).is_err());
+    }
+
+    #[test]
+    fn test_quote_with_trailing_zeros() {
+        let with_trailing_zeros = {
+            const TEST_QUOTE: &[u8] = &*include_bytes!("../tests/quote_pck_cert_chain.bin");
+            let mut with_trailing_zeros = vec![0u8; TEST_QUOTE.len() + 3];
+            with_trailing_zeros[..TEST_QUOTE.len()].copy_from_slice(TEST_QUOTE);
+            with_trailing_zeros
+        };
+
+        let quote = Quote::parse(&with_trailing_zeros).unwrap();
+        let &QuoteHeader::V3 {
+            attestation_key_type,
+            ..
+        } = quote.header();
+
+        assert_eq!(attestation_key_type, Quote3AttestationKeyType::EcdsaP256);
+        let sig = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
+
+        #[cfg(feature = "verify")]
+        let mut verifier = MyVerifier {
+            // See the note in `fn test_quote_verification`.
+            // TODO: Update the example quote with a matching qe3_identity.json file
+            qe3_identity: include_str!("../tests/corrupt_qe3_identity.json").to_string(),
+        };
+        #[cfg(feature = "verify")]
+        assert!(Quote::verify::<Quote3SignatureEcdsaP256>(&with_trailing_zeros, &mut verifier).is_ok())
+    }
+
+    #[test]
+    fn test_quote_too_short() {
+        let too_short = {
+            const TEST_QUOTE: &[u8] = &*include_bytes!("../tests/quote_pck_cert_chain.bin");
+            let mut too_short = vec![0u8; TEST_QUOTE.len() - 5];
+            let n = too_short.len();
+            too_short.copy_from_slice(&TEST_QUOTE[..n]);
+            too_short
+        };
+
+        // We won't detect the issue until we try to parse the signature
+        let quote = Quote::parse(&too_short).unwrap();
+        let &QuoteHeader::V3 {
+            attestation_key_type,
+            ..
+        } = quote.header();
+
+        assert_eq!(attestation_key_type, Quote3AttestationKeyType::EcdsaP256);
+        match quote.signature::<Quote3SignatureEcdsaP256>() {
+            Ok(_) => panic!("unexpected Ok result"),
+            Err(e) => assert_eq!(e.to_string(), "Invalid signature length. Got 4137, expected >= 4142"),
+        }
     }
 }
