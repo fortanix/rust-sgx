@@ -113,7 +113,8 @@ quick_error! {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[cfg(feature = "reqwest")]
+/// Create a reqwest client using native tls.
+#[cfg(all(feature = "reqwest", feature = "native-tls"))]
 pub fn reqwest_client() -> ReqwestClient {
     ReqwestClient::builder()
         .use_native_tls()
@@ -121,7 +122,16 @@ pub fn reqwest_client() -> ReqwestClient {
         .expect("Failed to build reqwest client")
 }
 
-#[cfg(feature = "reqwest")]
+/// Create a reqwest client using rustls tls.
+#[cfg(all(feature = "reqwest", feature = "rustls-tls"))]
+pub fn reqwest_client_rustls() -> ReqwestClient {
+    ReqwestClient::builder()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
+#[cfg(all(feature = "reqwest", feature = "native-tls"))]
 #[doc(hidden)]
 pub fn reqwest_client_insecure_tls() -> ReqwestClient {
     ReqwestClient::builder()

@@ -1,6 +1,6 @@
 [package]
 name = "dcap-artifact-retrieval"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -33,13 +33,15 @@ percent-encoding = "2.1.0"
 pkix = "0.2.0"
 quick-error = "1.1.0"
 rustc-serialize = "0.3"
-reqwest = { version = "0.12", features = ["blocking", "native-tls"], optional = true }
+reqwest = { version = "0.12", features = ["blocking"], optional = true }
 serde_cbor = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [features]
-default = ["clap", "reqwest"]
+default = ["clap", "reqwest", "native-tls"]
+native-tls = ["reqwest?/native-tls"]
+rustls-tls = ["reqwest?/rustls-tls"]
 
 [dev-dependencies]
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
