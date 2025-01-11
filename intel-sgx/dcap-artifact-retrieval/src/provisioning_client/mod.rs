@@ -117,7 +117,7 @@ pub enum StatusCode {
     Unassigned = 599,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum PcsVersion {
     V3 = 3,
     V4 = 4,

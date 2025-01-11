@@ -500,6 +500,7 @@ mod tests {
     #[test]
     pub fn pcks() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
@@ -527,6 +528,7 @@ mod tests {
     #[test]
     pub fn pcks_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
@@ -580,6 +582,7 @@ mod tests {
     #[test]
     pub fn pck() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
@@ -610,6 +613,7 @@ mod tests {
     #[test]
     pub fn pck_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
             let root_cas = [&root_ca[..]];
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -696,6 +700,7 @@ mod tests {
     #[test]
     pub fn tcb_info() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
@@ -720,6 +725,7 @@ mod tests {
     #[test]
     pub fn tcb_info_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            println!("Using Intel API version: {:?}", api_version);
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
