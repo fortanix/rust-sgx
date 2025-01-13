@@ -130,7 +130,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
             INTEL_BASE_URL, api_version, encrypted_ppid, pce_id,
         );
         let headers = if let Some(api_key) = &input.api_key {
-            println!("Set api_key for PckCertsApi: {}", api_key);
+            println!("Set api_key for PckCertsApi: '{}'", api_key);
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
@@ -211,7 +211,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
             INTEL_BASE_URL, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id,
         );
         let headers = if let Some(api_key) = input.api_key {
-            println!("Set api_key for PckCertApi: {}", api_key);
+            println!("Set api_key for PckCertApi: '{}'", api_key);
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
@@ -496,7 +496,9 @@ mod tests {
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
 
     fn pcs_api_key() -> String {
-        std::env::var("PCS_API_KEY").expect("PCS_API_KEY must be set")
+        let api_key = std::env::var("PCS_API_KEY").expect("PCS_API_KEY must be set");
+        assert!(!api_key.is_empty(), "Empty string in PCS_API_KEY");
+        api_key
     }
 
     #[test]
@@ -588,7 +590,7 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                intel_builder.set_api_key(dbg!(pcs_api_key()));
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
