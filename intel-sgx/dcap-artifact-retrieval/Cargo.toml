@@ -33,14 +33,13 @@ percent-encoding = "2.1.0"
 pkix = "0.2.0"
 quick-error = "1.1.0"
 rustc-serialize = "0.3"
-reqwest = { version = "0.12", features = ["blocking"], optional = true }
+reqwest = { version = "0.12", features = ["blocking", "native-tls"], optional = true }
 serde_cbor = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 [features]
-default = ["clap", "reqwest", "native-tls"]
-native-tls = ["reqwest?/native-tls"]
+default = ["clap", "reqwest"]
 rustls-tls = ["reqwest?/rustls-tls"]
 
 [dev-dependencies]
