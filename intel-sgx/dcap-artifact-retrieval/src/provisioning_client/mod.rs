@@ -642,7 +642,17 @@ impl<'req> Fetcher<'req> for ReqwestClient {
     }
 
     fn send(&'req self, request: Self::Request) -> Result<(StatusCode, Self::Response), Error> {
-        let response = request.send().map_err(|e| e.to_string())?;
+        use std::fmt::Write;
+        // Reqwest does not provide enough info about error
+        fn report(mut err: &(dyn std::error::Error + 'static)) -> String {
+            let mut s = format!("{}", err);
+            while let Some(src) = err.source() {
+                let _ = write!(s, "\n  Caused by: {}", src);
+                err = src;
+            }
+            s
+        }
+        let response = request.send().map_err(|e| report(&e))?;
         let status_code =
             StatusCode::try_from(response.status().as_u16()).map_err(|e| e.to_string())?;
 

@@ -494,7 +494,9 @@ mod tests {
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
 
     fn pcs_api_key() -> String {
-        std::env::var("PCS_API_KEY").expect("PCS_API_KEY must be set")
+        let api_key = std::env::var("PCS_API_KEY").expect("PCS_API_KEY must be set");
+        assert!(!api_key.is_empty(), "Empty string in PCS_API_KEY");
+        api_key
     }
 
     #[test]

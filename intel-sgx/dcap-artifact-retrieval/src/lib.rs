@@ -113,8 +113,32 @@ quick_error! {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Create a reqwest client using native tls(by default) or rustls if feature
+/// "rustls-tls" is enabled.
 #[cfg(feature = "reqwest")]
 pub fn reqwest_client() -> ReqwestClient {
+    #[cfg(not(feature = "rustls-tls"))]
+    {
+        reqwest_client_native_tls()
+    }
+    #[cfg(feature = "rustls-tls")]
+    {
+        reqwest_client_rustls()
+    }
+}
+
+/// Create a reqwest client using rustls tls.
+#[cfg(all(feature = "reqwest", feature = "rustls-tls"))]
+pub fn reqwest_client_rustls() -> ReqwestClient {
+    ReqwestClient::builder()
+        .use_rustls_tls()
+        .build()
+        .expect("Failed to build reqwest client")
+}
+
+/// Create a reqwest client using native tls.
+#[cfg(all(feature = "reqwest"))]
+pub fn reqwest_client_native_tls() -> ReqwestClient {
     ReqwestClient::builder()
         .use_native_tls()
         .build()
@@ -124,8 +148,16 @@ pub fn reqwest_client() -> ReqwestClient {
 #[cfg(feature = "reqwest")]
 #[doc(hidden)]
 pub fn reqwest_client_insecure_tls() -> ReqwestClient {
-    ReqwestClient::builder()
-        .use_native_tls()
+    let client_builder;
+    #[cfg(not(feature = "rustls-tls"))]
+    {
+        client_builder = ReqwestClient::builder().use_native_tls();
+    }
+    #[cfg(feature = "rustls-tls")]
+    {
+        client_builder = ReqwestClient::builder().use_rustls_tls();
+    }
+    client_builder
         .danger_accept_invalid_certs(true)
         .danger_accept_invalid_hostnames(true)
         .build()

@@ -60,6 +60,9 @@ jobs:
     - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
       run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
 
+    - name: Cargo test -p dcap-artifact-retrieval --features rustls-tls
+      run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls
+
     - name: Cargo test -p dcap-ql --features link
       run: cargo test --verbose --locked -p dcap-ql --features link
 
