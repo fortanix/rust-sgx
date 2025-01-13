@@ -42,7 +42,7 @@ jobs:
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee /etc/apt/sources.list.d/llvm-snapshot.list > /dev/null
         # Install dependencies for build & test
         sudo apt-get update -y
-        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-11 musl-tools gcc-multilib
+        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-11 musl-tools gcc-multilib ca-certificates
 
     - name: Setup Rust toolchain
       run: |
