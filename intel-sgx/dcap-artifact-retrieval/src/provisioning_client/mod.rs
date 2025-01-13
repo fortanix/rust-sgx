@@ -323,7 +323,16 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
         let api_version = input.api_version();
 
         let (status_code, resp) = fetcher.send(req)?;
-        <T as ProvisioningServiceApi<'a>>::validate_response(self.pcs_service(), status_code)?;
+        match <T as ProvisioningServiceApi<'a>>::validate_response(self.pcs_service(), status_code) {
+            Ok(_) => {},
+            err @ Err(_) => {
+                // print headers for debugging
+                if let Ok((response_body, response_headers)) = fetcher.parse_response(resp) {
+                    println!("{:?}", response_headers);
+                }
+                return err;
+            },
+        };
         let (response_body, response_headers) = fetcher.parse_response(resp)?;
         <T as ProvisioningServiceApi<'a>>::parse_response(
             self.pcs_service(),

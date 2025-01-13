@@ -130,6 +130,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
             INTEL_BASE_URL, api_version, encrypted_ppid, pce_id,
         );
         let headers = if let Some(api_key) = &input.api_key {
+            println!("Set api_key for PckCertsApi");
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
@@ -210,6 +211,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
             INTEL_BASE_URL, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id,
         );
         let headers = if let Some(api_key) = input.api_key {
+            println!("Set api_key for PckCertApi");
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
         } else {
             Vec::new()
