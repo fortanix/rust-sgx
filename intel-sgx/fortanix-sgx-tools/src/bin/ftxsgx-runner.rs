@@ -13,6 +13,7 @@ use std::io::{stderr, Write};
 use aesm_client::AesmClient;
 use enclave_runner::EnclaveBuilder;
 use anyhow::Context;
+use insecure_time::Rdtscp;
 #[cfg(unix)]
 use libc::{c_int, c_void, siginfo_t};
 #[cfg(unix)]
@@ -77,6 +78,7 @@ fn main() -> Result<(), anyhow::Error> {
         .build();
 
     let mut enclave_builder = EnclaveBuilder::new(file.as_ref());
+    let forced_insecure_time_usercalls = enclave_builder.forced_insecure_time_usercalls();
 
     match args.value_of("signature").map(|v| v.parse().expect("validated")) {
         Some(Signature::coresident) => { enclave_builder.coresident_signature().context("While loading coresident signature")?; }
@@ -94,6 +96,12 @@ fn main() -> Result<(), anyhow::Error> {
 
     enclave.run().map_err(|e| {
         eprintln!("Error while executing SGX enclave.\n{}", e);
+        if !forced_insecure_time_usercalls && Rdtscp::is_supported() && e.to_string() == "Enclave panicked: fatal runtime error: assertion failed: usercall_retval.1 == 0\n" {
+            eprintln!("This might be due to an ABI change related to insecure time in the enclave. If so, this can be resolved by:");
+            eprintln!("  - recompiling the enclave with a newer toolchain, or");
+            eprintln!("  - downgrading the enclave runner, or");
+            eprintln!("  - using a custom enclave runner can calling `EnclaveBuilder::force_insecure_time_usercalls(true)` when building the enclave");
+        }
         std::process::exit(-1)
     })
 }
