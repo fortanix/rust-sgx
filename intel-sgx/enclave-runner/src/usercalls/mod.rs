@@ -1106,7 +1106,9 @@ impl EnclaveState {
         forward_panics: bool,
         force_time_usercalls: bool,
         cmd_args: Vec<Vec<u8>>,
+        num_of_worker_threads: usize,
     ) -> StdResult<(), anyhow::Error> {
+        assert!(num_of_worker_threads > 0, "worker_threads cannot be zero");
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
@@ -1128,8 +1130,6 @@ impl EnclaveState {
             },
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
-
-        let num_of_worker_threads = num_cpus::get();
 
         let kind = EnclaveKind::Command(Command {
             panic_reason: Mutex::new(PanicReason {
