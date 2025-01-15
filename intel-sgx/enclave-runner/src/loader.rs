@@ -6,6 +6,7 @@
 
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
+use std::ops::RangeInclusive;
 use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
@@ -70,6 +71,7 @@ pub struct EnclaveBuilder<'a> {
     forward_panics: bool,
     force_time_usercalls: bool,
     cmd_args: Option<Vec<Vec<u8>>>,
+    num_worker_threads: Option<usize>,
 }
 
 #[derive(Debug, ThisError)]
@@ -148,6 +150,7 @@ impl<'a> EnclaveBuilder<'a> {
             forward_panics: false,
             force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
             cmd_args: None,
+            num_worker_threads: None,
         };
 
         let _ = ret.coresident_signature();
@@ -310,11 +313,19 @@ impl<'a> EnclaveBuilder<'a> {
     /// Adding command arguments and then calling [`build_library`] will cause
     /// a panic.
     ///
-    /// [`Command`]: struct.Command.html
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
     pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
         let arg = arg.as_ref().to_owned();
         self.initialized_args_mut().push(arg);
+        self
+    }
+
+    /// Sets the number of worker threads used to run the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Setting this and then calling [`build_library`](Self::build_library) will cause a panic.
+    pub fn num_worker_threads(&mut self, num_worker_threads: usize) -> &mut Self {
+        self.num_worker_threads = Some(num_worker_threads);
         self
     }
 
@@ -346,21 +357,30 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, anyhow::Error> {
+        if let Some(num_worker_threads) = self.num_worker_threads {
+            const NUM_WORKER_THREADS_RANGE: RangeInclusive<usize> = 1..=65536;
+            anyhow::ensure!(
+                NUM_WORKER_THREADS_RANGE.contains(&num_worker_threads),
+                "`num_worker_threads` must be in range {NUM_WORKER_THREADS_RANGE:?}"
+            );
+        }
+        let num_worker_threads = self.num_worker_threads.unwrap_or_else(num_cpus::get);
+
         self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp, dti)| Command::internal_new(t, a, s, c, fp, dti, args))
+            .map(|(t, a, s, fp, dti)| Command::internal_new(t, a, s, c, fp, dti, args, num_worker_threads))
     }
 
-    /// Panics if you have previously called [`arg`] or [`args`].
+    /// Panics if you have previously called [`arg`], [`args`], or [`num_worker_threads`].
     ///
     /// [`arg`]: struct.EnclaveBuilder.html#method.arg
     /// [`args`]: struct.EnclaveBuilder.html#method.args
+    /// [`num_worker_threads`]: Self::num_worker_threads()
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, anyhow::Error> {
-        if self.cmd_args.is_some() {
-            panic!("Command arguments do not apply to Library enclaves.");
-        }
+        assert!(self.cmd_args.is_none(), "Command arguments do not apply to Library enclaves.");
+        assert!(self.num_worker_threads.is_none(), "`num_worker_threads` cannot be specified for Library enclaves.");
         let c = self.usercall_ext.take();
         self.load(loader)
             .map(|(t, a, s, fp, dti)| Library::internal_new(t, a, s, c, fp, dti))
