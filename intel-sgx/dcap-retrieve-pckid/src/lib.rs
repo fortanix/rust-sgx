@@ -86,9 +86,14 @@ pub fn retrieve_pckid_str() -> Result<PckId, anyhow::Error> {
 
     let quote = Quote::parse(res.quote()).map_err(|err| err.context("Error parsing quote"))?;
     let QuoteHeader::V3 { user_data, .. } = quote.header();
-    let sig = quote
+    let (sig, trailing) = quote
         .signature::<Quote3SignatureEcdsaP256>()
         .map_err(|err| err.context("Error parsing requested signature type"))?;
+
+    if !trailing.is_empty() {
+        return Err(anyhow!("trailing data after quote signature: {} bytes", trailing.len()));
+    }
+
     let cd_ppid = sig
         .certification_data::<Qe3CertDataPpid>()
         .map_err(|err| err.context("Error parsing requested signature type"))?;
