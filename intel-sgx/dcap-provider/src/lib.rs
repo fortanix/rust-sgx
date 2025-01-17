@@ -116,12 +116,17 @@ fn parse_certdata(
         return Err(Quote3Error::NoPlatformCertData);
     }
 
-    let sig = quote
+    let (sig, trailing) = quote
         .signature::<quote::Quote3SignatureEcdsaP256>()
         .map_err(|e| {
             error!("PPID query: {}", e);
             Quote3Error::NoPlatformCertData
         })?;
+
+    if !trailing.is_empty() {
+        error!("trailing data after quote signature: {} bytes", trailing.len());
+        return Err(Quote3Error::NoPlatformCertData);
+    }
 
     let cd = sig
         .certification_data::<quote::Qe3CertDataPpid>()
@@ -368,7 +373,7 @@ pub extern "C" fn sgx_ql_free_quote_config(p_cert_config: *const Config) -> Quot
             .ok_or(Quote3Error::InvalidParameter)?
             .cert_data_size;
         let buflen = cert_data_size as usize + mem::size_of::<Config>();
-        Box::from_raw(slice::from_raw_parts_mut(p_cert_config as *mut u8, buflen));
+        let _ = Box::from_raw(slice::from_raw_parts_mut(p_cert_config as *mut u8, buflen));
         Ok(())
     })() {
         Ok(()) => Quote3Error::Success,

@@ -159,7 +159,9 @@ impl<'a> TakePrefix for Cow<'a, str> {
 }
 
 pub trait Quote3Signature<'a>: Sized {
-    fn parse(type_: Quote3AttestationKeyType, data: Cow<'a, [u8]>) -> Result<Self>;
+    /// Parse the signature encoded in data and return the parsed value along
+    /// with any trailing data that was not part of the signature.
+    fn parse(type_: Quote3AttestationKeyType, data: Cow<'a, [u8]>) -> Result<(Self, Cow<'a, [u8]>)>;
 }
 
 pub trait Qe3CertData<'a>: Sized {
@@ -231,7 +233,7 @@ fn get_ecdsa_sig_der(sig: &[u8]) -> Result<Vec<u8>> {
 }
 
 impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
-    fn parse(type_: Quote3AttestationKeyType, mut data: Cow<'a, [u8]>) -> Result<Self> {
+    fn parse(type_: Quote3AttestationKeyType, mut data: Cow<'a, [u8]>) -> Result<(Self, Cow<'a, [u8]>)> {
         if type_ != Quote3AttestationKeyType::EcdsaP256 {
             bail!("Invalid attestation key type: {:?}", type_)
         }
@@ -247,7 +249,10 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
         // NOTE: data may contain trailing zeros due to `get_quote_size` and
         // `get_quote` C APIs allowing larger than necessary buffer to be
         // allocated to hold the quote.
-        data = data.take_prefix(cmp::min(data.len(), sig_len))?;
+        let (mut data, trailing) = {
+            let prefix = data.take_prefix(cmp::min(data.len(), sig_len))?;
+            (prefix, data)
+        };
 
         let signature = data.take_prefix(ECDSA_P256_SIGNATURE_LEN)?;
         let attestation_public_key = data.take_prefix(ECDSA_P256_PUBLIC_KEY_LEN)?;
@@ -267,7 +272,7 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
             );
         }
 
-        Ok(Quote3SignatureEcdsaP256 {
+        Ok((Quote3SignatureEcdsaP256 {
             signature,
             attestation_public_key,
             qe3_report,
@@ -275,7 +280,7 @@ impl<'a> Quote3Signature<'a> for Quote3SignatureEcdsaP256<'a> {
             authentication_data,
             certification_data_type,
             certification_data: data,
-        })
+        }, trailing))
     }
 }
 
@@ -362,7 +367,9 @@ impl<'a> Quote<'a> {
         &self.report_body
     }
 
-    pub fn signature<T: Quote3Signature<'a>>(&self) -> Result<T> {
+    /// Parse the signature encoded in `self.signature` and return the parsed
+    /// value along with any trailing data that was not part of the signature.
+    pub fn signature<T: Quote3Signature<'a>>(&self) -> Result<(T, Cow<'a, [u8]>)> {
         let QuoteHeader::V3 {
             attestation_key_type,
             ..
@@ -543,11 +550,15 @@ impl<'a> Quote3SignatureVerify<'a> for Quote3SignatureEcdsaP256<'a> {
 
 impl<'a> Quote<'a> {
     #[cfg(feature = "verify")]
-    pub fn verify<T: Quote3SignatureVerify<'a>>(quote: &'a [u8], root_of_trust: T::TrustRoot) -> Result<Self> {
+    /// Parses the `Quote` encoded in `quote`, verifies the signature within the
+    /// quote, and returns the parsed quote along with any trailing data that
+    /// was not part of the signature. It's up to the caller to decide what to
+    /// do with the trailing bytes.
+    pub fn verify<T: Quote3SignatureVerify<'a>>(quote: &'a [u8], root_of_trust: T::TrustRoot) -> Result<(Self, Cow<'a, [u8]>)> {
         let parsed_quote = Self::parse(quote)?;
-        let sig = parsed_quote.signature::<T>()?;
+        let (sig, trailing) = parsed_quote.signature::<T>()?;
         Quote3SignatureVerify::verify(&sig, quote, root_of_trust)?;
-        Ok(parsed_quote)
+        Ok((parsed_quote, trailing))
     }
 }
 
@@ -646,8 +657,10 @@ mod tests {
         assert_eq!(user_data, &ud);
 
         assert_eq!(attestation_key_type, Quote3AttestationKeyType::EcdsaP256);
-        let sig = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
+        let (sig, trailing) = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
 
+        let expected_trailing: &[u8] = &[];
+        assert_eq!(&*trailing, expected_trailing);
         assert_eq!(
             sig.certification_data_type(),
             CertificationDataType::PpidEncryptedRsa3072
@@ -727,8 +740,11 @@ mod tests {
             // TODO: Update the example quote with a matching qe3_identity.json file
             qe3_identity: include_str!("../tests/corrupt_qe3_identity.json").to_string(),
         };
-        #[cfg(feature = "verify")]
-        assert!(Quote::verify::<Quote3SignatureEcdsaP256>(TEST_QUOTE, &mut verifier).is_ok())
+        #[cfg(feature = "verify")] {
+            let (_, trailing) = Quote::verify::<Quote3SignatureEcdsaP256>(TEST_QUOTE, &mut verifier).unwrap();
+            let expected_trailing: &[u8] = &[];
+            assert_eq!(&*trailing, expected_trailing);
+        }
     }
 
     #[test]
@@ -782,21 +798,27 @@ mod tests {
 
     #[test]
     fn test_quote_with_trailing_zeros() {
-        let with_trailing_zeros = {
+        let expected_trailing: &[u8] = &[42, 75, 92];
+        let with_trailing_data = {
             const TEST_QUOTE: &[u8] = &*include_bytes!("../tests/quote_pck_cert_chain.bin");
-            let mut with_trailing_zeros = vec![0u8; TEST_QUOTE.len() + 3];
-            with_trailing_zeros[..TEST_QUOTE.len()].copy_from_slice(TEST_QUOTE);
-            with_trailing_zeros
+            let n = TEST_QUOTE.len();
+            let t = expected_trailing.len();
+            let mut with_trailing_data = vec![0u8; n + t];
+            with_trailing_data[..n].copy_from_slice(TEST_QUOTE);
+            with_trailing_data[n..].copy_from_slice(expected_trailing);
+            with_trailing_data
         };
 
-        let quote = Quote::parse(&with_trailing_zeros).unwrap();
+        let quote = Quote::parse(&with_trailing_data).unwrap();
         let &QuoteHeader::V3 {
             attestation_key_type,
             ..
         } = quote.header();
 
         assert_eq!(attestation_key_type, Quote3AttestationKeyType::EcdsaP256);
-        let sig = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
+        let (sig, trailing) = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
+
+        assert_eq!(&*trailing, expected_trailing);
 
         #[cfg(feature = "verify")]
         let mut verifier = MyVerifier {
@@ -804,8 +826,10 @@ mod tests {
             // TODO: Update the example quote with a matching qe3_identity.json file
             qe3_identity: include_str!("../tests/corrupt_qe3_identity.json").to_string(),
         };
-        #[cfg(feature = "verify")]
-        assert!(Quote::verify::<Quote3SignatureEcdsaP256>(&with_trailing_zeros, &mut verifier).is_ok())
+        #[cfg(feature = "verify")] {
+            let (_, trailing) = Quote::verify::<Quote3SignatureEcdsaP256>(&with_trailing_data, &mut verifier).unwrap();
+            assert_eq!(&*trailing, expected_trailing);
+        }
     }
 
     #[test]

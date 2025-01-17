@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-tools"
-version = "0.8.6"
+version = "0.8.7"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -59,7 +59,7 @@ serde_derive = "1.0.84"                          # MIT/Apache-2.0
 serde_yaml = "0.8.8"                             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
-"dcap-ql" = { version = "0.4.0", path = "../dcap-ql" }
+"dcap-ql" = { version = "0.5.0", path = "../dcap-ql" }
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3.7", features = ["winbase"] }

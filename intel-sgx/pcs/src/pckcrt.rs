@@ -1008,7 +1008,7 @@ mod tests {
     fn pckcrt_from_quote() {
         let quote = include_bytes!("../tests/data/quote.bin");
         let quote = Quote::parse(Cow::from(&quote[..])).unwrap();
-        let sig = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
+        let (sig, _) = quote.signature::<Quote3SignatureEcdsaP256>().unwrap();
         let pck_chain: Qe3CertDataPckCertChain = sig.certification_data().unwrap();
         let pck = PckCert::from_pck_chain(pck_chain.certs.into()).unwrap();
         let sgx_extension = pck.sgx_extension().unwrap();
