@@ -9,6 +9,7 @@ use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde::{de, Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use sgx_isa::{Attributes, Miscselect};
@@ -47,8 +48,10 @@ impl TcbLevel {
 pub struct QeIdentity<V: VerificationType = Verified> {
     version: u16,
     id: String,
-    issue_date: String,
-    next_update: String,
+    #[serde(with = "crate::iso8601")]
+    issue_date: DateTime<Utc>,
+    #[serde(with = "crate::iso8601")]
+    next_update: DateTime<Utc>,
     tcb_evaluation_data_number: u64,
     #[serde(deserialize_with = "miscselect_deserializer", serialize_with = "miscselect_serializer")]
     miscselect: Miscselect,
@@ -79,8 +82,10 @@ impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
         struct Dummy {
             version: u16,
             id: String,
-            issue_date: String,
-            next_update: String,
+            #[serde(with = "crate::iso8601")]
+            issue_date: DateTime<Utc>,
+            #[serde(with = "crate::iso8601")]
+            next_update: DateTime<Utc>,
             tcb_evaluation_data_number: u64,
             #[serde(deserialize_with = "miscselect_deserializer", serialize_with = "miscselect_serializer")]
             miscselect: Miscselect,
@@ -339,9 +344,20 @@ impl QeIdentitySigned {
             tcb_levels,
             type_: PhantomData,
         } = serde_json::from_str(&self.raw_enclave_identity).map_err(|e| Error::ParseError(e))?;
+
         if version != 2 {
             return Err(Error::UnknownQeIdentityVersion(version));
         }
+
+        let now = Utc::now();
+        if now < issue_date {
+            return Err(Error::Qe3NotValid(format!("QE3 only valid from {}", issue_date)))
+        }
+
+        if next_update < now {
+            return Err(Error::Qe3NotValid(format!("QE3 expired on {}", next_update)))
+        }
+
         Ok(QeIdentity::<Verified> {
             version,
             id,
@@ -363,6 +379,7 @@ impl QeIdentitySigned {
 #[cfg(feature = "verify")]
 #[cfg(test)]
 mod tests {
+    use crate::Error;
     #[cfg(not(target_env = "sgx"))]
     use crate::qe_identity::QeIdentitySigned;
 
@@ -373,7 +390,10 @@ mod tests {
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
-        assert!(qe_id.verify(&root_certs).is_ok());
+        match qe_id.verify(&root_certs) {
+            Err(Error::Qe3NotValid(msg)) => assert_eq!(msg, "QE3 expired on 2020-06-17 17:49:21 UTC"),
+            e => assert!(false, "wrong result: {:?}", e),
+        }
     }
 
     #[test]

@@ -90,6 +90,9 @@ quick_error! {
         InvalidQe3Id(err: MbedError){
             display("Invalid QE3 ID: {}", err)
         }
+        Qe3NotValid(err: String){
+            display("Invalid QE3: {}", err)
+        }
         InvalidFormatQe3Identity{
             display("Invalid QE3 Identity format")
         }
