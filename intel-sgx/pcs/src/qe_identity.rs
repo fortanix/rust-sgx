@@ -49,7 +49,7 @@ pub struct QeIdentity<V: VerificationType = Verified> {
     id: String,
     issue_date: String,
     next_update: String,
-    tcb_evaluation_data_number: u32,
+    tcb_evaluation_data_number: u64,
     #[serde(deserialize_with = "miscselect_deserializer", serialize_with = "miscselect_serializer")]
     miscselect: Miscselect,
     #[serde(
@@ -81,7 +81,7 @@ impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
             id: String,
             issue_date: String,
             next_update: String,
-            tcb_evaluation_data_number: u32,
+            tcb_evaluation_data_number: u64,
             #[serde(deserialize_with = "miscselect_deserializer", serialize_with = "miscselect_serializer")]
             miscselect: Miscselect,
             #[serde(
@@ -166,6 +166,10 @@ impl QeIdentity {
 
     pub fn miscselect_mask(&self) -> Miscselect {
         Miscselect::from_bits_truncate(self.miscselect_mask)
+    }
+
+    pub fn tcb_evaluation_data_number(&self) -> u64 {
+        self.tcb_evaluation_data_number
     }
 }
 
