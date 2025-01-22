@@ -32,6 +32,7 @@ pub use crate::qe_identity::{QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{Fmspc, TcbInfo, TcbData};
 
 mod io;
+mod iso8601;
 mod pckcrl;
 mod pckcrt;
 mod pckid;
@@ -123,12 +124,12 @@ quick_error! {
 
 pub trait VerificationType {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Verified;
 
 impl VerificationType for Verified {}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Unverified;
 
 impl VerificationType for Unverified {}

@@ -9,6 +9,7 @@ use std::convert::TryFrom;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
+use chrono::{DateTime, Utc};
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
@@ -135,8 +136,8 @@ fn sgx_platform() -> Platform {
 pub struct TcbData<V: VerificationType = Verified> {
     id: Platform,
     version: u16,
-    issue_date: String,
-    next_update: String,
+    issue_date: DateTime<Utc>,
+    next_update: DateTime<Utc>,
     fmspc: Fmspc,
     pce_id: String,
     tcb_type: u16,
@@ -156,8 +157,10 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
             #[serde(default = "sgx_platform")]
             id: Platform,
             version: u16,
-            issue_date: String,
-            next_update: String,
+            #[serde(with = "crate::iso8601")]
+            issue_date: DateTime<Utc>,
+            #[serde(with = "crate::iso8601")]
+            next_update: DateTime<Utc>,
             fmspc: Fmspc,
             pce_id: String,
             tcb_type: u16,
@@ -346,6 +349,14 @@ impl TcbInfo {
             ..
         } = TcbData::parse(&self.raw_tcb_info)?;
 
+        let now = Utc::now();
+        if now < issue_date {
+            return Err(Error::InvalidTcbInfo(format!("TCB Info only valid from {}", issue_date)))
+        }
+        if next_update < now {
+            return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
+        }
+
         Ok(TcbData::<Verified> {
             id,
             version,
@@ -370,8 +381,10 @@ impl TcbInfo {
 mod tests {
     #[cfg(not(target_env = "sgx"))]
     use {
+        crate::Error,
         crate::tcb_info::{Fmspc, TcbInfo},
         std::convert::TryFrom,
+        tempdir::TempDir,
     };
 
     #[test]
@@ -381,7 +394,17 @@ mod tests {
             TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc")).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(info.verify(&root_certificates).is_ok());
+        match info.verify(&root_certificates) {
+            Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
+            e => assert!(false, "wrong result: {:?}", e),
+        }
+
+        // Test serialization/deserialization
+        let temp_dir = TempDir::new("tempdir").unwrap();
+        let path = temp_dir.path().as_os_str().to_str().unwrap();
+        info.store(&path).unwrap();
+        let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc")).unwrap();
+        assert_eq!(info, info2);
     }
 
     #[test]
