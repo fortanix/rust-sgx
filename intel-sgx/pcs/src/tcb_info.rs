@@ -196,6 +196,10 @@ impl TcbData<Verified> {
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
+
+    pub fn tcb_evaluation_data_number(&self) -> u64 {
+        self.tcb_evaluation_data_number
+    }
 }
 
 impl TcbData<Unverified> {
