@@ -9,6 +9,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
 use std::marker::PhantomData;
+use std::mem;
 use std::path::PathBuf;
 
 use percent_encoding::percent_decode;
@@ -143,6 +144,10 @@ impl TcbComponents {
 
     pub fn pce_svn(&self) -> u16 {
         self.0.pcesvn
+    }
+
+    pub fn cpu_svn(&self) -> CpuSvn {
+        self.0.sgxtcbcomponents.each_ref().map(|c| c.svn)
     }
 }
 
@@ -740,6 +745,26 @@ where
             pck_data: vec![cert_body_item],
             ca_chain: pck.ca_chain,
         })
+    }
+}
+
+/// NOTE: This conversion is only correct if all PCK certs in the vec have the
+/// same CA chain.
+impl<V> TryFrom<Vec<PckCert<V>>> for PckCerts
+where
+    V: VerificationType,
+{
+    type Error = ASN1Error;
+
+    fn try_from(mut pcks: Vec<PckCert<V>>) -> Result<PckCerts, ASN1Error> {
+        let pck_data = pcks.iter().map(|pck| pck.as_pck_cert_body_item()).collect::<Result<Vec<_>, ASN1Error>>()?;
+        // NOTE: assuming that all PCK certs in the vec have the same CA chain,
+        // so we pick the ca_chain from the first one:
+        let ca_chain = match pcks.first_mut() {
+            Some(first) => mem::take(&mut first.ca_chain),
+            None => return Err(ASN1Error::new(ASN1ErrorKind::Eof)),
+        };
+        Ok(PckCerts { pck_data, ca_chain })
     }
 }
 

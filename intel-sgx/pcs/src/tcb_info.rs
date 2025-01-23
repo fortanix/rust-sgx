@@ -19,7 +19,7 @@ use {
 };
 
 use crate::pckcrt::TcbComponents;
-use crate::{io, Error, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -221,6 +221,8 @@ impl TcbData<Unverified> {
 }
 
 impl<V: VerificationType> TcbData<V> {
+    // NOTE: don't make this publicly available. We want to prevent people from
+    // accessing the TCB levels without checking whether the TcbInfo is valid.
     pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel> {
         &self.tcb_levels
     }
@@ -232,6 +234,10 @@ impl<V: VerificationType> TcbData<V> {
 
         // TCB Type 0 simply copies cpu svn
         Ok(TcbComponents::from_raw(*raw_cpusvn, pce_svn))
+    }
+
+    pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
+        self.tcb_levels.iter().map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
     }
 }
 
