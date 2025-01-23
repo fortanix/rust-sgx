@@ -281,7 +281,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = format!(
-            "{}/sgx/certification/v{}/tcb?fmspc={}",
+            "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
             self.base_url, api_version, fmspc
         );
         Ok((url, Vec::new()))
@@ -359,7 +359,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = format!(
-            "{}/sgx/certification/v{}/qe/identity",
+            "{}/sgx/certification/v{}/qe/identity?update=early",
             self.base_url, api_version,
         );
         Ok((url, Vec::new()))
