@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
@@ -534,10 +535,13 @@ pub trait ProvisioningClient {
 
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error>;
 
-    /// Retrieve PCK certificates using `pckcerts()` and fallback to `pckcert()`
-    /// if provisioning client does not support pckcerts. Note that in case of
-    /// fallback the returned PckCerts will only contain a single certificate
-    /// associated with the highest TCB level applied to the platform.
+    /// Retrieve PCK certificates using `pckcerts()` and fallback to the
+    /// following method if that's not supported:
+    /// - Call `pckcert()` to find the FMSPC.
+    /// - Using the FMSPC value, call `tcbinfo()` to get TCB info.
+    /// - For each TCB level in the result of previous call:
+    ///   - Call `pckcert()` to get the best available PCK cert for that TCB level.
+    /// Note that PCK certs for some TCB levels may be missing.
     fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
         match self.pckcerts(&pck_id.enc_ppid, pck_id.pce_id) {
             Ok(pck_certs) => return Ok(pck_certs),
@@ -545,6 +549,9 @@ pub trait ProvisioningClient {
             Err(e) => return Err(e),
         }
         // fallback:
+
+        // NOTE: at least with PCCS, any call to `pckcert()` will return the
+        // "best available" PCK cert for the specified TCB level.
         let pck_cert = self.pckcert(
             Some(&pck_id.enc_ppid),
             &pck_id.pce_id,
@@ -552,8 +559,27 @@ pub trait ProvisioningClient {
             pck_id.pce_isvsvn,
             Some(&pck_id.qe_id),
         )?;
-
-        pck_cert
+        let fmspc = pck_cert.sgx_extension()?.fmspc;
+        let tcb_info = self.tcbinfo(&fmspc)?;
+        let tcb_data = tcb_info.data()?;
+        let mut pcks = HashMap::new();
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+            let p = match self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                &cpu_svn,
+                pce_isvsvn,
+                Some(&pck_id.qe_id),
+            ) {
+                Ok(cert) => cert,
+                Err(Error::PCSError(StatusCode::NotFound, _)) |
+                Err(Error::PCSError(StatusCode::NonStandard462, _)) => continue,
+                Err(other) => return Err(other)
+            };
+            pcks.insert(p.platform_tcb()?.cpusvn, p);
+        }
+        let pcks: Vec<_> = pcks.into_iter().map(|(_, v)| v).collect();
+        pcks
             .try_into()
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
