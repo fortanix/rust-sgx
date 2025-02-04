@@ -64,13 +64,13 @@ jobs:
       run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls
 
     - name: Test dcap-artifact-retrieval PCCS provider with rustls-tls
-      if: secrets.PCCS_URL && secrets.PCCS_URL != ''
+      if: ${{ env.PCCS_URL && env.PCCS_URL != '' }}
       env:
         PCCS_URL: ${{ secrets.PCCS_URL }}
       run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls "pccs::" -- --ignored
 
     - name: Test dcap-artifact-retrieval PCCS provider without rustls-tls
-      if: secrets.PCCS_URL && secrets.PCCS_URL != ''
+      if: ${{ env.PCCS_URL && env.PCCS_URL != '' }}
       env:
         PCCS_URL: ${{ secrets.PCCS_URL }}
       run: cargo test --verbose --locked -p dcap-artifact-retrieval "pccs::" -- --ignored
