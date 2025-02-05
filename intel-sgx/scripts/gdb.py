@@ -69,9 +69,9 @@ def find_vma_base_from_proc_mappings(addr):
   s = gdb.execute("info proc mappings", from_tty = False, to_string = True)
   for l in s.split('\n'):
     # Python doesn't support repeated group captures
-    m = re.match("^(?:\s*0x[0-9a-fA-F]+\s){4}", l)
+    m = re.match(r"^(?:\s*0x[0-9a-fA-F]+\s){4}", l)
     if m:
-      addrs = re.findall("0x([0-9a-fA-F]+)", l)
+      addrs = re.findall(r"0x([0-9a-fA-F]+)", l)
       start = int(addrs[0], 16)
       end = int(addrs[1], 16)
       if start <= addr and addr < end:
@@ -97,7 +97,7 @@ def get_text_offset(file_name):
       if ".text" in line:
           # 1     2    3    4
           # [Nr]  Name Type Address
-          m=re.match('^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s', line)
+          m=re.match(r'^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s', line)
           if m is not None:
               return int(m.group(4), 16)
           break
