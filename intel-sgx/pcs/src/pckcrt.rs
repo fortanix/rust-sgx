@@ -147,7 +147,15 @@ impl TcbComponents {
     }
 
     pub fn cpu_svn(&self) -> CpuSvn {
-        self.0.sgxtcbcomponents.each_ref().map(|c| c.svn)
+        // NOTE: to support older stable compilers (pre 1.77) we are avoiding
+        // the obvious implementation:
+        //
+        // self.0.sgxtcbcomponents.each_ref().map(|c| c.svn)
+        let mut out: CpuSvn = [0u8; 16];
+        for (i, c) in self.0.sgxtcbcomponents.iter().enumerate() {
+            out[i] = c.svn;
+        }
+        out
     }
 }
 
@@ -1197,5 +1205,12 @@ mod tests {
         other = base.clone();
         other.0.pcesvn = 30;
         assert_eq!(base.partial_cmp(&other), Some(Ordering::Greater));
+    }
+
+    #[test]
+    fn tcb_components_cpu_svn() {
+        let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
+        let comp = TcbComponents::from_raw(raw_cpu_svn, 42);
+        assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }
 }
