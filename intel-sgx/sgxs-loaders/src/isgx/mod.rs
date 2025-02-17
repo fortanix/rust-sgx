@@ -54,8 +54,10 @@ pub enum DriverFamily {
     ///
     /// # Compatibility notes
     ///
-    /// Currently, no implementations of this API family support
-    /// partially-measured pages or providing a launch token.
+    /// Currently, no upstream implementations of this API family support
+    /// partially-measured pages or providing a launch token. A Fortanix internal
+    /// SGX driver explicitly adds support for partially-measured pages for backwards
+    /// compatibility reasons.
     Augusta,
 }
 
@@ -81,6 +83,8 @@ pub enum Error {
     Create(#[source] SgxIoctlError),
     #[error("Failed to call EADD.")]
     Add(#[source] SgxIoctlError),
+    #[error("Failed to call EXTEND.")]
+    Extend(#[source] SgxIoctlError),
     #[error("Failed to call EINIT.")]
     Init(#[source] SgxIoctlError),
 }
@@ -226,15 +230,10 @@ impl EnclaveLoad for InnerDevice {
                 ioctl_unsafe!(Add, ioctl::montgomery::add(mapping.device.fd.as_raw_fd(), &adddata))
             },
             Augusta => {
-                let flags = match chunks.0 {
-                    0 => ioctl::augusta::SgxPageFlags::empty(),
-                    0xffff => ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE,
-                    _ => {
-                        return Err(Error::Add(SgxIoctlError::Io(IoError::new(
-                            io::ErrorKind::Other,
-                            "Partially-measured pages not supported in this driver",
-                        ))))
-                    }
+                let (flags, partially_measured) = match chunks.0 {
+                    0 => (ioctl::augusta::SgxPageFlags::empty(), false),
+                    0xffff => (ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE, false),
+                    _ => (ioctl::augusta::SgxPageFlags::empty(), true)
                 };
 
                 let data = ioctl::augusta::Align4096(data);
@@ -248,6 +247,19 @@ impl EnclaveLoad for InnerDevice {
                 };
                 ioctl_unsafe!(Add, ioctl::augusta::add(mapping.device.fd.as_raw_fd(), &mut adddata))?;
                 assert_eq!(adddata.length, adddata.count);
+
+                if partially_measured {
+                    for chunk in 0..16 {
+                        if (0x1 << chunk) & chunks.0 != 0 {
+                            // Only supported with Fortanix' internal upstream driver patch
+                            let mut extend = ioctl::augusta::SgxEnclaveExtend {
+                                offset: eadd.offset as u64 + chunk as u64 * 256,
+                            };
+                            let fd = mapping.device.fd.as_raw_fd();
+                            ioctl_unsafe!(Extend, ioctl::augusta::extend(fd, &mut extend))?;
+                        }
+                    }
+                }
 
                 let prot = match PageType::try_from(secinfo.flags.page_type()) {
                     Ok(PageType::Reg) => {
