@@ -951,7 +951,7 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "b64-ct",
