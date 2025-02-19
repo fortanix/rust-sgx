@@ -83,7 +83,7 @@ pub enum Error {
     Create(#[source] SgxIoctlError),
     #[error("Failed to call EADD.")]
     Add(#[source] SgxIoctlError),
-    #[error("Failed to call EXTEND.")]
+    #[error("Failed to call EEXTEND.")]
     Extend(#[source] SgxIoctlError),
     #[error("Failed to call EINIT.")]
     Init(#[source] SgxIoctlError),
@@ -256,7 +256,18 @@ impl EnclaveLoad for InnerDevice {
                                 offset: eadd.offset as u64 + chunk as u64 * 256,
                             };
                             let fd = mapping.device.fd.as_raw_fd();
-                            ioctl_unsafe!(Extend, ioctl::augusta::extend(fd, &mut extend))?;
+                            ioctl_unsafe!(Extend, ioctl::augusta::extend(fd, &mut extend))
+                                .or_else(|e| {
+                                    match e {
+                                        Error::Extend(SgxIoctlError::Io(ref io_err)) if io_err.raw_os_error() == Some(Errno::ENOTTY as i32) => {
+                                            return Err(Error::Add(SgxIoctlError::Io(IoError::new(
+                                                io::ErrorKind::Other,
+                                                "Partially-measured pages not supported in this driver",
+                                            ))))
+                                        }
+                                        _ => Err(e),
+                                    }
+                                })?;
                         }
                     }
                 }
