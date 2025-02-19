@@ -202,7 +202,6 @@ impl EnclaveLoad for InnerDevice {
             ..Default::default()
         };
         let createdata = ioctl::CreateData { secs: &secs };
-
         ioctl_unsafe!(
             Create,
             ioctl::create(mapping.device.fd.as_raw_fd(), &createdata)

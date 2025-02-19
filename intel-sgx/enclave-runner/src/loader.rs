@@ -165,61 +165,67 @@ impl<'a> EnclaveBuilder<'a> {
         ret
     }
 
-    fn cpuid(eax: u32, ecx: u32) -> Option<CpuidResult> {
-        unsafe {
-            if eax <= x86_64::__get_cpuid_max(0).0 {
-                Some(x86_64::__cpuid_count(eax, ecx))
-            } else {
-                None
+    fn generate_xfrm(max_ssaframesize_in_pages: u32) -> u64 {
+        fn cpuid(eax: u32, ecx: u32) -> Option<CpuidResult> {
+            unsafe {
+                if eax <= x86_64::__get_cpuid_max(0).0 {
+                    Some(x86_64::__cpuid_count(eax, ecx))
+                } else {
+                    None
+                }
             }
         }
-    }
 
-    fn generate_xfrm(max_ssaframesize_in_pages: u32) -> u64 {
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
 
-        debug_assert!(0 < max_ssaframesize_in_pages);
+        debug_assert_ne!(0, max_ssaframesize_in_pages);
         let xcr0 = xgetbv0();
 
-        // See allorithm of Intel dev manual Chpt 40.7.2.2
+        // See algorithm of Intel x86 dev manual Chpt 40.7.2.2
         let xfrm = (0..64)
             .map(|bit| {
                 let select = 0x1 << bit;
-                match bit {
-                    0 | 1 => select, // Bit 0 and 1 always need to be set
-                    _ => {
-                        if xcr0 & select == 0 {
-                            return 0;
-                        }
 
-                        let (base, size) = {
-                            let cpuid = Self::cpuid(0x0d, bit);
-                            let base = cpuid.map_or(0, |c| c.ebx);
-                            let size = cpuid.map_or(0, |c| c.eax);
-                            (base, size)
-                        };
-                        if max_ssaframesize_in_pages * 0x1000 <= base + size {
-                            return 0;
-                        }
-
-                        select
-                    }
+                if bit == 0 || bit == 1 {
+                    return select; // Bit 0 and 1 always need to be set
                 }
+
+                if xcr0 & select == 0 {
+                    return 0;
+                }
+
+                let (base, size) = {
+                    let cpuid = cpuid(0x0d, bit);
+                    let base = cpuid.map_or(0, |c| c.ebx);
+
+                    if base == 0 {
+                        (0, 0)
+                    } else {
+                        let size = cpuid.map_or(0, |c| c.eax);
+                        (base, size)
+                    }
+                };
+
+                if max_ssaframesize_in_pages * 0x1000 < base + size {
+                    return 0;
+                }
+
+                select
             })
             .fold(0, |xfrm, b| xfrm | b);
 
-        // Intel x86 manual Vol 3 Chpt 13.3:
+        // Intel x86 dev manual Vol 3 Chpt 13.3:
         // "Executing the XSETBV instruction causes a general-protection fault (#GP) if ECX = 0
         // and EAX[17] ≠ EAX[18] (TILECFG and TILEDATA must be enabled together). This implies
         // that the value of XCR0[18:17] is always either 00b or 11b."
         // The enclave entry code executes xrstor, and we may have just cleared bit 18, so we
         // need to correct the invariant
-        if (xfrm & (0x1 << 17)) != (xfrm & (0x1 << 18)) {
-            xfrm & !(0x3 << 17)
-        } else {
-            xfrm
+        const XCR0_TILE_BITS: u64 = 0b11 << 17;
+        match xfrm & XCR0_TILE_BITS {
+            XCR0_TILE_BITS | 0 => xfrm,
+            _ => xfrm & !XCR0_TILE_BITS,
         }
     }
 
