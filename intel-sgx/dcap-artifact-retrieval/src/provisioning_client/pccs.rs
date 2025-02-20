@@ -421,9 +421,9 @@ mod tests {
     static PCCS_URL: OnceLock<String> = OnceLock::new();
 
     fn pccs_url_from_env() -> String {
-        let api_key = std::env::var("PCCS_URL").expect("PCCS_URL must be set");
-        assert!(!api_key.is_empty(), "Empty string in PCCS_URL");
-        api_key
+        let url = std::env::var("PCCS_URL").expect("PCCS_URL must be set");
+        assert!(!url.is_empty(), "Empty string in PCCS_URL");
+        url
     }
 
     fn make_client(api_version: PcsVersion) -> Client<ReqwestClient> {
