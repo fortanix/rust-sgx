@@ -7,7 +7,7 @@ on:
       - 'LICENSE'
     branches:
       - master
-  # This CI will be triigerred on any merge_group events
+  # This CI will be triggered on any merge_group events
   merge_group:
 
 env:
@@ -26,6 +26,7 @@ jobs:
     env:
       # PCS_API_KEY: Raoul Strackx' personal access key. Only used here, and only provides access to the Intel PCS service, which is public anyway
       PCS_API_KEY: ${{ secrets.PCS_API_KEY }}
+      PCCS_URL: ${{ vars.PCCS_URL }}
 
     steps:
     - uses: actions/checkout@v4
