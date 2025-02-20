@@ -257,4 +257,39 @@ mod tests {
             .build(reqwest_client());
         assert!(client.qe_identity().is_ok());
     }
+
+    #[test]
+    pub fn test_pckcerts_with_fallback() {
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
+            println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
+
+            let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap()).unwrap();
+            let tcb_data = tcb_info.data().unwrap();
+
+            let selected = pckcerts.select_pck(
+                &tcb_data,
+                &pckid.cpu_svn,
+                pckid.pce_isvsvn,
+                pckid.pce_id,
+            ).unwrap();
+
+            let pck = client.pckcert(
+                Some(&pckid.enc_ppid),
+                &pckid.pce_id,
+                &pckid.cpu_svn,
+                pckid.pce_isvsvn,
+                Some(&pckid.qe_id),
+            ).unwrap();
+
+            assert_eq!(format!("{:?}", selected.sgx_extension().unwrap()), format!("{:?}", pck.sgx_extension().unwrap()));
+        }
+    }
 }
