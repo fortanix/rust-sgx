@@ -403,6 +403,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 mod tests {
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
+    use std::sync::OnceLock;
     use std::time::Duration;
 
     use pcs::PckID;
@@ -416,16 +417,23 @@ mod tests {
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
-    const PCCS_URL: &'static str = "https://localhost:8081";
+
+    static PCCS_URL: OnceLock<String> = OnceLock::new();
+
+    fn pccs_url_from_env() -> String {
+        let api_key = std::env::var("PCCS_URL").expect("PCCS_URL must be set");
+        assert!(!api_key.is_empty(), "Empty string in PCCS_URL");
+        api_key
+    }
 
     fn make_client(api_version: PcsVersion) -> Client<ReqwestClient> {
-        PccsProvisioningClientBuilder::new(api_version, PCCS_URL)
+        let url = &*PCCS_URL.get_or_init(pccs_url_from_env);
+        PccsProvisioningClientBuilder::new(api_version, url)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client_insecure_tls())
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn pck() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -453,7 +461,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn pck_cached() {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
@@ -537,7 +544,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn test_pckcerts_with_fallback() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -573,7 +579,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn tcb_info() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -593,7 +598,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn tcb_info_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -635,7 +639,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn pckcrl() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -647,7 +650,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn pckcrl_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -681,7 +683,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn qe_identity() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
@@ -692,7 +693,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs a running PCCS service"] // FIXME
     pub fn qe_identity_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
