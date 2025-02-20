@@ -576,7 +576,8 @@ pub trait ProvisioningClient {
                 Err(Error::PCSError(StatusCode::NonStandard462, _)) => continue,
                 Err(other) => return Err(other)
             };
-            pcks.insert(p.platform_tcb()?.cpusvn, p);
+            let ptcb = p.platform_tcb()?;
+            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), p);
         }
         let pcks: Vec<_> = pcks.into_iter().map(|(_, v)| v).collect();
         pcks
