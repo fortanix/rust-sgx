@@ -196,16 +196,9 @@ impl<'a> EnclaveBuilder<'a> {
                     return 0;
                 }
 
-                let (base, size) = {
-                    let cpuid = cpuid(0x0d, bit);
-                    let base = cpuid.map_or(0, |c| c.ebx);
-
-                    if base == 0 {
-                        (0, 0)
-                    } else {
-                        let size = cpuid.map_or(0, |c| c.eax);
-                        (base, size)
-                    }
+                let CpuidResult { ebx: base, eax: size, .. } = match cpuid(0x0d, bit) {
+                    None | Some(CpuidResult { ebx: 0, .. }) => return 0,
+                    Some(v) => v,
                 };
 
                 if max_ssaframesize_in_pages * 0x1000 < base + size {
