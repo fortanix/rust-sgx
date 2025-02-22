@@ -347,15 +347,6 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4152116fd6e9dadb291ae18fc1ec3575ed6d84c29642d97890f4b4a3417297e4"
-dependencies = [
- "generic-array 0.14.4",
-]
-
-[[package]]
-name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3078c7629b62d3f0439517fa394996acacc5cbc91c5a20d8c658e77abd503a71"
@@ -705,11 +696,12 @@ dependencies = [
 
 [[package]]
 name = "crypto-common"
-version = "0.1.2"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4600d695eb3f6ce1cd44e6e291adceb2cc3ab12f20a33777ecd0bf6eba34e06"
+checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array 0.14.4",
+ "typenum",
 ]
 
 [[package]]
@@ -858,18 +850,9 @@ dependencies = [
 
 [[package]]
 name = "digest"
-version = "0.9.0"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3dd60d1080a57a05ab032377049e0591415d2b31afd7028356dbf3cc6dcb066"
-dependencies = [
- "generic-array 0.14.4",
-]
-
-[[package]]
-name = "digest"
-version = "0.10.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cb780dce4f9a8f5c087362b3a4595936b2019e7c8b30f2c3e9a7e94e6ae9837"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer 0.10.4",
  "crypto-common",
@@ -894,7 +877,7 @@ dependencies = [
  "nitro-cli",
  "once_cell",
  "serde",
- "sha2 0.9.8",
+ "sha2 0.10.8",
  "tempdir",
  "thiserror",
 ]
@@ -902,20 +885,20 @@ dependencies = [
 [[package]]
 name = "eif_defs"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#a2bcf97f8d215ecb943cbce382de03a4112d92a5"
 dependencies = [
  "byteorder 1.3.4",
  "num-derive 0.3.3",
  "num-traits",
  "serde",
  "serde_json",
- "sha2 0.9.8",
+ "sha2 0.10.8",
 ]
 
 [[package]]
 name = "eif_loader"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#a2bcf97f8d215ecb943cbce382de03a4112d92a5"
 dependencies = [
  "eif_defs",
  "libc",
@@ -926,7 +909,7 @@ dependencies = [
 [[package]]
 name = "eif_utils"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#a2bcf97f8d215ecb943cbce382de03a4112d92a5"
 dependencies = [
  "aws-nitro-enclaves-cose 0.1.0",
  "clap 2.34.0",
@@ -937,7 +920,7 @@ dependencies = [
  "openssl",
  "serde",
  "serde_cbor",
- "sha2 0.9.8",
+ "sha2 0.10.8",
 ]
 
 [[package]]
@@ -1043,7 +1026,7 @@ dependencies = [
 [[package]]
 name = "enclave_build"
 version = "0.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#a2bcf97f8d215ecb943cbce382de03a4112d92a5"
 dependencies = [
  "base64 0.11.0",
  "clap 2.34.0",
@@ -1054,7 +1037,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha2 0.9.8",
+ "sha2 0.10.8",
  "shiplift",
  "tempfile",
  "tokio",
@@ -2185,7 +2168,7 @@ dependencies = [
  "crossbeam",
  "num_cpus",
  "rand 0.8.5",
- "sha2 0.10.1",
+ "sha2 0.10.8",
 ]
 
 [[package]]
@@ -2318,7 +2301,7 @@ dependencies = [
 [[package]]
 name = "nitro-cli"
 version = "1.1.0"
-source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#93193b1317c544ff07dd3ddcc6e126f847449cbb"
+source = "git+https://github.com/fortanix/aws-nitro-enclaves-cli.git?branch=main#a2bcf97f8d215ecb943cbce382de03a4112d92a5"
 dependencies = [
  "aws-nitro-enclaves-cose 0.1.0",
  "bindgen",
@@ -2341,7 +2324,7 @@ dependencies = [
  "serde",
  "serde_cbor",
  "serde_json",
- "sha2 0.9.8",
+ "sha2 0.10.8",
  "signal-hook",
  "tempdir",
  "vmm-sys-util",
@@ -2626,12 +2609,6 @@ name = "opaque-debug"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2839e79665f131bdb5782e51f2c6c9599c133c6098982a54c794358bf432529c"
-
-[[package]]
-name = "opaque-debug"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
@@ -3837,31 +3814,18 @@ dependencies = [
  "block-buffer 0.7.3",
  "digest 0.8.1",
  "fake-simd",
- "opaque-debug 0.2.3",
+ "opaque-debug",
 ]
 
 [[package]]
 name = "sha2"
-version = "0.9.8"
+version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b69f9a4c9740d74c5baa3fd2e547f9525fa8088a8a958e0ca2409a514e33f5fa"
-dependencies = [
- "block-buffer 0.9.0",
- "cfg-if 1.0.0",
- "cpufeatures",
- "digest 0.9.0",
- "opaque-debug 0.3.0",
-]
-
-[[package]]
-name = "sha2"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99c3bd8169c58782adad9290a9af5939994036b76187f7b4f0e6de91dbbfc0ec"
+checksum = "793db75ad2bcafc3ffa7c68b215fee268f537982cd901d132f89c6343f3a3dc8"
 dependencies = [
  "cfg-if 1.0.0",
  "cpufeatures",
- "digest 0.10.2",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -4413,9 +4377,9 @@ dependencies = [
 
 [[package]]
 name = "typenum"
-version = "1.12.0"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
+checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
 
 [[package]]
 name = "unicase"
