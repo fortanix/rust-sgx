@@ -83,5 +83,5 @@ pub mod augusta {
         pub offset: u64,
     }
 
-    ioctl_write_ptr!(extend, SGX_IOCTL, 0x08, SgxEnclaveExtend);
+    ioctl_write_ptr!(extend, SGX_IOCTL, 0x81, SgxEnclaveExtend);
 }
