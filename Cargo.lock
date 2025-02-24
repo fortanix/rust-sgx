@@ -25,7 +25,7 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aesm-client"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -789,7 +789,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -820,7 +820,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -1810,7 +1810,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -3752,7 +3752,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -3768,7 +3768,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "aesm-client",
  "anyhow",

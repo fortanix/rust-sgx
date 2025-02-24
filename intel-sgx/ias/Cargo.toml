@@ -1,6 +1,6 @@
 [package]
 name = "ias"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -44,7 +44,7 @@ clap = "2.34.0"
 report-test = { version = "0.5", path = "../report-test" }
 aesm-client = { version = "0.6", features = ["sgxs"], path = "../aesm-client" }
 sgxs = { version = "0.8", path = "../sgxs" }
-sgxs-loaders = { version = "0.4", path = "../sgxs-loaders" }
+sgxs-loaders = { version = "0.5", path = "../sgxs-loaders" }
 
 [[example]]
 name = "attestation-tool"

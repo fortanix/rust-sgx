@@ -1,6 +1,6 @@
 [package]
 name = "dcap-ql"
-version = "0.4.0"
+version = "0.4.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -37,7 +37,7 @@ verify = ["mbedtls", "num", "yasna"]
 [dependencies]
 # Project dependencies
 "dcap-ql-sys" = { version = "0.2.0", path = "../dcap-ql-sys", optional = true }
-"sgxs-loaders" = { version = "0.4.0", path = "../sgxs-loaders", optional = true }
+"sgxs-loaders" = { version = "0.5.0", path = "../sgxs-loaders", optional = true }
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
