@@ -11,6 +11,7 @@
     html_favicon_url = "https://edp.fortanix.com/favicon.ico",
     html_root_url = "https://edp.fortanix.com/docs/api/"
 )]
+#![feature(never_type)]
 
 mod command;
 mod library;

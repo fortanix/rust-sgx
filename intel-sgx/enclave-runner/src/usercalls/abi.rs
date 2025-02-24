@@ -23,7 +23,6 @@ trait RegisterArgument {
     fn from_register(_: Register) -> Self;
     fn into_register(self) -> Register;
 }
-
 type EnclaveAbort = super::EnclaveAbort<bool>;
 
 pub(crate) type UsercallResult<T> = ::std::result::Result<T, EnclaveAbort>;
@@ -150,6 +149,16 @@ impl<T: RegisterArgument> RegisterArgument for Option<NonNull<T>> {
     }
     fn into_register(self) -> Register {
         self.map_or(0 as _, NonNull::as_ptr) as _
+    }
+}
+
+impl RegisterArgument for ! {
+    fn from_register(_: Register) -> Self {
+        unreachable!()
+    }
+
+    fn into_register(self) -> Register {
+        Register::default()
     }
 }
 
