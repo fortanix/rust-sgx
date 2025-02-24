@@ -76,4 +76,12 @@ pub mod augusta {
         pub sigstruct: *const sgx_isa::Sigstruct,
     }
     ioctl_write_ptr!(init, SGX_IOCTL, 0x02, InitData);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug)]
+    pub struct SgxEnclaveExtend {
+        pub offset: u64,
+    }
+
+    ioctl_write_ptr!(extend, SGX_IOCTL, 0x81, SgxEnclaveExtend);
 }
