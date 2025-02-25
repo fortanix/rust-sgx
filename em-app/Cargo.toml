@@ -10,7 +10,7 @@ categories = [ "api-bindings" ]
 keywords = [ "sgx" ]
 
 [dependencies]
-b64-ct = "0.1.0"
+b64-ct = "0.1.3"
 em-client = { version = "4.0.0", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
 hyper = { version = "0.10", default-features = false }

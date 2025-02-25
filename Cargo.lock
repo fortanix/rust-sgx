@@ -213,9 +213,9 @@ dependencies = [
 
 [[package]]
 name = "b64-ct"
-version = "0.1.1"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac1e8deebfdca687fcef6fe024fc92cf8183f203075ce4fda263ae6ea13a8dc3"
+checksum = "41dd1e07aafe656df62d40e74d4627a0cce26da43b0bec233ac1305207a5a768"
 
 [[package]]
 name = "backoff"
