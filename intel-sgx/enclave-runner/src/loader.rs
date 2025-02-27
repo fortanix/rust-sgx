@@ -148,7 +148,7 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
-            force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
+            force_time_usercalls: false,
             cmd_args: None,
             num_worker_threads: None,
         };
@@ -279,6 +279,10 @@ impl<'a> EnclaveBuilder<'a> {
     pub fn force_insecure_time_usercalls(&mut self, force_time_usercalls: bool) -> &mut Self {
         self.force_time_usercalls = force_time_usercalls;
         self
+    }
+
+    pub fn forced_insecure_time_usercalls(&self) -> bool {
+        self.force_time_usercalls
     }
 
     fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {

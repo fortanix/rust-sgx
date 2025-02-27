@@ -1177,6 +1177,7 @@ dependencies = [
  "anyhow",
  "clap 2.34.0",
  "enclave-runner",
+ "insecure-time",
  "libc",
  "nix 0.13.1",
  "num_cpus",
