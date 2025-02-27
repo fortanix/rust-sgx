@@ -1,6 +1,6 @@
 [package]
 name = "aesm-client"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -55,4 +55,4 @@ protoc-rust = "2.8.0" # MIT/Apache-2.0
 [dev-dependencies]
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 "report-test" = { version = "0.5.0", path = "../report-test" }
-"sgxs-loaders" = { version = "0.4.0", path = "../sgxs-loaders" }
+"sgxs-loaders" = { version = "0.5.0", path = "../sgxs-loaders" }
