@@ -49,7 +49,7 @@ yansi = "0.5"                                    # MIT/Apache-2.0
 atty = "0.2"                                     # MIT
 quote = "0.6"                                    # MIT/Apache-2.0
 proc-macro2 = "0.4"                              # MIT/Apache-2.0
-petgraph = "0.6"                                 # MIT/Apache-2.0
+petgraph = "0.7"                                 # MIT/Apache-2.0
 mopa = "0.2"                                     # MIT/Apache-2.0
 syn = { version = "0.15", features = ["full"] }  # MIT/Apache-2.0
 fnv = "1"                                        # MIT/Apache-2.0
