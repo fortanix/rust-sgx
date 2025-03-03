@@ -27,7 +27,7 @@ sgx-isa = { version = "0.4", path = "../sgx-isa" }
 sgx_pkix = { version = "0.2", path = "../sgx_pkix" }
 
 [target.'cfg(not(target_env="sgx"))'.dependencies]
-reqwest = { version = "0.11", features = ["json"], optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
 
 [features]
 client = ["reqwest", "base64", "serde-bytes-repr", "serde_json"]
