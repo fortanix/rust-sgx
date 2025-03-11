@@ -39,6 +39,7 @@ use sgxs::loader::Tcs as SgxsTcs;
 
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs::{self, CoResult, ThreadResult};
+use crate::stats::record_usercall;
 use self::abi::dispatch;
 use self::abi::ReturnValue;
 use self::abi::UsercallList;
@@ -72,9 +73,9 @@ static mut TIME_INFO: LazyLock<Option<InsecureTimeInfo>> = LazyLock::new(|| {
 // is not public.
 const EV_ABORT: u64 = 0b0000_0000_0001_0000;
 
-const USERCALL_QUEUE_SIZE: usize = 16;
-const RETURN_QUEUE_SIZE: usize = 1024;
-const CANCEL_QUEUE_SIZE: usize = USERCALL_QUEUE_SIZE * 2;
+const USERCALL_QUEUE_SIZE: usize = 32768;
+const RETURN_QUEUE_SIZE: usize = 32768;
+const CANCEL_QUEUE_SIZE: usize = USERCALL_QUEUE_SIZE;
 
 enum UsercallSendData {
     Sync(ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
@@ -486,7 +487,7 @@ impl<T> EnclaveAbort<T> {
 }
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
-struct TcsAddress(usize);
+pub(crate) struct TcsAddress(pub usize);
 
 impl ErasedTcs {
     fn address(&self) -> TcsAddress {
@@ -567,8 +568,16 @@ impl PendingEvents {
         }
 
         let it = std::iter::once((EV_ABORT, &self.abort))
-            .chain(self.counts.iter().enumerate().map(|(ev, sem)| (ev as u64, sem)).filter(|&(ev, _)| ev & event_mask != 0))
-            .map(|(ev, sem)| sem.acquire().map(move |permit| (ev, permit)).boxed());
+            .chain(
+                self.counts.iter()
+                    .enumerate()
+                    .map(|(ev, sem)| (ev as u64, sem))
+                    .filter(|&(ev, _)| ev & event_mask != 0)
+            ).map(|(ev, sem)| {
+                sem.acquire()
+                    .map(move |permit| (ev, permit))
+                    .boxed()
+            });
 
         let ((ev, permit), _, _) = futures::future::select_all(it).await;
 
@@ -792,14 +801,16 @@ impl EnclaveState {
             UsercallHandleData::Async(_, ref mut notifier_rx, _) => notifier_rx.take(),
             _ => None,
         };
-        let (parameters, mode, tcs) = match handle_data {
+        let ((p1, p2, p3, p4, p5), mode, tcs) = match handle_data {
             UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode.into(), Some(tcs)),
             UsercallHandleData::Async(ref usercall, _, _) => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
         };
+
+        record_usercall(tcs.as_ref().map(|tcs| tcs.tcs_address), p1, p2, p3);
+
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
         let result = {
-            let (p1, p2, p3, p4, p5) = parameters;
             match notifier_rx {
                 None => dispatch(handler, p1, p2, p3, p4, p5).await.1,
                 Some(notifier_rx) => {
@@ -951,7 +962,10 @@ impl EnclaveState {
                         None
                     } else {
                         let (notifier_tx, notifier_rx) = oneshot::channel();
-                        usercall_event_tx_clone.send(UsercallEvent::Started(usercall.id, notifier_tx)).ok().expect("failed to send usercall event");
+                        usercall_event_tx_clone
+                            .send(UsercallEvent::Started(usercall.id, notifier_tx))
+                            .ok()
+                            .expect("failed to send usercall event");
                         Some(notifier_rx)
                     };
                     let _ = io_queue_send.send(UsercallSendData::Async(usercall, notifier_rx));
@@ -1087,15 +1101,24 @@ impl EnclaveState {
             .send(start_work)
             .expect("Work sender couldn't send data to receiver");
 
-        let join_handlers =
-            create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send.clone());
-        // main syscall polling loop
-        let main_result =
-            EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, io_queue_send, work_sender);
+        let join_handles = create_worker_threads(
+            num_of_worker_threads,
+            work_receiver,
+            io_queue_send.clone()
+        );
 
-        for handler in join_handlers {
-            let _ = handler.join();
+        // main syscall polling loop
+        let main_result = EnclaveState::syscall_loop(
+            enclave.clone(),
+            io_queue_receive,
+            io_queue_send,
+            work_sender
+        );
+
+        for handle in join_handles {
+            let _ = handle.join();
         }
+
         return main_result;
     }
 
