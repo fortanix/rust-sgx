@@ -881,7 +881,7 @@ invoke_with_abi_spec!(types);
 // function declarations inside all `impl Usercalls` blocks.
 macro_rules! define_invoke_with_usercalls {
     // collect all usercall function declarations in a list
-    (@ [$($accumulated:tt)*] $(#[$meta1:meta])* impl Usercalls { $($(#[$meta2:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)* { unimplemented!() } )* } $($remainder:tt)* ) =>
+    (@ [$($accumulated:tt)*] $(#[$meta1:meta])* impl Usercalls { $($(#[$meta2:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:ty)* { unimplemented!() } )* } $($remainder:tt)* ) =>
         { define_invoke_with_usercalls!(@ [$($accumulated)* $(fn $f($($n: $t),*) $(-> $r)*;)*] $($remainder)*); };
     // visit modules
     (@ $accumulated:tt $(#[$meta:meta])* pub mod $modname:ident { $($contents:tt)* } $($remainder:tt)*) =>
