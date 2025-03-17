@@ -271,25 +271,25 @@ impl TcbInfo {
         Ok(TcbInfo::new(raw_tcb_info.to_string(), signature, ca_chain))
     }
 
-    fn create_filename(fmspc: &str) -> String {
+    pub fn filename(fmspc: &str) -> String {
         format!("{}.tcb", fmspc)
     }
 
     pub fn store(&self, output_dir: &str) -> Result<String, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc.to_string());
+        let filename = Self::filename(&data.fmspc.to_string());
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc.to_string());
+        let filename = Self::filename(&data.fmspc.to_string());
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
     pub fn restore(input_dir: &str, fmspc: &Fmspc) -> Result<Self, Error> {
-        let filename = TcbInfo::create_filename(&fmspc.to_string());
+        let filename = TcbInfo::filename(&fmspc.to_string());
         let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
         Ok(info)
     }

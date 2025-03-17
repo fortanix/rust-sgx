@@ -287,7 +287,7 @@ impl PckCerts {
         Ok(pcks)
     }
 
-    fn filename(qe_id: &[u8]) -> String {
+    pub fn filename(qe_id: &[u8]) -> String {
         format!("{}.certs", base16::encode_lower(qe_id))
     }
 
