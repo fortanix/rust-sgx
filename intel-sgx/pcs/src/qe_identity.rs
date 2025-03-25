@@ -269,6 +269,10 @@ impl QeIdentitySigned {
         }
     }
 
+    pub fn filename() -> String {
+        Self::DEFAULT_FILENAME.to_string()
+    }
+
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
         io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
         Ok(Self::DEFAULT_FILENAME.to_string())
