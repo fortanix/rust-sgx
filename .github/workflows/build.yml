@@ -2,9 +2,6 @@ name: CI
 
 on:
   pull_request:
-    paths-ignore:
-      - '*.md'
-      - 'LICENSE'
     branches:
       - master
   # This CI will be triggered on any merge_group events
