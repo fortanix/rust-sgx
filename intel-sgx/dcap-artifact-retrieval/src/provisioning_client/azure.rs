@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::common::PckCertsApiNotSupported;
-use super::intel::{PckCrlApi, QeIdApi, TcbInfoApi};
+use super::intel::{INTEL_BASE_URL, TcbEvaluationDataNumbersApi, PckCrlApi, QeIdApi, TcbInfoApi};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PcsVersion, ProvisioningServiceApi,
     StatusCode,
@@ -47,8 +47,9 @@ impl AzureProvisioningClientBuilder {
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -291,5 +292,13 @@ mod tests {
 
             assert_eq!(format!("{:?}", selected.sgx_extension().unwrap()), format!("{:?}", pck.sgx_extension().unwrap()));
         }
+    }
+
+    #[test]
+    pub fn tcb_evaluation_data_numbers() {
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.tcb_evaluation_data_numbers().is_ok());
     }
 }
