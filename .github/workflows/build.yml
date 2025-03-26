@@ -16,12 +16,14 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_NET_RETRY: 10
   CFLAGS_x86_64_fortanix_unknown_sgx: "-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
-  CC_x86_64_fortanix_unknown_sgx: clang-11
+  CC_x86_64_fortanix_unknown_sgx: clang-18
+  CC_x86_64-unknown-linux-gnu: clang-18
+  CXX_x86_64-unknown-linux-gnu: clang-18
 
 jobs:
   test:
     name: Build+Test
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     env:
       # PCS_API_KEY: Raoul Strackx' personal access key. Only used here, and only provides access to the Intel PCS service, which is public anyway
@@ -37,13 +39,10 @@ jobs:
         sudo apt-get update -y && sudo apt install -y gpg
         # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
         cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
-        # Add llbm package repository, key is download from https://apt.llvm.org/llvm-snapshot.gpg.key
-        cat llvm-snapshot.gpg.key | gpg --dearmor | sudo tee /usr/share/keyrings/llvm-snapshot.gpg > /dev/null
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/llvm-snapshot.gpg] http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee /etc/apt/sources.list.d/llvm-snapshot.list > /dev/null
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
         # Install dependencies for build & test
         sudo apt-get update -y
-        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-11 musl-tools gcc-multilib
+        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
 
     - name: Setup Rust toolchain
       run: |
