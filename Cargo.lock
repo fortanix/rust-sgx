@@ -758,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-artifact-retrieval"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "backoff",
  "clap 2.34.0",
