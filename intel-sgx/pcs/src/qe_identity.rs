@@ -6,6 +6,7 @@
  */
 
 use std::convert::TryInto;
+use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
@@ -21,6 +22,55 @@ use {
 
 use crate::io::{self};
 use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum EnclaveIdentity {
+    QE,
+    QVE,
+    QAE,
+    TDQE,
+}
+
+mod enclave_identity {
+    use serde::{Deserialize, Deserializer};
+    use serde::de;
+    use super::EnclaveIdentity;
+
+    pub fn serialize<S>(id: &EnclaveIdentity, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: ::serde::Serializer,
+    {
+        let s = match id {
+            EnclaveIdentity::QE => "QE",
+            EnclaveIdentity::QVE => "QVE",
+            EnclaveIdentity::QAE => "QAE",
+            EnclaveIdentity::TDQE => "TD_QE",
+        };
+        serializer.serialize_str(&s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<EnclaveIdentity, D::Error> {
+        let id = String::deserialize(deserializer)?;
+        match id.as_str() {
+            "QE" => Ok(EnclaveIdentity::QE),
+            "QVE" => Ok(EnclaveIdentity::QVE),
+            "QAE" => Ok(EnclaveIdentity::QAE),
+            "TD_QE" => Ok(EnclaveIdentity::TDQE),
+            _ => Err(de::Error::custom("Unknown Enclave Identity variant"))
+        }
+    }
+}
+
+impl Display for EnclaveIdentity {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            EnclaveIdentity::QE =>  write!(f, "QE"),
+            EnclaveIdentity::QVE =>  write!(f, "QVE"),
+            EnclaveIdentity::QAE =>  write!(f, "QAE"),
+            EnclaveIdentity::TDQE =>  write!(f, "TD_QE"),
+        }
+    }
+}
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 struct Tcb {
@@ -47,7 +97,8 @@ impl TcbLevel {
 #[serde(rename_all = "camelCase")]
 pub struct QeIdentity<V: VerificationType = Verified> {
     version: u16,
-    id: String,
+    #[serde(with = "enclave_identity")]
+    id: EnclaveIdentity,
     #[serde(with = "crate::iso8601")]
     issue_date: DateTime<Utc>,
     #[serde(with = "crate::iso8601")]
@@ -81,7 +132,8 @@ impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
         #[serde(rename_all = "camelCase")]
         struct Dummy {
             version: u16,
-            id: String,
+            #[serde(with = "enclave_identity")]
+            id: EnclaveIdentity,
             #[serde(with = "crate::iso8601")]
             issue_date: DateTime<Utc>,
             #[serde(with = "crate::iso8601")]
@@ -296,7 +348,7 @@ impl QeIdentitySigned {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B]) -> Result<QeIdentity, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], enclave_identity: EnclaveIdentity) -> Result<QeIdentity, Error> {
         // check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -349,6 +401,10 @@ impl QeIdentitySigned {
             return Err(Error::UnknownQeIdentityVersion(version));
         }
 
+        if id != enclave_identity {
+            return Err(Error::Qe3NotValid(format!("QE identity {enclave_identity} expected, got {id}")))
+        }
+
         let now = Utc::now();
         if now < issue_date {
             return Err(Error::Qe3NotValid(format!("QE3 only valid from {}", issue_date)))
@@ -381,7 +437,7 @@ impl QeIdentitySigned {
 mod tests {
     use crate::Error;
     #[cfg(not(target_env = "sgx"))]
-    use crate::qe_identity::QeIdentitySigned;
+    use crate::qe_identity::{QeIdentitySigned, EnclaveIdentity};
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -390,8 +446,13 @@ mod tests {
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
-        match qe_id.verify(&root_certs) {
+        match qe_id.verify(&root_certs, EnclaveIdentity::QE) {
             Err(Error::Qe3NotValid(msg)) => assert_eq!(msg, "QE3 expired on 2020-06-17 17:49:21 UTC"),
+            e => assert!(false, "wrong result: {:?}", e),
+        }
+
+        match qe_id.verify(&root_certs, EnclaveIdentity::TDQE) {
+            Err(Error::Qe3NotValid(msg)) => assert_eq!(msg, "QE identity TD_QE expected, got QE"),
             e => assert!(false, "wrong result: {:?}", e),
         }
     }
@@ -403,6 +464,6 @@ mod tests {
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
-        assert!(qeid.verify(&root_certs).is_err());
+        assert!(qeid.verify(&root_certs, EnclaveIdentity::QE).is_err());
     }
 }
