@@ -15,4 +15,4 @@ categories = ["external-ffi-bindings", "os"]
 cc = "1.0.46"
 
 [dependencies]
-zeroize = "1.6.0"
+zeroize = "1.8.1"
