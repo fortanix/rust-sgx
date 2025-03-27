@@ -13,7 +13,7 @@
 
 use pcs::{
     CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
-    TcbInfo, Unverified,
+    TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
@@ -499,7 +499,7 @@ impl<'inp> TcbEvaluationDataNumbersService<'inp> for TcbEvaluationDataNumbersApi
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
     type Input = TcbEvaluationDataNumbersIn;
-    type Output = String;
+    type Output = RawTcbEvaluationDataNumbers;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!(
@@ -533,8 +533,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let _ca_chain = parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
-        Ok(response_body)
+        let ca_chain = parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
+        RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
     }
 }
 
@@ -542,10 +542,11 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
 mod tests {
     use std::hash::Hash;
     use std::hash::Hasher;
-    use std::path::PathBuf;
+    use std::fs;
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
 
-    use pcs::PckID;
+    use pcs::{PckID, RawTcbEvaluationDataNumbers};
 
     use crate::provisioning_client::{
         test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
@@ -942,6 +943,11 @@ mod tests {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
         let client = intel_builder.build(reqwest_client());
-        assert!(client.tcb_evaluation_data_numbers().is_ok());
+        let eval_numbers = client.tcb_evaluation_data_numbers().unwrap();
+
+        let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
+            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers>(&v))
+            .unwrap();
+        assert_eq!(eval_numbers, eval_numbers2);
     }
 }

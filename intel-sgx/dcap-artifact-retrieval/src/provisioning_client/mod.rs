@@ -16,7 +16,7 @@ use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
     CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
-    QeIdentitySigned, TcbInfo, Unverified,
+    QeIdentitySigned, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -251,7 +251,7 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
 }
 
 pub trait TcbEvaluationDataNumbersService<'inp>:
-    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = String>
+    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers>
 {
     fn build_input(&self)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
@@ -468,7 +468,7 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     pckcrl_service: CachedService<PckCrl, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
     tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
-    tcb_evaluation_data_numbers_service: CachedService<String, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
+    tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
     fetcher: F,
 }
 
@@ -615,7 +615,7 @@ pub trait ProvisioningClient {
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
 
-    fn tcb_evaluation_data_numbers(&self) -> Result<String, Error>;
+    fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error>;
 }
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
@@ -660,7 +660,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcb_evaluation_data_numbers(&self) -> Result<String, Error> {
+    fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error> {
         let input = self.tcb_evaluation_data_numbers_service.pcs_service().build_input();
         self.tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
     }
