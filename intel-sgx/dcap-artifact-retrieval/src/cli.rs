@@ -80,13 +80,34 @@ fn download_dcap_artifacts(
         }
 
         let fmspc = pckcerts.fmspc()?;
-        let tcbinfo = prov_client.tcbinfo(&fmspc)?;
-        let tcbinfo_file = tcbinfo
-            .store(output_dir)
-            .map_err(|e| Error::OfflineAttestationError(e))?;
+        let evaluation_data_numbers = prov_client
+            .tcb_evaluation_data_numbers()?;
 
+        let file = evaluation_data_numbers.write_to_file(output_dir)?;
         if verbose {
-            println!("   tcb info:    {}\n", tcbinfo_file);
+            println!("   tcb evaluation data numbers:    {}\n", file);
+        }
+
+        for number in evaluation_data_numbers.evaluation_data_numbers()? {
+            let tcb_info = prov_client
+                .tcbinfo_with_evaluation_data_number(&fmspc, number);
+
+            match tcb_info {
+                Ok(tcb_info) => {
+                    let file = tcb_info.store(output_dir)?;
+                    if verbose {
+                        println!("   tcb info:    {}\n", file);
+                    }
+                },
+                Err(Error::PCSError(StatusCode::Gone, _)) => {
+                    if verbose {
+                        println!("   tcb info:    Gone (silently ignoring)\n");
+                    }
+                }
+                Err(e) => {
+                    return Err(e)?;
+                },
+            }
         }
     }
     let pckcrl = prov_client

@@ -226,6 +226,7 @@ pub trait QeIdService<'inp>:
 pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
     pub(crate) fmspc: &'i Fmspc,
+    pub(crate) evaluation_data_number: Option<u16>,
 }
 
 impl WithApiVersion for TcbInfoIn<'_> {
@@ -237,7 +238,10 @@ impl WithApiVersion for TcbInfoIn<'_> {
 pub trait TcbInfoService<'inp>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
 {
-    fn build_input(&'inp self, fmspc: &'inp Fmspc)
+    fn build_input_from_fmpsc(&'inp self, fmspc: &'inp Fmspc)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+
+    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
@@ -561,6 +565,8 @@ pub trait ProvisioningClient {
 
     fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error>;
 
+    fn tcbinfo_with_evaluation_data_number(&self, fmspc: &Fmspc, evaluation_data_number: u16) -> Result<TcbInfo, Error>;
+
     fn pckcrl(&self) -> Result<PckCrl, Error>;
 
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error>;
@@ -646,7 +652,12 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     }
 
     fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.pcs_service().build_input(fmspc);
+        let input = self.tcbinfo_service.pcs_service().build_input_from_fmpsc(fmspc);
+        self.tcbinfo_service.call_service(&self.fetcher, &input)
+    }
+
+    fn tcbinfo_with_evaluation_data_number(&self, fmspc: &Fmspc, evaluation_data_number: u16) -> Result<TcbInfo, Error> {
+        let input = self.tcbinfo_service.pcs_service().build_input_from_fmpsc_and_evaluation_data_number(fmspc, evaluation_data_number);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
