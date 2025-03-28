@@ -19,7 +19,7 @@ use {
 };
 
 use crate::pckcrt::TcbComponents;
-use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -121,16 +121,6 @@ pub struct TcbLevel {
     pub advisory_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub enum Platform {
-    SGX,
-    TDX,
-}
-
-fn sgx_platform() -> Platform {
-    Platform::SGX
-}
-
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct TcbData<V: VerificationType = Verified> {
@@ -154,7 +144,7 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Dummy {
-            #[serde(default = "sgx_platform")]
+            #[serde(default = "crate::sgx_platform")]
             id: Platform,
             version: u16,
             #[serde(with = "crate::iso8601")]
