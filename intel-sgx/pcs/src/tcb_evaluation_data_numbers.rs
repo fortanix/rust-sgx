@@ -125,6 +125,18 @@ impl RawTcbEvaluationDataNumbers {
         Ok(identity)
     }
 
+    /// Returns a Vec of the TCB evaluation data numbers present. Warning: These values should not
+    /// be trusted as there is no guarantee the RawTcbEvaluationDataNumbers is valid. If this
+    /// result must be trustworthy, you need to call `verify` and inspect the
+    /// `TcbEvaluationDataNumbers`
+    pub fn evaluation_data_numbers(&self) -> Result<Vec<u16>, Error> {
+        let TcbEvaluationDataNumbers::<Unverified> {
+            tcb_eval_numbers,
+            ..
+        } = serde_json::from_str(&self.raw_tcb_evaluation_data_numbers).map_err(|e| Error::ParseError(e))?;
+        Ok(tcb_eval_numbers.iter().map(|tcb_eval| tcb_eval.number).collect())
+    }
+
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbEvaluationDataNumbers, Error> {
         // Check cert chain

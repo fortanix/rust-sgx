@@ -261,25 +261,29 @@ impl TcbInfo {
         Ok(TcbInfo::new(raw_tcb_info.to_string(), signature, ca_chain))
     }
 
-    pub fn filename(fmspc: &str) -> String {
-        format!("{}.tcb", fmspc)
+    fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
+        if let Some(evaluation_data_number) = evaluation_data_number {
+            format!("{fmspc}-{evaluation_data_number}.tcb")
+        } else {
+            format!("{fmspc}.tcb")
+        }
     }
 
     pub fn store(&self, output_dir: &str) -> Result<String, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::filename(&data.fmspc.to_string());
+        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
         let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::filename(&data.fmspc.to_string());
+        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn restore(input_dir: &str, fmspc: &Fmspc) -> Result<Self, Error> {
-        let filename = TcbInfo::filename(&fmspc.to_string());
+    pub fn restore(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
+        let filename = TcbInfo::create_filename(&fmspc.to_string(), evaluation_data_number);
         let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
         Ok(info)
     }
@@ -391,7 +395,7 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info() {
         let info =
-            TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc")).expect("validated");
+            TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         match info.verify(&root_certificates, Platform::SGX) {
@@ -408,14 +412,14 @@ mod tests {
         let temp_dir = TempDir::new("tempdir").unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
         info.store(&path).unwrap();
-        let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc")).unwrap();
+        let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
         assert_eq!(info, info2);
     }
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupt_tcb_info() {
-        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap()).unwrap();
+        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         assert!(tcb_info.verify(&root_certificates, Platform::SGX).is_err());
