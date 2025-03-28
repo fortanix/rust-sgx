@@ -261,13 +261,22 @@ impl TcbInfoApi {
 }
 
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
-    fn build_input(
+    fn build_input_from_fmpsc(
         &'inp self,
         fmspc: &'inp Fmspc,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version,
             fmspc,
+            evaluation_data_number: None,
+        }
+    }
+
+    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        TcbInfoIn {
+            api_version: self.api_version.clone(),
+            fmspc,
+            evaluation_data_number: Some(evaluation_data_number),
         }
     }
 }
@@ -599,6 +608,30 @@ mod tests {
         }
     }
 
+    #[ignore = "PCCS service needs an update to support the new endpoint"]
+    #[test]
+    pub fn tcb_info_with_evaluation_data_number() {
+        let client = make_client(PcsVersion::V4);
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+            let fmspc = pckcerts.fmspc().unwrap();
+
+            let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
+
+            for number in evaluation_data_numbers {
+                assert!(client
+                    .tcbinfo_with_evaluation_data_number(&fmspc, number)
+                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
+                    .is_ok());
+            }
+        }
+    }
+
     #[test]
     pub fn tcb_info_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
@@ -620,7 +653,7 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc);
+                        let input = client.tcbinfo_service.pcs_service().build_input_from_fmpsc(&fmspc);
                         input.hash(&mut hasher);
 
                         cache
