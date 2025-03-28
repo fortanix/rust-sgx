@@ -6,6 +6,7 @@
  */
 
 use std::convert::TryFrom;
+use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
@@ -121,10 +122,19 @@ pub struct TcbLevel {
     pub advisory_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Platform {
     SGX,
     TDX,
+}
+
+impl Display for Platform {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Platform::SGX =>  write!(f, "SGX"),
+            Platform::TDX =>  write!(f, "TDX"),
+        }
+    }
 }
 
 fn sgx_platform() -> Platform {
@@ -307,7 +317,7 @@ impl TcbInfo {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B]) -> Result<TcbData<Verified>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbData<Verified>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -355,6 +365,10 @@ impl TcbInfo {
             ..
         } = TcbData::parse(&self.raw_tcb_info)?;
 
+        if id != platform {
+            return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {platform} platform")))
+        }
+
         let now = Utc::now();
         if now < issue_date {
             return Err(Error::InvalidTcbInfo(format!("TCB Info only valid from {}", issue_date)))
@@ -388,7 +402,7 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     use {
         crate::Error,
-        crate::tcb_info::{Fmspc, TcbInfo},
+        crate::tcb_info::{Fmspc, Platform, TcbInfo},
         std::convert::TryFrom,
         tempdir::TempDir,
     };
@@ -400,8 +414,13 @@ mod tests {
             TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc")).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        match info.verify(&root_certificates) {
+        match info.verify(&root_certificates, Platform::SGX) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
+            e => assert!(false, "wrong result: {:?}", e),
+        }
+
+        match info.verify(&root_certificates, Platform::TDX) {
+            Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info belongs to the SGX platform, expected one for the TDX platform")),
             e => assert!(false, "wrong result: {:?}", e),
         }
 
@@ -419,6 +438,6 @@ mod tests {
         let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap()).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates).is_err());
+        assert!(tcb_info.verify(&root_certificates, Platform::SGX).is_err());
     }
 }
