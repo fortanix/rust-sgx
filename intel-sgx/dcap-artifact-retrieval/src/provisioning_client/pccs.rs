@@ -24,6 +24,7 @@ use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
+use super::intel::TcbEvaluationDataNumbersApi;
 use crate::Error;
 
 pub struct PccsProvisioningClientBuilder {
@@ -52,8 +53,9 @@ impl PccsProvisioningClientBuilder {
         let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
         let qeid = QeIdApi::new(self.base_url.clone(), self.api_version);
         let tcbinfo = TcbInfoApi::new(self.base_url.clone(), self.api_version);
+        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -723,5 +725,12 @@ mod tests {
 
             assert_eq!(qe_id, qeid_from_service);
         }
+    }
+
+    #[ignore = "PCCS service needs an update to support the new endpoint"]
+    #[test]
+    pub fn tcb_evaluation_data_numbers() {
+        let client = make_client(PcsVersion::V4);
+        client.tcb_evaluation_data_numbers().unwrap();
     }
 }

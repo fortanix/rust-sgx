@@ -16,17 +16,18 @@ use pcs::{
     TcbInfo, Unverified,
 };
 use rustc_serialize::hex::ToHex;
+use std::borrow::Cow;
 use std::time::Duration;
 
 use super::common::*;
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbInfoIn, TcbInfoService,
+    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
 };
 use crate::Error;
 
-const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
+pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
 
 pub struct IntelProvisioningClientBuilder {
@@ -60,8 +61,9 @@ impl IntelProvisioningClientBuilder {
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -474,6 +476,68 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     }
 }
 
+pub struct TcbEvaluationDataNumbersApi {
+    base_url: Cow<'static, str>,
+}
+
+impl TcbEvaluationDataNumbersApi {
+    pub fn new(base_url: Cow<'static, str>) -> Self {
+        TcbEvaluationDataNumbersApi {
+            base_url,
+        }
+    }
+}
+
+impl<'inp> TcbEvaluationDataNumbersService<'inp> for TcbEvaluationDataNumbersApi {
+    fn build_input(&self)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        TcbEvaluationDataNumbersIn
+    }
+}
+
+/// Implementation of TCB Evaluation Data Numbers endpoint
+/// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
+impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
+    type Input = TcbEvaluationDataNumbersIn;
+    type Output = String;
+
+    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let url = format!(
+            "{}/sgx/certification/v{}/tcbevaluationdatanumbers",
+            self.base_url, input.api_version() as u8,
+        );
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let _ca_chain = parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS)?;
+        Ok(response_body)
+    }
+}
+
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
     use std::hash::Hash;
@@ -871,5 +935,13 @@ mod tests {
 
             assert_eq!(qe_id, qeid_from_service);
         }
+    }
+
+    #[test]
+    pub fn tcb_evaluation_data_numbers() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        assert!(client.tcb_evaluation_data_numbers().is_ok());
     }
 }

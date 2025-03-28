@@ -241,6 +241,22 @@ pub trait TcbInfoService<'inp>:
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
+pub struct TcbEvaluationDataNumbersIn;
+
+impl WithApiVersion for TcbEvaluationDataNumbersIn {
+    fn api_version(&self) -> PcsVersion {
+        PcsVersion::V4
+    }
+}
+
+pub trait TcbEvaluationDataNumbersService<'inp>:
+    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = String>
+{
+    fn build_input(&self)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+}
+
 pub struct ClientBuilder {
     retry_timeout: Option<Duration>,
     cache_capacity: usize,
@@ -267,13 +283,14 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, F>(
+    pub(crate) fn build<PSS, PS, PC, QS, TS, ES, F>(
         self,
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
         tcbinfo_service: TS,
+        tcb_evaluation_data_numbers_service: ES,
         fetcher: F,
     ) -> Client<F>
     where
@@ -282,6 +299,7 @@ impl ClientBuilder {
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
+        ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
     {
         Client::new(
@@ -290,6 +308,7 @@ impl ClientBuilder {
             pckcrl_service,
             qeid_service,
             tcbinfo_service,
+            tcb_evaluation_data_numbers_service,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -449,16 +468,18 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     pckcrl_service: CachedService<PckCrl, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
     tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
+    tcb_evaluation_data_numbers_service: CachedService<String, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS>(
+    fn new<PSS, PS, PC, QS, TS, ES>(
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
         tcbinfo_service: TS,
+        tcb_evaluation_data_numbers_service: ES,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
@@ -470,6 +491,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
+        ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
     {
         Client {
             pckcerts_service: CachedService::new(
@@ -507,6 +529,14 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             tcbinfo_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(Box::new(tcbinfo_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            tcb_evaluation_data_numbers_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(tcb_evaluation_data_numbers_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -584,6 +614,8 @@ pub trait ProvisioningClient {
             .try_into()
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
+
+    fn tcb_evaluation_data_numbers(&self) -> Result<String, Error>;
 }
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
@@ -626,6 +658,11 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn qe_identity(&self) -> Result<QeIdentitySigned, Error> {
         let input = self.qeid_service.pcs_service().build_input();
         self.qeid_service.call_service(&self.fetcher, &input)
+    }
+
+    fn tcb_evaluation_data_numbers(&self) -> Result<String, Error> {
+        let input = self.tcb_evaluation_data_numbers_service.pcs_service().build_input();
+        self.tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
     }
 }
 
