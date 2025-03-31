@@ -6,7 +6,6 @@
  */
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 

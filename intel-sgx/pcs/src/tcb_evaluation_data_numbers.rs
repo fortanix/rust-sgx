@@ -12,14 +12,18 @@ use {
 };
 
 /// Implementation of the TcbEvaluationDataNumbers model
-/// https://api.portal.grustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1
-#[allow(dead_code)]
+/// <https://api.portal.grustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
 #[derive(Clone, Debug)]
 pub struct TcbEvaluationDataNumbers<V: VerificationType = Verified> {
+    #[allow(unused)]
     id: Platform,
+    #[allow(unused)]
     version: u16,
+    #[allow(unused)]
     issue_date: DateTime<Utc>,
+    #[allow(unused)]
     next_update: DateTime<Utc>,
+    #[allow(unused)]
     tcb_eval_numbers: Vec<TcbEvalNumber>,
     type_: PhantomData<V>,
 }
