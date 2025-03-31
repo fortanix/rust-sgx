@@ -533,7 +533,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        let _ca_chain = parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS)?;
+        let _ca_chain = parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
         Ok(response_body)
     }
 }
