@@ -131,8 +131,8 @@ pub enum Platform {
 impl Display for Platform {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Platform::SGX =>  write!(f, "SGX"),
-            Platform::TDX =>  write!(f, "TDX"),
+            Platform::SGX => write!(f, "SGX"),
+            Platform::TDX => write!(f, "TDX"),
         }
     }
 }
