@@ -4,6 +4,7 @@ use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
+use std::slice::Iter;
 
 #[cfg(feature = "verify")]
 use {
@@ -64,6 +65,12 @@ impl<'de> Deserialize<'de> for TcbEvaluationDataNumbers<Unverified> {
     }
 }
 
+impl TcbEvaluationDataNumbers {
+    pub fn numbers(&self) -> Iter<'_, TcbEvalNumber> {
+        self.tcb_eval_numbers.iter()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbEvalNumber {
@@ -73,6 +80,20 @@ pub struct TcbEvalNumber {
     tcb_recovery_event_date: DateTime<Utc>,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
+}
+
+impl TcbEvalNumber {
+    pub fn number(&self) -> u16 {
+        self.number
+    }
+
+    pub fn tcb_recovery_event_date(&self) -> &DateTime<Utc> {
+        &self.tcb_recovery_event_date
+    }
+
+    pub fn tcb_date(&self) -> &DateTime<Utc> {
+        &self.tcb_date
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -105,6 +126,11 @@ impl RawTcbEvaluationDataNumbers {
         let IntelTcbEvaluationDataNumbers { raw_tcb_evaluation_data_numbers, signature } = serde_json::from_str(&body)?;
 
         Ok(RawTcbEvaluationDataNumbers::new(raw_tcb_evaluation_data_numbers.to_string(), signature, ca_chain))
+    }
+
+    /// Returns the raw TCB evaluation data numbers as signed by Intel
+    pub fn raw_tcb_evaluation_data_numbers(&self) -> &str {
+        &self.raw_tcb_evaluation_data_numbers
     }
 
     pub fn signature(&self) -> &Vec<u8> {

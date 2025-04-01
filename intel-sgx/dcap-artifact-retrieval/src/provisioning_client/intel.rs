@@ -818,9 +818,9 @@ mod tests {
 
             let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
 
-            for number in evaluation_data_numbers {
+            for number in evaluation_data_numbers.numbers() {
                 assert!(client
-                    .tcbinfo_with_evaluation_data_number(&fmspc, number)
+                    .tcbinfo_with_evaluation_data_number(&fmspc, number.number())
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
             }

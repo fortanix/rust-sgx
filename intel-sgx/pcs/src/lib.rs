@@ -30,7 +30,7 @@ pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{Fmspc, TcbInfo, TcbData};
-pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers};
+pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers};
 
 mod io;
 mod iso8601;
