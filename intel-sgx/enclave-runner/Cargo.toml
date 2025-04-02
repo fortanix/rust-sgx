@@ -30,7 +30,7 @@ ipc-queue = { version = "0.4.0", path = "../../ipc-queue" }
 anyhow = "1.0"                                  # MIT/Apache-2.0
 thiserror = "1.0"                               # MIT/Apache-2.0
 fnv = "1"                                       # MIT/Apache-2.0
-lazy_static = "1.2.0"                           # MIT/Apache-2.0
+lazy_static = "1.5.0"                           # MIT/Apache-2.0
 libc = "0.2.48"                                 # MIT/Apache-2.0
 nix = "0.13.0"                                  # MIT
 openssl = { version = "0.10", optional = true } # Apache-2.0
