@@ -336,13 +336,22 @@ impl TcbInfoApi {
 }
 
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
-    fn build_input(
+    fn build_input_from_fmpsc(
         &'inp self,
         fmspc: &'inp Fmspc,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version.clone(),
             fmspc,
+            evaluation_data_number: None,
+        }
+    }
+
+    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        TcbInfoIn {
+            api_version: self.api_version.clone(),
+            fmspc,
+            evaluation_data_number: Some(evaluation_data_number),
         }
     }
 }
@@ -355,11 +364,18 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let fmspc = input.fmspc.as_bytes().to_hex();
-        let url = format!(
-            "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-            INTEL_BASE_URL, api_version, fmspc,
-        );
+        let url = if let Some(evaluation_data_number) = input.evaluation_data_number {
+            let fmspc = input.fmspc.as_bytes().to_hex();
+            format!(
+                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                INTEL_BASE_URL, api_version, fmspc, evaluation_data_number)
+        } else {
+            let fmspc = input.fmspc.as_bytes().to_hex();
+            format!(
+                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
+                INTEL_BASE_URL, api_version, fmspc,
+            )
+        };
         Ok((url, Vec::new()))
     }
 
@@ -372,7 +388,10 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
                 "Failed to authenticate or authorize the request (check your PCS key)",
             )),
             StatusCode::NotFound => {
-                Err(Error::PCSError(status_code, "QE identity Cannot be found"))
+                Err(Error::PCSError(status_code, "TCB info cannot be found"))
+            }
+            StatusCode::Gone => {
+                Err(Error::PCSError(status_code, "TCB info no longer available"))
             }
             StatusCode::InternalServerError => Err(Error::PCSError(
                 status_code,
@@ -542,8 +561,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
 mod tests {
     use std::hash::Hash;
     use std::hash::Hasher;
-    use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use std::time::Duration;
 
     use pcs::{PckID, RawTcbEvaluationDataNumbers};
@@ -785,6 +803,31 @@ mod tests {
     }
 
     #[test]
+    pub fn tcb_info_with_evaluation_data_number() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+            let fmspc = pckcerts.fmspc().unwrap();
+
+            let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
+
+            for number in evaluation_data_numbers {
+                assert!(client
+                    .tcbinfo_with_evaluation_data_number(&fmspc, number)
+                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
+                    .is_ok());
+            }
+        }
+    }
+
+    #[test]
     pub fn tcb_info_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -811,7 +854,7 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc);
+                        let input = client.tcbinfo_service.pcs_service().build_input_from_fmpsc(&fmspc);
                         input.hash(&mut hasher);
 
                         cache
