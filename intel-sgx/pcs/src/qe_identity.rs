@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -230,6 +230,14 @@ impl QeIdentity {
     }
 }
 
+impl TryFrom<&QeIdentitySigned> for QeIdentity<Unverified> {
+    type Error = Error;
+
+    fn try_from(id: &QeIdentitySigned) -> Result<Self, Self::Error> {
+        serde_json::from_str(&id.raw_enclave_identity).map_err(|e| Error::ParseError(e))
+    }
+}
+
 fn mrsigner_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 32], D::Error> {
     let mrsigner = String::deserialize(deserializer)?;
     let mrsigner = base16::decode(&mrsigner).map_err(de::Error::custom)?;
@@ -321,21 +329,30 @@ impl QeIdentitySigned {
         }
     }
 
-    pub fn filename() -> String {
-        Self::DEFAULT_FILENAME.to_string()
+    fn create_filename(evaluation_data_number: Option<u64>) -> String {
+        if let Some(evaluation_data_number) = evaluation_data_number {
+            format!("qe3_identity-{evaluation_data_number}.id")
+        } else {
+            Self::DEFAULT_FILENAME.into()
+        }
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
+        let id = QeIdentity::<Unverified>::try_from(self)?;
+        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
+        io::write_to_file(&self, output_dir, &filename)?;
+        Ok(filename)
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, &Self::DEFAULT_FILENAME)
+        let id = QeIdentity::<Unverified>::try_from(self)?;
+        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
+        io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let identity: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
+    pub fn read_from_file(input_dir: &str, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
+        let filename = Self::create_filename(evaluation_data_number);
+        let identity: Self = io::read_from_file(input_dir, &filename)?;
         Ok(identity)
     }
 
@@ -446,7 +463,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_qe3_identity() {
-        let qe_id = QeIdentitySigned::read_from_file("./tests/data/").expect("validated");
+        let qe_id = QeIdentitySigned::read_from_file("./tests/data/", None).expect("validated");
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
@@ -464,7 +481,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupted_qe3_identity() {
-        let qeid = QeIdentitySigned::read_from_file("./tests/data/corrupted/").unwrap();
+        let qeid = QeIdentitySigned::read_from_file("./tests/data/corrupted/", None).unwrap();
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
