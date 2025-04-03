@@ -88,9 +88,9 @@ fn download_dcap_artifacts(
             println!("   tcb evaluation data numbers:    {}\n", file);
         }
 
-        for number in evaluation_data_numbers.evaluation_data_numbers()? {
+        for number in evaluation_data_numbers.evaluation_data_numbers()?.numbers() {
             let tcb_info = prov_client
-                .tcbinfo_with_evaluation_data_number(&fmspc, number);
+                .tcbinfo_with_evaluation_data_number(&fmspc, number.number());
 
             match tcb_info {
                 Ok(tcb_info) => {
