@@ -12,7 +12,7 @@ extern crate yasna;
 #[macro_use]
 extern crate quick_error;
 
-use std::fmt;
+use std::fmt::{self, Display, Formatter};
 
 use serde::de::{self};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -30,6 +30,7 @@ pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{Fmspc, TcbInfo, TcbData};
+pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers};
 
 mod io;
 mod iso8601;
@@ -38,6 +39,7 @@ mod pckcrt;
 mod pckid;
 mod qe_identity;
 mod tcb_info;
+mod tcb_evaluation_data_numbers;
 
 pub type CpuSvn = [u8; 16];
 pub type EncPpid = Vec<u8>;
@@ -45,6 +47,26 @@ pub type PceId = u16;
 pub type PceIsvsvn = u16;
 pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub enum Platform {
+    SGX,
+    TDX,
+}
+
+impl Display for Platform {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        match self {
+            Platform::SGX => write!(f, "SGX"),
+            Platform::TDX => write!(f, "TDX"),
+        }
+    }
+}
+
+fn sgx_platform() -> Platform {
+    Platform::SGX
+}
+
 
 quick_error! {
     #[derive(Debug)]
@@ -82,6 +104,13 @@ quick_error! {
         }
         InvalidTcbInfo(err: String){
             display("Invalid TCB info: {}", err)
+        }
+        InvalidTcbEvaluationDataNumbers(err: String){
+            display("Invalid TCB Evaluation Data Numbers: {}", err)
+        }
+        #[cfg(feature = "verify")]
+        UntrustworthyTcbEvaluationDataNumber(err: MbedError) {
+            display("TCB Evaluation Data Number not trustworthy: {}", err)
         }
         UnknownTcbType(tcb_type: u16){
             display("Unknown TCB type: {}", tcb_type)

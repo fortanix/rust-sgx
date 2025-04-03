@@ -6,7 +6,6 @@
  */
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display, Formatter};
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
@@ -20,7 +19,7 @@ use {
 };
 
 use crate::pckcrt::TcbComponents;
-use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -122,25 +121,6 @@ pub struct TcbLevel {
     pub advisory_ids: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub enum Platform {
-    SGX,
-    TDX,
-}
-
-impl Display for Platform {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Platform::SGX => write!(f, "SGX"),
-            Platform::TDX => write!(f, "TDX"),
-        }
-    }
-}
-
-fn sgx_platform() -> Platform {
-    Platform::SGX
-}
-
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct TcbData<V: VerificationType = Verified> {
@@ -164,7 +144,7 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Dummy {
-            #[serde(default = "sgx_platform")]
+            #[serde(default = "crate::sgx_platform")]
             id: Platform,
             version: u16,
             #[serde(with = "crate::iso8601")]
