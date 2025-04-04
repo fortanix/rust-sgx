@@ -1,9 +1,9 @@
-
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
+use std::slice::Iter;
 
 #[cfg(feature = "verify")]
 use {
@@ -64,6 +64,12 @@ impl<'de> Deserialize<'de> for TcbEvaluationDataNumbers<Unverified> {
     }
 }
 
+impl<V: VerificationType> TcbEvaluationDataNumbers<V> {
+    pub fn numbers(&self) -> Iter<'_, TcbEvalNumber> {
+        self.tcb_eval_numbers.iter()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbEvalNumber {
@@ -73,6 +79,20 @@ pub struct TcbEvalNumber {
     tcb_recovery_event_date: DateTime<Utc>,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
+}
+
+impl TcbEvalNumber {
+    pub fn number(&self) -> u16 {
+        self.number
+    }
+
+    pub fn tcb_recovery_event_date(&self) -> &DateTime<Utc> {
+        &self.tcb_recovery_event_date
+    }
+
+    pub fn tcb_date(&self) -> &DateTime<Utc> {
+        &self.tcb_date
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -107,6 +127,11 @@ impl RawTcbEvaluationDataNumbers {
         Ok(RawTcbEvaluationDataNumbers::new(raw_tcb_evaluation_data_numbers.to_string(), signature, ca_chain))
     }
 
+    /// Returns the raw TCB evaluation data numbers as signed by Intel
+    pub fn raw_tcb_evaluation_data_numbers(&self) -> &str {
+        &self.raw_tcb_evaluation_data_numbers
+    }
+
     pub fn signature(&self) -> &Vec<u8> {
         &self.signature
     }
@@ -125,16 +150,11 @@ impl RawTcbEvaluationDataNumbers {
         Ok(identity)
     }
 
-    /// Returns a Vec of the TCB evaluation data numbers present. Warning: These values should not
+    /// Returns the TCB evaluation data numbers present. Warning: These values should not
     /// be trusted as there is no guarantee the RawTcbEvaluationDataNumbers is valid. If this
-    /// result must be trustworthy, you need to call `verify` and inspect the
-    /// `TcbEvaluationDataNumbers`
-    pub fn evaluation_data_numbers(&self) -> Result<Vec<u16>, Error> {
-        let TcbEvaluationDataNumbers::<Unverified> {
-            tcb_eval_numbers,
-            ..
-        } = serde_json::from_str(&self.raw_tcb_evaluation_data_numbers).map_err(|e| Error::ParseError(e))?;
-        Ok(tcb_eval_numbers.iter().map(|tcb_eval| tcb_eval.number).collect())
+    /// result must be trustworthy, you need to call `verify`
+    pub fn evaluation_data_numbers(&self) -> Result<TcbEvaluationDataNumbers<Unverified>, Error> {
+        serde_json::from_str(&self.raw_tcb_evaluation_data_numbers).map_err(|e| Error::ParseError(e))
     }
 
     #[cfg(feature = "verify")]
@@ -205,6 +225,42 @@ impl RawTcbEvaluationDataNumbers {
             next_update,
             tcb_eval_numbers,
             type_: PhantomData,
+        })
+    }
+}
+
+pub struct TcbPolicy {
+    grace_period: Duration,
+}
+
+impl TcbPolicy {
+    /// A TCB policy that allows for TCB info to be used until `grace_period` after
+    /// a TCB recovery event
+    pub const fn new(grace_period: Duration) -> Self {
+        Self {
+            grace_period
+        }
+    }
+
+    fn within_policy(&self, tcb_eval: &TcbEvalNumber, now: &DateTime<Utc>) -> bool {
+        *now < *tcb_eval.tcb_recovery_event_date() + self.grace_period
+    }
+
+    pub fn minimum_tcb_evaluation_data_number<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>) -> Option<TcbEvalNumber> {
+        let now = Utc::now();
+        tcb_eval.numbers().fold(None, |last, number| {
+            match (last, self.within_policy(number, &now)) {
+                (last, false) => last,
+                (Some(last), true) => {
+                    if last.number() <= number.number() {
+                        // We need the lowest TCB Eval Data Number that still adheres to the policy
+                        Some(last)
+                    } else {
+                        Some(number.clone())
+                    }
+                },
+                (None, true)  => Some(number.clone()),
+            }
         })
     }
 }
