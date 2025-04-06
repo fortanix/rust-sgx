@@ -208,6 +208,7 @@ pub trait PckCrlService<'inp>:
 #[derive(Hash)]
 pub struct QeIdIn {
     pub api_version: PcsVersion,
+    pub tcb_evaluation_data_number: Option<u16>,
 }
 
 impl WithApiVersion for QeIdIn {
@@ -219,14 +220,14 @@ impl WithApiVersion for QeIdIn {
 pub trait QeIdService<'inp>:
     ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned>
 {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
 pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
     pub(crate) fmspc: &'i Fmspc,
-    pub(crate) evaluation_data_number: Option<u16>,
+    pub(crate) tcb_evaluation_data_number: Option<u16>,
 }
 
 impl WithApiVersion for TcbInfoIn<'_> {
@@ -238,10 +239,7 @@ impl WithApiVersion for TcbInfoIn<'_> {
 pub trait TcbInfoService<'inp>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
 {
-    fn build_input_from_fmpsc(&'inp self, fmspc: &'inp Fmspc)
-        -> <Self as ProvisioningServiceApi<'inp>>::Input;
-
-    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16)
+    fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
@@ -563,13 +561,11 @@ pub trait ProvisioningClient {
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error>;
 
-    fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error>;
-
-    fn tcbinfo_with_evaluation_data_number(&self, fmspc: &Fmspc, evaluation_data_number: u16) -> Result<TcbInfo, Error>;
+    fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error>;
 
     fn pckcrl(&self) -> Result<PckCrl, Error>;
 
-    fn qe_identity(&self) -> Result<QeIdentitySigned, Error>;
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
 
     /// Retrieve PCK certificates using `pckcerts()` and fallback to the
     /// following method if that's not supported:
@@ -596,7 +592,7 @@ pub trait ProvisioningClient {
             Some(&pck_id.qe_id),
         )?;
         let fmspc = pck_cert.sgx_extension()?.fmspc;
-        let tcb_info = self.tcbinfo(&fmspc)?;
+        let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
         let mut pcks = HashMap::new();
         for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
@@ -651,13 +647,8 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcbinfo(&self, fmspc: &Fmspc) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.pcs_service().build_input_from_fmpsc(fmspc);
-        self.tcbinfo_service.call_service(&self.fetcher, &input)
-    }
-
-    fn tcbinfo_with_evaluation_data_number(&self, fmspc: &Fmspc, evaluation_data_number: u16) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.pcs_service().build_input_from_fmpsc_and_evaluation_data_number(fmspc, evaluation_data_number);
+    fn tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error> {
+        let input = self.tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
@@ -666,8 +657,8 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 
-    fn qe_identity(&self) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.pcs_service().build_input();
+    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 
