@@ -336,22 +336,15 @@ impl TcbInfoApi {
 }
 
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
-    fn build_input_from_fmpsc(
+    fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
+        tcb_evaluation_data_number: Option<u16>,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version.clone(),
             fmspc,
-            evaluation_data_number: None,
-        }
-    }
-
-    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbInfoIn {
-            api_version: self.api_version.clone(),
-            fmspc,
-            evaluation_data_number: Some(evaluation_data_number),
+            tcb_evaluation_data_number,
         }
     }
 }
@@ -364,13 +357,12 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let url = if let Some(evaluation_data_number) = input.evaluation_data_number {
-            let fmspc = input.fmspc.as_bytes().to_hex();
+        let fmspc = input.fmspc.as_bytes().to_hex();
+        let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
                 "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
                 INTEL_BASE_URL, api_version, fmspc, evaluation_data_number)
         } else {
-            let fmspc = input.fmspc.as_bytes().to_hex();
             format!(
                 "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
                 INTEL_BASE_URL, api_version, fmspc,
@@ -435,9 +427,10 @@ impl QeIdApi {
 }
 
 impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version.clone(),
+            tcb_evaluation_data_number,
         }
     }
 }
@@ -450,10 +443,17 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let url = format!(
-            "{}/sgx/certification/v{}/qe/identity?update=early",
-            INTEL_BASE_URL, api_version,
-        );
+        let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber{}",
+                INTEL_BASE_URL, api_version, tcb_evaluation_data_number
+            )
+        } else {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?update=early",
+                INTEL_BASE_URL, api_version,
+            )
+        };
         Ok((url, Vec::new()))
     }
 
@@ -795,7 +795,7 @@ mod tests {
                     .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert!(client
-                    .tcbinfo(&pckcerts.fmspc().unwrap())
+                    .tcbinfo(&pckcerts.fmspc().unwrap(), None)
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
             }
@@ -820,7 +820,7 @@ mod tests {
 
             for number in evaluation_data_numbers.numbers() {
                 assert!(client
-                    .tcbinfo_with_evaluation_data_number(&fmspc, number.number())
+                    .tcbinfo(&fmspc, Some(number.number()))
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
             }
@@ -844,7 +844,7 @@ mod tests {
                     .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
-                let tcb_info = client.tcbinfo(&fmspc).unwrap();
+                let tcb_info = client.tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -854,7 +854,7 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input_from_fmpsc(&fmspc);
+                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -867,7 +867,7 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let tcb_info_from_service = client.tcbinfo(&fmspc).unwrap();
+                let tcb_info_from_service = client.tcbinfo(&fmspc, None).unwrap();
 
                 assert_eq!(tcb_info, tcb_info_from_service);
             }
@@ -937,7 +937,7 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            let qe_id = client.qe_identity();
+            let qe_id = client.qe_identity(None);
             assert!(qe_id.is_ok());
             assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
         }
@@ -952,7 +952,7 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            let qe_id = client.qe_identity().unwrap();
+            let qe_id = client.qe_identity(None).unwrap();
 
             // The cache should be populated after initial service call
             {
@@ -962,7 +962,7 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input();
+                    let input = client.qeid_service.pcs_service().build_input(None);
                     input.hash(&mut hasher);
 
                     cache
@@ -975,7 +975,7 @@ mod tests {
             }
 
             // Second service call should return value from cache
-            let qeid_from_service = client.qe_identity().unwrap();
+            let qeid_from_service = client.qe_identity(None).unwrap();
 
             assert_eq!(qe_id, qeid_from_service);
         }

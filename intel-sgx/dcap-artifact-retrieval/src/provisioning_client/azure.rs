@@ -239,7 +239,7 @@ mod tests {
             );
 
             let fmspc = pck.fmspc().unwrap();
-            assert!(client.tcbinfo(&fmspc).is_ok());
+            assert!(client.tcbinfo(&fmspc, None).is_ok());
         }
     }
 
@@ -256,7 +256,7 @@ mod tests {
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
-        assert!(client.qe_identity().is_ok());
+        assert!(client.qe_identity(None).is_ok());
     }
 
     #[test]
@@ -272,7 +272,7 @@ mod tests {
             let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
             println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-            let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap()).unwrap();
+            let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
             let tcb_data = tcb_info.data().unwrap();
 
             let selected = pckcerts.select_pck(

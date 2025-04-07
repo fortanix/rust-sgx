@@ -261,22 +261,15 @@ impl TcbInfoApi {
 }
 
 impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
-    fn build_input_from_fmpsc(
+    fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
+        tcb_evaluation_data_number: Option<u16>,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version,
             fmspc,
-            evaluation_data_number: None,
-        }
-    }
-
-    fn build_input_from_fmpsc_and_evaluation_data_number(&'inp self, fmspc: &'inp Fmspc, evaluation_data_number: u16) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbInfoIn {
-            api_version: self.api_version.clone(),
-            fmspc,
-            evaluation_data_number: Some(evaluation_data_number),
+            tcb_evaluation_data_number,
         }
     }
 }
@@ -291,10 +284,16 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
-        let url = format!(
-            "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-            self.base_url, api_version, fmspc
-        );
+        let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
+            format!(
+                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                self.base_url, api_version, fmspc, evaluation_data_number)
+        } else {
+            format!(
+                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
+                self.base_url, api_version, fmspc,
+            )
+        };
         Ok((url, Vec::new()))
     }
 
@@ -353,9 +352,10 @@ impl QeIdApi {
 }
 
 impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version,
+            tcb_evaluation_data_number,
         }
     }
 }
@@ -369,10 +369,17 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
-        let url = format!(
-            "{}/sgx/certification/v{}/qe/identity?update=early",
-            self.base_url, api_version,
-        );
+        let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber{}",
+                self.base_url, api_version, tcb_evaluation_data_number
+            )
+        } else {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?update=early",
+                self.base_url, api_version,
+            )
+        };
         Ok((url, Vec::new()))
     }
 
@@ -566,7 +573,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap()).unwrap();
+                let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
                 let selected = pckcerts.select_pck(
@@ -601,7 +608,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
 
                 assert!(client
-                    .tcbinfo(&pckcerts.fmspc().unwrap())
+                    .tcbinfo(&pckcerts.fmspc().unwrap(), None)
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
             }
@@ -617,15 +624,17 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                //.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .pckcerts_with_fallback(&pckid)
                 .unwrap();
+
             let fmspc = pckcerts.fmspc().unwrap();
 
             let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
 
             for number in evaluation_data_numbers.numbers() {
                 assert!(client
-                    .tcbinfo_with_evaluation_data_number(&fmspc, number.number())
+                    .tcbinfo(&fmspc, Some(number.number()))
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
                     .is_ok());
             }
@@ -643,7 +652,7 @@ mod tests {
             {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
-                let tcb_info = client.tcbinfo(&fmspc).unwrap();
+                let tcb_info = client.tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -653,7 +662,7 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input_from_fmpsc(&fmspc);
+                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -666,7 +675,7 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let tcb_info_from_service = client.tcbinfo(&fmspc).unwrap();
+                let tcb_info_from_service = client.tcbinfo(&fmspc, None).unwrap();
 
                 assert_eq!(tcb_info, tcb_info_from_service);
             }
@@ -721,7 +730,7 @@ mod tests {
     pub fn qe_identity() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
-            let qe_id = client.qe_identity();
+            let qe_id = client.qe_identity(None);
             assert!(qe_id.is_ok());
             assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
         }
@@ -731,7 +740,7 @@ mod tests {
     pub fn qe_identity_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
-            let qe_id = client.qe_identity().unwrap();
+            let qe_id = client.qe_identity(None).unwrap();
 
             // The cache should be populated after initial service call
             {
@@ -741,7 +750,7 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input();
+                    let input = client.qeid_service.pcs_service().build_input(None);
                     input.hash(&mut hasher);
 
                     cache
@@ -754,7 +763,7 @@ mod tests {
             }
 
             // Second service call should return value from cache
-            let qeid_from_service = client.qe_identity().unwrap();
+            let qeid_from_service = client.qe_identity(None).unwrap();
 
             assert_eq!(qe_id, qeid_from_service);
         }

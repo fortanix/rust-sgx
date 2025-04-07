@@ -90,7 +90,7 @@ fn download_dcap_artifacts(
 
         for number in evaluation_data_numbers.evaluation_data_numbers()?.numbers() {
             let tcb_info = prov_client
-                .tcbinfo_with_evaluation_data_number(&fmspc, number.number());
+                .tcbinfo(&fmspc, Some(number.number()));
 
             match tcb_info {
                 Ok(tcb_info) => {
@@ -108,18 +108,35 @@ fn download_dcap_artifacts(
                     return Err(e)?;
                 },
             }
+
+
+            let qe_identity = prov_client
+                .qe_identity(Some(number.number()));
+
+            match qe_identity {
+                Ok(qe_identity) => {
+                    let file = qe_identity.write_to_file(output_dir)?;
+                    if verbose {
+                        println!("   qe identity: {}\n", file);
+                    }
+                }
+                Err(Error::PCSError(StatusCode::Gone, _)) => {
+                    if verbose {
+                        println!("   qe identity: Gone (silently ignoring)\n");
+                    }
+                }
+                Err(e) => {
+                    return Err(e)?;
+                },
+            }
         }
     }
     let pckcrl = prov_client
         .pckcrl()
         .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
-    let qe_identity = prov_client
-        .qe_identity()
-        .and_then(|qe_id| qe_id.write_to_file(output_dir).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
         println!("   pckcrl:      {}", pckcrl);
-        println!("   QE identity: {}", qe_identity);
     }
     Ok(())
 }
