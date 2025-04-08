@@ -70,7 +70,7 @@ impl<V: VerificationType> TcbEvaluationDataNumbers<V> {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbEvalNumber {
     #[serde(rename = "tcbEvaluationDataNumber")]
@@ -229,6 +229,7 @@ impl RawTcbEvaluationDataNumbers {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TcbPolicy {
     grace_period: Duration,
 }
@@ -242,34 +243,38 @@ impl TcbPolicy {
         }
     }
 
-    fn within_policy(&self, tcb_eval: &TcbEvalNumber, now: &DateTime<Utc>) -> bool {
-        *now < *tcb_eval.tcb_recovery_event_date() + self.grace_period
+    fn needs_to_be_enforced(&self, tcb_eval: &TcbEvalNumber, now: &DateTime<Utc>) -> bool {
+        *tcb_eval.tcb_recovery_event_date() + self.grace_period <= *now
     }
 
-    pub fn minimum_tcb_evaluation_data_number<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>) -> Option<TcbEvalNumber> {
-        let now = Utc::now();
+    fn minimum_tcb_evaluation_data_number_ex<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
         tcb_eval.numbers().fold(None, |last, number| {
-            match (last, self.within_policy(number, &now)) {
+            match (last, self.needs_to_be_enforced(number, &now)) {
                 (last, false) => last,
                 (Some(last), true) => {
                     if last.number() <= number.number() {
-                        // We need the lowest TCB Eval Data Number that still adheres to the policy
-                        Some(last)
-                    } else {
+                        // We need the highest TCB Eval Data Number that needs to be enforced
                         Some(number.clone())
+                    } else {
+                        Some(last)
                     }
                 },
                 (None, true)  => Some(number.clone()),
             }
         })
     }
+
+    pub fn minimum_tcb_evaluation_data_number<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>) -> Option<TcbEvalNumber> {
+        self.minimum_tcb_evaluation_data_number_ex(tcb_eval, &Utc::now())
+    }
 }
 
 #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
 #[cfg(test)]
 mod tests {
-    use super::RawTcbEvaluationDataNumbers;
-    use crate::{Error, Platform};
+    use super::{RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, TcbEvalNumber, TcbPolicy};
+    use crate::{Error, Platform, Unverified};
+    use chrono::{Duration, TimeZone, Utc};
 
     #[test]
     fn parse_tcb_evaluation_data_numbers() {
@@ -293,6 +298,57 @@ mod tests {
         } else {
             assert!(false);
         }
+    }
+
+    #[test]
+    fn tcb_eval_number() {
+        let april_8_2025 = Utc.with_ymd_and_hms(2025, 4, 8, 14, 55, 0).unwrap();
+        let april_9_2025 = Utc.with_ymd_and_hms(2025, 4, 9, 14, 55, 0).unwrap();
+        let april_15_2025 = Utc.with_ymd_and_hms(2025, 4, 15, 14, 55, 0).unwrap();
+        let april_16_2025 = Utc.with_ymd_and_hms(2025, 4, 16, 14, 55, 0).unwrap();
+        let april_17_2025 = Utc.with_ymd_and_hms(2025, 4, 17, 14, 55, 0).unwrap();
+        let number = TcbEvalNumber {
+            number: 42,
+            tcb_recovery_event_date: april_9_2025,
+            tcb_date: april_9_2025,
+        };
+
+        let policy = TcbPolicy::new(Duration::days(8));
+        assert!(!policy.needs_to_be_enforced(&number, &april_8_2025));
+        assert!(!policy.needs_to_be_enforced(&number, &april_9_2025));
+        assert!(!policy.needs_to_be_enforced(&number, &april_15_2025));
+        assert!(!policy.needs_to_be_enforced(&number, &april_16_2025));
+        assert!(policy.needs_to_be_enforced(&number, &april_17_2025));
+    }
+
+    #[test]
+    fn minimum_tcb_evaluation_data_number() {
+        let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
+        let numbers: TcbEvaluationDataNumbers<Unverified> = serde_json::from_str(numbers.raw_tcb_evaluation_data_numbers()).unwrap();
+
+        let april_8_2025 = Utc.with_ymd_and_hms(2025, 4, 8, 0, 0, 0).unwrap();
+        let march_12_2024 = Utc.with_ymd_and_hms(2024, 3, 12, 0, 0, 0).unwrap();
+        let march_13_2024 = Utc.with_ymd_and_hms(2024, 3, 13, 0, 0, 0).unwrap();
+        let november_12_2024 = Utc.with_ymd_and_hms(2024, 11, 12, 0, 0, 0).unwrap();
+        let november_13_2024 = Utc.with_ymd_and_hms(2024, 11, 13, 0, 0, 0).unwrap();
+        let november_20_2024 = Utc.with_ymd_and_hms(2024, 11, 20, 0, 0, 0).unwrap();
+        let number_17 = TcbEvalNumber {
+            number: 17,
+            tcb_recovery_event_date: march_12_2024,
+            tcb_date: march_13_2024,
+        };
+        let number_18 = TcbEvalNumber {
+            number: 18,
+            tcb_recovery_event_date: november_12_2024,
+            tcb_date: november_13_2024,
+        };
+        let policy = TcbPolicy::new(Duration::days(10));
+        assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &april_8_2025),
+            Some(number_18));
+        assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &november_13_2024),
+            Some(number_17.clone()));
+        assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &november_20_2024),
+            Some(number_17));
     }
 }
 
