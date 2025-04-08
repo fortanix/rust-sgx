@@ -334,21 +334,21 @@ mod tests {
         let november_20_2024 = Utc.with_ymd_and_hms(2024, 11, 20, 0, 0, 0).unwrap();
         let number_17 = TcbEvalNumber {
             number: 17,
-            tcb_recovery_event_date: march_12_2024.clone(),
-            tcb_date: march_13_2024.clone(),
+            tcb_recovery_event_date: march_12_2024,
+            tcb_date: march_13_2024,
         };
         let number_18 = TcbEvalNumber {
             number: 18,
-            tcb_recovery_event_date: november_12_2024.clone(),
-            tcb_date: november_13_2024.clone(),
+            tcb_recovery_event_date: november_12_2024,
+            tcb_date: november_13_2024,
         };
         let policy = TcbPolicy::new(Duration::days(10));
         assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &april_8_2025),
-            Some(number_18.clone()));
+            Some(number_18));
         assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &november_13_2024),
             Some(number_17.clone()));
         assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &november_20_2024),
-            Some(number_17.clone()));
+            Some(number_17));
     }
 }
 
