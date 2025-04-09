@@ -445,7 +445,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber{}",
+                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
                 INTEL_BASE_URL, api_version, tcb_evaluation_data_number
             )
         } else {
