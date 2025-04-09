@@ -96,12 +96,12 @@ fn download_dcap_artifacts(
                 Ok(tcb_info) => {
                     let file = tcb_info.store(output_dir)?;
                     if verbose {
-                        println!("   tcb info:    {}\n", file);
+                        println!("   tcb info:    {}", file);
                     }
                 },
                 Err(Error::PCSError(StatusCode::Gone, _)) => {
                     if verbose {
-                        println!("   tcb info:    Gone (silently ignoring)\n");
+                        println!("   tcb info:    Gone (silently ignoring)");
                     }
                 }
                 Err(e) => {
