@@ -371,7 +371,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber{}",
+                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
                 self.base_url, api_version, tcb_evaluation_data_number
             )
         } else {
@@ -419,12 +419,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
+    use std::convert::TryFrom;
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
     use std::sync::OnceLock;
     use std::time::Duration;
 
-    use pcs::PckID;
+    use pcs::{EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers};
 
     use super::Client;
     use crate::provisioning_client::{
@@ -772,7 +773,31 @@ mod tests {
     #[ignore = "PCCS service needs an update to support the new endpoint"]
     #[test]
     pub fn tcb_evaluation_data_numbers() {
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
         let client = make_client(PcsVersion::V4);
-        client.tcb_evaluation_data_numbers().unwrap();
+        let eval_numbers = client.tcb_evaluation_data_numbers().unwrap();
+
+        let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
+            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers>(&v))
+            .unwrap();
+        assert_eq!(eval_numbers, eval_numbers2);
+
+        let fmspc = Fmspc::try_from("90806f000000").unwrap();
+        let eval_numbers: TcbEvaluationDataNumbers = eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        for number in eval_numbers.numbers().map(|n| n.number()) {
+            let qe_id = client.qe_identity(Some(number))
+                .unwrap()
+                .verify(&root_cas, EnclaveIdentity::QE)
+                .unwrap();
+            assert_eq!(qe_id.tcb_evaluation_data_number(), u64::from(number));
+
+            let tcb_info = client
+                    .tcbinfo(&fmspc, Some(number))
+                    .unwrap()
+                    .verify(&root_cas, Platform::SGX)
+                    .unwrap();
+            assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
+        }
     }
 }
