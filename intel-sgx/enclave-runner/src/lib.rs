@@ -4,8 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#![allow(non_local_definitions)] // Required by failure
-#![deny(warnings)]
+#![feature(macro_metavar_expr)]
 #![doc(
     html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
     html_favicon_url = "https://edp.fortanix.com/favicon.ico",
@@ -16,6 +15,8 @@ mod command;
 mod library;
 mod loader;
 mod tcs;
+
+pub mod stats;
 pub mod usercalls;
 
 pub use crate::command::Command;
