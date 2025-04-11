@@ -3,6 +3,7 @@ use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::slice::Iter;
 
 #[cfg(feature = "verify")]
@@ -143,6 +144,10 @@ impl RawTcbEvaluationDataNumbers {
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
         io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
         Ok(Self::DEFAULT_FILENAME.to_string())
+    }
+
+    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
+        io::write_to_file_if_not_exist(&self, output_dir, Self::DEFAULT_FILENAME)
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
@@ -351,4 +356,3 @@ mod tests {
             Some(number_17));
     }
 }
-
