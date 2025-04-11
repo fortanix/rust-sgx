@@ -1590,7 +1590,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
             return Err(IoErrorKind::InvalidInput.into());
         }
 
-        assert!((EV_ALL | EV_ABORT) <= u8::max_value().into());
+        assert!((EV_ALL | EV_ABORT) <= u64::from(u8::max_value()));
         assert!((EV_ALL & EV_ABORT) == 0);
         Ok(())
     }
