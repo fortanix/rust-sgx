@@ -261,7 +261,7 @@ impl TcbInfo {
         Ok(TcbInfo::new(raw_tcb_info.to_string(), signature, ca_chain))
     }
 
-    fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
+    pub fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
         if let Some(evaluation_data_number) = evaluation_data_number {
             format!("{fmspc}-{evaluation_data_number}.tcb")
         } else {

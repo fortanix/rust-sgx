@@ -114,6 +114,10 @@ impl RawTcbEvaluationDataNumbers {
         }
     }
 
+    pub fn filename() -> &'static str {
+        Self::DEFAULT_FILENAME
+    }
+
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
@@ -142,16 +146,16 @@ impl RawTcbEvaluationDataNumbers {
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
+        io::write_to_file(&self, output_dir, Self::filename())?;
+        Ok(Self::filename().into())
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, Self::DEFAULT_FILENAME)
+        io::write_to_file_if_not_exist(&self, output_dir, Self::filename())
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let identity: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
+        let identity: Self = io::read_from_file(input_dir, Self::filename())?;
         Ok(identity)
     }
 

@@ -329,7 +329,7 @@ impl QeIdentitySigned {
         }
     }
 
-    fn create_filename(evaluation_data_number: Option<u64>) -> String {
+    pub fn create_filename(evaluation_data_number: Option<u64>) -> String {
         if let Some(evaluation_data_number) = evaluation_data_number {
             format!("qe3_identity-{evaluation_data_number}.id")
         } else {

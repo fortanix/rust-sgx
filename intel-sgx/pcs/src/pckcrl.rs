@@ -29,21 +29,21 @@ impl PckCrl {
         Ok(crl)
     }
 
-    pub fn filename() -> String {
-        Self::DEFAULT_FILENAME.to_string()
+    pub fn filename() -> &'static str {
+        Self::DEFAULT_FILENAME
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
+        io::write_to_file(&self, output_dir, Self::filename())?;
+        Ok(Self::filename().into())
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, &Self::DEFAULT_FILENAME)
+        io::write_to_file_if_not_exist(&self, output_dir, Self::filename())
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let crl: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
+        let crl: Self = io::read_from_file(input_dir, Self::filename())?;
         Ok(crl)
     }
 
