@@ -114,6 +114,10 @@ impl RawTcbEvaluationDataNumbers {
         }
     }
 
+    pub fn filename() -> String {
+        Self::DEFAULT_FILENAME.into()
+    }
+
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
