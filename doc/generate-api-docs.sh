@@ -61,7 +61,7 @@ for LIB in $LIBS_SORTED; do
         if grep -q 'feature(sgx_platform)' ./src/lib.rs; then
             ARGS+=" --target x86_64-fortanix-unknown-sgx"
         fi
-        cargo +nightly-2025-02-22 doc --no-deps --lib $ARGS
+        cargo +nightly doc --no-deps --lib $ARGS
         popd
     fi
 done
