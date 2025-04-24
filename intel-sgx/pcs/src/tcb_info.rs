@@ -186,6 +186,10 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
 }
 
 impl TcbData<Verified> {
+    pub fn version(&self) -> u16 {
+        self.version
+    }
+
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
