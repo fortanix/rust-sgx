@@ -23,7 +23,7 @@ permissions:
 jobs:
   crate_publish:
     environment: "Publish to crates.io"
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,14 +34,12 @@ jobs:
             override: true
       - name: Install build dependencies
         run: |
-          cat llvm-snapshot.gpg.key | sudo apt-key add -
-          echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main" | sudo tee -a /etc/apt/sources.list
-          cat intel-sgx-deb.key | sudo apt-key add -
-          echo "deb https://download.01.org/intel-sgx/sgx_repo/ubuntu focal main" | sudo tee -a /etc/apt/sources.list
-          sudo apt-get update
-          sudo apt-get install -y clang-11 libsgx-dcap-ql-dev protobuf-compiler
-          # Create a symbolic link to ensure correct usage of libclang
-          sudo ln -s /lib/x86_64-linux-gnu/libclang-11.so.1 /lib/x86_64-linux-gnu/libclang.so
+          # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+          cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
+          # Install dependencies for build & test
+          sudo apt-get update -y
+          sudo apt-get install -y clang-18 libsgx-dcap-ql-dev protobuf-compiler
       - name: Get name of crate to be published
         run: |
           # If this workflow is manually triggered through `workflow_dispatch`
