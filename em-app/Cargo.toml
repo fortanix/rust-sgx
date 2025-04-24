@@ -19,9 +19,9 @@ pkix = ">=0.1.2, <0.3.0"
 
 rustc-serialize = "0.3.24"
 sdkms = { version = "0.3", default-features = false }
-serde = "1.0.214"
+serde = "1.0"
 serde_bytes = "0.11"
-serde_derive = "1.0.214"
+serde_derive = "1.0"
 serde_json = "1.0"
 url = "1"
 uuid = { version = "0.6.3", features = ["v4", "serde"] }
