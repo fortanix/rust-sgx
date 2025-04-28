@@ -145,12 +145,12 @@ pub enum AdvisoryID {
     /// Security Advisory ID - "INTEL-SA-XXXXX" (where XXXXX is a placeholder for a 5-digit
     /// number) - representing Security Advisories that can be searched on Intel® Product
     /// Security Center Advisories page
-    /// (https://www.intel.com/content/www/us/en/security-center/default.html)
+    /// (<https://www.intel.com/content/www/us/en/security-center/default.html>)
     Security(u32),
     /// Document Advisory ID - "INTEL-DOC-XXXXX" (where XXXXX is a placeholder for a 5-digit
     /// number) - representing articles containing additional information about the attested
     /// platform. The articles can be found under the following URL:
-    /// https://api.trustedservices.intel.com/documents/{docID}
+    /// <https://api.trustedservices.intel.com/documents/{docID}>
     Documentation(u32)
 }
 
