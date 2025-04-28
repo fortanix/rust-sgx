@@ -6,6 +6,8 @@
  */
 
 #![deny(warnings)]
+#![feature(assert_matches)]
+
 extern crate failure;
 extern crate percent_encoding;
 extern crate yasna;
@@ -141,6 +143,9 @@ quick_error! {
         }
         UnknownTcbInfoVersion(version: u16){
             display("The TCB Info structure has unexpected version: {}", version)
+        }
+        UntrustedTcbInfoVersion(curr_version: u16, min_version: u16) {
+            display("The TCB Info structure has version {curr_version}, while at least {min_version} is required")
         }
         EnclaveTcbLevelNotFound {
             display("TCB level not found for enclave")

@@ -393,7 +393,13 @@ impl TcbInfo {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbData<Verified>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16) -> Result<TcbData<Verified>, Error> {
+        let now = Utc::now();
+        self.verify_ex(trusted_root_certs, platform, min_version, &now)
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -445,11 +451,14 @@ impl TcbInfo {
             return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {platform} platform")))
         }
 
-        let now = Utc::now();
-        if now < issue_date {
+        if min_version > version {
+            return Err(Error::UntrustedTcbInfoVersion(version, min_version))
+        }
+
+        if *now < issue_date {
             return Err(Error::InvalidTcbInfo(format!("TCB Info only valid from {}", issue_date)))
         }
-        if next_update < now {
+        if next_update < *now {
             return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
         }
 
@@ -483,6 +492,8 @@ mod tests {
         tempdir::TempDir,
     };
     use super::AdvisoryID;
+    use chrono::{Utc, TimeZone};
+    use std::assert_matches::assert_matches;
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -491,12 +502,14 @@ mod tests {
             TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        match info.verify(&root_certificates, Platform::SGX) {
+        match info.verify(&root_certificates, Platform::SGX, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
             e => assert!(false, "wrong result: {:?}", e),
         }
+        let juni_5_2020 = Utc.with_ymd_and_hms(2020, 6, 5, 12, 0, 0).unwrap();
+        assert!(info.verify_ex(&root_certificates, Platform::SGX, 2, &juni_5_2020).is_ok());
 
-        match info.verify(&root_certificates, Platform::TDX) {
+        match info.verify(&root_certificates, Platform::TDX, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info belongs to the SGX platform, expected one for the TDX platform")),
             e => assert!(false, "wrong result: {:?}", e),
         }
@@ -515,7 +528,7 @@ mod tests {
         let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates, Platform::SGX).is_err());
+        assert!(tcb_info.verify(&root_certificates, Platform::SGX, 2).is_err());
     }
 
     #[test]
@@ -524,7 +537,9 @@ mod tests {
         let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(18)).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates, Platform::SGX).is_ok());
+        let april_28_2025 = Utc.with_ymd_and_hms(2025, 4, 28, 12, 0, 0).unwrap();
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &april_28_2025).is_ok());
+        assert_matches!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &april_28_2025), Err(Error::UntrustedTcbInfoVersion(3, 4)));
     }
 
     #[test]
