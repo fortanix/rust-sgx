@@ -28,7 +28,7 @@ mbedtls = { version = "0.12.3", features = [
     "std",
 ], default-features = false }
 num_enum = { version = "0.7", features = ["complex-expressions"] }
-pcs = { version = ">=0.6, 0.7", path = "../pcs" }
+pcs = { version = "0.7", path = "../pcs" }
 percent-encoding = "2.1.0"
 pkix = "0.2.0"
 quick-error = "1.1.0"
@@ -44,7 +44,7 @@ rustls-tls = ["reqwest?/rustls-tls"]
 
 [dev-dependencies]
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
-pcs = { version = ">=0.6, 0.7", path = "../pcs", features = ["verify"] }
+pcs = { version = "0.7", path = "../pcs", features = ["verify"] }
 
 [build-dependencies]
 mbedtls = { version = "0.12.3", features = ["ssl", "x509"] }
