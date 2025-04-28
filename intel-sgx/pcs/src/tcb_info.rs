@@ -165,9 +165,9 @@ impl TryFrom<&str> for AdvisoryID {
         fn tokenize(s: &str) -> Result<(String, String, u32), &'static str> {
             let mut chunks = s.trim().split('-');
 
-            let intel = chunks.next().ok_or("Couldn't parse advisory ID number")?;
-            let typ = chunks.next().ok_or("Couldn't parse advisory ID number")?;
-            let value = chunks.next().ok_or("Couldn't parse advisory ID number")?;
+            let intel = chunks.next().ok_or("Couldn't parse INTEL part of advisory ID number")?;
+            let typ = chunks.next().ok_or("Couldn't parse type of advisory ID number")?;
+            let value = chunks.next().ok_or("Couldn't parse value of advisory ID number")?;
             let value = u32::from_str_radix(value, 10).map_err(|_| "Couldn't parse advisory ID number")?;
 
             if chunks.next().is_some() {
