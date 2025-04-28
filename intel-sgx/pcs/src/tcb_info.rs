@@ -498,7 +498,6 @@ mod tests {
     };
     use super::AdvisoryID;
     use chrono::{Utc, TimeZone};
-    use std::assert_matches::assert_matches;
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -544,7 +543,7 @@ mod tests {
         let root_certificates = [&root_certificate[..]];
         let april_28_2025 = Utc.with_ymd_and_hms(2025, 4, 28, 12, 0, 0).unwrap();
         assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &april_28_2025).is_ok());
-        assert_matches!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &april_28_2025), Err(Error::UntrustedTcbInfoVersion(3, 4)));
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &april_28_2025).is_err());
     }
 
     #[test]

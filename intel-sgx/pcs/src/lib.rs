@@ -6,7 +6,6 @@
  */
 
 #![deny(warnings)]
-#![feature(assert_matches)]
 
 extern crate failure;
 extern crate percent_encoding;
