@@ -115,7 +115,8 @@ impl<'de> Deserialize<'de> for Fmspc {
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel {
     tcb: TcbComponents,
-    tcb_date: String,
+    #[serde(with = "crate::iso8601")]
+    tcb_date: DateTime<Utc>,
     tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
     advisory_ids: Vec<AdvisoryID>,
@@ -132,6 +133,10 @@ impl TcbLevel {
 
     pub fn advisory_ids(&self) -> &Vec<AdvisoryID> {
         &self.advisory_ids
+    }
+
+    pub fn tcb_date(&self) -> &DateTime<Utc> {
+        &self.tcb_date
     }
 }
 
