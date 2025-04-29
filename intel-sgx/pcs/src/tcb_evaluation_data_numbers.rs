@@ -168,6 +168,11 @@ impl RawTcbEvaluationDataNumbers {
 
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbEvaluationDataNumbers, Error> {
+        self.verify_ex(trusted_root_certs, platform, &Utc::now())
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, now: &DateTime<Utc>) -> Result<TcbEvaluationDataNumbers, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -219,12 +224,11 @@ impl RawTcbEvaluationDataNumbers {
             return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid for {id}, expected one for {platform}")));
         }
 
-        let now = Utc::now();
-        if now < issue_date {
+        if *now < issue_date {
             return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid from {issue_date}")));
         }
-        if next_update < now {
-            return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid from {next_update}")));
+        if next_update < *now {
+            return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid upto {next_update}")));
         }
 
         Ok(TcbEvaluationDataNumbers::<Verified> {
@@ -290,7 +294,7 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        numbers.verify(&root_certificates, Platform::SGX).unwrap();
+        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()).unwrap();
     }
 
     #[test]
@@ -298,7 +302,7 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert").to_owned();
         let root_certificates = [&root_certificate[..]];
-        numbers.verify(&root_certificates, Platform::SGX).unwrap();
+        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()).unwrap();
 
         let mut corrupted = numbers.clone();
         corrupted.signature[10] = 0x66;

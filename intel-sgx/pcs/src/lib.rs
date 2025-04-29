@@ -6,6 +6,7 @@
  */
 
 #![deny(warnings)]
+
 extern crate failure;
 extern crate percent_encoding;
 extern crate yasna;
@@ -29,7 +30,7 @@ use {
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{Fmspc, TcbInfo, TcbData};
+pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 
 mod io;
@@ -141,6 +142,9 @@ quick_error! {
         }
         UnknownTcbInfoVersion(version: u16){
             display("The TCB Info structure has unexpected version: {}", version)
+        }
+        UntrustedTcbInfoVersion(curr_version: u16, min_version: u16) {
+            display("The TCB Info structure has version {curr_version}, while at least {min_version} is required")
         }
         EnclaveTcbLevelNotFound {
             display("TCB level not found for enclave")

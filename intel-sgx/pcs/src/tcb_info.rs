@@ -114,11 +114,104 @@ impl<'de> Deserialize<'de> for Fmspc {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel {
-    pub tcb: TcbComponents,
-    pub tcb_date: String,
-    pub tcb_status: TcbStatus,
+    tcb: TcbComponents,
+    #[serde(with = "crate::iso8601")]
+    tcb_date: DateTime<Utc>,
+    tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
-    pub advisory_ids: Vec<String>,
+    advisory_ids: Vec<AdvisoryID>,
+}
+
+impl TcbLevel {
+    pub fn components(&self) -> &TcbComponents {
+        &self.tcb
+    }
+
+    pub fn tcb_status(&self) -> TcbStatus {
+        self.tcb_status
+    }
+
+    pub fn advisory_ids(&self) -> &Vec<AdvisoryID> {
+        &self.advisory_ids
+    }
+
+    pub fn tcb_date(&self) -> &DateTime<Utc> {
+        &self.tcb_date
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AdvisoryID {
+    /// Security Advisory ID - "INTEL-SA-XXXXX" (where XXXXX is a placeholder for a 5-digit
+    /// number) - representing Security Advisories that can be searched on Intel® Product
+    /// Security Center Advisories page
+    /// (<https://www.intel.com/content/www/us/en/security-center/default.html>)
+    Security(u32),
+    /// Document Advisory ID - "INTEL-DOC-XXXXX" (where XXXXX is a placeholder for a 5-digit
+    /// number) - representing articles containing additional information about the attested
+    /// platform. The articles can be found under the following URL:
+    /// <https://api.trustedservices.intel.com/documents/{docID}>
+    Documentation(u32)
+}
+
+impl ToString for AdvisoryID {
+    fn to_string(&self) -> String {
+        match self {
+            AdvisoryID::Security(v) => format!("INTEL-SA-{:05}", v),
+            AdvisoryID::Documentation(v) => format!("INTEL-DOC-{:05}", v),
+        }
+    }
+}
+
+impl TryFrom<&str> for AdvisoryID {
+    type Error = &'static str;
+
+    fn try_from(s: &str) -> Result<AdvisoryID, &'static str> {
+        fn tokenize(s: &str) -> Result<(String, String, u32), &'static str> {
+            let mut chunks = s.trim().split('-');
+
+            let intel = chunks.next().ok_or("Couldn't parse INTEL part of advisory ID number")?;
+            let typ = chunks.next().ok_or("Couldn't parse type of advisory ID number")?;
+            let value = chunks.next().ok_or("Couldn't parse value of advisory ID number")?;
+            let value = u32::from_str_radix(value, 10).map_err(|_| "Couldn't parse advisory ID number")?;
+
+            if chunks.next().is_some() {
+                return Err("Failed to parse Advisory ID");
+            }
+
+            Ok((intel.to_string(), typ.to_string(), value))
+        }
+
+        let (intel, typ, value) = tokenize(s)?;
+        if intel.to_uppercase() != "INTEL" {
+            return Err("Advisory IDs must start with INTEL");
+        }
+
+        match typ.to_uppercase().as_str() {
+            "SA" => Ok(AdvisoryID::Security(value)),
+            "DOC" => Ok(AdvisoryID::Documentation(value)),
+            _ => Err("Not a security nor document advisory ID"),
+        }
+    }
+}
+
+impl Serialize for AdvisoryID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        self.to_string().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for AdvisoryID {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let advisory = <&str>::deserialize(deserializer)?;
+        AdvisoryID::try_from(advisory).map_err(|e| de::Error::custom(format!("Bad AdvisoryID format: {e}")))
+    }
 }
 
 #[allow(dead_code)]
@@ -305,7 +398,13 @@ impl TcbInfo {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbData<Verified>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16) -> Result<TcbData<Verified>, Error> {
+        let now = Utc::now();
+        self.verify_ex(trusted_root_certs, platform, min_version, &now)
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -357,11 +456,14 @@ impl TcbInfo {
             return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {platform} platform")))
         }
 
-        let now = Utc::now();
-        if now < issue_date {
+        if min_version > version {
+            return Err(Error::UntrustedTcbInfoVersion(version, min_version))
+        }
+
+        if *now < issue_date {
             return Err(Error::InvalidTcbInfo(format!("TCB Info only valid from {}", issue_date)))
         }
-        if next_update < now {
+        if next_update < *now {
             return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
         }
 
@@ -394,6 +496,8 @@ mod tests {
         std::convert::TryFrom,
         tempdir::TempDir,
     };
+    use super::AdvisoryID;
+    use chrono::{Utc, TimeZone};
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -402,12 +506,14 @@ mod tests {
             TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        match info.verify(&root_certificates, Platform::SGX) {
+        match info.verify(&root_certificates, Platform::SGX, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
             e => assert!(false, "wrong result: {:?}", e),
         }
+        let juni_5_2020 = Utc.with_ymd_and_hms(2020, 6, 5, 12, 0, 0).unwrap();
+        assert!(info.verify_ex(&root_certificates, Platform::SGX, 2, &juni_5_2020).is_ok());
 
-        match info.verify(&root_certificates, Platform::TDX) {
+        match info.verify(&root_certificates, Platform::TDX, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info belongs to the SGX platform, expected one for the TDX platform")),
             e => assert!(false, "wrong result: {:?}", e),
         }
@@ -426,6 +532,37 @@ mod tests {
         let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates, Platform::SGX).is_err());
+        assert!(tcb_info.verify(&root_certificates, Platform::SGX, 2).is_err());
+    }
+
+    #[test]
+    #[cfg(not(target_env = "sgx"))]
+    fn read_tcb_info_v3() {
+        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(18)).unwrap();
+        let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_certificates = [&root_certificate[..]];
+        let april_28_2025 = Utc.with_ymd_and_hms(2025, 4, 28, 12, 0, 0).unwrap();
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &april_28_2025).is_ok());
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &april_28_2025).is_err());
+    }
+
+    #[test]
+    fn parse_advisory_ids() {
+        assert_eq!(AdvisoryID::try_from("INTEL-SA-00123"), Ok(AdvisoryID::Security(123)));
+        assert_eq!(AdvisoryID::try_from("INTEL-SA-10123"), Ok(AdvisoryID::Security(10123)));
+        assert_eq!(AdvisoryID::try_from("INTEL-SA-00001"), Ok(AdvisoryID::Security(1)));
+        assert_eq!(AdvisoryID::try_from("INTEL-DOC-00123"), Ok(AdvisoryID::Documentation(123)));
+        assert_eq!(AdvisoryID::try_from("INTEL-DOC-10123"), Ok(AdvisoryID::Documentation(10123)));
+        assert_eq!(AdvisoryID::try_from("INTEL-DOC-00001"), Ok(AdvisoryID::Documentation(1)));
+    }
+
+    #[test]
+    fn advisory_ids_to_string() {
+        assert_eq!(AdvisoryID::Security(123).to_string(), "INTEL-SA-00123");
+        assert_eq!(AdvisoryID::Security(1).to_string(), "INTEL-SA-00001");
+        assert_eq!(AdvisoryID::Security(99999).to_string(), "INTEL-SA-99999");
+        assert_eq!(AdvisoryID::Documentation(123).to_string(), "INTEL-DOC-00123");
+        assert_eq!(AdvisoryID::Documentation(1).to_string(), "INTEL-DOC-00001");
+        assert_eq!(AdvisoryID::Documentation(99999).to_string(), "INTEL-DOC-99999");
     }
 }

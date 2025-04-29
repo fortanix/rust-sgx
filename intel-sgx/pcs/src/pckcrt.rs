@@ -545,7 +545,7 @@ impl<V: VerificationType> PckCert<V> {
         tcb_info
             .tcb_levels()
             .iter()
-            .position(|tcb| tcb.tcb <= pck_tcb_level.tcb_components)
+            .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
     }
 
     fn valid_for_tcb(&self, comps: &TcbComponents, pceid: u16) -> Result<(), Error> {

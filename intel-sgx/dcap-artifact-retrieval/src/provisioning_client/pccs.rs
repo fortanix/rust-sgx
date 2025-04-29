@@ -795,7 +795,7 @@ mod tests {
             let tcb_info = client
                     .tcbinfo(&fmspc, Some(number))
                     .unwrap()
-                    .verify(&root_cas, Platform::SGX)
+                    .verify(&root_cas, Platform::SGX, 2)
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
