@@ -2040,9 +2040,8 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 
 [[package]]
 name = "mbedtls"
-version = "0.12.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8730cf71e8d79ba70b3b7986af7af7629c0c4ee58b59e4a2e30d855cc31552e8"
+version = "0.12.4"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=raoul%2Frte-447-crl_changes#26b5a362854fba048688dad2f104b9abbf5a4fd3"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder 1.3.4",
@@ -2921,7 +2920,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.4.21",
+ "log 0.3.9",
  "which",
 ]
 

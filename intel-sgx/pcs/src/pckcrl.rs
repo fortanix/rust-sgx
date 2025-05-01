@@ -9,6 +9,11 @@ use std::path::PathBuf;
 
 use pkix::pem::PEM_CRL;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "verify")]
+use {
+    mbedtls::x509::Crl,
+    std::ffi::CString,
+};
 
 use crate::io::{self};
 use crate::Error;
@@ -57,6 +62,19 @@ impl PckCrl {
 
     pub fn certificate_chain(&self) -> &Vec<String> {
         &self.ca_chain
+    }
+
+    #[cfg(feature = "verify")]
+    fn as_mbedtls_crl(&self) -> Result<Crl, Error> {
+        let c = CString::new(self.crl.as_bytes()).map_err(|_| Error::InvalidCrlFormat)?;
+        let mut crl = Crl::new();
+        crl.push_from_pem(c.as_bytes_with_nul()).map_err(|_| Error::InvalidCrlFormat)?;
+        Ok(crl)
+    }
+
+    pub fn revoked_serials(&self) -> Result<Vec<Vec<u8>>, Error> {
+        let crl = self.as_mbedtls_crl()?;
+        Ok(crl.revoked_serials())
     }
 }
 
