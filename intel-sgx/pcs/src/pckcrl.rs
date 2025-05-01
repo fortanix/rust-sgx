@@ -72,6 +72,7 @@ impl PckCrl {
         Ok(crl)
     }
 
+    #[cfg(feature = "verify")]
     pub fn revoked_serials(&self) -> Result<Vec<Vec<u8>>, Error> {
         let crl = self.as_mbedtls_crl()?;
         Ok(crl.revoked_serials())
@@ -87,5 +88,12 @@ mod tests {
     #[test]
     fn read_pck_crl() {
         assert!(PckCrl::read_from_file("./tests/data/").is_ok());
+    }
+
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
+    #[test]
+    fn read_platform_pck_crl() {
+        let pckcrl = PckCrl::read_from_file("./tests/data/platform/").unwrap();
+        assert_eq!(pckcrl.revoked_serials().unwrap().len(), 44);
     }
 }
