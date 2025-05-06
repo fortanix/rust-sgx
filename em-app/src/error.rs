@@ -53,26 +53,58 @@ pub enum Error {
 
     // Unexpected response from NSM driver
     UnexpectedNsmResponse(String),
+
+    // Unexpected certificate format
+    CertificateFormat(String),
 }
 
 impl fmt::Display for crate::Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self {
-            Error::ExternalKey(e)               => write!(f, "External key returned error: {}", e),
-            Error::ExternalKeyString(e)         => write!(f, "External key returned error: {}", e),
-            Error::NodeAgentClient(e)           => write!(f, "Error creating node agent client: {}", e),
-            Error::TargetReport(e)              => write!(f, "Unable to get target report from node agent: {}", e),
-            Error::TargetReportHash(e)          => write!(f, "Failure in hash operations while processing target report: {}", e),
-            Error::TargetReportInternal(e)      => write!(f, "Internal error in target report handling: {}", e),
-            Error::AttestationCert(e)           => write!(f, "Failure requesting attestation certificate: {}", e),
-            Error::AttestationCertHash(e)       => write!(f, "Failure in hash operations while processing attestation certificate: {}", e),
-            Error::AttestationCertInternal(e)   => write!(f, "Internal error in processing attestation certificate: {}", e),
-            Error::AttestationCertValidation(e) => write!(f, "Validation failed for data returned by Node Agent: {}", e),
-            Error::CertIssue(e)                 => write!(f, "Failure in final certificate issue step: {}", e),
-            Error::ConfigIdIssue(e)             => write!(f, "Failure in parsing input application config id: {}", e),
-            Error::NonceGeneration(e)           => write!(f, "Failure generating nonce: {}", e),
-            Error::NsmDriver(e)                 => write!(f, "Failure in communicating with NSM driver: {}", e),
-            Error::UnexpectedNsmResponse(e)     => write!(f, "Unexpected response from NSM driver: {}", e),
+            Error::ExternalKey(e) => write!(f, "External key returned error: {}", e),
+            Error::ExternalKeyString(e) => write!(f, "External key returned error: {}", e),
+            Error::NodeAgentClient(e) => write!(f, "Error creating node agent client: {}", e),
+            Error::TargetReport(e) => {
+                write!(f, "Unable to get target report from node agent: {}", e)
+            }
+            Error::TargetReportHash(e) => write!(
+                f,
+                "Failure in hash operations while processing target report: {}",
+                e
+            ),
+            Error::TargetReportInternal(e) => {
+                write!(f, "Internal error in target report handling: {}", e)
+            }
+            Error::AttestationCert(e) => {
+                write!(f, "Failure requesting attestation certificate: {}", e)
+            }
+            Error::AttestationCertHash(e) => write!(
+                f,
+                "Failure in hash operations while processing attestation certificate: {}",
+                e
+            ),
+            Error::AttestationCertInternal(e) => write!(
+                f,
+                "Internal error in processing attestation certificate: {}",
+                e
+            ),
+            Error::AttestationCertValidation(e) => write!(
+                f,
+                "Validation failed for data returned by Node Agent: {}",
+                e
+            ),
+            Error::CertIssue(e) => write!(f, "Failure in final certificate issue step: {}", e),
+            Error::ConfigIdIssue(e) => {
+                write!(f, "Failure in parsing input application config id: {}", e)
+            }
+            Error::NonceGeneration(e) => write!(f, "Failure generating nonce: {}", e),
+            Error::NsmDriver(e) => write!(f, "Failure in communicating with NSM driver: {}", e),
+            Error::UnexpectedNsmResponse(e) => {
+                write!(f, "Unexpected response from NSM driver: {}", e)
+            }
+            Error::CertificateFormat(e) => {
+                write!(f, "Unexpected x.509 certificate pem format: {}", e)
+            }
         }
     }
 }

@@ -12,6 +12,8 @@ pub mod utils;
 
 use em_node_agent_client::{models, Api, Client};
 use mbedtls::hash;
+use mbedtls::x509::Certificate;
+use pkix::types::DateTime;
 use pkix::types::Name;
 use rustc_serialize::hex::FromHex;
 use std::borrow::Cow;
@@ -24,9 +26,9 @@ pub use csr::*;
 
 pub mod error;
 pub use error::*;
+use sdkms::api_model::Blob;
 use yasna::models::TaggedDerValue;
 use yasna::tags::TAG_UTF8STRING;
-use sdkms::api_model::Blob;
 
 type Result<T> = std::result::Result<T, Error>;
 
@@ -50,9 +52,14 @@ pub fn common_name_to_subject(common_name: &str) -> Name {
     .into()
 }
 
-pub fn get_certificate_status(url: &str, task_id: Uuid) -> Result<models::IssueCertificateResponse> {
+pub fn get_certificate_status(
+    url: &str,
+    task_id: Uuid,
+) -> Result<models::IssueCertificateResponse> {
     let client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
-    client.get_issue_certificate_response(task_id).map_err(|e| Error::NodeAgentClient(Box::new(e)))
+    client
+        .get_issue_certificate_response(task_id)
+        .map_err(|e| Error::NodeAgentClient(Box::new(e)))
 }
 
 pub fn get_fortanix_em_certificate_subject(
@@ -70,7 +77,6 @@ pub fn get_fortanix_em_certificate(
 ) -> Result<FortanixEmCertificate> {
     get_certificate(url, common_name, signer, None, None)
 }
-
 
 pub fn get_certificate_subject(
     url: &str,
@@ -133,31 +139,43 @@ pub fn get_remote_attestation_csr(
     get_remote_attestation_csr_subject(url, &subject, signer, alt_names, config_id)
 }
 
-pub fn request_issue_certificate(url: &str, csr_pem: String) -> Result<models::IssueCertificateResponse> {
+pub fn request_issue_certificate(
+    url: &str,
+    csr_pem: String,
+) -> Result<models::IssueCertificateResponse> {
     let client = Client::try_new_http(url).map_err(|e| Error::NodeAgentClient(Box::new(e)))?;
     let request = models::IssueCertificateRequest { csr: Some(csr_pem) };
-    client.issue_certificate(request).map_err(|e| Error::NodeAgentClient(Box::new(e)))
+    client
+        .issue_certificate(request)
+        .map_err(|e| Error::NodeAgentClient(Box::new(e)))
 }
 
 /// Computes application configuration hash from raw string
 pub fn compute_app_config_hash(app_config: &str, hash_type: hash::Type) -> Result<Blob> {
     let mut digest = vec![0; 32];
-    hash::Md::hash(hash_type, app_config.as_bytes(), &mut digest).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+    hash::Md::hash(hash_type, app_config.as_bytes(), &mut digest)
+        .map_err(|e| Error::TargetReportHash(Box::new(e)))?;
 
     Ok(Blob::from(digest.to_vec()))
 }
 
-fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> {
-    let mut data=[0u8;64];
-    hash::Md::hash(hash::Type::Sha256, &pub_key, &mut data).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8; 64]> {
+    let mut data = [0u8; 64];
+    hash::Md::hash(hash::Type::Sha256, &pub_key, &mut data)
+        .map_err(|e| Error::TargetReportHash(Box::new(e)))?;
 
     if let Some(id) = config_id {
-        let id = id.from_hex().map_err(|e| Error::ConfigIdIssue(format!("Failed decoding config ID: {}", e)))?;
+        let id = id
+            .from_hex()
+            .map_err(|e| Error::ConfigIdIssue(format!("Failed decoding config ID: {}", e)))?;
         if id.len() != 32 {
-            return Err(Error::ConfigIdIssue(format!("config ID is invalid, length: {}, expected length: 32", id.len())));
+            return Err(Error::ConfigIdIssue(format!(
+                "config ID is invalid, length: {}, expected length: 32",
+                id.len()
+            )));
         }
 
-        let mut payload=[0u8;65];
+        let mut payload = [0u8; 65];
         payload[0] = 1;
         payload[1..33].copy_from_slice(&data[0..32]);
         payload[33..65].copy_from_slice(&id[0..32]);
@@ -165,7 +183,8 @@ fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> 
         // The payload is formed as follows in case of workflow report.
 
         // First 32 bytes is a Sha256 of (Version + public key sha256 + config-id)
-        hash::Md::hash(hash::Type::Sha256, &payload, &mut data[0..32]).map_err(|e| Error::TargetReportHash(Box::new(e)))?;
+        hash::Md::hash(hash::Type::Sha256, &payload, &mut data[0..32])
+            .map_err(|e| Error::TargetReportHash(Box::new(e)))?;
 
         // Second 32 bytes part is the actual config-id.
         data[32..64].copy_from_slice(&id[0..32]);
@@ -173,4 +192,22 @@ fn get_user_data(pub_key: &Vec<u8>, config_id: Option<&str>) -> Result<[u8;64]> 
     // if non-workflow report then first 32 bytes is the hash of the public key, second 32 bytes are all 0.
 
     Ok(data)
+}
+
+pub fn get_certificate_expiry(cert: String) -> Result<DateTime> {
+    let cert = Certificate::from_pem(cert.as_bytes())
+        .map_err(|e| Error::CertificateFormat(e.to_string()))?;
+    let time = cert
+        .not_after()
+        .map_err(|e| Error::CertificateFormat(e.to_string()))?;
+
+    DateTime::new(
+        time.year().into(),
+        time.month().into(),
+        time.day().into(),
+        time.hour().into(),
+        time.minute().into(),
+        time.second().into(),
+    )
+    .ok_or_else(|| Error::CertificateFormat("No expiry date found".to_string()))
 }
