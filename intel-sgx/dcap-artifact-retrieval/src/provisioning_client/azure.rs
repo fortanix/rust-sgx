@@ -197,7 +197,7 @@ mod tests {
     use pcs::PckID;
 
     use crate::provisioning_client::{
-        test_helpers, AzureProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, AzureProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient,
     };
     use crate::reqwest_client;
 
@@ -248,7 +248,8 @@ mod tests {
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
-        assert!(client.pckcrl().is_ok());
+        assert!(client.pckcrl(PckCA::Processor).is_ok());
+        assert!(client.pckcrl(PckCA::Platform).is_ok());
     }
 
     #[test]

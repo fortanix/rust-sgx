@@ -16,7 +16,7 @@ use serde::Deserialize;
 
 use crate::{
     AzureProvisioningClientBuilder, Error, IntelProvisioningClientBuilder,
-    PccsProvisioningClientBuilder, PcsVersion, ProvisioningClient, StatusCode,
+    PccsProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient, StatusCode,
 };
 
 // NOTE: unfortunately these default values need to be repeated in arg
@@ -132,10 +132,17 @@ fn download_dcap_artifacts(
         }
     }
     let pckcrl = prov_client
-        .pckcrl()
+        .pckcrl(PckCA::Processor)
         .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
+        println!("   pckcrl:      {}", pckcrl);
+    }
+
+    let pckcrl = prov_client
+        .pckcrl(PckCA::Platform)
+        .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
+    if verbose {
         println!("   pckcrl:      {}", pckcrl);
     }
     Ok(())

@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    Client, ClientBuilder, Fetcher, PckCA, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
     TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
 };
@@ -269,9 +269,10 @@ impl PckCrlApi {
 }
 
 impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, ca: PckCA) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCrlIn {
             api_version: self.api_version.clone(),
+            ca,
         }
     }
 }
@@ -283,9 +284,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Output = PckCrl;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let ca = match input.ca {
+            PckCA::Processor => "processor",
+            PckCA::Platform => "platform"
+        };
         let url = format!(
-            "{}/sgx/certification/v{}/pckcrl?ca=processor&encoding=pem",
-            INTEL_BASE_URL, input.api_version as u8,
+            "{}/sgx/certification/v{}/pckcrl?ca={}&encoding=pem",
+            INTEL_BASE_URL, input.api_version as u8, ca,
         );
         Ok((url, Vec::new()))
     }
@@ -568,7 +573,7 @@ mod tests {
     use pcs::{EnclaveIdentity, Fmspc, PckID, Platform, TcbEvaluationDataNumbers, RawTcbEvaluationDataNumbers};
 
     use crate::provisioning_client::{
-        test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, IntelProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient,
     };
     use crate::reqwest_client;
     use std::hash::DefaultHasher;
@@ -877,55 +882,59 @@ mod tests {
 
     #[test]
     pub fn pckcrl() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+        for ca in [PckCA::Processor, PckCA::Platform] {
+            for api_version in [PcsVersion::V3, PcsVersion::V4] {
+                let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                    .set_retry_timeout(TIME_RETRY_TIMEOUT);
+                if api_version == PcsVersion::V3 {
+                    intel_builder.set_api_key(pcs_api_key());
+                }
+                let client = intel_builder.build(reqwest_client());
+                assert!(client
+                    .pckcrl(ca)
+                    .and_then(|crl| { Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()) })
+                    .is_ok());
             }
-            let client = intel_builder.build(reqwest_client());
-            assert!(client
-                .pckcrl()
-                .and_then(|crl| { Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()) })
-                .is_ok());
         }
     }
 
     #[test]
     pub fn pckcrl_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+        for ca in [PckCA::Processor, PckCA::Platform] {
+            for api_version in [PcsVersion::V3, PcsVersion::V4] {
+                let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                    .set_retry_timeout(TIME_RETRY_TIMEOUT);
+                if api_version == PcsVersion::V3 {
+                    intel_builder.set_api_key(pcs_api_key());
+                }
+                let client = intel_builder.build(reqwest_client());
+                let pckcrl = client.pckcrl(ca).unwrap();
+
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.pckcrl_service.cache.lock().unwrap();
+
+                    assert!(cache.len() > 0);
+
+                    let (cached_pckcrl, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        input.hash(&mut hasher);
+
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
+                    };
+
+                    assert_eq!(pckcrl, cached_pckcrl);
+                }
+
+                // Second service call should return value from cache
+                let pckcrl_from_service = client.pckcrl(ca).unwrap();
+
+                assert_eq!(pckcrl, pckcrl_from_service);
             }
-            let client = intel_builder.build(reqwest_client());
-            let pckcrl = client.pckcrl().unwrap();
-
-            // The cache should be populated after initial service call
-            {
-                let mut cache = client.pckcrl_service.cache.lock().unwrap();
-
-                assert!(cache.len() > 0);
-
-                let (cached_pckcrl, _) = {
-                    let mut hasher = DefaultHasher::new();
-                    let input = client.pckcrl_service.pcs_service().build_input();
-                    input.hash(&mut hasher);
-
-                    cache
-                        .get_mut(&hasher.finish())
-                        .expect("Can't find key in cache")
-                        .to_owned()
-                };
-
-                assert_eq!(pckcrl, cached_pckcrl);
-            }
-
-            // Second service call should return value from cache
-            let pckcrl_from_service = client.pckcrl().unwrap();
-
-            assert_eq!(pckcrl, pckcrl_from_service);
         }
     }
 

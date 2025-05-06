@@ -21,7 +21,7 @@ use rustc_serialize::hex::{FromHex, ToHex};
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
+    Client, ClientBuilder, Fetcher, PckCA, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
 use super::intel::TcbEvaluationDataNumbersApi;
@@ -183,9 +183,10 @@ impl PckCrlApi {
 }
 
 impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, ca: PckCA) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCrlIn {
             api_version: self.api_version,
+            ca,
         }
     }
 }
@@ -198,9 +199,13 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Output = PckCrl;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let ca = match input.ca {
+            PckCA::Processor => "processor",
+            PckCA::Platform => "platform"
+        };
         let url = format!(
-            "{}/sgx/certification/v{}/pckcrl?ca=processor",
-            self.base_url, input.api_version as u8
+            "{}/sgx/certification/v{}/pckcrl?ca={}",
+            self.base_url, input.api_version as u8, ca
         );
         Ok((url, Vec::new()))
     }
@@ -429,7 +434,7 @@ mod tests {
 
     use super::Client;
     use crate::provisioning_client::{
-        test_helpers, PccsProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, PccsProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient,
     };
     use crate::{reqwest_client_insecure_tls, ReqwestClient};
 
@@ -688,7 +693,11 @@ mod tests {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             assert!(client
-                .pckcrl()
+                .pckcrl(PckCA::Processor)
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .is_ok());
+            assert!(client
+                .pckcrl(PckCA::Platform)
                 .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
                 .is_ok());
         }
@@ -696,34 +705,36 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = make_client(api_version);
-            let pckcrl = client.pckcrl().unwrap();
+        for ca in [PckCA::Processor, PckCA::Platform] {
+            for api_version in [PcsVersion::V3, PcsVersion::V4] {
+                let client = make_client(api_version);
+                let pckcrl = client.pckcrl(ca).unwrap();
 
-            // The cache should be populated after initial service call
-            {
-                let mut cache = client.pckcrl_service.cache.lock().unwrap();
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.pckcrl_service.cache.lock().unwrap();
 
-                assert!(cache.len() > 0);
+                    assert!(cache.len() > 0);
 
-                let (cached_pckcrl, _) = {
-                    let mut hasher = DefaultHasher::new();
-                    let input = client.pckcrl_service.pcs_service().build_input();
-                    input.hash(&mut hasher);
+                    let (cached_pckcrl, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        input.hash(&mut hasher);
 
-                    cache
-                        .get_mut(&hasher.finish())
-                        .expect("Can't find key in cache")
-                        .to_owned()
-                };
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
+                    };
 
-                assert_eq!(pckcrl, cached_pckcrl);
+                    assert_eq!(pckcrl, cached_pckcrl);
+                }
+
+                // Second service call should return value from cache
+                let pckcrl_from_service = client.pckcrl(ca).unwrap();
+
+                assert_eq!(pckcrl, pckcrl_from_service);
             }
-
-            // Second service call should return value from cache
-            let pckcrl_from_service = client.pckcrl().unwrap();
-
-            assert_eq!(pckcrl, pckcrl_from_service);
         }
     }
 
