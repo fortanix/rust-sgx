@@ -621,7 +621,6 @@ mod tests {
         }
     }
 
-    #[ignore = "PCCS service needs an update to support the new endpoint"]
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
         let client = make_client(PcsVersion::V4);
@@ -781,7 +780,6 @@ mod tests {
         }
     }
 
-    #[ignore = "PCCS service needs an update to support the new endpoint"]
     #[test]
     pub fn tcb_evaluation_data_numbers() {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
