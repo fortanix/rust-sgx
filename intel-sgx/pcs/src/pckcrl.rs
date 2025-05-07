@@ -8,7 +8,8 @@
 use std::path::PathBuf;
 
 use pkix::pem::PEM_CRL;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::marker::PhantomData;
 #[cfg(feature = "verify")]
 use {
     mbedtls::alloc::{List as MbedtlsList},
@@ -18,30 +19,51 @@ use {
 };
 
 use crate::io::{self};
-use crate::Error;
+use crate::{Error, Unverified, VerificationType, Verified};
 
-enum PckCrlCa {
+#[derive(Debug, PartialEq, Eq)]
+pub enum PckCrlCa {
     Platform,
     Processor,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct PckCrl {
+#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
+pub struct PckCrl<V: VerificationType = Verified> {
     crl: String,
     ca_chain: Vec<String>,
+    #[serde(skip)]
+    type_: PhantomData<V>,
 }
 
-impl PckCrl {
-    const DEFAULT_FILENAME: &'static str = "processor.crl";
+impl<'de> Deserialize<'de> for PckCrl<Unverified> {
+    fn deserialize<D>(deserializer: D) -> Result<PckCrl<Unverified>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Dummy {
+            crl: String,
+            ca_chain: Vec<String>,
+        }
 
-    pub fn new(crl: String, ca_chain: Vec<String>) -> Result<PckCrl, Error> {
-        let crl = PckCrl { crl, ca_chain };
+        let Dummy { crl, ca_chain } = Dummy::deserialize(deserializer)?;
+        Ok(PckCrl::<Unverified> {
+            crl,
+            ca_chain,
+            type_: PhantomData,
+        })
+    }
+}
+
+impl PckCrl<Unverified> {
+    pub fn new(crl: String, ca_chain: Vec<String>) -> Result<PckCrl<Unverified>, Error> {
+        let crl = PckCrl { crl, ca_chain, type_: PhantomData };
 
         Ok(crl)
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B]) -> Result<(), Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B]) -> Result<PckCrl<Verified>, Error> {
         // Check if ca_chain is a valid chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let chain: MbedtlsList<Certificate> = chain.into_iter().collect();
@@ -72,28 +94,40 @@ impl PckCrl {
             .map_err(|_| Error::InvalidTcbInfo("Signature verification failed".into()))?;
 
         // Sanity check on Pck CRL
-        if Self::ca(&crl).is_none() {
-            return Err(Error::InvalidCrlFormat);
-        }
+        self.ca().ok_or(Error::InvalidCrlFormat)?;
 
-        Ok(())
+        let PckCrl { crl, ca_chain, .. } = self;
+        Ok(PckCrl::<Verified>{ crl, ca_chain, type_: PhantomData})
     }
 
-    pub fn filename() -> String {
-        Self::DEFAULT_FILENAME.to_string()
+    const DEFAULT_FILENAME: &'static str = "processor.crl";
+
+    fn filename_from_ca(ca: Option<PckCrlCa>) -> String {
+        if let Some(PckCrlCa::Platform) = ca {
+            String::from("platform.crl")
+        } else {
+            Self::DEFAULT_FILENAME.to_string()
+        }
+    }
+
+    pub fn filename(&self) -> String {
+        Self::filename_from_ca(self.ca())
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
+        let filename = self.filename();
+        io::write_to_file(&self, output_dir, &filename)?;
+        Ok(filename)
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, &Self::DEFAULT_FILENAME)
+        let filename = self.filename();
+        io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let crl: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
+    pub fn read_from_file(input_dir: &str, ca: PckCrlCa) -> Result<Self, Error> {
+        let filename = Self::filename_from_ca(Some(ca));
+        let crl: Self = io::read_from_file(input_dir, &filename)?;
         Ok(crl)
     }
 
@@ -118,8 +152,11 @@ impl PckCrl {
     }
 
     #[cfg(feature = "verify")]
-    fn ca(crl: &Crl) -> Option<PckCrlCa> {
-        let issuer = crl.issuer().ok()?;
+    fn ca(&self) -> Option<PckCrlCa> {
+        let issuer = self
+            .as_mbedtls_crl()
+            .ok()
+            .and_then(|crl| crl.issuer().ok())?;
         if issuer.contains("Intel SGX PCK Platform CA") {
             Some(PckCrlCa::Platform)
         } else {
@@ -130,32 +167,30 @@ impl PckCrl {
             }
         }
     }
-
-    #[cfg(feature = "verify")]
-    pub fn revoked_serials(&self) -> Result<Vec<Vec<u8>>, Error> {
-        let crl = self.as_mbedtls_crl()?;
-        Ok(crl.revoked_serials())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     #[cfg(not(target_env = "sgx"))]
-    use crate::pckcrl::PckCrl;
+    use crate::pckcrl::{PckCrl, PckCrlCa};
 
-    #[cfg(not(target_env = "sgx"))]
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn read_pck_crl() {
-        assert!(PckCrl::read_from_file("./tests/data/").is_ok());
+        let crl = PckCrl::read_from_file("./tests/data/", PckCrlCa::Processor).unwrap();
+        assert_eq!(crl.ca(), Some(PckCrlCa::Processor));
+        let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+        crl.verify(&root_cas).unwrap();
     }
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn read_platform_pck_crl() {
-        let pckcrl = PckCrl::read_from_file("./tests/data/platform/").unwrap();
+        let pckcrl = PckCrl::read_from_file("./tests/data/", PckCrlCa::Platform).unwrap();
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         pckcrl.clone().verify(&root_cas).unwrap();
-        assert_eq!(pckcrl.revoked_serials().unwrap().len(), 44);
+        assert_eq!(pckcrl.ca(), Some(PckCrlCa::Platform));
     }
 }
