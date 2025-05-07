@@ -27,7 +27,7 @@ use {
     std::ops::Deref,
 };
 
-pub use crate::pckcrl::PckCrl;
+pub use crate::pckcrl::{PckCrl, PckCrlCa};
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel};

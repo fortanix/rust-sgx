@@ -425,9 +425,9 @@ impl PckCert<Unverified> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B], pckcrl: Option<String>) -> Result<PckCert, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B], pckcrl: Option<&str>) -> Result<PckCert, Error> {
         let mut crl = if let Some(pckcrl) = pckcrl {
-            let pckcrl = PckCrl::new(pckcrl, self.ca_chain.clone())?;
+            let pckcrl = PckCrl::new(pckcrl.to_string(), self.ca_chain.clone())?;
             let pckcrl = pckcrl.verify(trusted_root_certs)?;
             Some(pckcrl.as_mbedtls_crl()?)
         } else {
@@ -1032,7 +1032,7 @@ mod tests {
                 .unwrap()
                 .text()
                 .unwrap();
-            match pck.clone().verify(&root_cas, Some(platform_crl)) {
+            match pck.clone().verify(&root_cas, Some(&platform_crl)) {
                 Err(Error::InvalidCrl(MbedError::EcpVerifyFailed)) => (),
                 e => panic!("Unexpected error: {:?}", e),
             }
@@ -1040,7 +1040,7 @@ mod tests {
                 .unwrap()
                 .text()
                 .unwrap();
-            let pck = pck.verify(&root_cas, Some(processor_crl)).unwrap();
+            let pck = pck.verify(&root_cas, Some(&processor_crl)).unwrap();
 
             let sgx_extension = pck.sgx_extension().expect("validated");
             assert_eq!(

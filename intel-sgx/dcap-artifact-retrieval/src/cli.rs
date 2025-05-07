@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::clap_app;
-use pcs::PckID;
+use pcs::{PckID, PckCrlCa};
 use reqwest::Url;
 use rustc_serialize::hex::ToHex;
 use serde::de::{value, IntoDeserializer};
@@ -133,7 +133,7 @@ fn download_dcap_artifacts(
     }
     let pckcrl = prov_client
         .pckcrl(PckCA::Processor)
-        .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
+        .and_then(|crl| crl.write_to_file_as(output_dir, PckCrlCa::Processor).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
         println!("   pckcrl:      {}", pckcrl);
@@ -141,7 +141,7 @@ fn download_dcap_artifacts(
 
     let pckcrl = prov_client
         .pckcrl(PckCA::Platform)
-        .and_then(|crl| crl.write_to_file(output_dir).map_err(|e| e.into()))?;
+        .and_then(|crl| crl.write_to_file_as(output_dir, PckCrlCa::Platform).map_err(|e| e.into()))?;
     if verbose {
         println!("   pckcrl:      {}", pckcrl);
     }

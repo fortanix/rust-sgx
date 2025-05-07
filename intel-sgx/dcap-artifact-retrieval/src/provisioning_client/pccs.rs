@@ -196,7 +196,7 @@ impl<'inp> PckCrlService<'inp> for PckCrlApi {
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Input = PckCrlIn;
-    type Output = PckCrl;
+    type Output = PckCrl<Unverified>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
@@ -505,7 +505,7 @@ mod tests {
                     )
                     .unwrap();
 
-                let pck = pck.verify(&root_cas).unwrap();
+                let pck = pck.verify(&root_cas, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -534,7 +534,7 @@ mod tests {
                         pck.fmspc().unwrap(),
                         cached_pck
                             .clone()
-                            .verify(&root_cas)
+                            .verify(&root_cas, None)
                             .unwrap()
                             .fmspc()
                             .unwrap()
@@ -557,7 +557,7 @@ mod tests {
                     pck.fmspc().unwrap(),
                     pck_from_service
                         .clone()
-                        .verify(&root_cas)
+                        .verify(&root_cas, None)
                         .unwrap()
                         .fmspc()
                         .unwrap()

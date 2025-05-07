@@ -2671,6 +2671,7 @@ dependencies = [
  "percent-encoding 2.1.0",
  "pkix",
  "quick-error",
+ "reqwest",
  "rustc-serialize",
  "serde",
  "serde_json",

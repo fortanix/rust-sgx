@@ -12,10 +12,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 use std::marker::PhantomData;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::{List as MbedtlsList},
+    mbedtls::alloc::List as MbedtlsList,
     mbedtls::x509::{Certificate, Crl},
     std::ffi::CString,
     std::ops::Deref,
+
 };
 
 use crate::io::{self};
@@ -118,18 +119,32 @@ impl<V: VerificationType> PckCrl<V> {
         }
     }
 
+    #[cfg(feature = "verify")]
     pub fn filename(&self) -> String {
         Self::filename_from_ca(self.ca())
     }
 
+    #[cfg(feature = "verify")]
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
         let filename = self.filename();
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
+    pub fn write_to_file_as(&self, output_dir: &str, ca: PckCrlCa) -> Result<String, Error> {
+        let filename = Self::filename_from_ca(Some(ca));
+        io::write_to_file(&self, output_dir, &filename)?;
+        Ok(filename)
+    }
+
+    #[cfg(feature = "verify")]
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
         let filename = self.filename();
+        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+    }
+
+    pub fn write_to_file_if_not_exist_as(&self, output_dir: &str, ca: PckCrlCa) -> Result<Option<PathBuf>, Error> {
+        let filename = Self::filename_from_ca(Some(ca));
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 

@@ -281,7 +281,7 @@ impl<'inp> PckCrlService<'inp> for PckCrlApi {
 /// See: <https://api.portal.trustedservices.intel.com/documentation#pcs-revocation-v4>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Input = PckCrlIn;
-    type Output = PckCrl;
+    type Output = PckCrl<Unverified>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
@@ -709,6 +709,8 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
+            let crl_processor = client.pckcrl(PckCA::Processor).unwrap().crl_as_pem().to_owned();
+            let crl_platform = client.pckcrl(PckCA::Platform).unwrap().crl_as_pem().to_owned();
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -722,7 +724,9 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                let pck = pck.verify(&root_cas).unwrap();
+                let pck = pck.clone().verify(&root_cas, Some(crl_processor.clone()))
+                    .or(pck.clone().verify(&root_cas, Some(crl_platform.clone())))
+                    .unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -751,7 +755,7 @@ mod tests {
                         pck.fmspc().unwrap(),
                         cached_pck
                             .clone()
-                            .verify(&root_cas)
+                            .verify(&root_cas, None)
                             .unwrap()
                             .fmspc()
                             .unwrap()
@@ -774,7 +778,7 @@ mod tests {
                     pck.fmspc().unwrap(),
                     pck_from_service
                         .clone()
-                        .verify(&root_cas)
+                        .verify(&root_cas, None)
                         .unwrap()
                         .fmspc()
                         .unwrap()

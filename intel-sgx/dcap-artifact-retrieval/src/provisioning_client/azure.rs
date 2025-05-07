@@ -228,7 +228,7 @@ mod tests {
                 )
                 .unwrap();
 
-            let pck = pck.verify(&root_cas).unwrap();
+            let pck = pck.verify(&root_cas, None).unwrap();
             assert_eq!(
                 test_helpers::get_cert_subject(&pck.ca_chain().last().unwrap()),
                 "Intel SGX Root CA"
