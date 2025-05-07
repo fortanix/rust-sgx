@@ -28,6 +28,7 @@ use {
     mbedtls::Error as MbedError,
     std::ffi::CString,
     std::ops::Deref,
+    super::PckCrl,
 };
 
 use crate::io::{self};
@@ -424,7 +425,15 @@ impl PckCert<Unverified> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B]) -> Result<PckCert, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B], pckcrl: Option<String>) -> Result<PckCert, Error> {
+        let mut crl = if let Some(pckcrl) = pckcrl {
+            let pckcrl = PckCrl::new(pckcrl, self.ca_chain.clone())?;
+            let pckcrl = pckcrl.verify(trusted_root_certs)?;
+            Some(pckcrl.as_mbedtls_crl()?)
+        } else {
+            None
+        };
+
         let pck = CString::new(self.cert.as_bytes()).map_err(|_| Error::InvalidPck("Conversion into CString failed".into()))?;
         let pck = Certificate::from_pem(pck.as_bytes_with_nul())
             .map_err(|_| Error::InvalidPck("Cannot decode PCKCert as pem".into()))?;
@@ -434,7 +443,7 @@ impl PckCert<Unverified> {
         let trust_ca: MbedtlsList<Certificate> = chain.into_iter().collect();
         let root_list = std::iter::once(root).collect();
         let mut err = String::default();
-        Certificate::verify(&trust_ca, &root_list, None, Some(&mut err))
+        Certificate::verify(&trust_ca, &root_list, crl.as_mut(), Some(&mut err))
             .map_err(|_| Error::InvalidPck(format!("Failed to verify PckCert: {}", err)))?;
 
         crate::check_root_ca(trusted_root_certs, &root_list)?;
@@ -1019,7 +1028,19 @@ mod tests {
         {
             let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
             let root_cas = [&root_ca[..]];
-            let pck = pck.verify(&root_cas).unwrap();
+            let platform_crl = reqwest::blocking::get("https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=platform&encoding=pem")
+                .unwrap()
+                .text()
+                .unwrap();
+            match pck.clone().verify(&root_cas, Some(platform_crl)) {
+                Err(Error::InvalidCrl(MbedError::EcpVerifyFailed)) => (),
+                e => panic!("Unexpected error: {:?}", e),
+            }
+            let processor_crl = reqwest::blocking::get("https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor&encoding=pem")
+                .unwrap()
+                .text()
+                .unwrap();
+            let pck = pck.verify(&root_cas, Some(processor_crl)).unwrap();
 
             let sgx_extension = pck.sgx_extension().expect("validated");
             assert_eq!(

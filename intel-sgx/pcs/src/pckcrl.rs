@@ -91,7 +91,7 @@ impl PckCrl<Unverified> {
         let pck_ca = pck_ca.public_key_mut();
         pck_ca
             .verify(mbedtls::hash::Type::Sha256, &hash, &crl_signature)
-            .map_err(|_| Error::InvalidTcbInfo("Signature verification failed".into()))?;
+            .map_err(|e| Error::InvalidCrl(e))?;
 
         // Sanity check on Pck CRL
         self.ca().ok_or(Error::InvalidCrlFormat)?;
@@ -100,6 +100,14 @@ impl PckCrl<Unverified> {
         Ok(PckCrl::<Verified>{ crl, ca_chain, type_: PhantomData})
     }
 
+    pub fn read_from_file(input_dir: &str, ca: PckCrlCa) -> Result<Self, Error> {
+        let filename = Self::filename_from_ca(Some(ca));
+        let crl: Self = io::read_from_file(input_dir, &filename)?;
+        Ok(crl)
+    }
+}
+
+impl<V: VerificationType> PckCrl<V> {
     const DEFAULT_FILENAME: &'static str = "processor.crl";
 
     fn filename_from_ca(ca: Option<PckCrlCa>) -> String {
@@ -125,12 +133,6 @@ impl PckCrl<Unverified> {
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn read_from_file(input_dir: &str, ca: PckCrlCa) -> Result<Self, Error> {
-        let filename = Self::filename_from_ca(Some(ca));
-        let crl: Self = io::read_from_file(input_dir, &filename)?;
-        Ok(crl)
-    }
-
     pub fn crl_as_pem(&self) -> &String {
         &self.crl
     }
@@ -144,7 +146,7 @@ impl PckCrl<Unverified> {
     }
 
     #[cfg(feature = "verify")]
-    fn as_mbedtls_crl(&self) -> Result<Crl, Error> {
+    pub(crate) fn as_mbedtls_crl(&self) -> Result<Crl, Error> {
         let c = CString::new(self.crl.as_bytes()).map_err(|_| Error::InvalidCrlFormat)?;
         let mut crl = Crl::new();
         crl.push_from_pem(c.as_bytes_with_nul()).map_err(|_| Error::InvalidCrlFormat)?;
