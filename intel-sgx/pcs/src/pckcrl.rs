@@ -188,7 +188,7 @@ impl<V: VerificationType> PckCrl<V> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(target_env = "sgx"))]
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use crate::pckcrl::{PckCrl, PckCrlCa};
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]

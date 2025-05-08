@@ -371,6 +371,15 @@ impl PckCerts {
             .ok_or(Error::NoPckForTcbFound)?;
         Ok(pck.to_owned())
     }
+
+    #[cfg(feature = "verify")]
+    pub fn issuer(&self) -> Option<PckIssuer> {
+        self.iter()
+            .find_map(|pckcert| {
+                let pck = PckCert::new(pem::der_to_pem(pckcert, PEM_CERTIFICATE), self.ca_chain.clone());
+                pck.issuer().ok().flatten()
+            })
+    }
 }
 
 #[derive(Clone, Serialize, Debug, PartialEq, Eq)]
