@@ -455,6 +455,23 @@ impl PckCert<Unverified> {
         })
     }
 
+    #[cfg(feature = "verify")]
+    pub fn issuer(&self) -> Result<Option<PckIssuer>, MbedError> {
+        let pck = CString::new(self.cert.as_bytes()).map_err(|_| MbedError::X509InvalidFormat)?;
+        let pck = Certificate::from_pem(pck.as_bytes_with_nul()).map_err(|_| MbedError::X509InvalidFormat)?;
+        let issuer = pck.issuer()?;
+
+        if issuer.contains("Intel SGX PCK Platform CA") {
+            Ok(Some(PckIssuer::PlatformCA))
+        } else {
+            if issuer.contains("Intel SGX PCK Processor CA") {
+                Ok(Some(PckIssuer::ProcessorCA))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
     pub fn read_from_file(input_dir: &str, filename: &str) -> Result<Self, Error> {
         io::read_from_file(input_dir, filename)
     }
@@ -490,6 +507,11 @@ impl PckCert<Verified> {
         let extension = self.sgx_extension()?;
         Ok(extension.fmspc)
     }
+}
+
+pub enum PckIssuer {
+    PlatformCA,
+    ProcessorCA,
 }
 
 impl<V: VerificationType> PckCert<V> {

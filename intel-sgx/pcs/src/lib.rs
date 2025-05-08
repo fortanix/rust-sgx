@@ -28,7 +28,7 @@ use {
 };
 
 pub use crate::pckcrl::{PckCrl, PckCrlCa};
-pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
+pub use crate::pckcrt::{PckCert, PckCerts, PckIssuer, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
