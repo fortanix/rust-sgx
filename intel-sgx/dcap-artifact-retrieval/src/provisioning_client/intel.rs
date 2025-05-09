@@ -724,8 +724,8 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                let pck = pck.clone().verify(&root_cas, Some(crl_processor.clone()))
-                    .or(pck.clone().verify(&root_cas, Some(crl_platform.clone())))
+                let pck = pck.clone().verify(&root_cas, Some(&crl_processor))
+                    .or(pck.clone().verify(&root_cas, Some(&crl_platform)))
                     .unwrap();
 
                 // The cache should be populated after initial service call
