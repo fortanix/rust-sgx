@@ -491,13 +491,13 @@ impl TcbInfo {
 mod tests {
     #[cfg(not(target_env = "sgx"))]
     use {
+        chrono::{Utc, TimeZone},
         crate::Error,
         crate::tcb_info::{Fmspc, Platform, TcbInfo},
-        std::convert::TryFrom,
         tempdir::TempDir,
     };
+    use std::convert::TryFrom;
     use super::AdvisoryID;
-    use chrono::{Utc, TimeZone};
 
     #[test]
     #[cfg(not(target_env = "sgx"))]

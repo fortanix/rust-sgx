@@ -2041,7 +2041,7 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "mbedtls"
 version = "0.12.4"
-source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=raoul%2Frte-447-crl_changes#fff0ef997dcde118dac86dc289039a0e85fd7001"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=mbedtls_v0.12#ec19f1acbac3d6e6aef8bf5e6e510740cb2faffa"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder 1.3.4",

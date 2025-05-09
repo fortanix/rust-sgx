@@ -456,9 +456,11 @@ impl QeIdentitySigned {
 #[cfg(feature = "verify")]
 #[cfg(test)]
 mod tests {
-    use crate::Error;
     #[cfg(not(target_env = "sgx"))]
-    use crate::qe_identity::{QeIdentitySigned, EnclaveIdentity};
+    use {
+        crate::qe_identity::{QeIdentitySigned, EnclaveIdentity},
+        crate::Error,
+    };
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
