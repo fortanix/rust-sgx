@@ -197,7 +197,7 @@ mod tests {
     use pcs::PckID;
 
     use crate::provisioning_client::{
-        test_helpers, AzureProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, AzureProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
     };
     use crate::reqwest_client;
 
@@ -228,7 +228,7 @@ mod tests {
                 )
                 .unwrap();
 
-            let pck = pck.verify(&root_cas).unwrap();
+            let pck = pck.verify(&root_cas, None).unwrap();
             assert_eq!(
                 test_helpers::get_cert_subject(&pck.ca_chain().last().unwrap()),
                 "Intel SGX Root CA"
@@ -248,7 +248,8 @@ mod tests {
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
-        assert!(client.pckcrl().is_ok());
+        assert!(client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).is_ok());
+        assert!(client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).is_ok());
     }
 
     #[test]

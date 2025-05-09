@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
     QeIdentitySigned, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 #[cfg(feature = "reqwest")]
@@ -191,6 +191,7 @@ pub trait PckCertService<'inp>:
 #[derive(Hash)]
 pub struct PckCrlIn {
     api_version: PcsVersion,
+    ca: DcapArtifactIssuer,
 }
 
 impl WithApiVersion for PckCrlIn {
@@ -200,9 +201,9 @@ impl WithApiVersion for PckCrlIn {
 }
 
 pub trait PckCrlService<'inp>:
-    ProvisioningServiceApi<'inp, Input = PckCrlIn, Output = PckCrl>
+    ProvisioningServiceApi<'inp, Input = PckCrlIn, Output = PckCrl<Unverified>>
 {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -467,7 +468,7 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     pckcerts_service: CachedService<PckCerts, dyn for<'a> PckCertsService<'a> + Sync + Send>,
     pckcert_service:
         CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
-    pckcrl_service: CachedService<PckCrl, dyn for<'a> PckCrlService<'a> + Sync + Send>,
+    pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
     tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
     tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
@@ -563,7 +564,7 @@ pub trait ProvisioningClient {
 
     fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error>;
 
-    fn pckcrl(&self) -> Result<PckCrl, Error>;
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
     fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
 
@@ -652,8 +653,8 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
-    fn pckcrl(&self) -> Result<PckCrl, Error> {
-        let input = self.pckcrl_service.pcs_service().build_input();
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        let input = self.pckcrl_service.pcs_service().build_input(ca);
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 

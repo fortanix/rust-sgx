@@ -13,6 +13,7 @@ extern crate yasna;
 #[macro_use]
 extern crate quick_error;
 
+use std::convert::TryFrom;
 use std::fmt::{self, Display, Formatter};
 
 use serde::de::{self};
@@ -30,7 +31,7 @@ use {
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData};
+pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 
 mod io;
@@ -155,6 +156,33 @@ quick_error! {
         InvalidDcapAttestationFormat{
             display("The DCAP Attestation certificate has an unexpected format")
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub enum DcapArtifactIssuer {
+    PCKPlatformCA,
+    PCKProcessorCA,
+    SGXRootCA,
+}
+
+impl TryFrom<&str> for DcapArtifactIssuer {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        if value.contains("Intel SGX PCK Platform CA") {
+            return Ok(DcapArtifactIssuer::PCKPlatformCA);
+        }
+
+        if value.contains("Intel SGX PCK Processor CA") {
+            return Ok(DcapArtifactIssuer::PCKProcessorCA);
+        }
+
+        if value.contains("Intel SGX Root CA") {
+            return Ok(DcapArtifactIssuer::SGXRootCA);
+        }
+
+        Err(Error::InvalidCaFormat)
     }
 }
 

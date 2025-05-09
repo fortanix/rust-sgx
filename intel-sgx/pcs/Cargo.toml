@@ -41,6 +41,9 @@ mbedtls = { version = "0.12.3", features = ["std", "time"], default-features = f
 hex = "0.4.2"
 tempdir = "0.3.7"
 
+[target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
+reqwest = { version = "0.12", features = ["blocking"] }
+
 [features]
 verify = ["anyhow", "mbedtls", "mbedtls/x509"]
 sgx = []

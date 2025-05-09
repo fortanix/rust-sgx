@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
     Unverified,
 };
 use rustc_serialize::hex::{FromHex, ToHex};
@@ -183,9 +183,10 @@ impl PckCrlApi {
 }
 
 impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCrlIn {
             api_version: self.api_version,
+            ca,
         }
     }
 }
@@ -195,12 +196,19 @@ impl<'inp> PckCrlService<'inp> for PckCrlApi {
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
 impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     type Input = PckCrlIn;
-    type Output = PckCrl;
+    type Output = PckCrl<Unverified>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let ca = match input.ca {
+            DcapArtifactIssuer::PCKProcessorCA => "processor",
+            DcapArtifactIssuer::PCKPlatformCA => "platform",
+            DcapArtifactIssuer::SGXRootCA => {
+                return Err(Error::PCSError(StatusCode::BadRequest, "Invalid ca parameter"));
+            },
+        };
         let url = format!(
-            "{}/sgx/certification/v{}/pckcrl?ca=processor",
-            self.base_url, input.api_version as u8
+            "{}/sgx/certification/v{}/pckcrl?ca={}",
+            self.base_url, input.api_version as u8, ca
         );
         Ok((url, Vec::new()))
     }
@@ -429,7 +437,7 @@ mod tests {
 
     use super::Client;
     use crate::provisioning_client::{
-        test_helpers, PccsProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, PccsProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
     };
     use crate::{reqwest_client_insecure_tls, ReqwestClient};
 
@@ -500,7 +508,7 @@ mod tests {
                     )
                     .unwrap();
 
-                let pck = pck.verify(&root_cas).unwrap();
+                let pck = pck.verify(&root_cas, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
@@ -529,7 +537,7 @@ mod tests {
                         pck.fmspc().unwrap(),
                         cached_pck
                             .clone()
-                            .verify(&root_cas)
+                            .verify(&root_cas, None)
                             .unwrap()
                             .fmspc()
                             .unwrap()
@@ -552,7 +560,7 @@ mod tests {
                     pck.fmspc().unwrap(),
                     pck_from_service
                         .clone()
-                        .verify(&root_cas)
+                        .verify(&root_cas, None)
                         .unwrap()
                         .fmspc()
                         .unwrap()
@@ -616,7 +624,6 @@ mod tests {
         }
     }
 
-    #[ignore = "PCCS service needs an update to support the new endpoint"]
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
         let client = make_client(PcsVersion::V4);
@@ -688,7 +695,11 @@ mod tests {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             assert!(client
-                .pckcrl()
+                .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .is_ok());
+            assert!(client
+                .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
                 .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
                 .is_ok());
         }
@@ -696,34 +707,36 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = make_client(api_version);
-            let pckcrl = client.pckcrl().unwrap();
+        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
+            for api_version in [PcsVersion::V3, PcsVersion::V4] {
+                let client = make_client(api_version);
+                let pckcrl = client.pckcrl(ca).unwrap();
 
-            // The cache should be populated after initial service call
-            {
-                let mut cache = client.pckcrl_service.cache.lock().unwrap();
+                // The cache should be populated after initial service call
+                {
+                    let mut cache = client.pckcrl_service.cache.lock().unwrap();
 
-                assert!(cache.len() > 0);
+                    assert!(cache.len() > 0);
 
-                let (cached_pckcrl, _) = {
-                    let mut hasher = DefaultHasher::new();
-                    let input = client.pckcrl_service.pcs_service().build_input();
-                    input.hash(&mut hasher);
+                    let (cached_pckcrl, _) = {
+                        let mut hasher = DefaultHasher::new();
+                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        input.hash(&mut hasher);
 
-                    cache
-                        .get_mut(&hasher.finish())
-                        .expect("Can't find key in cache")
-                        .to_owned()
-                };
+                        cache
+                            .get_mut(&hasher.finish())
+                            .expect("Can't find key in cache")
+                            .to_owned()
+                    };
 
-                assert_eq!(pckcrl, cached_pckcrl);
+                    assert_eq!(pckcrl, cached_pckcrl);
+                }
+
+                // Second service call should return value from cache
+                let pckcrl_from_service = client.pckcrl(ca).unwrap();
+
+                assert_eq!(pckcrl, pckcrl_from_service);
             }
-
-            // Second service call should return value from cache
-            let pckcrl_from_service = client.pckcrl().unwrap();
-
-            assert_eq!(pckcrl, pckcrl_from_service);
         }
     }
 
@@ -770,7 +783,6 @@ mod tests {
         }
     }
 
-    #[ignore = "PCCS service needs an update to support the new endpoint"]
     #[test]
     pub fn tcb_evaluation_data_numbers() {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
