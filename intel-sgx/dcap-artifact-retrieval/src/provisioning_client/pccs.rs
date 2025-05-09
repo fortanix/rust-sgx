@@ -14,14 +14,14 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
     Unverified,
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCA, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
 use super::intel::TcbEvaluationDataNumbersApi;
@@ -183,7 +183,7 @@ impl PckCrlApi {
 }
 
 impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self, ca: PckCA) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCrlIn {
             api_version: self.api_version,
             ca,
@@ -200,8 +200,11 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
-            PckCA::Processor => "processor",
-            PckCA::Platform => "platform"
+            DcapArtifactIssuer::PCKProcessorCA => "processor",
+            DcapArtifactIssuer::PCKPlatformCA => "platform",
+            DcapArtifactIssuer::SGXRootCA => {
+                return Err(Error::PCSError(StatusCode::BadRequest, "Invalid ca parameter"));
+            },
         };
         let url = format!(
             "{}/sgx/certification/v{}/pckcrl?ca={}",
@@ -434,7 +437,7 @@ mod tests {
 
     use super::Client;
     use crate::provisioning_client::{
-        test_helpers, PccsProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient,
+        test_helpers, PccsProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
     };
     use crate::{reqwest_client_insecure_tls, ReqwestClient};
 
@@ -692,11 +695,11 @@ mod tests {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             assert!(client
-                .pckcrl(PckCA::Processor)
+                .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
                 .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
                 .is_ok());
             assert!(client
-                .pckcrl(PckCA::Platform)
+                .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
                 .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
                 .is_ok());
         }
@@ -704,7 +707,7 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for ca in [PckCA::Processor, PckCA::Platform] {
+        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let client = make_client(api_version);
                 let pckcrl = client.pckcrl(ca).unwrap();

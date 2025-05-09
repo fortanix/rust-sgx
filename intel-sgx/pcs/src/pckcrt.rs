@@ -28,7 +28,7 @@ use {
     mbedtls::Error as MbedError,
     std::ffi::CString,
     std::ops::Deref,
-    super::PckCrl,
+    super::{DcapArtifactIssuer, PckCrl},
 };
 
 use crate::io::{self};
@@ -373,11 +373,11 @@ impl PckCerts {
     }
 
     #[cfg(feature = "verify")]
-    pub fn issuer(&self) -> Option<PckIssuer> {
+    pub fn issuer(&self) -> Option<DcapArtifactIssuer> {
         self.iter()
             .find_map(|pckcert| {
                 let pck = PckCert::new(pem::der_to_pem(pckcert, PEM_CERTIFICATE), self.ca_chain.clone());
-                pck.issuer().ok().flatten()
+                pck.issuer().ok()
             })
     }
 }
@@ -465,20 +465,12 @@ impl PckCert<Unverified> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn issuer(&self) -> Result<Option<PckIssuer>, MbedError> {
-        let pck = CString::new(self.cert.as_bytes()).map_err(|_| MbedError::X509InvalidFormat)?;
-        let pck = Certificate::from_pem(pck.as_bytes_with_nul()).map_err(|_| MbedError::X509InvalidFormat)?;
-        let issuer = pck.issuer()?;
+    pub fn issuer(&self) -> Result<DcapArtifactIssuer, Error> {
+        let pck = CString::new(self.cert.as_bytes()).map_err(|e| Error::InvalidPck(e.to_string()))?;
+        let pck = Certificate::from_pem(pck.as_bytes_with_nul()).map_err(|e| Error::InvalidPck(e.to_string()))?;
+        let issuer = pck.issuer().map_err(|e| Error::InvalidPck(e.to_string()))?;
 
-        if issuer.contains("Intel SGX PCK Platform CA") {
-            Ok(Some(PckIssuer::PlatformCA))
-        } else {
-            if issuer.contains("Intel SGX PCK Processor CA") {
-                Ok(Some(PckIssuer::ProcessorCA))
-            } else {
-                Ok(None)
-            }
-        }
+        DcapArtifactIssuer::try_from(issuer.as_str())
     }
 
     pub fn read_from_file(input_dir: &str, filename: &str) -> Result<Self, Error> {
@@ -516,11 +508,6 @@ impl PckCert<Verified> {
         let extension = self.sgx_extension()?;
         Ok(extension.fmspc)
     }
-}
-
-pub enum PckIssuer {
-    PlatformCA,
-    ProcessorCA,
 }
 
 impl<V: VerificationType> PckCert<V> {

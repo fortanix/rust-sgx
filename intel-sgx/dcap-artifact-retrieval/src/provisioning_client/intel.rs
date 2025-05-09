@@ -12,7 +12,7 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
     TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 use rustc_serialize::hex::ToHex;
@@ -21,7 +21,7 @@ use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCA, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
     TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
 };
@@ -269,7 +269,7 @@ impl PckCrlApi {
 }
 
 impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self, ca: PckCA) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         PckCrlIn {
             api_version: self.api_version.clone(),
             ca,
@@ -285,8 +285,11 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
-            PckCA::Processor => "processor",
-            PckCA::Platform => "platform"
+            DcapArtifactIssuer::PCKProcessorCA => "processor",
+            DcapArtifactIssuer::PCKPlatformCA => "platform",
+            DcapArtifactIssuer::SGXRootCA => {
+                return Err(Error::PCSError(StatusCode::BadRequest, "Invalid ca parameter"));
+            },
         };
         let url = format!(
             "{}/sgx/certification/v{}/pckcrl?ca={}&encoding=pem",
@@ -570,10 +573,10 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use pcs::{EnclaveIdentity, Fmspc, PckID, Platform, TcbEvaluationDataNumbers, RawTcbEvaluationDataNumbers};
+    use pcs::{DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, Platform, TcbEvaluationDataNumbers, RawTcbEvaluationDataNumbers};
 
     use crate::provisioning_client::{
-        test_helpers, IntelProvisioningClientBuilder, PckCA, PcsVersion, ProvisioningClient,
+        test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
     use crate::reqwest_client;
     use std::hash::DefaultHasher;
@@ -709,8 +712,8 @@ mod tests {
                 intel_builder.set_api_key(pcs_api_key());
             }
             let client = intel_builder.build(reqwest_client());
-            let crl_processor = client.pckcrl(PckCA::Processor).unwrap().crl_as_pem().to_owned();
-            let crl_platform = client.pckcrl(PckCA::Platform).unwrap().crl_as_pem().to_owned();
+            let crl_processor = client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).unwrap().crl_as_pem().to_owned();
+            let crl_platform = client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).unwrap().crl_as_pem().to_owned();
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -886,7 +889,7 @@ mod tests {
 
     #[test]
     pub fn pckcrl() {
-        for ca in [PckCA::Processor, PckCA::Platform] {
+        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                     .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -904,7 +907,7 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for ca in [PckCA::Processor, PckCA::Platform] {
+        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                     .set_retry_timeout(TIME_RETRY_TIMEOUT);

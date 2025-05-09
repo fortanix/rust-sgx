@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
     QeIdentitySigned, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 #[cfg(feature = "reqwest")]
@@ -188,16 +188,10 @@ pub trait PckCertService<'inp>:
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
-#[derive(Copy, Clone, Debug, Hash)]
-pub enum PckCA {
-    Platform,
-    Processor,
-}
-
 #[derive(Hash)]
 pub struct PckCrlIn {
     api_version: PcsVersion,
-    ca: PckCA,
+    ca: DcapArtifactIssuer,
 }
 
 impl WithApiVersion for PckCrlIn {
@@ -209,7 +203,7 @@ impl WithApiVersion for PckCrlIn {
 pub trait PckCrlService<'inp>:
     ProvisioningServiceApi<'inp, Input = PckCrlIn, Output = PckCrl<Unverified>>
 {
-    fn build_input(&'inp self, ca: PckCA) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -570,7 +564,7 @@ pub trait ProvisioningClient {
 
     fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error>;
 
-    fn pckcrl(&self, ca: PckCA) -> Result<PckCrl<Unverified>, Error>;
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
     fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
 
@@ -659,7 +653,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
-    fn pckcrl(&self, ca: PckCA) -> Result<PckCrl<Unverified>, Error> {
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
         let input = self.pckcrl_service.pcs_service().build_input(ca);
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }

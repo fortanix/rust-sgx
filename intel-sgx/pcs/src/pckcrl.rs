@@ -14,19 +14,13 @@ use std::marker::PhantomData;
 use {
     mbedtls::alloc::List as MbedtlsList,
     mbedtls::x509::{Certificate, Crl},
+    std::convert::TryFrom,
     std::ffi::CString,
     std::ops::Deref,
-
 };
 
 use crate::io::{self};
-use crate::{Error, Unverified, VerificationType, Verified};
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum PckCrlCa {
-    Platform,
-    Processor,
-}
+use crate::{DcapArtifactIssuer, Error, Unverified, VerificationType, Verified};
 
 #[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct PckCrl<V: VerificationType = Verified> {
@@ -95,56 +89,54 @@ impl PckCrl<Unverified> {
             .map_err(|e| Error::InvalidCrl(e))?;
 
         // Sanity check on Pck CRL
-        self.ca().ok_or(Error::InvalidCrlFormat)?;
+        self.ca()?;
 
         let PckCrl { crl, ca_chain, .. } = self;
         Ok(PckCrl::<Verified>{ crl, ca_chain, type_: PhantomData})
     }
 
-    pub fn read_from_file(input_dir: &str, ca: PckCrlCa) -> Result<Self, Error> {
-        let filename = Self::filename_from_ca(Some(ca));
+    pub fn read_from_file(input_dir: &str, ca: DcapArtifactIssuer) -> Result<Self, Error> {
+        let filename = Self::filename_from_ca(ca);
         let crl: Self = io::read_from_file(input_dir, &filename)?;
         Ok(crl)
     }
 }
 
 impl<V: VerificationType> PckCrl<V> {
-    const DEFAULT_FILENAME: &'static str = "processor.crl";
-
-    fn filename_from_ca(ca: Option<PckCrlCa>) -> String {
-        if let Some(PckCrlCa::Platform) = ca {
-            String::from("platform.crl")
-        } else {
-            Self::DEFAULT_FILENAME.to_string()
+    fn filename_from_ca(ca: DcapArtifactIssuer) -> String {
+        match ca {
+            DcapArtifactIssuer::PCKProcessorCA => String::from("processor.crl"),
+            DcapArtifactIssuer::PCKPlatformCA => String::from("platform.crl"),
+            DcapArtifactIssuer::SGXRootCA => String::from("root.crl"),
         }
     }
 
     #[cfg(feature = "verify")]
-    pub fn filename(&self) -> String {
-        Self::filename_from_ca(self.ca())
+    pub fn filename(&self) -> Result<String, Error> {
+        Ok(Self::filename_from_ca(self.ca()?))
     }
 
     #[cfg(feature = "verify")]
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        let filename = self.filename();
+        let filename = self.filename()?;
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
-    pub fn write_to_file_as(&self, output_dir: &str, ca: PckCrlCa) -> Result<String, Error> {
-        let filename = Self::filename_from_ca(Some(ca));
+    pub fn write_to_file_as(&self, output_dir: &str, ca: DcapArtifactIssuer) -> Result<String, Error> {
+        let filename = Self::filename_from_ca(ca);
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     #[cfg(feature = "verify")]
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let filename = self.filename();
+        let filename = self.filename()?;
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn write_to_file_if_not_exist_as(&self, output_dir: &str, ca: PckCrlCa) -> Result<Option<PathBuf>, Error> {
-        let filename = Self::filename_from_ca(Some(ca));
+    pub fn write_to_file_if_not_exist_as(&self, output_dir: &str, ca: DcapArtifactIssuer) -> Result<Option<PathBuf>, Error> {
+        let filename = Self::filename_from_ca(ca);
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
@@ -169,33 +161,33 @@ impl<V: VerificationType> PckCrl<V> {
     }
 
     #[cfg(feature = "verify")]
-    fn ca(&self) -> Option<PckCrlCa> {
+    fn ca(&self) -> Result<DcapArtifactIssuer, Error> {
         let issuer = self
             .as_mbedtls_crl()
-            .ok()
-            .and_then(|crl| crl.issuer().ok())?;
-        if issuer.contains("Intel SGX PCK Platform CA") {
-            Some(PckCrlCa::Platform)
-        } else {
-            if issuer.contains("Intel SGX PCK Processor CA") {
-                Some(PckCrlCa::Processor)
-            } else {
-                None
-            }
+            .and_then(|crl| crl.issuer().map_err(|_| Error::InvalidCrlFormat))?;
+        let issuer = DcapArtifactIssuer::try_from(issuer.as_str())?;
+
+        if let DcapArtifactIssuer::SGXRootCA = issuer {
+            // PCK Crls should be signed by the PCKPlatformCA or PCKProcessorCA
+            return Err(Error::InvalidCrlFormat);
         }
+        Ok(issuer)
     }
 }
 
 #[cfg(test)]
 mod tests {
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
-    use crate::pckcrl::{PckCrl, PckCrlCa};
+    use {
+        super::PckCrl,
+        crate::DcapArtifactIssuer,
+    };
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn read_pck_crl() {
-        let crl = PckCrl::read_from_file("./tests/data/", PckCrlCa::Processor).unwrap();
-        assert_eq!(crl.ca(), Some(PckCrlCa::Processor));
+        let crl = PckCrl::read_from_file("./tests/data/", DcapArtifactIssuer::PCKProcessorCA).unwrap();
+        assert_eq!(crl.ca().unwrap(), DcapArtifactIssuer::PCKProcessorCA);
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         crl.verify(&root_cas).unwrap();
@@ -204,10 +196,10 @@ mod tests {
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn read_platform_pck_crl() {
-        let pckcrl = PckCrl::read_from_file("./tests/data/", PckCrlCa::Platform).unwrap();
+        let pckcrl = PckCrl::read_from_file("./tests/data/", DcapArtifactIssuer::PCKPlatformCA).unwrap();
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         pckcrl.clone().verify(&root_cas).unwrap();
-        assert_eq!(pckcrl.ca(), Some(PckCrlCa::Platform));
+        assert_eq!(pckcrl.ca().unwrap(), DcapArtifactIssuer::PCKPlatformCA);
     }
 }
