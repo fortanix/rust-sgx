@@ -7,4 +7,4 @@ publish = false
 
 [dependencies]
 chrono = "0.4"
-mbedtls = { version = "0.13.0", default-features = false, features = ["std"] }
+mbedtls = { version = "0.13.1", default-features = false, features = ["std"] }
