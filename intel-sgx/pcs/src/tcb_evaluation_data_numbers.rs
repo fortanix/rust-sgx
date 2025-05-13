@@ -1,4 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
+use mbedtls::error::codes;
 use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
@@ -8,7 +9,7 @@ use std::slice::Iter;
 
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::Error as MbedError, pkix::oid,
+    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::Error as ErrMbed, pkix::oid,
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
@@ -194,13 +195,13 @@ impl RawTcbEvaluationDataNumbers {
         // Check common name TCB cert
         let leaf = self.ca_chain.first().ok_or(Error::IncorrectCA)?;
         let tcb =
-            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::UntrustworthyTcbEvaluationDataNumber(MbedError::X509BadInputData))?;
-        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::UntrustworthyTcbEvaluationDataNumber(MbedError::X509BadInputData))?;
+            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
+        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
         let name = tcb
             .tbscert
             .subject
             .get(&*oid::commonName)
-            .ok_or(Error::UntrustworthyTcbEvaluationDataNumber(MbedError::X509BadInputData))?;
+            .ok_or(Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
         if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
             return Err(Error::IncorrectCA);
         }
