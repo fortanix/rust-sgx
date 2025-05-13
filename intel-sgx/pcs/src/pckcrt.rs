@@ -807,6 +807,7 @@ where
 mod tests {
     use dcap_ql::quote::{Qe3CertDataPckCertChain, Quote, Quote3SignatureEcdsaP256};
     use hex::FromHex;
+    use mbedtls::error::{codes, Error as ErrMbed};
     use pkix::derives::ObjectIdentifier;
     use sgx_pkix::oid::{SGX_EXTENSION_PPID, SGX_EXTENSION_TCB, SGX_EXTENSION_TCB_COMP01_SVN};
     use yasna;
@@ -1051,7 +1052,7 @@ mod tests {
                 .text()
                 .unwrap();
             match pck.clone().verify(&root_cas, Some(&platform_crl)) {
-                Err(Error::InvalidCrl(MbedError::EcpVerifyFailed)) => (),
+                Err(Error::InvalidCrl(ErrMbed::HighLevel(codes::EcpVerifyFailed))) => (),
                 e => panic!("Unexpected error: {:?}", e),
             }
             let processor_crl = reqwest::blocking::get("https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor&encoding=pem")
