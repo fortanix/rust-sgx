@@ -487,13 +487,13 @@ impl PckCert<Verified> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn pck(&self) -> Result<MbedtlsBox<Certificate>, MbedError> {
+    pub fn pck(&self) -> Result<MbedtlsBox<Certificate>, ErrMbed> {
         let cert = CString::new(self.cert.as_bytes()).map_err(|_| ErrMbed::HighLevel(codes::X509InvalidFormat))?;
         Certificate::from_pem(cert.as_bytes_with_nul()).map_err(|_| ErrMbed::HighLevel(codes::X509InvalidFormat))
     }
 
     #[cfg(feature = "verify")]
-    pub fn public_key(&self) -> Result<EcPoint, MbedError> {
+    pub fn public_key(&self) -> Result<EcPoint, ErrMbed> {
         let cert = self.pck()?;
         let pk = cert.public_key();
         pk.ec_public()
