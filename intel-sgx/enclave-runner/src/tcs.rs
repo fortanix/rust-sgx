@@ -197,7 +197,7 @@ pub(crate) fn coenter<T: Tcs>(
                 inout("r8") p4,
                 inout("r9") p5,
                 inout("r10") debug_buf_ptr => _,
-                out("r11") _,
+                lateout("r11") _,
                 options(nostack, att_syntax)
             );
         }
