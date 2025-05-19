@@ -732,7 +732,7 @@ dependencies = [
  "clap 2.34.0",
  "lazy_static",
  "lru-cache",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "num_enum",
  "pcs",
  "percent-encoding 2.1.0",
@@ -769,7 +769,7 @@ dependencies = [
  "dcap-ql-sys",
  "lazy_static",
  "libc",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "num",
  "num-derive 0.2.5",
  "num-traits",
@@ -911,7 +911,7 @@ dependencies = [
  "em-client",
  "em-node-agent-client",
  "hyper 0.10.16",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "pkix",
  "rustc-serialize",
  "sdkms",
@@ -1361,7 +1361,7 @@ name = "get-certificate"
 version = "0.2.0"
 dependencies = [
  "em-app",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "serde_json",
 ]
 
@@ -1750,7 +1750,7 @@ dependencies = [
  "env_logger 0.9.0",
  "lazy_static",
  "log 0.4.21",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "percent-encoding 2.1.0",
  "pkix",
  "report-test",
@@ -2047,9 +2047,9 @@ dependencies = [
 
 [[package]]
 name = "mbedtls"
-version = "0.13.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fb35c8dbebb68daa60498d015c440b9c5f449c740357ba877129761d68fd435"
+checksum = "5d89abdbbea62adc59aa54848c845ef789481a60d66f6dd5df746cf1069ff068"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder 1.3.4",
@@ -2234,7 +2234,7 @@ dependencies = [
  "aws-nitro-enclaves-cose 0.5.1",
  "chrono",
  "lazy_static",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "num-bigint 0.4.3",
  "pkix",
  "serde",
@@ -2675,7 +2675,7 @@ dependencies = [
  "dcap-ql",
  "failure",
  "hex 0.4.3",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "num",
  "percent-encoding 2.1.0",
  "pkix",
@@ -2918,7 +2918,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.3.9",
+ "log 0.4.21",
  "which",
 ]
 
@@ -3627,7 +3627,7 @@ name = "sgx-isa"
 version = "0.4.1"
 dependencies = [
  "bitflags 1.2.1",
- "mbedtls 0.13.1",
+ "mbedtls 0.13.2",
  "serde",
 ]
 
