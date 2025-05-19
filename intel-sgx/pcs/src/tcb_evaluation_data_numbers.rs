@@ -1,5 +1,4 @@
 use chrono::{DateTime, Duration, Utc};
-use mbedtls::error::codes;
 use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
@@ -9,7 +8,7 @@ use std::slice::Iter;
 
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::Error as ErrMbed, pkix::oid,
+    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 

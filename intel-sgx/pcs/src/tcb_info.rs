@@ -10,12 +10,11 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use mbedtls::error::codes;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::Error as ErrMbed, pkix::oid,
+    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
