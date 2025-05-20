@@ -40,7 +40,7 @@ serde_json = "1.0"
 
 [features]
 default = ["clap", "reqwest"]
-rustls-tls = ["reqwest?/rustls-tls"]
+rustls-tls = ["reqwest?/rustls-tls-no-provider"]
 
 [dev-dependencies]
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
