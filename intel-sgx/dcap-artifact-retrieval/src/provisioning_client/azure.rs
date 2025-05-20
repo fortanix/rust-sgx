@@ -207,6 +207,9 @@ mod tests {
 
     #[test]
     pub fn pcks_azure() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
@@ -245,6 +248,9 @@ mod tests {
 
     #[test]
     pub fn pck_crl() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
@@ -254,6 +260,9 @@ mod tests {
 
     #[test]
     pub fn qe_identity() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
@@ -262,6 +271,9 @@ mod tests {
 
     #[test]
     pub fn test_pckcerts_with_fallback() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());
@@ -297,6 +309,9 @@ mod tests {
 
     #[test]
     pub fn tcb_evaluation_data_numbers() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V3)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client());

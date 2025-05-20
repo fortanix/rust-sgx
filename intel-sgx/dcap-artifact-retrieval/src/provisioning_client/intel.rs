@@ -593,6 +593,9 @@ mod tests {
 
     #[test]
     pub fn pcks() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -620,6 +623,9 @@ mod tests {
 
     #[test]
     pub fn pcks_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -673,6 +679,9 @@ mod tests {
 
     #[test]
     pub fn pck() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -703,6 +712,9 @@ mod tests {
 
     #[test]
     pub fn pck_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
             let root_cas = [&root_ca[..]];
@@ -793,6 +805,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -817,6 +832,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
         let client = intel_builder.build(reqwest_client());
@@ -842,6 +860,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -889,6 +910,9 @@ mod tests {
 
     #[test]
     pub fn pckcrl() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -907,6 +931,9 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -947,6 +974,9 @@ mod tests {
 
     #[test]
     pub fn qe_identity() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -962,6 +992,9 @@ mod tests {
 
     #[test]
     pub fn qe_identity_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
@@ -1000,6 +1033,9 @@ mod tests {
 
     #[test]
     pub fn tcb_evaluation_data_numbers() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)

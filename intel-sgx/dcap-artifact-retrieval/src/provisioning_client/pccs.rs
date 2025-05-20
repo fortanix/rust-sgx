@@ -462,6 +462,9 @@ mod tests {
 
     #[test]
     pub fn pck() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
 
@@ -489,6 +492,9 @@ mod tests {
 
     #[test]
     pub fn pck_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
@@ -572,6 +578,9 @@ mod tests {
 
     #[test]
     pub fn test_pckcerts_with_fallback() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
 
@@ -607,6 +616,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
 
@@ -626,6 +638,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let client = make_client(PcsVersion::V4);
         for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
             .unwrap()
@@ -651,6 +666,9 @@ mod tests {
 
     #[test]
     pub fn tcb_info_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
 
@@ -692,6 +710,9 @@ mod tests {
 
     #[test]
     pub fn pckcrl() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             assert!(client
@@ -707,6 +728,9 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let client = make_client(api_version);
@@ -742,6 +766,9 @@ mod tests {
 
     #[test]
     pub fn qe_identity() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             let qe_id = client.qe_identity(None);
@@ -752,6 +779,9 @@ mod tests {
 
     #[test]
     pub fn qe_identity_cached() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);
             let qe_id = client.qe_identity(None).unwrap();
@@ -785,6 +815,9 @@ mod tests {
 
     #[test]
     pub fn tcb_evaluation_data_numbers() {
+        #[cfg(feature = "rustls-tls")]
+        let _ = rustls_mbedcrypto_provider::mbedtls_crypto_provider()
+            .install_default();
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let client = make_client(PcsVersion::V4);

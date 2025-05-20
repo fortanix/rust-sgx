@@ -317,9 +317,9 @@ checksum = "f59bbe95d4e52a6398ec21238d31577f2b28a9d86807f06ca59d191d8440d0bb"
 
 [[package]]
 name = "bit-vec"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f0dc55f2d8a1a85650ac47858bb001b4c0dd73d79e3c455a842925e68d29cd3"
+checksum = "349f9b6a179ed607305526ca489b34ad0a41aed5f7980fa90eb03160b69598fb"
 
 [[package]]
 name = "bitflags"
@@ -726,7 +726,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-artifact-retrieval"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "backoff",
  "clap 2.34.0",
@@ -740,6 +740,7 @@ dependencies = [
  "quick-error",
  "reqwest",
  "rustc-serialize",
+ "rustls-mbedcrypto-provider",
  "serde",
  "serde_cbor",
  "serde_json",
@@ -2921,7 +2922,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3627d36de10749cd6bba01a975d64c01f1deb95d22823dbfbb4d7a913a240850"
 dependencies = [
  "b64-ct",
- "bit-vec 0.6.2",
+ "bit-vec 0.6.3",
  "chrono",
  "lazy_static",
  "num-bigint 0.2.6",
@@ -3026,7 +3027,7 @@ version = "2.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6653d384a260fedff0a466e894e05c5b8d75e261a14e9f93e81e43ef86cad23"
 dependencies = [
- "log 0.3.9",
+ "log 0.4.21",
  "which",
 ]
 
@@ -3451,11 +3452,37 @@ version = "0.23.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "730944ca083c1c233a75c09f199e973ca499344a2b7ba9e755c457e86fb4a321"
 dependencies = [
+ "log 0.4.21",
  "once_cell",
  "rustls-pki-types",
- "rustls-webpki",
+ "rustls-webpki 0.103.3",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "rustls-mbedcrypto-provider"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6841ca311a5a41f618eb7095aaa2d3ab8810a540c9e57ce6ce63b0e0431070bc"
+dependencies = [
+ "bit-vec 0.6.3",
+ "log 0.4.21",
+ "mbedtls",
+ "rustls",
+ "rustls-mbedtls-provider-utils",
+ "rustls-webpki 0.102.8",
+ "yasna 0.3.2",
+]
+
+[[package]]
+name = "rustls-mbedtls-provider-utils"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec33e15661de795beee762ce87767de05aa01c7ca69dbd8275ae84e9ecab81dc"
+dependencies = [
+ "mbedtls",
+ "rustls",
 ]
 
 [[package]]
@@ -3475,6 +3502,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "229a4a4c221013e7e1f1a043678c5cc39fe5171437c88fb47151a21e6f5b5c79"
 dependencies = [
  "zeroize",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.102.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64ca1bc8749bd4cf37b5ce386cc146580777b4e8572c7b97baf22c83f444bee9"
+dependencies = [
+ "ring",
+ "rustls-pki-types",
+ "untrusted",
 ]
 
 [[package]]
@@ -5008,7 +5046,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de7bff972b4f2a06c85f6d8454b09df153af7e3a4ec2aac81db1b105b684ddb"
 dependencies = [
- "bit-vec 0.6.2",
+ "bit-vec 0.6.3",
  "num-bigint 0.2.6",
 ]
 
