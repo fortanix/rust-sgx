@@ -14,7 +14,7 @@ use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::Error as MbedError, pkix::oid,
+    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
@@ -426,13 +426,13 @@ impl TcbInfo {
         // Check common name TCB cert
         let leaf = self.ca_chain.first().ok_or(Error::IncorrectCA)?;
         let tcb =
-            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::InvalidQe3Id(MbedError::X509BadInputData))?;
-        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::InvalidQe3Id(MbedError::X509BadInputData))?;
+            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
+        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
         let name = tcb
             .tbscert
             .subject
             .get(&*oid::commonName)
-            .ok_or(Error::InvalidQe3Id(MbedError::X509BadInputData))?;
+            .ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
         if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
             return Err(Error::IncorrectCA);
         }
