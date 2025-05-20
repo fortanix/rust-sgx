@@ -40,7 +40,6 @@ mbedtls = { version = ">=0.12.0, <0.14.0", features = ["std", "time"], default-f
 [dev-dependencies]
 hex = "0.4.2"
 tempdir = "0.3.7"
-mbedtls = { version = ">=0.12.0, <0.14.0" }
 
 [target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
 reqwest = { version = "0.12", features = ["blocking"] }
