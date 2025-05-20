@@ -35,7 +35,7 @@ failure = "0.1.1"
 anyhow = { version = "1", optional = true }
 quick-error = "1.2.3"
 num = "0.2"
-mbedtls = { version = ">=0.12.0, <0.14.0", features = ["std", "time"], default-features = false, optional = true }
+mbedtls = { version = "0.13.1", features = ["std", "time"], default-features = false, optional = true }
 
 [dev-dependencies]
 hex = "0.4.2"
