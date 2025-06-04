@@ -74,6 +74,8 @@ struct SgxCpuConfiguration {
     exinfo: bool,
     enclv: bool,
     oversub: bool,
+    edeccssa: bool,
+    eupdatesvn: bool,
     cpuid_err: Option<Rc<Error>>,
     msr_3ah: Result<Msr3ah, Rc<Error>>,
     efi_epcbios: Result<EfiEpcbios, Rc<Error>>,
@@ -94,6 +96,8 @@ impl Dependency<SgxCpuSupport> for SgxCpuConfiguration {
                 let exinfo;
                 let enclv;
                 let oversub;
+                let edeccssa;
+                let eupdatesvn;
                 let cpuid_err;
 
                 match (v, &support.cpuid_12h_0) {
@@ -105,6 +109,8 @@ impl Dependency<SgxCpuSupport> for SgxCpuConfiguration {
                         exinfo = c.miscselect_valid.contains(Miscselect::EXINFO);
                         enclv = c.enclv;
                         oversub = c.oversub;
+                        edeccssa = c.edeccssa;
+                        eupdatesvn = c.eupdatesvn;
                         cpuid_err = if sgx1 {
                             None
                         } else {
@@ -118,6 +124,8 @@ impl Dependency<SgxCpuSupport> for SgxCpuConfiguration {
                         exinfo = false;
                         enclv = false;
                         oversub = false;
+                        edeccssa = false;
+                        eupdatesvn = false;
                         cpuid_err = Some(if sgx {
                             cpuid12.as_ref().unwrap_err().clone()
                         } else {
@@ -133,6 +141,8 @@ impl Dependency<SgxCpuSupport> for SgxCpuConfiguration {
                     exinfo,
                     enclv,
                     oversub,
+                    edeccssa,
+                    eupdatesvn,
                     cpuid_err,
                     msr_3ah: support.msr_3ah.clone(),
                     efi_epcbios: support.efi_epcbios.clone(),
@@ -156,6 +166,7 @@ impl Print for SgxCpuConfiguration {
 struct EnclaveAttributes {
     standard_attributes: bool,
     kss: bool,
+    aexnotify: bool,
     cpuid_12h_1: Result<Cpuid12h1, Rc<Error>>,
 }
 
@@ -173,11 +184,13 @@ impl Dependency<SgxCpuSupport> for EnclaveAttributes {
                         | AttributesFlags::EINITTOKENKEY,
                 ) && (c.attributes_xfrm_valid & 0x3) == 0x3,
                 kss: c.attributes_flags_valid.contains(AttributesFlags::KSS),
+                aexnotify: c.attributes_flags_valid.contains(AttributesFlags::AEXNOTIFY),
                 cpuid_12h_1: Ok(*c),
             }),
             (Some(_), c) => Some(EnclaveAttributesInner {
                 standard_attributes: false,
                 kss: false,
+                aexnotify: false,
                 cpuid_12h_1: c.clone(),
             }),
             (None, _) => None,
@@ -281,10 +294,44 @@ impl Print for EnclavePageCache {
 #[derive(Default, DebugSupport, Print, Update)]
 struct SgxFeaturesCat;
 
+#[derive(Default, Clone, Update)]
+struct AexNotify {
+    edeccssa: Option<bool>,
+    aexnotify: Option<bool>,
+}
+
+impl Print for AexNotify {
+    fn try_supported(&self) -> Option<Status> {
+        match (self.edeccssa?, self.aexnotify?) {
+            (false, false) => None,
+            (true, true) => Some(Status::Supported),
+            _ => Some(Status::Unknown),
+        }
+    }
+
+    fn print(&self, _level: usize) {
+    }
+}
+
+#[dependency]
+impl Dependency<SgxCpuConfiguration> for AexNotify {
+    fn update_dependency(&mut self, dependency: &SgxCpuConfiguration, _support: &SgxSupport) {
+        self.edeccssa = dependency.inner.clone().map(|c| c.edeccssa);
+    }
+}
+
+#[dependency]
+impl Dependency<EnclaveAttributes> for AexNotify {
+    fn update_dependency(&mut self, dependency: &EnclaveAttributes, _support: &SgxSupport) {
+        self.aexnotify = dependency.inner.clone().map(|a| a.aexnotify);
+    }
+}
+
 #[derive(Default, DebugSupport, Update)]
 struct SgxFeatures {
     cpu_cfg: Option<SgxCpuConfigurationInner>,
     encl_attr: Option<EnclaveAttributesInner>,
+    aexnotify: Option<AexNotify>,
 }
 
 #[dependency]
@@ -300,6 +347,13 @@ impl Dependency<SgxCpuConfiguration> for SgxFeatures {
 impl Dependency<EnclaveAttributes> for SgxFeatures {
     fn update_dependency(&mut self, dependency: &EnclaveAttributes, _support: &SgxSupport) {
         self.encl_attr = dependency.inner.clone()
+    }
+}
+
+#[dependency]
+impl Dependency<AexNotify> for SgxFeatures {
+    fn update_dependency(&mut self, dependency: &AexNotify, _support: &SgxSupport) {
+        self.aexnotify = Some(dependency.clone());
     }
 }
 
@@ -325,9 +379,17 @@ impl Print for SgxFeatures {
             "{}OVERSUB  ",
             self.cpu_cfg.as_ref().map(|c| c.oversub).as_opt().paint()
         );
-        println!(
+        print!(
             "{}KSS  ",
             self.encl_attr.as_ref().map(|a| a.kss).as_opt().paint()
+        );
+        print!(
+            "{}AEXNOTIFY  ",
+            self.aexnotify.as_ref().and_then(|a| a.try_supported()).unwrap_or(Status::Unsupported).paint()
+        );
+        println!(
+            "{}EUPDATESVN  ",
+            self.cpu_cfg.as_ref().map(|c| c.eupdatesvn).as_opt().paint()
         );
     }
 }
@@ -1079,6 +1141,7 @@ impl Tests {
                     @[control_visibility]
                     "SGX features" => Test(SgxFeatures),
                     "Total EPC size" => Test(EpcSize),
+                    "AEX notify" => Test(AexNotify),
                 }),
             }),
             "Flexible launch control" => Category(Flc, tests: {
