@@ -6,6 +6,7 @@
 use aws_nitro_enclaves_cose::crypto::{Hash, MessageDigest, SignatureAlgorithm, SigningPublicKey};
 use aws_nitro_enclaves_cose::error::CoseError;
 use mbedtls::alloc::Box as MbedtlsBox;
+use mbedtls::error::{codes, Error as ErrMbed};
 use mbedtls::hash::{self, Md};
 use mbedtls::pk::EcGroupId;
 use mbedtls::x509::Certificate;
@@ -97,7 +98,7 @@ impl SigningPublicKey for WrappedCert {
         // We'll throw error if signature verify does not work
         match pk.verify(*md, &digest, &sig) {
             Ok(_) => Ok(true),
-            Err(mbedtls::Error::EcpVerifyFailed) => Ok(false),
+            Err(ErrMbed::HighLevel(codes::EcpVerifyFailed)) => Ok(false),
             Err(e) => Err(CoseError::SignatureError(Box::new(e))),
         }
     }

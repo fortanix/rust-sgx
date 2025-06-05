@@ -25,7 +25,7 @@ use {
     mbedtls::alloc::{Box as MbedtlsBox, List as MbedtlsList},
     mbedtls::ecp::EcPoint,
     mbedtls::x509::certificate::Certificate,
-    mbedtls::Error as MbedError,
+    mbedtls::error::{codes, Error as ErrMbed},
     std::ffi::CString,
     std::ops::Deref,
     super::{DcapArtifactIssuer, PckCrl},
@@ -487,13 +487,13 @@ impl PckCert<Verified> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn pck(&self) -> Result<MbedtlsBox<Certificate>, MbedError> {
-        let cert = CString::new(self.cert.as_bytes()).map_err(|_| MbedError::X509InvalidFormat)?;
-        Certificate::from_pem(cert.as_bytes_with_nul()).map_err(|_| MbedError::X509InvalidFormat)
+    pub fn pck(&self) -> Result<MbedtlsBox<Certificate>, ErrMbed> {
+        let cert = CString::new(self.cert.as_bytes()).map_err(|_| ErrMbed::HighLevel(codes::X509InvalidFormat))?;
+        Certificate::from_pem(cert.as_bytes_with_nul()).map_err(|_| ErrMbed::HighLevel(codes::X509InvalidFormat))
     }
 
     #[cfg(feature = "verify")]
-    pub fn public_key(&self) -> Result<EcPoint, MbedError> {
+    pub fn public_key(&self) -> Result<EcPoint, ErrMbed> {
         let cert = self.pck()?;
         let pk = cert.public_key();
         pk.ec_public()
@@ -1051,7 +1051,7 @@ mod tests {
                 .text()
                 .unwrap();
             match pck.clone().verify(&root_cas, Some(&platform_crl)) {
-                Err(Error::InvalidCrl(MbedError::EcpVerifyFailed)) => (),
+                Err(Error::InvalidCrl(ErrMbed::HighLevel(codes::EcpVerifyFailed))) => (),
                 e => panic!("Unexpected error: {:?}", e),
             }
             let processor_crl = reqwest::blocking::get("https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=processor&encoding=pem")

@@ -34,5 +34,5 @@ serde_derive = "1.0.84"    # MIT/Apache-2.0
 serde = "1.0.84"           # MIT/Apache-2.0
 toml = "0.4.10"            # MIT/Apache-2.0
 num_cpus = "1.9.0"         # MIT/Apache-2.0
-libc = "0.2.48"            # MIT/Apache-2.0
+libc = "0.2"            # MIT/Apache-2.0
 nix = "0.13.0"             # MIT
