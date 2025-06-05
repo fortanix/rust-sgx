@@ -42,3 +42,4 @@ futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2
 [features]
 default = ["crypto-openssl"]
 crypto-openssl = ["openssl", "sgxs/crypto-openssl"]
+instrumentation = []
