@@ -550,9 +550,9 @@ dependencies = [
 
 [[package]]
 name = "compiler_builtins"
-version = "0.1.152"
+version = "0.1.160"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2153cf213eb259361567720ce55f6446f17acd0ccca87fb6dc05360578228a58"
+checksum = "6376049cfa92c0aa8b9ac95fae22184b981c658208d4ed8a1dc553cd83612895"
 dependencies = [
  "rustc-std-workspace-core",
 ]
@@ -1181,7 +1181,6 @@ dependencies = [
 name = "fortanix-sgx-abi"
 version = "0.6.0"
 dependencies = [
- "compiler_builtins",
  "rustc-std-workspace-core",
 ]
 
@@ -1210,7 +1209,6 @@ dependencies = [
 name = "fortanix-vme-abi"
 version = "0.1.0"
 dependencies = [
- "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "serde",
@@ -1836,7 +1834,6 @@ name = "insecure-time"
 version = "0.1.0"
 dependencies = [
  "clap 4.5.20",
- "compiler_builtins",
  "rand 0.8.5",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
