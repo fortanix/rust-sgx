@@ -17,7 +17,7 @@ categories = ["command-line-utilities"]
 anyhow = "1.0"
 cargo_toml = "0.22.0"
 clap = "2.34"
-elf = "0.0.10"
+elf = "0.8.0"
 env_logger = "0.9"
 log = "0.4"
 nitro-cli = { git = "https://github.com/fortanix/aws-nitro-enclaves-cli.git", branch = "main" }
