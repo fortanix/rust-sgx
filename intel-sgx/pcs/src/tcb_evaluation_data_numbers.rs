@@ -294,7 +294,7 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()).unwrap();
+        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
     }
 
     #[test]
@@ -302,7 +302,7 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert").to_owned();
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 4, 1, 12, 0, 0).unwrap()).unwrap();
+        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
 
         let mut corrupted = numbers.clone();
         corrupted.signature[10] = 0x66;

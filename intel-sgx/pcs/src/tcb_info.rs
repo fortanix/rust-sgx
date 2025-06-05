@@ -538,12 +538,12 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info_v3() {
-        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(18)).unwrap();
+        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        let april_28_2025 = Utc.with_ymd_and_hms(2025, 4, 28, 12, 0, 0).unwrap();
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &april_28_2025).is_ok());
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &april_28_2025).is_err());
+        let june_5_2025 = Utc.with_ymd_and_hms(2025, 6, 5, 12, 0, 0).unwrap();
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &june_5_2025).is_ok());
+        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &june_5_2025).is_err());
     }
 
     #[test]
