@@ -295,6 +295,16 @@ pub enum TcbStatus {
     Revoked,
 }
 
+impl TcbStatus {
+    pub(crate) fn drop_sw_hardening_needed(self) -> Self {
+        match self {
+            Self::SWHardeningNeeded => Self::UpToDate,
+            Self::ConfigurationAndSWHardeningNeeded => Self::ConfigurationNeeded,
+            v => v,
+        }
+    }
+}
+
 impl fmt::Display for TcbStatus {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
