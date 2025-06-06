@@ -73,16 +73,16 @@ impl Display for EnclaveIdentity {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct Tcb {
-    isvsvn: u16,
+pub(crate) struct Tcb {
+    pub(crate) isvsvn: u16,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel {
-    tcb: Tcb,
+    pub(crate) tcb: Tcb,
     tcb_date: String,
-    tcb_status: TcbStatus,
+    pub(crate) tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
     advisory_ids: Vec<String>,
 }
@@ -224,9 +224,15 @@ impl QeIdentity {
     pub fn miscselect_mask(&self) -> Miscselect {
         Miscselect::from_bits_truncate(self.miscselect_mask)
     }
+}
 
+impl<V: VerificationType> QeIdentity<V> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
+    }
+
+    pub(crate) fn tcb_levels(&self) -> &[TcbLevel] {
+        &self.tcb_levels
     }
 }
 
@@ -303,7 +309,8 @@ pub struct QeIdentitySigned {
 }
 
 impl QeIdentitySigned {
-    const DEFAULT_FILENAME: &'static str = "qe3_identity.id";
+    const FILENAME_PREFIX: &'static str = "qe3_identity";
+    const FILENAME_EXTENSION: &'static str = ".id";
 
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
         #[derive(Deserialize)]
@@ -330,11 +337,7 @@ impl QeIdentitySigned {
     }
 
     pub fn create_filename(evaluation_data_number: Option<u64>) -> String {
-        if let Some(evaluation_data_number) = evaluation_data_number {
-            format!("qe3_identity-{evaluation_data_number}.id")
-        } else {
-            Self::DEFAULT_FILENAME.into()
-        }
+        io::compose_filename(Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
@@ -354,6 +357,11 @@ impl QeIdentitySigned {
         let filename = Self::create_filename(evaluation_data_number);
         let identity: Self = io::read_from_file(input_dir, &filename)?;
         Ok(identity)
+    }
+
+    pub fn read_all<'a>(input_dir: &'a str) -> impl Iterator<Item = Result<Self, Error>> + 'a {
+        io::all_files(input_dir, Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION)
+            .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
     }
 
     pub fn raw_qe_identity(&self) -> &String {

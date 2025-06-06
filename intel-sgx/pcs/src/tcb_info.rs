@@ -114,10 +114,10 @@ impl<'de> Deserialize<'de> for Fmspc {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel {
-    tcb: TcbComponents,
+    pub(crate) tcb: TcbComponents,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
-    tcb_status: TcbStatus,
+    pub(crate) tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
     advisory_ids: Vec<AdvisoryID>,
 }
@@ -286,14 +286,10 @@ impl TcbData<Verified> {
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
-
-    pub fn tcb_evaluation_data_number(&self) -> u64 {
-        self.tcb_evaluation_data_number
-    }
 }
 
 impl TcbData<Unverified> {
-    fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
+    pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
         let data: TcbData<Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
         if data.version != 2 && data.version != 3 {
             return Err(Error::UnknownTcbInfoVersion(data.version));
@@ -308,6 +304,10 @@ impl TcbData<Unverified> {
 }
 
 impl<V: VerificationType> TcbData<V> {
+    pub fn tcb_evaluation_data_number(&self) -> u64 {
+        self.tcb_evaluation_data_number
+    }
+
     // NOTE: don't make this publicly available. We want to prevent people from
     // accessing the TCB levels without checking whether the TcbInfo is valid.
     pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel> {
@@ -336,6 +336,8 @@ pub struct TcbInfo {
 }
 
 impl TcbInfo {
+    const FILENAME_EXTENSION: &'static str = ".tcb";
+
     pub fn new(raw_tcb_info: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
         TcbInfo {
             raw_tcb_info,
@@ -359,11 +361,7 @@ impl TcbInfo {
     }
 
     pub fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
-        if let Some(evaluation_data_number) = evaluation_data_number {
-            format!("{fmspc}-{evaluation_data_number}.tcb")
-        } else {
-            format!("{fmspc}.tcb")
-        }
+        io::compose_filename(fmspc, Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
     pub fn store(&self, output_dir: &str) -> Result<String, Error> {
@@ -383,6 +381,11 @@ impl TcbInfo {
         let filename = TcbInfo::create_filename(&fmspc.to_string(), evaluation_data_number);
         let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
         Ok(info)
+    }
+
+    pub fn read_all<'a>(input_dir: &'a str, fmspc: &'a Fmspc) -> impl Iterator<Item = Result<Self, Error>> + 'a {
+        io::all_files(input_dir, fmspc.to_string(), Self::FILENAME_EXTENSION)
+            .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
     }
 
     pub fn raw_tcb_info(&self) -> &String {
