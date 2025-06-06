@@ -20,6 +20,10 @@
 // To fix this error, which appears in generated code:
 // "lint `box_pointers` has been removed: it does not detect other kinds of allocations, and existed only for historical reasons."
 #![allow(renamed_and_removed_lints)]
+// (nightly only) To fix this error appears in generated code:
+// `error: lifetime flowing from input to output with different syntax can be confusing`
+#![allow(unknown_lints)]
+#![allow(mismatched_lifetime_syntaxes)]
 
 extern crate byteorder;
 pub extern crate anyhow;
