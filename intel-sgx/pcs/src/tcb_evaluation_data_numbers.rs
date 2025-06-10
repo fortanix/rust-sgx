@@ -362,10 +362,13 @@ impl TcbPolicy {
 
 #[cfg(test)]
 mod tests {
-    use super::TcbEvaluationDataNumbers;
+    #[cfg(not(target_env = "sgx"))]
+    use {
+        super::TcbEvaluationDataNumbers,
+        crate::{Error, Unverified}
+    };
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber};
-    use crate::{Error, pckcrt::TcbComponents, Unverified};
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use crate::Platform;
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
@@ -453,6 +456,7 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     #[test]
     fn select_best() {
+        use crate::pckcrt::TcbComponents;
         fn select(tcb_components: &TcbComponents, qesvn: u16) -> Result<u16, Error> {
             use std::convert::TryInto;
             TcbEvaluationDataNumbers::<Unverified>::select_best("./tests/data/eval-num-select-best", &"00606a000000".try_into().unwrap(), tcb_components, qesvn)
