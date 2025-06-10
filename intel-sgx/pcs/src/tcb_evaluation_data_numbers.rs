@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use crate::{io, Error, Platform, Unverified, VerificationType, Verified};
+use crate::{io, Error, Fmspc, Platform, pckcrt::TcbComponents, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
@@ -68,6 +68,84 @@ impl<'de> Deserialize<'de> for TcbEvaluationDataNumbers<Unverified> {
 impl<V: VerificationType> TcbEvaluationDataNumbers<V> {
     pub fn numbers(&self) -> Iter<'_, TcbEvalNumber> {
         self.tcb_eval_numbers.iter()
+    }
+}
+
+impl TcbEvaluationDataNumbers<Unverified> {
+    /// Given a particular TCB level, select the best available TCB eval number.
+    /// That is the one that gives the most favorable TCB status, and the higher
+    /// one if there's a tie.
+    pub fn select_best(input_dir: &str, fmspc: &Fmspc, tcb_components: &TcbComponents, qesvn: u16) -> Result<TcbEvalNumber, Error> {
+        let evalnums = RawTcbEvaluationDataNumbers::read_from_file(input_dir)?.evaluation_data_numbers()?;
+        let mut tcb_levels: std::collections::HashMap<_, _> = evalnums.numbers().map(|num| (num.number as u64, (num, None, None))).collect();
+
+        for tcbinfo in TcbInfo::read_all(input_dir, fmspc) {
+            let tcb_data = TcbData::parse(tcbinfo?.raw_tcb_info())?;
+            if let Some(level) = tcb_data.tcb_levels()
+                .iter()
+                .find(|level| level.tcb <= *tcb_components)
+            {
+                if let Some(entry) = tcb_levels.get_mut(&tcb_data.tcb_evaluation_data_number()) {
+                    entry.1 = Some(level.tcb_status);
+                }
+            }
+        };
+
+        for qeid in QeIdentitySigned::read_all(input_dir) {
+            let qeid: QeIdentity::<Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
+            if let Some(level) = qeid.tcb_levels()
+                .iter()
+                .find(|level| level.tcb.isvsvn <= qesvn)
+            {
+                if let Some(entry) = tcb_levels.get_mut(&qeid.tcb_evaluation_data_number()) {
+                    entry.2 = Some(level.tcb_status);
+                }
+            }
+        };
+
+        // NB: QE Identity TCB status can only be UpToDate, OutOfDate, or Revoked
+        fn tcb_total_order(platform_status: Option<TcbStatus>, qe_status: Option<TcbStatus>) -> i8 {
+            use std::ops::Neg;
+            use self::TcbStatus::*;
+            // Since we don't have any information here to judge the enclave
+            // has the needed SW hardening, we assume that it does and we
+            // upgrade SWHardeningNeeded to the next level
+            match (platform_status.map(TcbStatus::drop_sw_hardening_needed), qe_status) {
+                (Some(UpToDate),                          Some(UpToDate))  => 0i8,
+                (Some(UpToDate),                          Some(OutOfDate)) => 1,
+                (Some(UpToDate),                          Some(Revoked))   => 1,
+                (Some(ConfigurationNeeded),               Some(UpToDate))  => 2,
+                (Some(ConfigurationNeeded),               Some(OutOfDate)) => 3,
+                (Some(ConfigurationNeeded),               Some(Revoked))   => 3,
+                (Some(OutOfDate),                         Some(UpToDate))  => 4,
+                (Some(OutOfDateConfigurationNeeded),      Some(UpToDate))  => 4,
+                (Some(Revoked),                           Some(UpToDate))  => 4,
+                (Some(OutOfDate),                         Some(OutOfDate)) => 5,
+                (Some(OutOfDate),                         Some(Revoked))   => 5,
+                (Some(Revoked),                           Some(OutOfDate)) => 5,
+                (Some(Revoked),                           Some(Revoked))   => 5,
+                (Some(OutOfDateConfigurationNeeded),      Some(OutOfDate)) => 5,
+                (Some(OutOfDateConfigurationNeeded),      Some(Revoked))   => 5,
+                (Some(UpToDate),                          None)            => 6,
+                (Some(ConfigurationNeeded),               None)            => 7,
+                (Some(OutOfDate),                         None)            => 8,
+                (Some(OutOfDateConfigurationNeeded),      None)            => 8,
+                (Some(Revoked),                           None)            => 8,
+                (None,                                    Some(UpToDate))  => 9,
+                (None,                                    Some(OutOfDate)) => 10,
+                (None,                                    Some(Revoked))   => 10,
+                _                                                          => 11,
+            }.neg()
+        }
+
+        tcb_levels.into_iter()
+            .max_by(|&(a_num, (_, a_platform_status, a_qe_status)), &(b_num, (_, b_platform_status, b_qe_status))| {
+                tcb_total_order(a_platform_status, a_qe_status)
+                    .cmp(&tcb_total_order(b_platform_status, b_qe_status))
+                    .then_with(|| a_num.cmp(&b_num) )
+            })
+            .map(|(_, (num, _, _))| num.clone())
+            .ok_or(Error::InvalidTcbEvaluationDataNumbers("Empty TCB evaluation data numbers".into()))
     }
 }
 
@@ -282,13 +360,21 @@ impl TcbPolicy {
     }
 }
 
-#[cfg(all(not(target_env = "sgx"), feature = "verify"))]
 #[cfg(test)]
 mod tests {
-    use super::{RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, TcbEvalNumber, TcbPolicy};
-    use crate::{Error, Platform, Unverified};
+    #[cfg(not(target_env = "sgx"))]
+    use {
+        super::TcbEvaluationDataNumbers,
+        crate::{Error, Unverified}
+    };
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
+    use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber};
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
+    use crate::Platform;
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use chrono::{Duration, TimeZone, Utc};
 
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn parse_tcb_evaluation_data_numbers() {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
@@ -297,6 +383,7 @@ mod tests {
         numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
     }
 
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn parse_tcb_evaluation_data_numbers_incorrect_signature() {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
@@ -313,6 +400,7 @@ mod tests {
         }
     }
 
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn tcb_eval_number() {
         let april_8_2025 = Utc.with_ymd_and_hms(2025, 4, 8, 14, 55, 0).unwrap();
@@ -334,6 +422,7 @@ mod tests {
         assert!(policy.needs_to_be_enforced(&number, &april_17_2025));
     }
 
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn minimum_tcb_evaluation_data_number() {
         let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
@@ -362,5 +451,36 @@ mod tests {
             Some(number_17.clone()));
         assert_eq!(policy.minimum_tcb_evaluation_data_number_ex(&numbers, &november_20_2024),
             Some(number_17));
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    #[test]
+    fn select_best() {
+        use crate::pckcrt::TcbComponents;
+        fn select(tcb_components: &TcbComponents, qesvn: u16) -> Result<u16, Error> {
+            use std::convert::TryInto;
+            TcbEvaluationDataNumbers::<Unverified>::select_best("./tests/data/eval-num-select-best", &"00606a000000".try_into().unwrap(), tcb_components, qesvn)
+                .map(|num| num.number)
+        }
+        // platform and QE are nonsensical: just choose highest
+        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 0).unwrap(), 19);
+        // platform is nonsensical: choose eval nums based on QE up-to-date
+        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 8).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 6).unwrap(), 8);
+        // QE is nonsensical: choose eval nums based on platform up-to-date
+        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 14);
+        // platform and QE are fully up to date: choose highest
+        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 19);
+        // QE is up to date: choose up-to-date eval nums based on platform
+        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 8);
+        // platform is up to date: choose up-to-date eval nums based on QE
+        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 6).unwrap(), 8);
+        // neither platform and QE are up to date: choose highest eval nums where they were both up to date
+        assert_eq!(select(&TcbComponents::from_raw([4, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 5).unwrap(), 8);
     }
 }
