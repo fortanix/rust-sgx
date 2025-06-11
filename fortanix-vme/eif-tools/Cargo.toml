@@ -20,5 +20,4 @@ elf = "0.0.10"
 env_logger = "0.9"
 log = "0.4"
 nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli.git", tag = "v1.4.2" }
-sha2 = "0.9.5"
 tempdir = "0.3"
