@@ -6,7 +6,6 @@ use anyhow::Result;
 use clap::{Arg, crate_authors, crate_version};
 use env_logger;
 use log::{debug, info, LevelFilter};
-use nitro_cli::build_from_docker;
 use tempdir::TempDir;
 
 use eif_tools::*;
@@ -96,7 +95,14 @@ fn main() {
     let docker_dir_path = docker_dir.path().to_str().map(|s| s.to_string());
     debug!("Created docker dir `{:?}`", docker_dir_path);
 
-    let (_output_file, measurements) = match build_from_docker(&resource_path, "elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key) {
+    unsafe {
+        // This ugly code is here in courtesy of `nitro_cli` that looks at this environment
+        // variable to select the resource path.
+        // set_var is safe in single-threaded environments
+        std::env::set_var("NITRO_CLI_BLOBS", &resource_path)
+    }
+
+    match nitro_cli::build_from_docker("elf2eif", &docker_dir_path, output_path, &signing_certificate, &private_key, &None, &None, &None) {
         Ok((o, m)) => {
             if let Err(_) = docker_dir.close() {
                 debug!("Could not clean up docker directory `{:?}`", docker_dir_path)
@@ -113,5 +119,4 @@ fn main() {
     };
 
     println!("Enclave Image successfully created: `{}`", output_path);
-    println!("{:#?}", measurements);
 }
