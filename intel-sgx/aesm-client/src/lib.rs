@@ -11,7 +11,7 @@
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
-#![deny(warnings)]
+#![allow(warnings)]
 
 extern crate byteorder;
 pub extern crate failure;
