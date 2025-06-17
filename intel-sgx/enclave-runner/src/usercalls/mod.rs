@@ -855,9 +855,6 @@ impl EnclaveState {
                         EnclavePanic::DebugStr("async exit with a panic".to_owned())
                     }
                 };
-                if enclave.forward_panics {
-                    panic!("{}", &panic);
-                }
                 Err(EnclaveAbort::Exit{ panic: Some(panic) })
             }
             Err(EnclaveAbort::Exit { panic: false }) => Err(EnclaveAbort::Exit{ panic: None }),
@@ -1093,10 +1090,17 @@ impl EnclaveState {
         let main_result =
             EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, io_queue_send, work_sender);
 
+        if let Err(EnclaveAbort::Exit { panic: Some(panic) }) = &main_result {
+            if enclave.forward_panics {
+                panic!("{}", panic);
+            }
+        }
+
         for handler in join_handlers {
             let _ = handler.join();
         }
-        return main_result;
+
+        main_result
     }
 
     pub(crate) fn main_entry(
