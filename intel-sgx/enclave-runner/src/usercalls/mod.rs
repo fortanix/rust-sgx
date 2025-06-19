@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::arch::asm;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
