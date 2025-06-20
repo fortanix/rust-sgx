@@ -26,13 +26,19 @@ jobs:
     runs-on: ubuntu-24.04
 
     env:
-      # PCS_API_KEY: Raoul Strackx' personal access key. Only used here, and only provides access to the Intel PCS service, which is public anyway
-      PCS_API_KEY: ${{ secrets.PCS_API_KEY }}
-      PCCS_URL: ${{ vars.PCCS_URL }}
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Conditionally export PCS_API_KEY and PCCS_URL
+      run: |
+        if [ -n "${{ secrets.PCS_API_KEY }}" ]; then
+          echo "PCS_API_KEY=${{ secrets.PCS_API_KEY }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ vars.PCCS_URL }}" ]; then
+          echo "PCCS_URL=${{ vars.PCCS_URL }}" >> $GITHUB_ENV
+        fi
 
     - name: Install additional dependencies
       run: |

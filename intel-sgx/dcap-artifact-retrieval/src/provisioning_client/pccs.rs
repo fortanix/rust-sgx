@@ -433,11 +433,15 @@ mod tests {
     use std::sync::OnceLock;
     use std::time::Duration;
 
-    use pcs::{EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers};
+    use pcs::{
+        EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
+        TcbEvaluationDataNumbers,
+    };
 
     use super::Client;
     use crate::provisioning_client::{
-        test_helpers, PccsProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
+        test_helpers, DcapArtifactIssuer, PccsProvisioningClientBuilder, PcsVersion,
+        ProvisioningClient,
     };
     use crate::{reqwest_client_insecure_tls, ReqwestClient};
 
@@ -448,8 +452,11 @@ mod tests {
     static PCCS_URL: OnceLock<String> = OnceLock::new();
 
     fn pccs_url_from_env() -> String {
-        let url = std::env::var("PCCS_URL").expect("PCCS_URL must be set");
-        assert!(!url.is_empty(), "Empty string in PCCS_URL");
+        let url = std::env::var("PCCS_URL").unwrap_or(String::from("https://pccs.fortanix.com"));
+        assert!(
+            !url.is_empty(),
+            "Empty string in environment variable: PCCS_URL"
+        );
         url
     }
 
@@ -585,22 +592,24 @@ mod tests {
                 let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
-                let selected = pckcerts.select_pck(
-                    &tcb_data,
-                    &pckid.cpu_svn,
-                    pckid.pce_isvsvn,
-                    pckid.pce_id,
-                ).unwrap();
+                let selected = pckcerts
+                    .select_pck(&tcb_data, &pckid.cpu_svn, pckid.pce_isvsvn, pckid.pce_id)
+                    .unwrap();
 
-                let pck = client.pckcert(
+                let pck = client
+                    .pckcert(
                     Some(&pckid.enc_ppid),
                     &pckid.pce_id,
                     &pckid.cpu_svn,
                     pckid.pce_isvsvn,
                     Some(&pckid.qe_id),
-                ).unwrap();
+                    )
+                    .unwrap();
 
-                assert_eq!(format!("{:?}", selected.sgx_extension().unwrap()), format!("{:?}", pck.sgx_extension().unwrap()));
+                assert_eq!(
+                    format!("{:?}", selected.sgx_extension().unwrap()),
+                    format!("{:?}", pck.sgx_extension().unwrap())
+                );
             }
         }
     }
@@ -638,7 +647,11 @@ mod tests {
 
             let fmspc = pckcerts.fmspc().unwrap();
 
-            let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
+            let evaluation_data_numbers = client
+                .tcb_evaluation_data_numbers()
+                .unwrap()
+                .evaluation_data_numbers()
+                .unwrap();
 
             for number in evaluation_data_numbers.numbers() {
                 assert!(client
@@ -670,7 +683,10 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc, None);
+                        let input = client
+                            .tcbinfo_service
+                            .pcs_service()
+                            .build_input(&fmspc, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -707,7 +723,10 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
+        for ca in [
+            DcapArtifactIssuer::PCKProcessorCA,
+            DcapArtifactIssuer::PCKPlatformCA,
+        ] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let client = make_client(api_version);
                 let pckcrl = client.pckcrl(ca).unwrap();
@@ -796,9 +815,11 @@ mod tests {
         assert_eq!(eval_numbers, eval_numbers2);
 
         let fmspc = Fmspc::try_from("90806f000000").unwrap();
-        let eval_numbers: TcbEvaluationDataNumbers = eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        let eval_numbers: TcbEvaluationDataNumbers =
+            eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
         for number in eval_numbers.numbers().map(|n| n.number()) {
-            let qe_id = client.qe_identity(Some(number))
+            let qe_id = client
+                .qe_identity(Some(number))
                 .unwrap()
                 .verify(&root_cas, EnclaveIdentity::QE)
                 .unwrap();
