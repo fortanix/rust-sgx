@@ -36,11 +36,21 @@ pub(super) trait ReturnValue {
 macro_rules! define_usercalls {
     // Using `$r:tt` because `$r:ty` doesn't match ! in `dispatch_return_type`
     ($(fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)*; )*) => {
+        #[derive(Debug)]
         #[repr(C)]
         #[allow(non_camel_case_types)]
         pub(crate) enum UsercallList {
             __enclave_usercalls_invalid,
             $($f,)*
+        }
+
+        impl UsercallList {
+            pub(crate) fn from_u64(a: u64) -> Self {
+                match a - 1 {
+                    $( ${index()} => UsercallList::$f, )*
+                    _ => Self::__enclave_usercalls_invalid,
+                }
+            }
         }
 
         pub(super) trait Usercalls <'future>: Sized {
