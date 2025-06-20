@@ -882,6 +882,7 @@ impl EnclaveState {
 
         let return_future = async move {
             while let Some((my_result, mode)) = rx_return_channel.recv().await {
+                println!("=== return future recieved: (my_result: {my_result:?}, mode: {mode:?})");
                 let res = match (my_result, mode) {
                     (Err(EnclaveAbort::Secondary), _) |
                     (Ok(_), ReturnSource::ExecutableNonMain) => continue,
@@ -889,7 +890,10 @@ impl EnclaveState {
                     (e, ReturnSource::Library) |
                     (e, ReturnSource::ExecutableMain) |
                     (e @ Err(EnclaveAbort::Exit { panic: None }), _)
-                        => e,
+                        => {
+                            println!("=== In expected branch!");
+                            e
+                        },
 
                     (Ok(_), ReturnSource::AsyncUsercall) |
                     (Err(EnclaveAbort::MainReturned), ReturnSource::AsyncUsercall) => unreachable!(),
@@ -916,6 +920,7 @@ impl EnclaveState {
                         continue;
                     }
                 };
+                println!("=== return future res: {res:?}");
                 return res;
             }
             unreachable!();
