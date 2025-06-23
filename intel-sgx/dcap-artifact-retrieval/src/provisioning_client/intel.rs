@@ -573,7 +573,10 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use pcs::{DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, Platform, TcbEvaluationDataNumbers, RawTcbEvaluationDataNumbers};
+    use pcs::{
+        DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
+        TcbEvaluationDataNumbers,
+    };
 
     use crate::provisioning_client::{
         test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
@@ -585,10 +588,12 @@ mod tests {
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
 
-    fn pcs_api_key() -> String {
-        let api_key = std::env::var("PCS_API_KEY").expect("PCS_API_KEY must be set");
+    fn pcs_api_key() -> Option<String> {
+        let api_key_option = std::env::var("PCS_API_KEY").ok();
+        if let Some(api_key) = api_key_option.as_ref() {
         assert!(!api_key.is_empty(), "Empty string in PCS_API_KEY");
-        api_key
+        }
+        api_key_option
     }
 
     #[test]
@@ -597,7 +602,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
 
@@ -624,7 +635,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
 
@@ -677,7 +694,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
@@ -709,11 +732,25 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
-            let crl_processor = client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).unwrap().crl_as_pem().to_owned();
-            let crl_platform = client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).unwrap().crl_as_pem().to_owned();
+            let crl_processor = client
+                .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
+                .unwrap()
+                .crl_as_pem()
+                .to_owned();
+            let crl_platform = client
+                .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
+                .unwrap()
+                .crl_as_pem()
+                .to_owned();
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -727,7 +764,9 @@ mod tests {
                         None,
                     )
                     .unwrap();
-                let pck = pck.clone().verify(&root_cas, Some(&crl_processor))
+                let pck = pck
+                    .clone()
+                    .verify(&root_cas, Some(&crl_processor))
                     .or(pck.clone().verify(&root_cas, Some(&crl_platform)))
                     .unwrap();
 
@@ -797,7 +836,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
@@ -829,7 +874,11 @@ mod tests {
                 .unwrap();
             let fmspc = pckcerts.fmspc().unwrap();
 
-            let evaluation_data_numbers = client.tcb_evaluation_data_numbers().unwrap().evaluation_data_numbers().unwrap();
+            let evaluation_data_numbers = client
+                .tcb_evaluation_data_numbers()
+                .unwrap()
+                .evaluation_data_numbers()
+                .unwrap();
 
             for number in evaluation_data_numbers.numbers() {
                 assert!(client
@@ -846,7 +895,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
@@ -867,7 +922,10 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.tcbinfo_service.pcs_service().build_input(&fmspc, None);
+                        let input = client
+                            .tcbinfo_service
+                            .pcs_service()
+                            .build_input(&fmspc, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -889,12 +947,21 @@ mod tests {
 
     #[test]
     pub fn pckcrl() {
-        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
+        for ca in [
+            DcapArtifactIssuer::PCKProcessorCA,
+            DcapArtifactIssuer::PCKPlatformCA,
+        ] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                     .set_retry_timeout(TIME_RETRY_TIMEOUT);
                 if api_version == PcsVersion::V3 {
-                    intel_builder.set_api_key(pcs_api_key());
+                    if let Some(pcs_api_key) = pcs_api_key() {
+                        intel_builder.set_api_key(pcs_api_key);
+                    } else {
+                        // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                        // So we no longer force to test it.
+                        continue;
+                    }
                 }
                 let client = intel_builder.build(reqwest_client());
                 assert!(client
@@ -907,12 +974,21 @@ mod tests {
 
     #[test]
     pub fn pckcrl_cached() {
-        for ca in [DcapArtifactIssuer::PCKProcessorCA, DcapArtifactIssuer::PCKPlatformCA] {
+        for ca in [
+            DcapArtifactIssuer::PCKProcessorCA,
+            DcapArtifactIssuer::PCKPlatformCA,
+        ] {
             for api_version in [PcsVersion::V3, PcsVersion::V4] {
                 let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                     .set_retry_timeout(TIME_RETRY_TIMEOUT);
                 if api_version == PcsVersion::V3 {
-                    intel_builder.set_api_key(pcs_api_key());
+                    if let Some(pcs_api_key) = pcs_api_key() {
+                        intel_builder.set_api_key(pcs_api_key);
+                    } else {
+                        // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                        // So we no longer force to test it.
+                        continue;
+                    }
                 }
                 let client = intel_builder.build(reqwest_client());
                 let pckcrl = client.pckcrl(ca).unwrap();
@@ -951,7 +1027,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None);
@@ -966,7 +1048,13 @@ mod tests {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
             if api_version == PcsVersion::V3 {
-                intel_builder.set_api_key(pcs_api_key());
+                if let Some(pcs_api_key) = pcs_api_key() {
+                    intel_builder.set_api_key(pcs_api_key);
+                } else {
+                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
+                    // So we no longer force to test it.
+                    continue;
+                }
             }
             let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None).unwrap();
@@ -1013,9 +1101,11 @@ mod tests {
         assert_eq!(eval_numbers, eval_numbers2);
 
         let fmspc = Fmspc::try_from("90806f000000").unwrap();
-        let eval_numbers: TcbEvaluationDataNumbers = eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        let eval_numbers: TcbEvaluationDataNumbers =
+            eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
         for number in eval_numbers.numbers().map(|n| n.number()) {
-            let qe_id = client.qe_identity(Some(number))
+            let qe_id = client
+                .qe_identity(Some(number))
                 .unwrap()
                 .verify(&root_cas, EnclaveIdentity::QE)
                 .unwrap();
