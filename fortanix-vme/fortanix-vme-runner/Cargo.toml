@@ -5,7 +5,7 @@ edition = "2018"
 authors = ["Fortanix, Inc."]
 
 [dependencies]
-env_logger = "0.8.4"
+env_logger = "0.9.0"
 fnv = "1.0.7"
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
 log = "0.4.21"
