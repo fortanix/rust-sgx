@@ -1,17 +1,17 @@
 [package]
 name = "fortanix-sgx-abi"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
 An interface for Intel SGX enclaves. This is the interface for the
 `x86_64-fortanix-unknown-sgx` target.
 
-This is a small yet functional interface suitable for writing larger enclaves. 
-In contrast to other enclave interfaces, this interface is primarly designed 
+This is a small yet functional interface suitable for writing larger enclaves.
+In contrast to other enclave interfaces, this interface is primarly designed
 for running entire applications in an enclave.
 
-This crate fully describes the type-level interface complete with 
+This crate fully describes the type-level interface complete with
 documentation. For implementors, this crate contains all the type definitions
 and a macro with the function definitions.
 """
