@@ -880,10 +880,9 @@ impl EnclaveState {
             .expect("failed to create tokio Runtime");
         let local_set = tokio::task::LocalSet::new();
 
-        let forward_panics = enclave.forward_panics;
         let return_future = async move {
             while let Some((my_result, mode)) = rx_return_channel.recv().await {
-                if forward_panics {
+                if enclave_clone.forward_panics {
                     if let Err(EnclaveAbort::Exit { panic: Some(panic) }) = &my_result {
                         panic!("{}", panic);
                     }
