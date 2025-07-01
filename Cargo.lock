@@ -911,7 +911,7 @@ dependencies = [
  "em-client",
  "em-node-agent-client",
  "hyper 0.10.16",
- "mbedtls 0.13.2",
+ "mbedtls 0.12.4",
  "pkix",
  "rustc-serialize",
  "sdkms",
