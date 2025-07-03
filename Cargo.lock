@@ -242,7 +242,7 @@ dependencies = [
  "serde 1.0.219",
  "serde_cbor",
  "serde_json",
- "sha2 0.9.8",
+ "sha2 0.9.9",
  "tokio 1.45.1",
 ]
 
@@ -375,7 +375,7 @@ dependencies = [
  "http 0.2.12",
  "http 1.3.1",
  "percent-encoding 2.3.1",
- "sha2 0.10.1",
+ "sha2 0.10.8",
  "time 0.3.41",
  "tracing",
 ]
@@ -1198,11 +1198,12 @@ checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
 
 [[package]]
 name = "crypto-common"
-version = "0.1.2"
+version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4600d695eb3f6ce1cd44e6e291adceb2cc3ab12f20a33777ecd0bf6eba34e06"
+checksum = "1bfb12502f3fc46cca1bb51ac28df9d618d813cdc3d2f25b9fe775a34af26bb3"
 dependencies = [
  "generic-array 0.14.4",
+ "typenum",
 ]
 
 [[package]]
@@ -1338,9 +1339,9 @@ dependencies = [
 
 [[package]]
 name = "digest"
-version = "0.10.2"
+version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8cb780dce4f9a8f5c087362b3a4595936b2019e7c8b30f2c3e9a7e94e6ae9837"
+checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer 0.10.4",
  "crypto-common",
@@ -1444,7 +1445,7 @@ dependencies = [
  "serde 1.0.219",
  "serde_json",
  "serde_yaml",
- "sha2 0.9.8",
+ "sha2 0.9.9",
  "tar",
  "tempfile",
  "tokio 1.45.1",
@@ -2011,7 +2012,7 @@ version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddca131f3e7f2ce2df364b57949a9d47915cfbd35e46cfee355ccebbf794d6a2"
 dependencies = [
- "digest 0.10.2",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -2989,7 +2990,7 @@ dependencies = [
  "page_size",
  "serde 1.0.219",
  "serde_json",
- "sha2 0.9.8",
+ "sha2 0.9.9",
  "signal-hook",
  "vmm-sys-util",
  "vsock 0.5.1",
@@ -4387,9 +4388,9 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.9.8"
+version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b69f9a4c9740d74c5baa3fd2e547f9525fa8088a8a958e0ca2409a514e33f5fa"
+checksum = "4d58a1e1bf39749807d89cf2d98ac2dfa0ff1cb3faa38fbb64dd88ac8013d800"
 dependencies = [
  "block-buffer 0.9.0",
  "cfg-if 1.0.0",
@@ -4400,13 +4401,13 @@ dependencies = [
 
 [[package]]
 name = "sha2"
-version = "0.10.1"
+version = "0.10.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99c3bd8169c58782adad9290a9af5939994036b76187f7b4f0e6de91dbbfc0ec"
+checksum = "793db75ad2bcafc3ffa7c68b215fee268f537982cd901d132f89c6343f3a3dc8"
 dependencies = [
  "cfg-if 1.0.0",
  "cpufeatures",
- "digest 0.10.2",
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -5048,9 +5049,9 @@ dependencies = [
 
 [[package]]
 name = "typenum"
-version = "1.12.0"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "373c8a200f9e67a0c95e62a4f52fbf80c23b4381c05a17845531982fa99e6b33"
+checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
 
 [[package]]
 name = "unicase"
