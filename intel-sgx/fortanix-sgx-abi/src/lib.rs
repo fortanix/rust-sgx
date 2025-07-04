@@ -584,7 +584,8 @@ impl Usercalls {
     /// The second element returns a pointer to `InsecureTimeInfo` in usespace that can be
     /// used to keep track of time inside of the enclave. Runners that do not support this
     /// field, run on hardware that do not support it, or where users want to explicitly
-    /// turn off time keeping inside the enclave, pass a null pointer.
+    /// turn off time keeping inside the enclave, pass a null pointer. When not null, the
+    /// pointer returned must have a static lifetime.
     /// The enclave must not rely on the accuracy of this time for security purposes,
     /// such as checking credential expiry or preventing rollback.
     pub fn insecure_time() -> (u64, *const InsecureTimeInfo) { unimplemented!() }
