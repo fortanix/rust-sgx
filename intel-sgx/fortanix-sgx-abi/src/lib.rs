@@ -571,16 +571,24 @@ impl Usercalls {
 #[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 #[derive(Copy, Clone, Debug, Default)]
 pub struct InsecureTimeInfo {
+    /// The version of this struct (currently always 0
     pub version: u64,
+    /// The frequency the timestamp counter ticks at
     pub frequency: u64,
 }
 
 /// # Miscellaneous
 impl Usercalls {
-    /// This returns the number of nanoseconds since midnight UTC on January 1,
-    /// 1970\. The enclave must not rely on the accuracy of this time for
-    /// security purposes, such as checking credential expiry or preventing
-    /// rollback.
+    /// This returns a tuple where the first element is the number of nanoseconds
+    /// since midnight UTC on January 1, 1970.
+    /// The second element returns a pointer to `InsecureTimeInfo` in usespace that can be
+    /// used to keep track of time inside of the enclave. Runners that do not support this
+    /// field, run on hardware that do not support it, or where users want to explicitly
+    /// turn off time keeping inside the enclave, pass a null pointer. When not null, the
+    /// memory location referenced must remain valid for the lifetime of the enclave. The
+    /// enclave-runner remains in charge to free up this memory chunk.
+    /// The enclave must not rely on the accuracy of this time for security purposes,
+    /// such as checking credential expiry or preventing rollback.
     pub fn insecure_time() -> (u64, *const InsecureTimeInfo) { unimplemented!() }
 }
 
