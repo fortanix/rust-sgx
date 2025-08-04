@@ -91,9 +91,13 @@ impl PckID {
         let file = File::open(file)?;
         let mut pck_ids = Vec::new();
 
-        for line in BufReader::new(file).lines() {
-            let line = line?;
-            let pck_id = PckID::parse_line(&line)?;
+        for line_res in BufReader::new(file).lines() {
+            let line = line_res?;
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let pck_id = PckID::parse_line(trimmed)?;
             pck_ids.push(pck_id);
         }
 
