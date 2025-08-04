@@ -1,0 +1,67 @@
+name: Create Release and Publish
+
+on:
+  push:
+    tags:
+      - 'dcap-artifact-retrieval_v*'
+      - 'dcap-retrieve-pckid_v*'
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CC_x86_64-unknown-linux-gnu: clang-18
+  CXX_x86_64-unknown-linux-gnu: clang-18
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-24.04
+
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+            # install gpg
+            sudo apt-get update -y && sudo apt install -y gpg
+            # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+            cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
+            # Install dependencies for build
+            sudo apt-get update -y
+            sudo apt-get install -y protobuf-compiler libsgx-dcap-ql-dev clang-18
+
+      - name: Setup Rust toolchain
+        run: |
+            rustup update
+
+      - name: Build package
+        run: |
+          mkdir -p dist
+          if [[ "${GITHUB_REF_NAME}" == dcap-artifact-retrieval* ]]; then
+            PKG=dcap-artifact-retrieval
+          elif [[ "${GITHUB_REF_NAME}" == dcap-retrieve-pckid* ]]; then
+            PKG=dcap-retrieve-pckid
+          else
+            echo "Unknown package for tag: ${GITHUB_REF_NAME}"
+            exit 1
+          fi
+          cargo build --release --package "$PKG"
+          mv "target/release/$PKG" dist/
+          cd dist
+          tar -czf "$PKG-x86_64-unknown-linux-gnu.tar.gz" "$PKG"
+          rm "$PKG"
+
+      - name: Publish GitHub Release using GitHub CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.tar.gz \
+            --title "$GITHUB_REF_NAME"
