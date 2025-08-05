@@ -611,6 +611,7 @@ impl PendingEvents {
 struct RunningTcs {
     tcs_address: TcsAddress,
     mode: EnclaveEntry,
+    aex_count: tcs::AexCount,
 }
 
 enum EnclaveKind {
@@ -665,6 +666,7 @@ pub(crate) struct EnclaveState {
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
     fifo_guards: Mutex<Option<FifoGuards>>,
     return_queue_tx: Mutex<Option<ipc_queue::AsyncSender<Return, QueueSynchronizer>>>,
+    aex_counts: Option<Mutex<FnvHashMap<TcsAddress, Arc<AtomicUsize>>>>,
 }
 
 struct Work {
@@ -682,7 +684,7 @@ impl Work {
         let buf = RefCell::new([0u8; 1024]);
         let usercall_send_data = match self.entry {
             CoEntry::Initial(erased_tcs, p1, p2, p3, p4, p5) => {
-                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf));
+                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf), self.tcs.aex_count.clone());
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
             CoEntry::Resume(usercall, coresult) => {
@@ -736,6 +738,7 @@ impl EnclaveState {
         threads_vector: Vec<ErasedTcs>,
         forward_panics: bool,
         force_time_usercalls: bool,
+        aex_counts: Option<Mutex<FnvHashMap<TcsAddress, Arc<AtomicUsize>>>>,
     ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
@@ -779,6 +782,7 @@ impl EnclaveState {
             force_time_usercalls,
             fifo_guards: Mutex::new(None),
             return_queue_tx: Mutex::new(None),
+            aex_counts,
         })
     }
 
@@ -1056,7 +1060,10 @@ impl EnclaveState {
                 }
             });
 
-        local_set.block_on(&mut rt, select_fut.unit_error()).unwrap()
+        let ret = local_set.block_on(&mut rt, select_fut.unit_error()).unwrap();
+        #[cfg(feature = "instrumentation")]
+        tokio::runtime::Runtime::new().unwrap().block_on(enclave.print_aex_counts());
+        ret
     }
 
     fn run(
@@ -1109,12 +1116,18 @@ impl EnclaveState {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
         force_time_usercalls: bool,
+        track_aex_count: bool,
         cmd_args: Vec<Vec<u8>>,
         num_of_worker_threads: usize,
     ) -> StdResult<(), anyhow::Error> {
         assert!(num_of_worker_threads > 0, "worker_threads cannot be zero");
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
+        let mut aex_counts: Option<FnvHashMap<TcsAddress, Arc<AtomicUsize>>> = if track_aex_count {
+            Some(FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default()))
+        } else {
+            None
+        };
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
 
         let mut args = Vec::with_capacity(cmd_args.len());
@@ -1127,10 +1140,16 @@ impl EnclaveState {
         let argc = args.len();
         let argv = Box::into_raw(args.into_boxed_slice()) as *const u8;
 
+        let aex_count = match &mut aex_counts {
+            #[cfg(feature = "instrumentation")]
+            Some(aex_counts) => tcs::AexCount::from(aex_counts.entry(main.tcs.address()).or_default().clone()),
+            _ => tcs::AexCount::none(),
+        };
         let main_work = Work {
             tcs: RunningTcs {
                 tcs_address: main.tcs.address(),
                 mode: EnclaveEntry::ExecutableMain,
+                aex_count,
             },
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
@@ -1141,7 +1160,7 @@ impl EnclaveState {
                 other_reasons: vec![],
             }),
         });
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls, aex_counts.map(Mutex::new));
 
         let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
@@ -1198,7 +1217,7 @@ impl EnclaveState {
 
         let kind = EnclaveKind::Library(Library {});
 
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls, None);
         return enclave;
     }
 
@@ -1215,6 +1234,7 @@ impl EnclaveState {
             tcs: RunningTcs {
                 tcs_address: thread.tcs.address(),
                 mode: EnclaveEntry::Library,
+                aex_count: tcs::AexCount::none(),
             },
             entry: CoEntry::Initial(thread.tcs, p1, p2, p3, p4, p5),
         };
@@ -1246,6 +1266,17 @@ impl EnclaveState {
         // wake other threads
         for pending_events in self.event_queues.values() {
             pending_events.abort();
+        }
+    }
+
+    #[cfg(feature = "instrumentation")]
+    async fn print_aex_counts(&self) {
+        if let Some(aex_counts) = &self.aex_counts {
+            eprintln!("===AEX counts per TCS===");
+            for (addr, count) in aex_counts.lock().await.iter() {
+                eprintln!("{:p} {}", *addr, count.load(Ordering::Relaxed));
+            }
+            eprintln!("========================");
         }
     }
 }
@@ -1544,7 +1575,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn launch_thread(&self) -> IoResult<()> {
+    async fn launch_thread(&self) -> IoResult<()> {
         // check if enclave is of type command
         self.enclave
             .kind
@@ -1557,10 +1588,16 @@ impl<'tcs> IOHandlerInput<'tcs> {
             }
         };
 
+        let aex_count = match &self.enclave.aex_counts {
+            #[cfg(feature = "instrumentation")]
+            Some(aex_counts) => tcs::AexCount::from(aex_counts.lock().await.entry(new_tcs.tcs.address()).or_default().clone()),
+            _ => tcs::AexCount::none(),
+        };
         let ret = self.work_sender.send(Work {
             tcs: RunningTcs {
                 tcs_address: new_tcs.tcs.address(),
                 mode: EnclaveEntry::ExecutableNonMain,
+                aex_count,
             },
             entry: CoEntry::Initial(new_tcs.tcs, 0, 0, 0, 0, 0),
         });
