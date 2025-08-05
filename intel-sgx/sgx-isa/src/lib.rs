@@ -385,13 +385,14 @@ bitflags! {
     #[repr(C)]
     #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct AttributesFlags: u64 {
-        const INIT          = 0b0000_0001;
-        const DEBUG         = 0b0000_0010;
-        const MODE64BIT     = 0b0000_0100;
-        const PROVISIONKEY  = 0b0001_0000;
-        const EINITTOKENKEY = 0b0010_0000;
-        const CET           = 0b0100_0000;
-        const KSS           = 0b1000_0000;
+        const INIT          = 0b0000_0000_0001;
+        const DEBUG         = 0b0000_0000_0010;
+        const MODE64BIT     = 0b0000_0000_0100;
+        const PROVISIONKEY  = 0b0000_0001_0000;
+        const EINITTOKENKEY = 0b0000_0010_0000;
+        const CET           = 0b0000_0100_0000;
+        const KSS           = 0b0000_1000_0000;
+        const AEXNOTIFY     = 0b0100_0000_0000;
     }
 }
 
@@ -444,7 +445,8 @@ impl Tcs {
 bitflags! {
     #[repr(C)]
     pub struct TcsFlags: u64 {
-        const DBGOPTIN = 0b0000_0001;
+        const DBGOPTIN  = 0b0000_0001;
+        const AEXNOTIFY = 0b0000_0010;
     }
 }
 
