@@ -98,8 +98,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ls -hlt dist/
-          gh release create "$GITHUB_REF_NAME" \
-            dist/* \
-            --title "$GITHUB_REF_NAME" \
-            --verify-tag
+          if [ -d dist ] && [ "$(ls -A dist)" ]; then
+            ls -hlt dist/
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --verify-tag
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag
+          fi

@@ -33,9 +33,6 @@ def main():
     parser.add_argument("--package", required=True, help="Package name for cargo build")
     args = parser.parse_args()
 
-    dist_dir = Path("dist")
-    dist_dir.mkdir(exist_ok=True)
-
     # Get cargo metadata
     metadata_cmd = "cargo metadata --no-deps --format-version 1"
     print(f"Running: {metadata_cmd}")
@@ -69,6 +66,9 @@ def main():
             f"No binary targets found for package '{args.package}'. Nothing to build."
         )
         exit(0)
+
+    dist_dir = Path("dist")
+    dist_dir.mkdir(exist_ok=True)
 
     # Build the package (will build all binaries for the package)
     build_cmd = f'cargo build --locked --release --target "{args.target}" --package "{args.package}"'
