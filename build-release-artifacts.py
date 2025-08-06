@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 import shutil
 import subprocess
-import tarfile
+import gzip
 import json
 from pathlib import Path
+
 
 def run_command(cmd, append_to=None):
     """Run a shell command and optionally append output to a file."""
@@ -22,13 +22,16 @@ def run_command(cmd, append_to=None):
         print(result.stderr)
     return result
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Build and package a cargo project.")
-    parser.add_argument("--target", required=True, help="Target triple for cargo build (e.g., x86_64-unknown-linux-gnu)")
+    parser = argparse.ArgumentParser(description="Build and package given package's binary targets.")
+    parser.add_argument(
+        "--target",
+        required=True,
+        help="Target triple for cargo build (e.g., x86_64-unknown-linux-gnu)",
+    )
     parser.add_argument("--package", required=True, help="Package name for cargo build")
     args = parser.parse_args()
-
-    cc_bin = os.getenv(f"CC_{args.target}", "cc")
 
     dist_dir = Path("dist")
     dist_dir.mkdir(exist_ok=True)
@@ -36,7 +39,9 @@ def main():
     # Get cargo metadata
     metadata_cmd = "cargo metadata --no-deps --format-version 1"
     print(f"Running: {metadata_cmd}")
-    metadata_result = subprocess.run(metadata_cmd, shell=True, capture_output=True, text=True)
+    metadata_result = subprocess.run(
+        metadata_cmd, shell=True, capture_output=True, text=True
+    )
     if metadata_result.returncode != 0:
         print("Error: Failed to get cargo metadata")
         print(metadata_result.stderr)
@@ -60,11 +65,13 @@ def main():
             bin_targets.append(target)
 
     if not bin_targets:
-        print(f"No binary targets found for package '{args.package}'. Nothing to build.")
+        print(
+            f"No binary targets found for package '{args.package}'. Nothing to build."
+        )
         exit(0)
 
     # Build the package (will build all binaries for the package)
-    build_cmd = f'cargo build --release --target "{args.target}" --package "{args.package}"'
+    build_cmd = f'cargo build --locked --release --target "{args.target}" --package "{args.package}"'
     print(f"Running: {build_cmd}")
     result = subprocess.run(build_cmd, shell=True)
     if result.returncode != 0:
@@ -83,15 +90,16 @@ def main():
         dest_binary = dist_dir / binary_name
         shutil.move(str(binary_path), str(dest_binary))
 
-        # Create tarball
-        tarball_name = f"{binary_name}-{args.target}.tar.gz"
-        tarball_path = dist_dir / tarball_name
-        print(f"Creating tarball for build artifact at: {tarball_path}")
-        with tarfile.open(tarball_path, "w:gz") as tar:
+        # Create .tgz archive to preserve permissions
+        tgz_name = f"{binary_name}-{args.target}.tgz"
+        tgz_path = dist_dir / tgz_name
+        print(f"Creating .tgz archive for build artifact at: {tgz_path}")
+        import tarfile
+        with tarfile.open(tgz_path, "w:gz") as tar:
             tar.add(dest_binary, arcname=binary_name)
 
         # Remove the binary after archiving
-        print(f"Removing build artifact: {binary_path}")
+        print(f"Removing build artifact: {dest_binary}")
         dest_binary.unlink()
 
     # Collect build info
@@ -100,10 +108,9 @@ def main():
     for tool in [
         "cargo --version --verbose",
         "rustc --version --verbose",
-        "cmake --version --verbose",
-        f"{cc_bin} --version --verbose"
     ]:
         run_command(tool, append_to=build_info_path)
+
 
 if __name__ == "__main__":
     main()
