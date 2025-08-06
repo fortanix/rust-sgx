@@ -65,7 +65,7 @@ jobs:
       - name: Publish crate to crates.io
         run: |
           echo "Publishing crate: $CRATE_NAME"
-          cargo publish --dry-run --locked --package "$CRATE_NAME"
+          cargo publish --locked --package "$CRATE_NAME"
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
