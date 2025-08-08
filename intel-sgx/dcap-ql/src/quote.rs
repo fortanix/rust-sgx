@@ -463,6 +463,7 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         //   verify QE report signature signed by pck
         let sig = get_ecdsa_sig_der(self.qe3_signature())?;
         let mut hash = [0u8; 32];
+        println!("qe3_report len: {:?}", &self.qe3_report().len());
         Md::hash(hash::Type::Sha256, &self.qe3_report(), &mut hash)?;
         println!("qe3_report hash: {:?}", hash);
         let mut pck_pk = Pk::from_public_key(&pck_pk)?;
