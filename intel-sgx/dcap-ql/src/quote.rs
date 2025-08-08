@@ -463,6 +463,7 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         //   verify QE report signature signed by pck
         let sig = get_ecdsa_sig_der(self.qe3_signature())?;
         let mut hash = [0u8; 32];
+        println!("qe3_report binary: {:?}", self.qe3_report());
         println!("qe3_report len: {:?}", &self.qe3_report().len());
         Md::hash(hash::Type::Sha256, &self.qe3_report(), &mut hash)?;
         println!("qe3_report hash: {:?}", hash);
@@ -476,6 +477,20 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         let qe3_report = Report::try_copy_from(&qe3_report).ok_or(format_err!("Could not construct Qe3 report"))?;
         println!("qe3_report: {:?}", qe3_report);
 
+        println!("qe3_report.cpusvn: {:?}", qe3_report.cpusvn);
+        println!("qe3_report.miscselect: {:?}", qe3_report.miscselect);
+        println!("qe3_report._reserved1: {:?}", qe3_report._reserved1);
+        println!("qe3_report.attributes: {:?}", qe3_report.attributes);
+        println!("qe3_report.mrenclave: {:?}", qe3_report.mrenclave);
+        println!("qe3_report._reserved2: {:?}", qe3_report._reserved2);
+        println!("qe3_report.mrsigner: {:?}", qe3_report.mrsigner);
+        println!("qe3_report._reserved3: {:?}", qe3_report._reserved3);
+        println!("qe3_report.isvprodid: {:?}", qe3_report.isvprodid);
+        println!("qe3_report.isvsvn: {:?}", qe3_report.isvsvn);
+        println!("qe3_report._reserved4: {:?}", qe3_report._reserved4);
+        println!("qe3_report.reportdata: {:?}", qe3_report.reportdata);
+        println!("qe3_report.keyid: {:?}", qe3_report.keyid);
+        println!("qe3_report.mac: {:?}", qe3_report.mac);
         let mut hash = [0u8; 32];
         let mut sha256 = Md::new(hash::Type::Sha256)?;
         sha256.update(self.attestation_public_key())?;
