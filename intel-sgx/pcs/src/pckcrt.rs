@@ -609,8 +609,8 @@ impl<V: VerificationType> PckCert<V> {
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
         let tcb = sgx_extension.tcb;
-        println!("valid_for_tcb: {} == {}, (pce_svn: {}, {:?}) < (pce_svn: {}, {:?})", sgx_extension.pceid, pceid, tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), comps.pce_svn(), comps.cpu_svn());
-        if sgx_extension.pceid == pceid && tcb.tcb_components < *comps {
+        println!("valid_for_tcb: {} == {}, (pce_svn: {}, {:?}) <= (pce_svn: {}, {:?})", sgx_extension.pceid, pceid, tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), comps.pce_svn(), comps.cpu_svn());
+        if sgx_extension.pceid == pceid && tcb.tcb_components <= *comps {
             Ok(())
         } else {
             Err(Error::InvalidPck("PckCert isn't valid for provided TCB".into()))
