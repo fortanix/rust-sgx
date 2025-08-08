@@ -491,6 +491,8 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         println!("qe3_report.reportdata: {:?}", qe3_report.reportdata);
         println!("qe3_report.keyid: {:?}", qe3_report.keyid);
         println!("qe3_report.mac: {:?}", qe3_report.mac);
+        println!("self.attestation_public_key: {:?}", self.attestation_public_key());
+        println!("self.authentication_data: {:?}", self.authentication_data());
         let mut hash = [0u8; 32];
         let mut sha256 = Md::new(hash::Type::Sha256)?;
         sha256.update(self.attestation_public_key())?;
