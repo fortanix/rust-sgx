@@ -580,7 +580,7 @@ impl<V: VerificationType> PckCert<V> {
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
         let tcb = sgx_extension.tcb;
-        if sgx_extension.pceid == pceid && tcb.tcb_components < *comps {
+        if sgx_extension.pceid == pceid && tcb.tcb_components <= *comps {
             Ok(())
         } else {
             Err(Error::InvalidPck("PckCert isn't valid for provided TCB".into()))
@@ -813,7 +813,7 @@ mod tests {
 
     use super::*;
     #[cfg(not(target_env = "sgx"))]
-    use crate::{get_cert_subject, get_cert_subject_from_der};
+    use crate::{TcbInfo, get_cert_subject, get_cert_subject_from_der};
 
     fn decode_tcb_item<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<(ObjectIdentifier, u8)> {
         let oid = reader.next().read_oid()?;
@@ -1251,5 +1251,32 @@ mod tests {
         let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
         let comp = TcbComponents::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
+    }
+
+    #[test]
+    #[cfg(feature = "verify")]
+    fn pck_for_tcb() {
+        let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+        let pck_certs = PckCerts::restore(
+            "./tests/data/",
+            &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
+            .unwrap();
+        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+            .unwrap();
+        // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
+        // selected
+        let cpusvn = [8, 8, 2, 2, 4, 1, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0];
+        let pcesvn = 11;
+        let pceid = 0;
+
+        let pck_cert = pck_certs.select_pck(&tcb_info.data().unwrap(), &cpusvn, pcesvn, pceid)
+            .unwrap()
+            .verify(&root_cas, None)
+            .unwrap();
+        let ext = pck_cert.sgx_extension().unwrap();
+        assert_eq!(ext.tcb.tcb_components, TcbComponents::from_raw(cpusvn, pcesvn));
+        assert_eq!(ext.tcb.cpusvn, cpusvn);
+        assert_eq!(ext.pceid, pceid);
     }
 }
