@@ -57,6 +57,7 @@ pub const QE3_VENDOR_ID_INTEL: [u8; 16] = [
 
 pub type QeId<'a> = Cow<'a, [u8]>;
 
+#[derive(Debug)]
 pub struct Quote3SignatureEcdsaP256<'a> {
     signature: Cow<'a, [u8]>,
     attestation_public_key: Cow<'a, [u8]>,
@@ -463,14 +464,16 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         let sig = get_ecdsa_sig_der(self.qe3_signature())?;
         let mut hash = [0u8; 32];
         Md::hash(hash::Type::Sha256, &self.qe3_report(), &mut hash)?;
+        println!("qe3_report hash: {:?}", hash);
         let mut pck_pk = Pk::from_public_key(&pck_pk)?;
-        pck_pk.verify(mbedtls::hash::Type::Sha256, &hash, &sig)?;
+        let res = pck_pk.verify(mbedtls::hash::Type::Sha256, &hash, &sig);
 
         //   verify QE report::reportdata
         let mut qe3_report = Vec::with_capacity(Report::UNPADDED_SIZE);
         qe3_report.extend(self.qe3_report());
         qe3_report.resize_with(Report::UNPADDED_SIZE, Default::default);
         let qe3_report = Report::try_copy_from(&qe3_report).ok_or(format_err!("Could not construct Qe3 report"))?;
+        println!("qe3_report: {:?}", qe3_report);
 
         let mut hash = [0u8; 32];
         let mut sha256 = Md::new(hash::Type::Sha256)?;
@@ -485,6 +488,8 @@ impl<'a> Quote3SignatureEcdsaP256<'a> {
         if qe3_report.reportdata[32..64] != [0; 32] {
             bail!("Verification of QE3 report data failed (second half not 0)");
         }
+
+        res?;
 
         Ok(())
     }
@@ -528,9 +533,13 @@ impl<'a> Quote3SignatureVerify<'a> for Quote3SignatureEcdsaP256<'a> {
     type TrustRoot = &'a mut dyn Quote3SignatureEcdsaP256Verifier;
 
     fn verify(&self, quote: &[u8], verifier: Self::TrustRoot) -> Result<()> {
+        println!("Quote3SignatureVerify::verify verify_certification_data");
         let pck_pk = verifier.verify_certification_data(self)?;
+        println!("Quote3SignatureVerify::verify verify_qe3_report_signature");
         self.verify_qe3_report_signature(&pck_pk)?;
+        println!("Quote3SignatureVerify::verify verify_qe3");
         verifier.verify_qe3(self.qe3_report(), self.authentication_data())?;
+        println!("Quote3SignatureVerify::verify verify_quote_signature");
         self.verify_quote_signature(quote)?;
         Ok(())
     }

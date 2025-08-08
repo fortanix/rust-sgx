@@ -343,11 +343,20 @@ impl PckCerts {
     /// TCB Info is carefully ordered by Intel
     fn order_pcks<V: VerificationType>(&self, tcb_info: &TcbData<V>) -> Vec<PckCert<Unverified>> {
         let mut pck_certs = self.as_pck_certs();
-
+        println!("before sort ...");
+        pck_certs.iter().enumerate().for_each(|(idx, cert)| {
+            let tcb = cert.platform_tcb().unwrap();
+            println!("[{idx}] tcb_components(pce_svn: {}, {:?}), {:?}", tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), tcb.cpusvn)
+        });
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
         // level, maintain existing ordering (stable sort). PCK certs without a TCB
         // level are sorted last.
         pck_certs.sort_by_cached_key(|cert| cert.find_tcb_level_idx(tcb_info).unwrap_or(usize::max_value()));
+        println!("after sort ...");
+        pck_certs.iter().enumerate().for_each(|(idx, cert)| {
+            let tcb = cert.platform_tcb().unwrap();
+            println!("[{idx}] tcb_components(pce_svn: {}, {:?}), {:?}", tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), tcb.cpusvn)
+        });
         pck_certs
     }
 
@@ -360,14 +369,26 @@ impl PckCerts {
         pcesvn: u16,
         pceid: u16,
     ) -> Result<PckCert<Unverified>, Error> {
+        println!("PckCerts::select_pck ...");
         // 1. Order PCK certs according to TCB levels
+        println!("order_pcks ...");
         let pcks = self.order_pcks(&tcb_info);
+        println!("order_pcks done ...");
 
         // 2. Find first PCK cert in ordered list that matches current platform
+        println!("cpusvn: {cpusvn:?} pcesvn: {pcesvn}");
         let tcb_components = tcb_info.decompose_raw_cpusvn(cpusvn, pcesvn)?;
+        println!("decompose_raw_cpusvn done");
+        println!("tcb_components(pce_svn: {}, {:?})", tcb_components.pce_svn(), tcb_components.cpu_svn());
+        println!("Finding pck valid for above tcb_components & pceid: {pceid}");
         let pck = pcks
             .iter()
-            .find(|pck| pck.valid_for_tcb(&tcb_components, pceid).is_ok())
+            .find(|pck| {
+                let tcb = pck.platform_tcb().unwrap();
+                let res = pck.valid_for_tcb(&tcb_components, pceid).is_ok();
+                println!("Checking PCK with tcb_components(pce_svn: {}, {:?}), res: {}", tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), res);
+                res
+            })
             .ok_or(Error::NoPckForTcbFound)?;
         Ok(pck.to_owned())
     }
@@ -569,10 +590,18 @@ impl<V: VerificationType> PckCert<V> {
         //      on TCB Levels list.
         // If no TCB level matches your SGX PCK Certificate, your TCB Level is not supported.
         let pck_tcb_level = self.platform_tcb().ok()?;
-        tcb_info
+        println!("self      | pce_svn: {}, {:?}", pck_tcb_level.tcb_components.pce_svn(), pck_tcb_level.tcb_components.cpu_svn());
+        let ret = tcb_info
             .tcb_levels()
             .iter()
-            .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
+            .position(|tcb| {
+                let tcb_components = tcb.components().clone();
+                let res = tcb_components <= pck_tcb_level.tcb_components;
+                println!("Comparing | pce_svn: {}, {:?} | res {}", tcb_components.pce_svn(), tcb_components.cpu_svn(), res);
+                res
+            });
+        println!("find_tcb_level_idx: {:?}", ret);
+        ret
     }
 
     fn valid_for_tcb(&self, comps: &TcbComponents, pceid: u16) -> Result<(), Error> {
@@ -580,6 +609,7 @@ impl<V: VerificationType> PckCert<V> {
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
         let tcb = sgx_extension.tcb;
+        println!("valid_for_tcb: {} == {}, (pce_svn: {}, {:?}) < (pce_svn: {}, {:?})", sgx_extension.pceid, pceid, tcb.tcb_components.pce_svn(), tcb.tcb_components.cpu_svn(), comps.pce_svn(), comps.cpu_svn());
         if sgx_extension.pceid == pceid && tcb.tcb_components < *comps {
             Ok(())
         } else {
