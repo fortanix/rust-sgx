@@ -3434,11 +3434,11 @@ dependencies = [
 
 [[package]]
 name = "serde-bytes-repr"
-version = "0.1.5"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9eb83481bce328081ced4404f986de002bf2e08865bec386734595ebf3b2c425"
+checksum = "011bbe7d7ea2cad78c139dc465355a3965254def5d20d54ce59c358341fa7bd9"
 dependencies = [
- "base64 0.13.0",
+ "base64 0.22.1",
  "hex 0.4.3",
  "serde",
 ]
