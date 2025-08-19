@@ -47,7 +47,7 @@ unix_socket2 = "0.5.4"     # MIT/Apache-2.0
 [target.'cfg(windows)'.dependencies]
 # External dependencies
 winapi = { version = "0.3.7", features = ["combaseapi", "enclaveapi", "memoryapi", "objbase"] }
-libloading = "0.5.2"
+libloading = "0.7.2"
 
 [build-dependencies]
 protoc-rust = "2.8.0" # MIT/Apache-2.0
