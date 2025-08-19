@@ -596,6 +596,10 @@ pub trait ProvisioningClient {
         let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
         let mut pcks = HashMap::new();
+        {
+            let ptcb = pck_cert.platform_tcb()?;
+            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
+        }
         for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
             let p = match self.pckcert(
                 Some(&pck_id.enc_ppid),
