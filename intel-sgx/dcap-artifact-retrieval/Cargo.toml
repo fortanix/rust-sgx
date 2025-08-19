@@ -1,6 +1,6 @@
 [package]
 name = "dcap-artifact-retrieval"
-version = "0.4.1"
+version = "0.4.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -15,7 +15,7 @@ documentation = "https://edp.fortanix.com/docs/api/dcap_artifact_retrieval/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "dcap"]
 categories = ["os", "hardware-support"]
-
+readme = "Readme.md"
 
 [dependencies]
 backoff = "0.4.0"
