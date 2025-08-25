@@ -596,11 +596,27 @@ pub trait ProvisioningClient {
         let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
         let mut pcks = HashMap::new();
+        // Getting PCK cert using CPUSVN from PCKID
         {
             let ptcb = pck_cert.platform_tcb()?;
             pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
         }
-        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+        // Getting PCK cert using CPUSVN all 1's
+        {
+            let pck_cert = self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                &[u8::MAX; 16],
+                pck_id.pce_isvsvn,
+                Some(&pck_id.qe_id),
+            )?;
+            let ptcb = pck_cert.platform_tcb()?;
+            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
+        }
+        // For every CPUSVN we try where the late microcode value is higher
+        // than the early microcode value, the CPUSVN where the early
+        // microcode value is set to the late microcode value
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components_with_late_tcb_override() {
             let p = match self.pckcert(
                 Some(&pck_id.enc_ppid),
                 &pck_id.pce_id,

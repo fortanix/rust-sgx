@@ -158,6 +158,43 @@ impl TcbComponents {
         }
         out
     }
+
+    /// The CPUSVN where the early microcode value is set to the late microcode
+    /// value when the late microcode value is higher than the early microcode
+    /// value. For example:
+    /// ```json
+    /// [{
+    ///   "svn": 7,
+    ///   "category": "BIOS",
+    ///   "type": "Early Microcode Update"
+    /// },
+    /// {
+    ///   "svn": 9,
+    ///   "category": "OS/VMM",
+    ///   "type": "SGX Late Microcode Update"
+    /// }]
+    /// ```
+    /// Here 7 will be set to 9.
+    pub fn cpu_svn_late_override_early(&self) -> CpuSvn {
+        // NOTE: to support older stable compilers (pre 1.77) we are avoiding
+        // the obvious implementation:
+        //
+        // self.0.sgxtcbcomponents.each_ref().map(|c| c.svn)
+        let mut out: CpuSvn = [0u8; 16];
+        let tcb_components = &self.0.sgxtcbcomponents;
+        out[15] = tcb_components[15].svn;
+        for i in 0..15 {
+            if tcb_components[i].comp_type.as_str() == "Early Microcode Update"
+               && tcb_components[i+1].comp_type.as_str() == "SGX Late Microcode Update"
+               && tcb_components[i+1].svn > tcb_components[i].svn
+            {
+                out[i] = tcb_components[i+1].svn
+            } else {
+                out[i] = tcb_components[i].svn;
+            }
+        }
+        out
+    }
 }
 
 impl PartialOrd for TcbComponents {
