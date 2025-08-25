@@ -55,9 +55,8 @@ fn download_dcap_artifacts(
             println!("==[ entry {} ]==", idx);
             println!(" Info:");
             println!(
-                "   Encr. PPID:  {}..{}",
-                enc_ppid[..12].to_hex(),
-                enc_ppid[enc_ppid.len() - 3..].to_hex()
+                "   Encr. PPID:  {}",
+                enc_ppid.to_hex(),
             );
             println!("   pce_id:      {}", &&pckid.pce_id.to_le_bytes().to_hex());
             println!("   cpu svn:     {}", pckid.cpu_svn.as_slice().to_hex());
