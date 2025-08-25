@@ -135,14 +135,14 @@ fn download_dcap_artifacts(
         .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKProcessorCA).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
-        println!("   pckcrl:      {}", pckcrl);
+        println!("   PCKProcessorCA Crl:      {}", pckcrl);
     }
 
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
         .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKPlatformCA).map_err(|e| e.into()))?;
     if verbose {
-        println!("   pckcrl:      {}", pckcrl);
+        println!("   PCKPlatformCA Crl:      {}", pckcrl);
     }
     Ok(())
 }
