@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
@@ -570,10 +570,17 @@ pub trait ProvisioningClient {
 
     /// Retrieve PCK certificates using `pckcerts()` and fallback to the
     /// following method if that's not supported:
-    /// - Call `pckcert()` to find the FMSPC.
-    /// - Using the FMSPC value, call `tcbinfo()` to get TCB info.
-    /// - For each TCB level in the result of previous call:
-    ///   - Call `pckcert()` to get the best available PCK cert for that TCB level.
+    /// 1. Call `pckcert()` with PCK ID to get best available PCK cert.
+    /// 2. Try to call `pckcert()` with PCK ID but with CPUSVN all 1's.
+    /// 3. Using the FMSPC value from PCK cert in step 1, call `tcbinfo()` to
+    ///    get TCB info.
+    /// 4. For each TCB level in the result of previous call:
+    ///     - Call `pckcert()` to get the best available PCK cert for that TCB
+    ///       level.
+    ///     - When late microcode value is higher than the early microcode
+    ///       value, also try to get PCK cert with TCB level where the early
+    ///       microcode value is set to the late microcode value.
+    /// 
     /// Note that PCK certs for some TCB levels may be missing.
     fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
         match self.pckcerts(&pck_id.enc_ppid, pck_id.pce_id) {
@@ -592,15 +599,35 @@ pub trait ProvisioningClient {
             pck_id.pce_isvsvn,
             Some(&pck_id.qe_id),
         )?;
+        // Use BTreeMap to have an ordered PckCerts at the end
+        let mut pckcerts_map = BTreeMap::new();
+        // Getting PCK cert using CPUSVN from PCKID
+        {
+            let ptcb = pck_cert.platform_tcb()?;
+            pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
+        }
+        // Getting PCK cert using CPUSVN all 1's
+        {
+            if let Ok(pck_cert) = self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                &[u8::MAX; 16],
+                pck_id.pce_isvsvn,
+                Some(&pck_id.qe_id),
+            ){
+                let ptcb = pck_cert.platform_tcb()?;
+                pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
+            }
+        }
         let fmspc = pck_cert.sgx_extension()?.fmspc;
         let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
-        let mut pcks = HashMap::new();
+        // For every CPUSVN we also try where the late microcode value is higher
+        // than the early microcode value, the CPUSVN where the early
+        // microcode value is set to the late microcode value
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components()
+            .chain(tcb_data.iter_tcb_components_with_late_tcb_override_only())
         {
-            let ptcb = pck_cert.platform_tcb()?;
-            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
-        }
-        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
             let p = match self.pckcert(
                 Some(&pck_id.enc_ppid),
                 &pck_id.pce_id,
@@ -614,10 +641,11 @@ pub trait ProvisioningClient {
                 Err(other) => return Err(other)
             };
             let ptcb = p.platform_tcb()?;
-            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), p);
+            pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), p);
         }
-        let pcks: Vec<_> = pcks.into_iter().map(|(_, v)| v).collect();
-        pcks
+        // BTreeMap by default is Ascending
+        let pck_certs: Vec<_> = pckcerts_map.into_iter().rev().map(|(_, v)| v).collect();
+        pck_certs
             .try_into()
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }

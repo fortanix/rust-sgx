@@ -326,6 +326,21 @@ impl<V: VerificationType> TcbData<V> {
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
         self.tcb_levels.iter().map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
     }
+
+    /// For every CPUSVN where the late microcode value is higher
+    /// than the early microcode value, the CPUSVN where the early
+    /// microcode value is set to the late microcode value
+    pub fn iter_tcb_components_with_late_tcb_override_only(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
+        self.tcb_levels.iter().filter_map(|tcb_level| {
+            let overridden_svn = tcb_level.tcb.cpu_svn_with_late_override_early();
+            let cpu_svn = tcb_level.tcb.cpu_svn();
+            if cpu_svn != overridden_svn {
+                Some((overridden_svn, tcb_level.tcb.pce_svn()))
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]

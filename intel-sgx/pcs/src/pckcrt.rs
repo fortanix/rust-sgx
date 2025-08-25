@@ -158,6 +158,50 @@ impl TcbComponents {
         }
         out
     }
+
+    /// Returns the CPUSVN with the "Early Microcode Update" SVN overridden by the
+    /// "SGX Late Microcode Update" SVN if the latter is higher.
+    /// We assume there is only at most one component of either type.
+    /// If there are multiple components of either type, only the first occurrence is used.
+    /// 
+    /// For example:
+    /// ```json
+    /// [
+    ///   ...
+    ///   {
+    ///     "svn": 7,
+    ///     "category": "BIOS",
+    ///     "type": "Early Microcode Update"
+    ///   },
+    ///   ...
+    ///   {
+    ///     "svn": 9,
+    ///     "category": "OS/VMM",
+    ///     "type": "SGX Late Microcode Update"
+    ///   },
+    ///   ...
+    /// ]
+    /// ```
+    /// Here 7 will be set to 9. Note: order is random.
+    pub fn cpu_svn_with_late_override_early(&self) -> CpuSvn {
+        let mut out: CpuSvn = self.cpu_svn();
+        let tcb_components = &self.0.sgxtcbcomponents;
+
+        // Find the first index of each relevant component type.
+        let early_idx = tcb_components
+            .iter()
+            .position(|comp| comp.comp_type == "Early Microcode Update");
+        let late_idx = tcb_components
+            .iter()
+            .position(|comp| comp.comp_type == "SGX Late Microcode Update");
+
+        if let (Some(early), Some(late)) = (early_idx, late_idx) {
+            if out[early] < out[late] {
+                out[early] = out[late];
+            }
+        }
+        out
+    }
 }
 
 impl PartialOrd for TcbComponents {
