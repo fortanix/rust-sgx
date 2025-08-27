@@ -25,6 +25,7 @@ pub struct Command {
     force_time_usercalls: bool,
     cmd_args: Vec<Vec<u8>>,
     num_worker_threads: usize,
+    track_aex_count: bool,
 }
 
 impl MappingInfo for Command {
@@ -61,6 +62,7 @@ impl Command {
             force_time_usercalls,
             cmd_args,
             num_worker_threads,
+            track_aex_count: false,
         }
     }
 
@@ -68,7 +70,12 @@ impl Command {
         EnclaveBuilder::new(enclave_path.as_ref()).build(loader)
     }
 
+    #[cfg(feature = "instrumentation")]
+    pub fn track_aex_count(&mut self) {
+        self.track_aex_count = true;
+    }
+
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.force_time_usercalls, self.cmd_args, self.num_worker_threads)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.force_time_usercalls, self.track_aex_count, self.cmd_args, self.num_worker_threads)
     }
 }
