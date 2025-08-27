@@ -55,9 +55,8 @@ fn download_dcap_artifacts(
             println!("==[ entry {} ]==", idx);
             println!(" Info:");
             println!(
-                "   Encr. PPID:  {}..{}",
-                enc_ppid[..12].to_hex(),
-                enc_ppid[enc_ppid.len() - 3..].to_hex()
+                "   Encr. PPID:  {}",
+                enc_ppid.to_hex(),
             );
             println!("   pce_id:      {}", &&pckid.pce_id.to_le_bytes().to_hex());
             println!("   cpu svn:     {}", pckid.cpu_svn.as_slice().to_hex());
@@ -136,14 +135,14 @@ fn download_dcap_artifacts(
         .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKProcessorCA).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
-        println!("   pckcrl:      {}", pckcrl);
+        println!("   PCKProcessorCA Crl:      {}", pckcrl);
     }
 
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
         .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKPlatformCA).map_err(|e| e.into()))?;
     if verbose {
-        println!("   pckcrl:      {}", pckcrl);
+        println!("   PCKPlatformCA Crl:      {}", pckcrl);
     }
     Ok(())
 }
