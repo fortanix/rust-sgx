@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
@@ -595,8 +595,31 @@ pub trait ProvisioningClient {
         let fmspc = pck_cert.sgx_extension()?.fmspc;
         let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
-        let mut pcks = HashMap::new();
-        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+        // Use BTreeMap to have an ordered PckCerts at the end
+        let mut pcks = BTreeMap::new();
+        // Getting PCK cert using CPUSVN from PCKID
+        {
+            let ptcb = pck_cert.platform_tcb()?;
+            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
+        }
+        // Getting PCK cert using CPUSVN all 1's
+        {
+            let pck_cert = self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                &[u8::MAX; 16],
+                pck_id.pce_isvsvn,
+                Some(&pck_id.qe_id),
+            )?;
+            let ptcb = pck_cert.platform_tcb()?;
+            pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
+        }
+        // For every CPUSVN we also try where the late microcode value is higher
+        // than the early microcode value, the CPUSVN where the early
+        // microcode value is set to the late microcode value
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components()
+            .chain(tcb_data.iter_tcb_components_with_late_tcb_override_only())
+        {
             let p = match self.pckcert(
                 Some(&pck_id.enc_ppid),
                 &pck_id.pce_id,
@@ -612,7 +635,8 @@ pub trait ProvisioningClient {
             let ptcb = p.platform_tcb()?;
             pcks.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), p);
         }
-        let pcks: Vec<_> = pcks.into_iter().map(|(_, v)| v).collect();
+        // BTreeMap by default is Ascending
+        let pcks: Vec<_> = pcks.into_iter().rev().map(|(_, v)| v).collect();
         pcks
             .try_into()
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
