@@ -15,8 +15,6 @@ documentation = "https://edp.fortanix.com/docs/api/enclave_runner/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["os", "hardware-support"]
-build = "build.rs"
-exclude = ["fake-vdso/.gitignore", "fake-vdso/Makefile", "fake-vdso/main.S"]
 
 [dependencies]
 # Project dependencies
