@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-sgx-tools"
-version = "0.6.0"
+version = "0.6.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -16,6 +16,7 @@ homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave", "ftxsgx-runner"]
 categories = ["development-tools::build-utils", "command-line-utilities"]
 edition = "2018"
+readme = "../../README.md"
 
 [dependencies]
 # Project dependencies

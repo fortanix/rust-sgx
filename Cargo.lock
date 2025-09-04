@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-artifact-retrieval"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "backoff",
  "clap 2.34.0",
@@ -1164,7 +1164,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -3646,7 +3646,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "aesm-client",
  "anyhow",
