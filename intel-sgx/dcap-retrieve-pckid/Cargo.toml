@@ -1,6 +1,6 @@
 [package]
 name = "dcap-retrieve-pckid"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -14,11 +14,11 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 # Project dependencies
-"aesm-client" = { version = "0.6.0", path = "../aesm-client", features = ["sgxs"] }
-"dcap-ql" = { version = "0.4.0", path = "../dcap-ql", default-features = false }
-"report-test" = { version = "0.5.0", path = "../report-test" }
-"sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
-"sgxs-loaders" = { version = "0.5.0", path = "../sgxs-loaders" }
+aesm-client = { version = "0.6.0", path = "../aesm-client", features = ["sgxs"] }
+dcap-ql = { version = "0.4.0", path = "../dcap-ql", default-features = false }
+report-test = { version = "0.5.1", path = "../report-test" }
+sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
+sgxs-loaders = { version = "0.5.0", path = "../sgxs-loaders" }
 
 # External dependencies
 anyhow = "1.0"   # MIT/Apache-2.0
