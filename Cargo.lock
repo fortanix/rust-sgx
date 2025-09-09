@@ -746,7 +746,7 @@ dependencies = [
  "serde",
  "serde_cbor",
  "serde_json",
- "yasna 0.3.2",
+ "yasna 0.4.0",
 ]
 
 [[package]]
@@ -782,7 +782,7 @@ dependencies = [
  "sgx-isa 0.4.1",
  "sgxs",
  "sgxs-loaders",
- "yasna 0.3.2",
+ "yasna 0.4.0",
 ]
 
 [[package]]
@@ -928,7 +928,7 @@ dependencies = [
  "uuid 0.6.5",
  "uuid 0.8.2",
  "vme-pkix",
- "yasna 0.3.2",
+ "yasna 0.4.0",
 ]
 
 [[package]]
@@ -2635,7 +2635,7 @@ dependencies = [
  "sgx-isa 0.4.1",
  "sgx_pkix 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir",
- "yasna 0.3.2",
+ "yasna 0.4.0",
 ]
 
 [[package]]
@@ -4807,6 +4807,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e262a29d0e61ccf2b6190d7050d4b237535fc76ce4c1210d9caa316f71dffa75"
 dependencies = [
+ "bit-vec 0.6.2",
  "num-bigint 0.4.3",
 ]
 
