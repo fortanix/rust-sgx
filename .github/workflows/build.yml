@@ -9,6 +9,8 @@ on:
       - master
   # This CI will be triggered on any merge_group events
   merge_group:
+  schedule:
+    - cron: "0 0 * * *"  # Run CI on Daily, so we can track changes from nightly rust & Intel PCS
 
 env:
   RUST_BACKTRACE: 1
