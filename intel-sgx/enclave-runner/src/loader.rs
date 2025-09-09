@@ -4,6 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::arch::x86_64::{self, CpuidResult};
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
 use std::ops::RangeInclusive;
@@ -21,6 +22,7 @@ use openssl::{
 };
 
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use sgxs::sgxs::PageReader;
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
@@ -163,11 +165,66 @@ impl<'a> EnclaveBuilder<'a> {
         ret
     }
 
-    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, anyhow::Error> {
+    fn generate_xfrm(max_ssaframesize_in_pages: u32) -> u64 {
+        fn cpuid(eax: u32, ecx: u32) -> Option<CpuidResult> {
+            unsafe {
+                if eax <= x86_64::__get_cpuid_max(0).0 {
+                    Some(x86_64::__cpuid_count(eax, ecx))
+                } else {
+                    None
+                }
+            }
+        }
+
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
 
+        debug_assert_ne!(0, max_ssaframesize_in_pages);
+        let xcr0 = xgetbv0();
+
+        // See algorithm of Intel x86 dev manual Chpt 40.7.2.2
+        let xfrm = (0..64)
+            .map(|bit| {
+                let select = 0x1 << bit;
+
+                if bit == 0 || bit == 1 {
+                    return select; // Bit 0 and 1 always need to be set
+                }
+
+                if xcr0 & select == 0 {
+                    return 0;
+                }
+
+                let CpuidResult { ebx: base, eax: size, .. } = match cpuid(0x0d, bit) {
+                    None | Some(CpuidResult { ebx: 0, .. }) => return 0,
+                    Some(v) => v,
+                };
+
+                if max_ssaframesize_in_pages * 0x1000 < base + size {
+                    return 0;
+                }
+
+                select
+            })
+            .fold(0, |xfrm, b| xfrm | b);
+
+        // Intel x86 dev manual Vol 3 Chpt 13.3:
+        // "Executing the XSETBV instruction causes a general-protection fault (#GP) if ECX = 0
+        // and EAX[17] ≠ EAX[18] (TILECFG and TILEDATA must be enabled together). This implies
+        // that the value of XCR0[18:17] is always either 00b or 11b."
+        // The enclave entry code executes xrstor, and we may have just cleared bit 18, so we
+        // need to correct the invariant
+        const XCR0_TILE_BITS: u64 = 0b11 << 17;
+        match xfrm & XCR0_TILE_BITS {
+            XCR0_TILE_BITS | 0 => xfrm,
+            _ => xfrm & !XCR0_TILE_BITS,
+        }
+    }
+
+    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, anyhow::Error> {
+        let mut enclave = self.enclave.try_clone().unwrap();
+        let create_info = PageReader::new(&mut enclave)?;
         let mut enclave = self.enclave.try_clone().unwrap();
         let hash = match self.hash_enclave.take() {
             Some(f) => f(&mut enclave)?,
@@ -177,7 +234,7 @@ impl<'a> EnclaveBuilder<'a> {
 
         let attributes = self.attributes.unwrap_or_else(|| Attributes {
             flags: AttributesFlags::DEBUG | AttributesFlags::MODE64BIT,
-            xfrm: xgetbv0(),
+            xfrm: Self::generate_xfrm(create_info.0.ecreate.ssaframesize),
         });
         signer
             .attributes_flags(attributes.flags, !0)
