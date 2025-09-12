@@ -25,7 +25,7 @@ use super::{
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
     TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
 };
-use crate::Error;
+use crate::{Error, UpdateType};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
@@ -348,11 +348,13 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
         &'inp self,
         fmspc: &'inp Fmspc,
         tcb_evaluation_data_number: Option<u16>,
+        update_type: Option<UpdateType>,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version.clone(),
             fmspc,
             tcb_evaluation_data_number,
+            update_type: update_type.unwrap_or(UpdateType::Early),
         }
     }
 }
@@ -435,10 +437,11 @@ impl QeIdApi {
 }
 
 impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>, update_type: Option<UpdateType>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version.clone(),
             tcb_evaluation_data_number,
+            update_type: update_type.unwrap_or(UpdateType::Early),
         }
     }
 }
@@ -458,8 +461,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
             )
         } else {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                INTEL_BASE_URL, api_version,
+                "{}/sgx/certification/v{}/qe/identity?update={}",
+                INTEL_BASE_URL, api_version, input.update_type.as_str(),
             )
         };
         Ok((url, Vec::new()))
@@ -930,7 +933,7 @@ mod tests {
                         let input = client
                             .tcbinfo_service
                             .pcs_service()
-                            .build_input(&fmspc, None);
+                            .build_input(&fmspc, None, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -1072,7 +1075,7 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = client.qeid_service.pcs_service().build_input(None, None);
                     input.hash(&mut hasher);
 
                     cache

@@ -206,10 +206,26 @@ pub trait PckCrlService<'inp>:
     fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub enum UpdateType {
+    Early,
+    Standard,
+}
+
+impl UpdateType {
+    pub const fn as_str(&self) -> &str {
+        match self {
+            Self::Early => "early",
+            Self::Standard => "standard",
+        }
+    }
+}
+
 #[derive(Hash)]
 pub struct QeIdIn {
     pub api_version: PcsVersion,
     pub tcb_evaluation_data_number: Option<u16>,
+    pub update_type: UpdateType,
 }
 
 impl WithApiVersion for QeIdIn {
@@ -221,7 +237,7 @@ impl WithApiVersion for QeIdIn {
 pub trait QeIdService<'inp>:
     ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned>
 {
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>, update_type: Option<UpdateType>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -229,6 +245,7 @@ pub struct TcbInfoIn<'i> {
     pub(crate) api_version: PcsVersion,
     pub(crate) fmspc: &'i Fmspc,
     pub(crate) tcb_evaluation_data_number: Option<u16>,
+    pub(crate) update_type: UpdateType,
 }
 
 impl WithApiVersion for TcbInfoIn<'_> {
@@ -240,7 +257,7 @@ impl WithApiVersion for TcbInfoIn<'_> {
 pub trait TcbInfoService<'inp>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
 {
-    fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
+    fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>, update_type: Option<UpdateType>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
@@ -649,7 +666,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     }
 
     fn tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+        let input = self.tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number, None);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
@@ -659,7 +676,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     }
 
     fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
+        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number, None);
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 
