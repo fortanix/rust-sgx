@@ -127,6 +127,26 @@ enum IntelSgxTcbComponents {
 #[serde(from = "IntelSgxTcbComponents")]
 pub struct TcbComponents(IntelSgxTcbComponentsV4);
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum TcbComponent {
+    EarlyMicrocodeUpdate,
+    LateMicrocodeUpdate,
+}
+
+impl TryFrom<&str> for TcbComponent {
+    type Error = ();
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        if s == "Early Microcode Update" {
+            Ok(TcbComponent::EarlyMicrocodeUpdate)
+        } else if s == "SGX Late Microcode Update" {
+            Ok(TcbComponent::LateMicrocodeUpdate)
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl TcbComponents {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
         TcbComponents(IntelSgxTcbComponentsV4 {
@@ -157,6 +177,13 @@ impl TcbComponents {
             out[i] = c.svn;
         }
         out
+    }
+
+    /// Returns the index of the TCB component
+    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+        self.0.sgxtcbcomponents
+            .iter()
+            .position(|c| TcbComponent::try_from(c.comp_type.as_str()) == Ok(comp))
     }
 }
 
@@ -813,7 +840,7 @@ mod tests {
 
     use super::*;
     #[cfg(not(target_env = "sgx"))]
-    use crate::{TcbInfo, get_cert_subject, get_cert_subject_from_der};
+    use crate::{get_cert_subject, get_cert_subject_from_der};
 
     fn decode_tcb_item<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<(ObjectIdentifier, u8)> {
         let oid = reader.next().read_oid()?;
@@ -1262,7 +1289,7 @@ mod tests {
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
             .unwrap();
-        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+        let tcb_info = crate::TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
             .unwrap();
         // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
         // selected

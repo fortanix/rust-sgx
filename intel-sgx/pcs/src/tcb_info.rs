@@ -18,7 +18,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::pckcrt::TcbComponents;
+use crate::pckcrt::{TcbComponent, TcbComponents};
 use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -301,6 +301,16 @@ impl TcbData<Unverified> {
         }
         Ok(data)
     }
+
+    /// Returns the index of the TCB component
+    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+        if let Some(c) = self.tcb_levels.first() {
+            c.components().tcb_component_index(comp)
+        } else {
+            None
+        }
+    }
+
 }
 
 impl<V: VerificationType> TcbData<V> {
