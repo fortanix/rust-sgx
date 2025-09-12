@@ -18,7 +18,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::pckcrt::TcbComponents;
+use crate::pckcrt::{TcbComponent, TcbComponents};
 use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -301,6 +301,16 @@ impl TcbData<Unverified> {
         }
         Ok(data)
     }
+
+    /// Returns the index of the TCB component
+    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+        if let Some(c) = self.tcb_levels.first() {
+            c.components().tcb_component_index(comp)
+        } else {
+            None
+        }
+    }
+
 }
 
 impl<V: VerificationType> TcbData<V> {
@@ -325,21 +335,6 @@ impl<V: VerificationType> TcbData<V> {
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
         self.tcb_levels.iter().map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
-    }
-
-    /// For every CPUSVN where the late microcode value is higher
-    /// than the early microcode value, the CPUSVN where the early
-    /// microcode value is set to the late microcode value
-    pub fn iter_tcb_components_with_late_tcb_override_only(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
-        self.tcb_levels.iter().filter_map(|tcb_level| {
-            let overridden_svn = tcb_level.tcb.cpu_svn_with_late_override_early();
-            let cpu_svn = tcb_level.tcb.cpu_svn();
-            if cpu_svn != overridden_svn {
-                Some((overridden_svn, tcb_level.tcb.pce_svn()))
-            } else {
-                None
-            }
-        })
     }
 }
 

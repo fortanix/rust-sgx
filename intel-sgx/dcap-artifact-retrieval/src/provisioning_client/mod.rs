@@ -16,7 +16,7 @@ use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
-    QeIdentitySigned, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
+    QeIdentitySigned, TcbComponent, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -583,6 +583,21 @@ pub trait ProvisioningClient {
     /// 
     /// Note that PCK certs for some TCB levels may be missing.
     fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
+            let pck_cert = self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                cpu_svn,
+                pce_svn,
+                Some(&pck_id.qe_id),
+            )?;
+
+            // Getting PCK cert using CPUSVN from PCKID
+            let ptcb = pck_cert.platform_tcb()?;
+            collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
+            Ok(pck_cert)
+        };
+
         match self.pckcerts(&pck_id.enc_ppid, pck_id.pce_id) {
             Ok(pck_certs) => return Ok(pck_certs),
             Err(Error::RequestNotSupported) => {} // fallback below
@@ -590,59 +605,43 @@ pub trait ProvisioningClient {
         }
         // fallback:
 
-        // NOTE: at least with PCCS, any call to `pckcert()` will return the
-        // "best available" PCK cert for the specified TCB level.
-        let pck_cert = self.pckcert(
-            Some(&pck_id.enc_ppid),
-            &pck_id.pce_id,
-            &pck_id.cpu_svn,
-            pck_id.pce_isvsvn,
-            Some(&pck_id.qe_id),
-        )?;
         // Use BTreeMap to have an ordered PckCerts at the end
         let mut pckcerts_map = BTreeMap::new();
-        // Getting PCK cert using CPUSVN from PCKID
-        {
-            let ptcb = pck_cert.platform_tcb()?;
-            pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
-        }
-        // Getting PCK cert using CPUSVN all 1's
-        {
-            if let Ok(pck_cert) = self.pckcert(
-                Some(&pck_id.enc_ppid),
-                &pck_id.pce_id,
-                &[u8::MAX; 16],
-                pck_id.pce_isvsvn,
-                Some(&pck_id.qe_id),
-            ){
-                let ptcb = pck_cert.platform_tcb()?;
-                pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert);
-            }
-        }
+
+        // 1. Use PCK ID to get best available PCK Cert
+        let pck_cert = get_and_collect(&mut pckcerts_map, &pck_id.cpu_svn, pck_id.pce_isvsvn)?;
+
+        // 2. Getting PCK cert using CPUSVN all 1's
+        let _ign_err = get_and_collect(&mut pckcerts_map, &[u8::MAX; 16], pck_id.pce_isvsvn);
+
         let fmspc = pck_cert.sgx_extension()?.fmspc;
         let tcb_info = self.tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
-        // For every CPUSVN we also try where the late microcode value is higher
-        // than the early microcode value, the CPUSVN where the early
-        // microcode value is set to the late microcode value
-        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components()
-            .chain(tcb_data.iter_tcb_components_with_late_tcb_override_only())
-        {
-            let p = match self.pckcert(
-                Some(&pck_id.enc_ppid),
-                &pck_id.pce_id,
-                &cpu_svn,
-                pce_isvsvn,
-                Some(&pck_id.qe_id),
-            ) {
-                Ok(cert) => cert,
-                Err(Error::PCSError(StatusCode::NotFound, _)) |
-                Err(Error::PCSError(StatusCode::NonStandard462, _)) => continue,
-                Err(other) => return Err(other)
-            };
-            let ptcb = p.platform_tcb()?;
-            pckcerts_map.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), p);
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+            // 3. Get PCK based on TCB levels
+            let _ = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn)?;
+
+            // 4. If late loaded microcode version is higher than early loaded microcode,
+            //    also try with highest microcode version of both components. We found cases where
+            //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
+            //    Cert for that level
+            const EARLY_UCODE_IDX: usize = 0;
+            const LATE_UCODE_IDX: usize = 1;
+            // Unfortunately the TCB Info does not populate the component type (e.g., curl -v -X GET
+            // "https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000&tcbEvaluationDataNumber=20"
+            // ). We pick a default as backup, and ensure errors fetching these PckCerts are
+            // ignored.
+            let eary_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate).unwrap_or(EARLY_UCODE_IDX);
+            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate).unwrap_or(LATE_UCODE_IDX);
+            let early_ucode = cpu_svn[eary_ucode_idx];
+            let late_ucode = cpu_svn[late_ucode_idx];
+            if early_ucode < late_ucode {
+                let mut cpu_svn = cpu_svn.clone();
+                cpu_svn[eary_ucode_idx] = late_ucode;
+                let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
+            }
         }
+
         // BTreeMap by default is Ascending
         let pck_certs: Vec<_> = pckcerts_map.into_iter().rev().map(|(_, v)| v).collect();
         pck_certs

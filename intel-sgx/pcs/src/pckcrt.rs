@@ -127,6 +127,26 @@ enum IntelSgxTcbComponents {
 #[serde(from = "IntelSgxTcbComponents")]
 pub struct TcbComponents(IntelSgxTcbComponentsV4);
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum TcbComponent {
+    EarlyMicrocodeUpdate,
+    LateMicrocodeUpdate,
+}
+
+impl TryFrom<&str> for TcbComponent {
+    type Error = ();
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        if s == "Early Microcode Update" {
+            Ok(TcbComponent::EarlyMicrocodeUpdate)
+        } else if s == "SGX Late Microcode Update" {
+            Ok(TcbComponent::LateMicrocodeUpdate)
+        } else {
+            Err(())
+        }
+    }
+}
+
 impl TcbComponents {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
         TcbComponents(IntelSgxTcbComponentsV4 {
@@ -159,48 +179,11 @@ impl TcbComponents {
         out
     }
 
-    /// Returns the CPUSVN with the "Early Microcode Update" SVN overridden by the
-    /// "SGX Late Microcode Update" SVN if the latter is higher.
-    /// We assume there is only at most one component of either type.
-    /// If there are multiple components of either type, only the first occurrence is used.
-    /// 
-    /// For example:
-    /// ```json
-    /// [
-    ///   ...
-    ///   {
-    ///     "svn": 7,
-    ///     "category": "BIOS",
-    ///     "type": "Early Microcode Update"
-    ///   },
-    ///   ...
-    ///   {
-    ///     "svn": 9,
-    ///     "category": "OS/VMM",
-    ///     "type": "SGX Late Microcode Update"
-    ///   },
-    ///   ...
-    /// ]
-    /// ```
-    /// Here 7 will be set to 9. Note: order is random.
-    pub fn cpu_svn_with_late_override_early(&self) -> CpuSvn {
-        let mut out: CpuSvn = self.cpu_svn();
-        let tcb_components = &self.0.sgxtcbcomponents;
-
-        // Find the first index of each relevant component type.
-        let early_idx = tcb_components
+    /// Returns the index of the TCB component
+    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+        self.0.sgxtcbcomponents
             .iter()
-            .position(|comp| comp.comp_type == "Early Microcode Update");
-        let late_idx = tcb_components
-            .iter()
-            .position(|comp| comp.comp_type == "SGX Late Microcode Update");
-
-        if let (Some(early), Some(late)) = (early_idx, late_idx) {
-            if out[early] < out[late] {
-                out[early] = out[late];
-            }
-        }
-        out
+            .position(|c| TcbComponent::try_from(c.comp_type.as_str()) == Ok(comp))
     }
 }
 
@@ -857,7 +840,7 @@ mod tests {
 
     use super::*;
     #[cfg(not(target_env = "sgx"))]
-    use crate::{TcbInfo, get_cert_subject, get_cert_subject_from_der};
+    use crate::{get_cert_subject, get_cert_subject_from_der};
 
     fn decode_tcb_item<'a, 'b>(reader: &mut BERReaderSeq<'a, 'b>) -> ASN1Result<(ObjectIdentifier, u8)> {
         let oid = reader.next().read_oid()?;
