@@ -25,7 +25,7 @@ use super::{
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
 use super::intel::TcbEvaluationDataNumbersApi;
-use crate::Error;
+use crate::{Error, UpdateType};
 
 pub struct PccsProvisioningClientBuilder {
     base_url: Cow<'static, str>,
@@ -273,11 +273,13 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
         &'inp self,
         fmspc: &'inp Fmspc,
         tcb_evaluation_data_number: Option<u16>,
+        update_type: Option<UpdateType>,
     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbInfoIn {
             api_version: self.api_version,
             fmspc,
             tcb_evaluation_data_number,
+            update_type: update_type.unwrap_or(UpdateType::Early),
         }
     }
 }
@@ -360,10 +362,11 @@ impl QeIdApi {
 }
 
 impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>, update_type: Option<UpdateType>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version,
             tcb_evaluation_data_number,
+            update_type: update_type.unwrap_or(UpdateType::Early),
         }
     }
 }
@@ -384,8 +387,8 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
             )
         } else {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                self.base_url, api_version,
+                "{}/sgx/certification/v{}/qe/identity?update={}",
+                self.base_url, api_version, input.update_type.as_str(),
             )
         };
         Ok((url, Vec::new()))
@@ -439,11 +442,12 @@ mod tests {
     };
 
     use super::Client;
+    use super::Error;
     use crate::provisioning_client::{
         test_helpers, DcapArtifactIssuer, PccsProvisioningClientBuilder, PcsVersion,
         ProvisioningClient,
     };
-    use crate::{reqwest_client_insecure_tls, ReqwestClient};
+    use crate::{reqwest_client_insecure_tls, ReqwestClient, UpdateType};
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
@@ -465,6 +469,22 @@ mod tests {
         PccsProvisioningClientBuilder::new(api_version, url)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
             .build(reqwest_client_insecure_tls())
+    }
+
+    fn get_qe_id_standard_tcb_evaluation_num(client: &Client<ReqwestClient>, root_cas: &[&[u8]]) -> Result<u64, Error> {
+        let input = client.qeid_service.pcs_service().build_input(None, Some(UpdateType::Standard));
+        let qe_id = client.qeid_service
+            .call_service(&client.fetcher, &input)?
+            .verify(root_cas, EnclaveIdentity::QE)?;
+        Ok(qe_id.tcb_evaluation_data_number())
+    }
+
+    fn get_tcb_info_standard_tcb_evaluation_num(client: &Client<ReqwestClient>, fmspc: &Fmspc, root_cas: &[&[u8]]) -> Result<u64, Error> {
+        let input = client.tcbinfo_service.pcs_service().build_input(fmspc, None, Some(UpdateType::Standard));
+        let tcb_info = client.tcbinfo_service
+            .call_service(&client.fetcher, &input)?
+            .verify(root_cas, Platform::SGX, 2)?;
+        Ok(tcb_info.tcb_evaluation_data_number())
     }
 
     #[test]
@@ -635,6 +655,8 @@ mod tests {
 
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
         let client = make_client(PcsVersion::V4);
         for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
             .unwrap()
@@ -652,8 +674,15 @@ mod tests {
                 .unwrap()
                 .evaluation_data_numbers()
                 .unwrap();
+            let standard_eval_num = get_tcb_info_standard_tcb_evaluation_num(&client, &fmspc, &root_cas).unwrap();
 
             for number in evaluation_data_numbers.numbers() {
+                // API query with update="standard" will return TCB info with TCB Evaluation Data Number M.
+                // If the inputted TCB Evaluation Data Number is < M, Intel PCS will return a 410 Gone response.
+                // And PCCS currently return 404 Not Found since PCCS not yet has logic for handling 410 Gone responses.
+                if (number.number() as u64) < standard_eval_num {
+                    continue;
+                }
                 assert!(client
                     .tcbinfo(&fmspc, Some(number.number()))
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
@@ -686,7 +715,7 @@ mod tests {
                         let input = client
                             .tcbinfo_service
                             .pcs_service()
-                            .build_input(&fmspc, None);
+                            .build_input(&fmspc, None, None);
                         input.hash(&mut hasher);
 
                         cache
@@ -783,7 +812,7 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = client.qeid_service.pcs_service().build_input(None, None);
                     input.hash(&mut hasher);
 
                     cache
@@ -817,7 +846,16 @@ mod tests {
         let fmspc = Fmspc::try_from("90806f000000").unwrap();
         let eval_numbers: TcbEvaluationDataNumbers =
             eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        
+        let standard_eval_num = get_qe_id_standard_tcb_evaluation_num(&client, &root_cas).unwrap();
+
         for number in eval_numbers.numbers().map(|n| n.number()) {
+            // API query with update="standard" will return QE Identity with TCB Evaluation Data Number M.
+            // If the inputted TCB Evaluation Data Number is < M, Intel PCS will return a 410 Gone response.
+            // And PCCS currently return 404 Not Found since PCCS not yet has logic for handling 410 Gone responses.
+            if (number as u64) < standard_eval_num {
+                continue;
+            }
             let qe_id = client
                 .qe_identity(Some(number))
                 .unwrap()

@@ -32,7 +32,7 @@ enum Origin {
     Pccs,
 }
 
-fn str_deserialize(s: &str) -> value::StrDeserializer<value::Error> {
+fn str_deserialize(s: &str) -> value::StrDeserializer<'_, value::Error> {
     s.into_deserializer()
 }
 
