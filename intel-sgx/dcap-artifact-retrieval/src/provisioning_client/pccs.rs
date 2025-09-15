@@ -641,7 +641,6 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                //.pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
                 .pckcerts_with_fallback(&pckid)
                 .unwrap();
 
@@ -654,10 +653,24 @@ mod tests {
                 .unwrap();
 
             for number in evaluation_data_numbers.numbers() {
-                assert!(client
-                    .tcbinfo(&fmspc, Some(number.number()))
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
-                    .is_ok());
+                // TODO(#811): Since PCCS is cache service and not able to cache the
+                // `Gone` response mentioned below from Intel PCS, We need to change
+                // the test behavior to call TCB INFO API with update=standard to get the
+                // smallest TcbEvaluationDataNumber that's still available.
+                //
+                // Here, we temporarily fix this be hardcoding.
+                if number.number() < 17 {
+                    continue;
+                }
+                let tcb = match client.tcbinfo(&fmspc, Some(number.number())) {
+                    Ok(tcb) => tcb,
+                    // API query with update="standard" will return QE Identity with TCB Evaluation Data Number M.
+                    // A 410 Gone response is returned when the inputted TCB Evaluation Data Number is < M,
+                    // so we ignore these TCB Evaluation Data Numbers.
+                    Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
+                    res @Err(_) => res.unwrap(),
+                };
+                tcb.store(OUTPUT_TEST_DIR).unwrap();
             }
         }
     }
@@ -818,12 +831,27 @@ mod tests {
         let eval_numbers: TcbEvaluationDataNumbers =
             eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
         for number in eval_numbers.numbers().map(|n| n.number()) {
-            let qe_id = client
-                .qe_identity(Some(number))
-                .unwrap()
+            // TODO(#811): Since PCCS is cache service and not able to cache the
+            // `Gone` response mentioned below from Intel PCS, We need to change
+            // the test behavior to call QE ID API with update=standard to get the
+            // smallest TcbEvaluationDataNumber that's still available.
+            //
+            // Here, we temporarily fix this be hardcoding.
+            if number < 17 {
+                continue;
+            }
+            let qe_identity = match client.qe_identity(Some(number)) {
+                Ok(id) => id,
+                // API query with update="standard" will return QE Identity with TCB Evaluation Data Number M.
+                // A 410 Gone response is returned when the inputted TCB Evaluation Data Number is < M,
+                // so we ignore these TCB Evaluation Data Numbers.
+                Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
+                res @Err(_) => res.unwrap(),
+            };
+            let verified_qe_id = qe_identity
                 .verify(&root_cas, EnclaveIdentity::QE)
                 .unwrap();
-            assert_eq!(qe_id.tcb_evaluation_data_number(), u64::from(number));
+            assert_eq!(verified_qe_id.tcb_evaluation_data_number(), u64::from(number));
 
             let tcb_info = client
                     .tcbinfo(&fmspc, Some(number))
