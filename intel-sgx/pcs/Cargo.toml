@@ -23,7 +23,7 @@ chrono = { version = "0.4.40", features = ["now"] }
 dcap-ql = { version = "0.4.0", path = "../dcap-ql", default-features = false }
 sgx-isa = { version = "0.4.1", path = "../sgx-isa", default-features = true }
 pkix = "0.2.0"
-yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+yasna = { version = "0.4", features = ["num-bigint", "bit-vec"] }
 rustc-serialize = "0.3"
 serde = { version = "1.0.7", features = ["derive"] }
 sgx_pkix = "0.2"
