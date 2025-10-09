@@ -1,12 +1,13 @@
 use imp::AesmClient;
 pub use error::{Error, Result};
 use protobuf::Message;
+use std::convert::TryFrom;
 use std::io::{Read, Write};
 use std::mem::size_of;
 use byteorder::{LittleEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
 use request::{GetQuoteRequest, InitQuoteRequest, GetSupportedAttKeyIDNumRequest, GetSupportedAttKeyIDsRequest, InitQuoteExRequest, GetQuoteSizeExRequest, GetQuoteExRequest};
 use {
-    quote_buffer_size, AesmRequest, FromResponse, QuoteInfo, QuoteResult, QuoteType
+    quote_buffer_size, AesmRequest, QuoteInfo, QuoteResult, QuoteType
 };
 // FIXME: remove conditional compilation after resolving https://github.com/fortanix/rust-sgx/issues/31
 #[cfg(not(target_env = "sgx"))]
@@ -54,7 +55,7 @@ impl AesmClient {
         let mut res_bytes = vec![0; res_len as usize];
         sock.read_exact(&mut res_bytes)?;
 
-        let res = T::Response::from_response(Message::parse_from_bytes(&res_bytes))?;
+        let res = T::Response::try_from(Message::parse_from_bytes(&res_bytes))?;
         Ok(res)
     }
 

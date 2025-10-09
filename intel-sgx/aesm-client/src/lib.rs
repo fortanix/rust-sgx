@@ -40,6 +40,7 @@ extern crate unix_socket;
 extern crate winapi;
 extern crate sgx_isa;
 
+use std::convert::TryFrom;
 #[cfg(feature = "sgxs")]
 use std::result::Result as StdResult;
 
@@ -296,15 +297,10 @@ impl EinittokenProvider for AesmClient {
 }
 
 trait AesmRequest: protobuf::Message + Into<Request> {
-    type Response: protobuf::Message + FromResponse;
+    type Response: protobuf::Message + TryFrom<ProtobufResult<Response>, Error = Error>;
 
     #[cfg(not(target_env = "sgx"))]
     fn get_timeout(&self) -> Option<u32>;
-}
-
-// This could be replaced with TryFrom when stable.
-trait FromResponse: Sized {
-    fn from_response(res: ProtobufResult<Response>) -> Result<Self>;
 }
 
 macro_rules! define_aesm_message {
@@ -328,8 +324,10 @@ macro_rules! define_aesm_message {
                 req
             }
         }
-        impl FromResponse for $response {
-            fn from_response(res: ProtobufResult<Response>) -> Result<Self> {
+        impl TryFrom<ProtobufResult<Response>> for $response {
+            type Error = Error;
+
+            fn try_from(res: ProtobufResult<Response>) -> Result<Self> {
                 if let Ok(Response { $resp_field: MessageField(Some(body)), .. }) = res {
                     match body.errorCode() {
                         AESM_SUCCESS => Ok(*body),
