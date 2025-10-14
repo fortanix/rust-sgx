@@ -2001,7 +2001,7 @@ checksum = "7ffc5c5338469d4d3ea17d269fa8ea3512ad247247c30bd2df69e68309ed0a08"
 [[package]]
 name = "mbedtls"
 version = "0.13.3"
-source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=fix-rfc-3631-breakage#970f25dd8817e5ff74824a96ec779d03f5258534"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=master#dabae2f742a8ccbd18028e4e048b9c2c95591a0a"
 dependencies = [
  "bitflags 1.2.1",
  "byteorder 1.3.4",
@@ -2019,7 +2019,7 @@ dependencies = [
 [[package]]
 name = "mbedtls-platform-support"
 version = "0.1.1"
-source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=fix-rfc-3631-breakage#970f25dd8817e5ff74824a96ec779d03f5258534"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=master#dabae2f742a8ccbd18028e4e048b9c2c95591a0a"
 dependencies = [
  "cc",
  "cfg-if 1.0.0",
@@ -2030,7 +2030,7 @@ dependencies = [
 [[package]]
 name = "mbedtls-sys-auto"
 version = "2.28.12"
-source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=fix-rfc-3631-breakage#970f25dd8817e5ff74824a96ec779d03f5258534"
+source = "git+https://github.com/fortanix/rust-mbedtls.git?branch=master#dabae2f742a8ccbd18028e4e048b9c2c95591a0a"
 dependencies = [
  "bindgen",
  "cc",
