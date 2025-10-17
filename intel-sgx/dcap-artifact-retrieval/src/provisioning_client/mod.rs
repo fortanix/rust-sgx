@@ -625,20 +625,23 @@ pub trait ProvisioningClient {
             //    also try with highest microcode version of both components. We found cases where
             //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
             //    Cert for that level
-            const EARLY_UCODE_IDX: usize = 0;
-            const LATE_UCODE_IDX: usize = 1;
+            //
             // Unfortunately the TCB Info does not populate the component type (e.g., curl -v -X GET
             // "https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000&tcbEvaluationDataNumber=20"
-            // ). We pick a default as backup, and ensure errors fetching these PckCerts are
-            // ignored.
-            let eary_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate).unwrap_or(EARLY_UCODE_IDX);
-            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate).unwrap_or(LATE_UCODE_IDX);
-            let early_ucode = cpu_svn[eary_ucode_idx];
-            let late_ucode = cpu_svn[late_ucode_idx];
-            if early_ucode < late_ucode {
-                let mut cpu_svn = cpu_svn.clone();
-                cpu_svn[eary_ucode_idx] = late_ucode;
-                let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
+            // ). So at the moment this doesn't do anything yet.
+            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate);
+            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate);
+            match (early_ucode_idx, late_ucode_idx) {
+                (Some(early_ucode_idx), Some(late_ucode_idx)) => {
+                    let early_ucode = cpu_svn[early_ucode_idx];
+                    let late_ucode = cpu_svn[late_ucode_idx];
+                    if early_ucode < late_ucode {
+                        let mut cpu_svn = cpu_svn.clone();
+                        cpu_svn[early_ucode_idx] = late_ucode;
+                        let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
+                    }
+                }
+                _ => /* Early and/or late component not found, omit this fallback attempt */ (),
             }
         }
 
