@@ -631,17 +631,14 @@ pub trait ProvisioningClient {
             // ). So at the moment this doesn't do anything yet.
             let early_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate);
             let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate);
-            match (early_ucode_idx, late_ucode_idx) {
-                (Some(early_ucode_idx), Some(late_ucode_idx)) => {
-                    let early_ucode = cpu_svn[early_ucode_idx];
-                    let late_ucode = cpu_svn[late_ucode_idx];
-                    if early_ucode < late_ucode {
-                        let mut cpu_svn = cpu_svn.clone();
-                        cpu_svn[early_ucode_idx] = late_ucode;
-                        let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
-                    }
+            if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
+                let early_ucode = cpu_svn[early_ucode_idx];
+                let late_ucode = cpu_svn[late_ucode_idx];
+                if early_ucode < late_ucode {
+                    let mut cpu_svn = cpu_svn.clone();
+                    cpu_svn[early_ucode_idx] = late_ucode;
+                    let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
                 }
-                _ => /* Early and/or late component not found, omit this fallback attempt */ (),
             }
         }
 
