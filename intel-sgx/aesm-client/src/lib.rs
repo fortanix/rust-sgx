@@ -40,16 +40,17 @@ extern crate unix_socket;
 extern crate winapi;
 extern crate sgx_isa;
 
+use std::convert::TryFrom;
 #[cfg(feature = "sgxs")]
 use std::result::Result as StdResult;
 
-use protobuf::ProtobufResult;
 #[cfg(feature = "sgxs")]
 use sgxs::einittoken::{Einittoken, EinittokenProvider};
 #[cfg(all(not(target_env = "sgx"),feature = "sgxs"))]
 use sgx_isa::{Attributes, Sigstruct};
 
-include!(concat!(env!("OUT_DIR"), "/mod_aesm_proto.rs"));
+use protobuf::{MessageField, Result as ProtobufResult};
+include!(concat!(env!("OUT_DIR"), "/protos/mod_aesm_proto.rs"));
 mod error;
 use self::aesm_proto::*;
 pub use error::{AesmError, Error, Result};
@@ -77,6 +78,9 @@ pub mod sgx {
         fn new(tcp_stream: TcpStream) -> Self;
     }
 }
+
+use request::{GetQuoteExRequest, GetQuoteRequest, GetQuoteSizeExRequest, GetLaunchTokenRequest, GetSupportedAttKeyIDNumRequest, GetSupportedAttKeyIDsRequest, InitQuoteExRequest, InitQuoteRequest};
+use response::{GetSupportedAttKeyIDNumResponse, GetSupportedAttKeyIDsResponse, GetLaunchTokenResponse, GetQuoteSizeExResponse, GetQuoteExResponse, GetQuoteResponse, InitQuoteExResponse, InitQuoteResponse};
 
 // From SDK aesm_error.h
 const AESM_SUCCESS: u32 = 0;
@@ -293,26 +297,21 @@ impl EinittokenProvider for AesmClient {
 }
 
 trait AesmRequest: protobuf::Message + Into<Request> {
-    type Response: protobuf::Message + FromResponse;
+    type Response: protobuf::Message + TryFrom<ProtobufResult<Response>, Error = Error>;
 
     #[cfg(not(target_env = "sgx"))]
     fn get_timeout(&self) -> Option<u32>;
 }
 
-// This could be replaced with TryFrom when stable.
-trait FromResponse: Sized {
-    fn from_response(res: ProtobufResult<Response>) -> Result<Self>;
-}
-
 macro_rules! define_aesm_message {
-    ($request:ident, $response:ident, $set:ident, $has:ident, $take:ident) => {
+    ($request:ident, $req_field:ident, $response:ident, $resp_field:ident) => {
         impl AesmRequest for $request {
             type Response = $response;
 
             #[cfg(not(target_env = "sgx"))]
             fn get_timeout(&self) -> Option<u32> {
                 if self.has_timeout() {
-                    Some(Self::get_timeout(self))
+                    Some($request::timeout(self))
                 } else {
                     None
                 }
@@ -321,37 +320,35 @@ macro_rules! define_aesm_message {
         impl From<$request> for Request {
             fn from(r: $request) -> Request {
                 let mut req = Request::new();
-                req.$set(r);
+                req.$req_field = Some(r).into();
                 req
             }
         }
-        impl FromResponse for $response {
-            fn from_response(mut res: ProtobufResult<Response>) -> Result<Self> {
-                match res {
-                    Ok(ref mut res) if res.$has() => {
-                        let body = res.$take();
-                        match body.get_errorCode() {
-                            AESM_SUCCESS => Ok(body),
-                            code => Err(Error::aesm_code(code)),
-                        }
+        impl TryFrom<ProtobufResult<Response>> for $response {
+            type Error = Error;
+
+            fn try_from(res: ProtobufResult<Response>) -> Result<Self> {
+                if let Ok(Response { $resp_field: MessageField(Some(body)), .. }) = res {
+                    match body.errorCode() {
+                        AESM_SUCCESS => Ok(*body),
+                        code => Err(Error::aesm_code(code)),
                     }
-                    _ => Err(Error::aesm_bad_response(stringify!($response))),
+                } else {
+                    Err(Error::aesm_bad_response(stringify!($response)))
                 }
             }
         }
     }
 }
 
-define_aesm_message!(Request_GetQuoteRequest,    Response_GetQuoteResponse,    set_getQuoteReq,    has_getQuoteRes,    take_getQuoteRes);
-define_aesm_message!(Request_InitQuoteRequest,   Response_InitQuoteResponse,   set_initQuoteReq,   has_initQuoteRes,   take_initQuoteRes);
-define_aesm_message!(Request_GetLaunchTokenRequest, Response_GetLaunchTokenResponse, set_getLicTokenReq, has_getLicTokenRes, take_getLicTokenRes);
-
-define_aesm_message!(Request_GetQuoteExRequest,  Response_GetQuoteExResponse,  set_getQuoteExReq,  has_getQuoteExRes,  take_getQuoteExRes);
-define_aesm_message!(Request_InitQuoteExRequest, Response_InitQuoteExResponse, set_initQuoteExReq, has_initQuoteExRes, take_initQuoteExRes);
-define_aesm_message!(Request_GetQuoteSizeExRequest, Response_GetQuoteSizeExResponse,  set_getQuoteSizeExReq, has_getQuoteSizeExRes, take_getQuoteSizeExRes);
-define_aesm_message!(Request_GetSupportedAttKeyIDNumRequest, Response_GetSupportedAttKeyIDNumResponse, set_getSupportedAttKeyIDNumReq, has_getSupportedAttKeyIDNumRes, take_getSupportedAttKeyIDNumRes);
-define_aesm_message!(Request_GetSupportedAttKeyIDsRequest,   Response_GetSupportedAttKeyIDsResponse,   set_getSupportedAttKeyIDsReq,   has_getSupportedAttKeyIDsRes,   take_getSupportedAttKeyIDsRes);
-
+define_aesm_message!(GetQuoteRequest, getQuoteReq, GetQuoteResponse, getQuoteRes);
+define_aesm_message!(InitQuoteRequest, initQuoteReq, InitQuoteResponse, initQuoteRes);
+define_aesm_message!(GetLaunchTokenRequest, getLicTokenReq, GetLaunchTokenResponse, getLicTokenRes);
+define_aesm_message!(GetQuoteExRequest, getQuoteExReq, GetQuoteExResponse, getQuoteExRes);
+define_aesm_message!(InitQuoteExRequest, initQuoteExReq, InitQuoteExResponse, initQuoteExRes);
+define_aesm_message!(GetQuoteSizeExRequest, getQuoteSizeExReq, GetQuoteSizeExResponse, getQuoteSizeExRes);
+define_aesm_message!(GetSupportedAttKeyIDNumRequest, getSupportedAttKeyIDNumReq, GetSupportedAttKeyIDNumResponse, getSupportedAttKeyIDNumRes);
+define_aesm_message!(GetSupportedAttKeyIDsRequest, getSupportedAttKeyIDsReq, GetSupportedAttKeyIDsResponse, getSupportedAttKeyIDsRes);
 
 #[cfg(all(test, feature = "test-sgx"))]
 mod tests {
