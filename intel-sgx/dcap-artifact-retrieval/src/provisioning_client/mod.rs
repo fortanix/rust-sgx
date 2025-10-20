@@ -625,10 +625,6 @@ pub trait ProvisioningClient {
             //    also try with highest microcode version of both components. We found cases where
             //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
             //    Cert for that level
-            //
-            // Unfortunately the TCB Info does not populate the component type (e.g., curl -v -X GET
-            // "https://api.trustedservices.intel.com/sgx/certification/v4/tcb?fmspc=00906ED50000&tcbEvaluationDataNumber=20"
-            // ). So at the moment this doesn't do anything yet.
             let early_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate);
             let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate);
             if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
