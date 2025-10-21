@@ -57,4 +57,3 @@ nix = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme
 rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
-mbedtls = { git = "https://github.com/fortanix/rust-mbedtls.git",  branch = "master" }
