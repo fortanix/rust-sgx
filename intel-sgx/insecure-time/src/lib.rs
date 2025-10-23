@@ -629,11 +629,15 @@ impl<T: NativeTime> Tsc<T> {
         let now = match &self.tsc_mode {
             TscMode::NoRdtsc => T::now(),
             TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval, next_sync, frequency } => {
-                let tsc_now = Ticks::now();
-                let f = if !frequency.is_zero() {
-                    Freq(frequency.as_u64().into())
+                let (tsc_now, f) = if !frequency.is_zero() {
+                    (Ticks::now(), Freq(frequency.as_u64().into()))
                 } else {
+                    // Calling rdtsc _after_ issuing a insecure_time usercall so frequency
+                    // will be _over_ estimated rather than under estimated when system is
+                    // under heavy load. An under estimated frequency is easier to fix
+                    // afterwards when time needs to be monotonic.
                     let system_now = T::now();
+                    let tsc_now = Ticks::now();
                     let diff_system = system_now.abs_diff(&self.t0.1);
                     if diff_system < *frequency_learning_period {
                         // We don't have enough data to estimate frequency correctly
@@ -642,7 +646,7 @@ impl<T: NativeTime> Tsc<T> {
 
                     let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
                     frequency.set(&estimated_freq);
-                    estimated_freq
+                    (tsc_now, estimated_freq)
                 };
 
                 let now = self.now_ex(&f);
