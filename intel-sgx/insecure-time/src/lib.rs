@@ -939,6 +939,63 @@ mod tests {
         clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &(LaggingSystemTime::system_lag() * 3), true);
     }
 
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+    // A source of time that mimics a system under very heavy load; it takes a very long time
+    // before the result of the time request is serviced.
+    // Time in nanoseconds since UNIX_EPOCH
+    struct HighVariationSystemTime(SystemTime);
+
+    impl HighVariationSystemTime {
+        pub fn variation() -> Duration {
+            Duration::from_secs(10)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Add<Duration> for HighVariationSystemTime {
+        type Output = HighVariationSystemTime ;
+
+        fn add(self, other: Duration) -> Self::Output {
+            HighVariationSystemTime(self.0 + other)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl NativeTime for HighVariationSystemTime {
+        fn minimum() -> Self {
+            HighVariationSystemTime(SystemTime::minimum())
+        }
+
+        fn abs_diff(&self, earlier: &Self) -> Duration {
+            self.0.abs_diff(&earlier.0)
+        }
+
+        fn now() -> Self {
+            let now = SystemTime::now();
+            let variation = Duration::from_secs(rand::random::<u64>() % HighVariationSystemTime::variation().as_secs());
+            if rand::random::<bool>() {
+                HighVariationSystemTime(now + variation)
+            } else {
+                HighVariationSystemTime(now - variation)
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    #[cfg(not(target_env = "sgx"))]
+    fn high_variation_system_time_lag() {
+        for monotonic in [false, true] {
+            for _run in 0..30 {
+                let freq = Freq::get().unwrap();
+                let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
+                        .set_monotonic_time()
+                        .set_initial_frequency(freq);
+                clock_drift::<_, SystemTime>(tsc_builder, Duration::from_secs(1), &(2 * HighVariationSystemTime::variation()), monotonic);
+            }
+        }
+    }
+
     #[test]
     #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
     fn build_time_learning_freq_tsc_builder() {
