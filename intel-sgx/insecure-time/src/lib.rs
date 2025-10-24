@@ -670,6 +670,7 @@ mod tests {
     #[cfg(feature = "std")]
     use {
         std::time::SystemTime,
+        std::thread,
     };
 
     #[cfg(not(target_env = "sgx"))]
@@ -799,7 +800,7 @@ mod tests {
     #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
     fn clock_drift_fix_freq_monotonic() {
         if let Ok(freq) = Freq::get() {
-            let tsc_builder = FixedFreqTscBuilder::new(freq)
+            let tsc_builder = FixedFreqTscBuilder::<SystemTime>::new(freq)
                 .set_monotonic_time();
             clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
         }
@@ -865,6 +866,52 @@ mod tests {
             let t = unsafe { std::os::fortanix_sgx::usercalls::raw::insecure_time() };
             SgxTime(t)
         }
+    }
+
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+    // A source of time that mimics a system under very heavy load; it takes a very long time
+    // before the result of the time request is serviced.
+    // Time in nanoseconds since UNIX_EPOCH
+    struct LaggingSystemTime(SystemTime);
+
+    impl LaggingSystemTime {
+        const fn system_lag() -> Duration {
+            Duration::from_secs(3)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Add<Duration> for LaggingSystemTime {
+        type Output = LaggingSystemTime;
+
+        fn add(self, other: Duration) -> Self::Output {
+            LaggingSystemTime(self.0 + other)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl NativeTime for LaggingSystemTime {
+        fn minimum() -> Self {
+            LaggingSystemTime(SystemTime::minimum())
+        }
+
+        fn abs_diff(&self, earlier: &Self) -> Duration {
+            self.0.abs_diff(&earlier.0)
+        }
+
+        fn now() -> Self {
+            let now = SystemTime::now();
+            thread::sleep(Self::system_lag());
+            LaggingSystemTime(now)
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    fn very_lagging_system_time() {
+        let tsc_builder: LearningFreqTscBuilder<LaggingSystemTime> = LearningFreqTscBuilder::new()
+            .set_monotonic_time();
+        clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &(LaggingSystemTime::system_lag() * 3), true);
     }
 
     #[test]
