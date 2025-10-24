@@ -915,6 +915,22 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    fn build_time_learning_freq_tsc_builder() {
+        let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
+            .set_monotonic_time();
+        let t0 = SystemTime::now();
+        let tsc = tsc_builder.build();
+        let build_time = SystemTime::now().duration_since(t0).unwrap();
+        assert!(build_time < Duration::from_millis(10), "Building tsc took {} ms", build_time.as_millis());
+
+        let t0 = SystemTime::now();
+        let _t = tsc.now();
+        let now_time =  SystemTime::now().duration_since(t0).unwrap();
+        assert!(now_time < Duration::from_millis(10), "tsc.now() took {} ms", now_time.as_millis());
+    }
+
+    #[test]
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
     fn sgx_time() {
         let tsc_builder: LearningFreqTscBuilder<SgxTime> = LearningFreqTscBuilder::new()
