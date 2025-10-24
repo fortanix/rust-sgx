@@ -578,6 +578,10 @@ impl<T: NativeTime> FixedFreqTscBuilder<T> {
     }
 }
 
+enum ResyncResult<T> {
+    WithinFrequencyLearningPeriod(T)
+}
+
 impl<T: NativeTime> Tsc<T> {
     fn new(tsc_mode: TscMode, time_mode: TimeMode<T>) -> Self {
         let now = T::now();
@@ -589,14 +593,14 @@ impl<T: NativeTime> Tsc<T> {
         }
     }
 
-    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<Option<(T, Duration, Freq)>, Error> {
+    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<(T, Duration, Freq), ResyncResult<T>> {
         // Fetch actual time
         let system_now = T::now();
 
         // Calculate new freq
         let diff_system = system_now.abs_diff(&self.t0.1);
         if diff_system < *frequency_learning_period {
-            return Ok(None);
+            return Err(ResyncResult::WithinFrequencyLearningPeriod(system_now));
         }
         let tsc_now = Ticks::now();
         let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
@@ -614,7 +618,7 @@ impl<T: NativeTime> Tsc<T> {
             diff_system * max_acceptable_drift.div_duration_f64(error) as u32
         };
 
-        Ok(Some((system_now, max_sync_interval, estimated_freq)))
+        Ok((system_now, max_sync_interval, estimated_freq))
     }
 
     fn now_ex(&self, freq: &Freq) -> T {
@@ -647,18 +651,20 @@ impl<T: NativeTime> Tsc<T> {
                     now
                 } else {
                     // Re-estimate freq when a time threshold is reached
-                    if let Ok(Some((now, next_sync_interval, estimated_freq))) = self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
-                        // When `next_tsc` overflows, the system has been running for over 10
-                        // years, or an attacker manipulated the TSC value. As we can't trust TSC
-                        // anyway, we do the simple thing and continue trying to sync
-                        let duration = Ticks::from_duration(next_sync_interval, &estimated_freq);
-                        if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
-                            next_sync.set(next_tsc);
-                        }
-                        frequency.set(&estimated_freq);
-                        return now;
+                    match self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
+                        Ok((now, next_sync_interval, estimated_freq)) => {
+                            // When `next_tsc` overflows, the system has been running for over 10
+                            // years, or an attacker manipulated the TSC value. As we can't trust TSC
+                            // anyway, we do the simple thing and continue trying to sync
+                            let duration = Ticks::from_duration(next_sync_interval, &estimated_freq);
+                            if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
+                                next_sync.set(next_tsc);
+                            }
+                            frequency.set(&estimated_freq);
+                            now
+                        },
+                        Err(ResyncResult::WithinFrequencyLearningPeriod(now)) => now,
                     }
-                    now
                 }
             }
             TscMode::Fixed { frequency } => {
