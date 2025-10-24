@@ -27,7 +27,7 @@ use core::ops::Add;
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-pub trait NativeTime: PartialOrd + Copy + Add<core::time::Duration, Output = Self> + ToOwned {
+pub trait NativeTime: Debug + PartialOrd + Copy + Add<core::time::Duration, Output = Self> + ToOwned {
     fn minimum() -> Self;
     fn abs_diff(&self, other: &Self) -> Duration;
     fn now() -> Self;
@@ -665,8 +665,12 @@ mod tests {
 
     use core::ops::Add;
     use core::time::Duration;
+    #[cfg(all(feature = "std", feature = "rdtsc_tests", not(target_env = "sgx")))]
+    use std::borrow::ToOwned;
     #[cfg(feature = "std")]
-    use std::time::SystemTime;
+    use {
+        std::time::SystemTime,
+    };
 
     #[cfg(not(target_env = "sgx"))]
     fn diff_system_time(t0: SystemTime, t1: SystemTime) -> Duration {
@@ -739,40 +743,27 @@ mod tests {
         }
     }
 
-    fn clock_drift<T: NativeTime>(builder: impl TscBuilder<T>, test_duration: Duration, max_acceptable_drift: &Duration, monotonic_time: bool) {
-        /// There's a test that spits out random time values. Those values can't be used to end the
-        /// test
-        #[cfg(feature = "std")]
-        fn test_now<T: NativeTime>() -> SystemTime {
-            SystemTime::now()
-        }
-
-        #[cfg(not(feature = "std"))]
-        fn test_now<T: NativeTime>() -> T {
-            T::now()
-        }
+    fn clock_drift<T: NativeTime, R: NativeTime>(builder: impl TscBuilder<T>, test_duration: Duration, max_acceptable_drift: &Duration, monotonic_time: bool) {
         let tsc = builder.build();
-        let end = test_now::<T>() + test_duration;
+        let reference_start = R::now();
+        let tsc_start = tsc.now();
+        let end = R::now() + test_duration;
         let mut last = None;
 
-        while test_now::<T>() < end {
-            let system_now = T::now();
+        while R::now() < end {
+            let reference_now = R::now();
             let tsc_now = tsc.now();
-            let drift = system_now.abs_diff(&tsc_now);
-            assert!(drift < *max_acceptable_drift, "Found {:?} drift, (max drift was {:?})", drift, max_acceptable_drift);
+            let reference_duration = reference_now.abs_diff(&reference_start);
+            let tsc_duration = tsc_now.abs_diff(&tsc_start);
+            let drift = reference_duration.abs_diff(tsc_duration);
+            assert!(drift < *max_acceptable_drift, "Found {:?} drift, (max drift was {:?} after {}ms)", drift, max_acceptable_drift, reference_duration.as_millis());
             if monotonic_time {
-                assert!(last.unwrap_or(tsc_now) <= tsc_now);
+                assert!(last.unwrap_or(tsc_now) <= tsc_now, "Time ran backwards (last: {:?}, now: {:?})", last, tsc_now);
                 last = Some(tsc_now);
             }
 
-            if system_now.abs_diff(&T::minimum()).as_secs() % 7 == 1 {
-                // Every now and then, don't sleep
-                #[cfg(feature = "std")]
-                std::thread::sleep(Duration::from_micros(10));
-
-                #[cfg(not(feature = "std"))]
-                for _i in 0..100000 {}
-            }
+            #[cfg(feature = "std")]
+            std::thread::sleep(Duration::from_micros(10));
         }
     }
 
@@ -782,7 +773,7 @@ mod tests {
     fn clock_drift_default_learning_freq_builder() {
         let tsc_builder: LearningFreqTscBuilder<SystemTime> = LearningFreqTscBuilder::new();
         let max_drift = tsc_builder.max_acceptable_drift().to_owned();
-        clock_drift(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
     }
 
     #[test]
@@ -792,7 +783,7 @@ mod tests {
         let tsc_builder: LearningFreqTscBuilder<SystemTime> = LearningFreqTscBuilder::new()
             .set_monotonic_time();
         let max_drift = tsc_builder.max_acceptable_drift().to_owned();
-        clock_drift(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
     }
 
     #[test]
@@ -800,7 +791,7 @@ mod tests {
     fn clock_drift_no_rdtsc_monotonic() {
         let tsc_builder: NoRdtscTscBuilder<SystemTime> = NoRdtscTscBuilder::new()
             .set_monotonic_time();
-        clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
     }
 
     #[test]
@@ -810,12 +801,12 @@ mod tests {
         if let Ok(freq) = Freq::get() {
             let tsc_builder = FixedFreqTscBuilder::new(freq)
                 .set_monotonic_time();
-            clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+            clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
         }
     }
 
     #[cfg(feature = "std")]
-    #[derive(Copy, Clone, PartialOrd, PartialEq)]
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
     // Time in nanoseconds since UNIX_EPOCH
     struct RandTime(u64);
 
@@ -846,7 +837,7 @@ mod tests {
     }
 
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
-    #[derive(Copy, Clone, PartialOrd, PartialEq)]
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
     // Time in nanoseconds since UNIX_EPOCH
     struct SgxTime(u64);
 
@@ -876,12 +867,13 @@ mod tests {
         }
     }
 
-
     #[test]
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
     fn sgx_time() {
         let tsc_builder: LearningFreqTscBuilder<SgxTime> = LearningFreqTscBuilder::new()
             .set_monotonic_time();
-        clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+        // WARNING: Its up to the caller to ensure that the enclave runner used for this test does
+        // not enable rdtsc-based time within the enclave
+        clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
     }
 }
