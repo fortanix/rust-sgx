@@ -831,37 +831,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "std")]
-    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
-    // Time in nanoseconds since UNIX_EPOCH
-    struct RandTime(u64);
-
-    #[cfg(feature = "std")]
-    impl Add<Duration> for RandTime {
-        type Output = RandTime;
-
-        fn add(self, other: Duration) -> Self::Output {
-            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC + other.subsec_nanos() as u64;
-            RandTime(t)
-        }
-    }
-
-    #[cfg(feature = "std")]
-    impl NativeTime for RandTime {
-        fn minimum() -> RandTime {
-            RandTime(0)
-        }
-
-        fn abs_diff(&self, other: &Self) -> Duration {
-            Duration::from_nanos(self.0.abs_diff(other.0))
-        }
-
-        fn now() -> Self {
-            let t = rand::random::<u64>() % 1000;
-            RandTime(t)
-        }
-    }
-
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
     #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
     // Time in nanoseconds since UNIX_EPOCH
