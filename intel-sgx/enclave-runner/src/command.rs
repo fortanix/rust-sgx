@@ -6,7 +6,7 @@
 
 use std::path::Path;
 
-use failure::Error;
+use anyhow::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
@@ -22,7 +22,9 @@ pub struct Command {
     size: usize,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     cmd_args: Vec<Vec<u8>>,
+    num_worker_threads: usize,
 }
 
 impl MappingInfo for Command {
@@ -44,7 +46,9 @@ impl Command {
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
         cmd_args: Vec<Vec<u8>>,
+        num_worker_threads: usize,
     ) -> Command {
         let main = tcss.remove(0);
         Command {
@@ -54,7 +58,9 @@ impl Command {
             size,
             usercall_ext,
             forward_panics,
+            force_time_usercalls,
             cmd_args,
+            num_worker_threads,
         }
     }
 
@@ -63,6 +69,6 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.cmd_args)
+        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.force_time_usercalls, self.cmd_args, self.num_worker_threads)
     }
 }

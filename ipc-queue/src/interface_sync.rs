@@ -6,7 +6,7 @@
 
 use fortanix_sgx_abi::FifoDescriptor;
 
-use super::*;
+use super::{Fifo, Identified, QueueEvent, Receiver, RecvError, Sender, SendError, SynchronizationError, Synchronizer, Transmittable, TryRecvError, TrySendError};
 
 unsafe impl<T: Send, S: Send> Send for Sender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for Sender<T, S> {}
@@ -112,7 +112,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     }
 
     pub fn try_recv(&self) -> Result<Identified<T>, TryRecvError> {
-        self.inner.try_recv_impl().map(|(val, wake_sender)| {
+        self.inner.try_recv_impl().map(|(val, wake_sender, _)| {
             if wake_sender {
                 self.synchronizer.notify(QueueEvent::NotFull);
             }
@@ -127,7 +127,7 @@ impl<T: Transmittable, S: Synchronizer> Receiver<T, S> {
     pub fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
-                Ok((val, wake_sender)) => {
+                Ok((val, wake_sender, _)) => {
                     if wake_sender {
                         self.synchronizer.notify(QueueEvent::NotFull);
                     }

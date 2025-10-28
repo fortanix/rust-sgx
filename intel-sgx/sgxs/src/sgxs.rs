@@ -5,23 +5,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use abi::*;
+use thiserror::Error as ThisError;
 
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 use std::result::Result as StdResult;
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
-    #[fail(display = "The stream is not canonical.")]
+    #[error("The stream is not canonical.")]
     StreamNotCanonical,
-    #[fail(display = "An invalid measurement tag {:016x} was encountered.", _0)]
+    #[error("An invalid measurement tag {:016x} was encountered.", _0)]
     InvalidMeasTag(u64),
-    #[fail(display = "The given offset is not a multiple of the page size.")]
+    #[error("The given offset is not a multiple of the page size.")]
     InvalidPageOffset,
-    #[fail(display = "An unsized stream was encountered but a sized stream was expected.")]
+    #[error("An unsized stream was encountered but a sized stream was expected.")]
     StreamUnsized,
 }
 
-pub type Result<T> = StdResult<T, ::failure::Error>;
+pub type Result<T> = StdResult<T, anyhow::Error>;
 
 // Doesn't work because large array: #[derive(Clone,Debug,Default)]
 pub enum Meas {
@@ -418,8 +419,8 @@ impl<W: Write> SgxsWrite for W {
         let mut buf = [0u8; 64];
         unsafe {
             let (tag, headerdst) = buf.split_at_mut(8);
-            let tag = &mut *(&mut tag[0] as *mut _ as *mut u64);
-            let headerdst = &mut headerdst[0] as *mut _;
+            let tag = &mut *(&mut tag[0..8] as *mut _ as *mut u64);
+            let headerdst = &mut headerdst[0..56] as *mut _;
 
             match meas {
                 &ECreate(ref header) => {

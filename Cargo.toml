@@ -1,19 +1,20 @@
 [workspace]
 members = [
+    "em-app",
+    "em-app/examples/get-certificate",
+    "examples/mem-alloc-test",
+    "examples/mem-correctness-test",
     "fortanix-vme/aws-nitro-enclaves/eif-tools",
-    "fortanix-vme/aws-nitro-enclaves/nsm",
     "fortanix-vme/aws-nitro-enclaves/nitro-attestation-verify",
+    "fortanix-vme/aws-nitro-enclaves/nsm",
     "fortanix-vme/aws-nitro-enclaves/tests/nsm-test",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-eif",
     "fortanix-vme/fortanix-vme-runner",
-    "fortanix-vme/fortanix-vme-tools",
-    "fortanix-vme/tests/hello_world",
-    "fortanix-vme/tests/outgoing_connection",
-    "fortanix-vme/tests/incoming_connection",
-    "fortanix-vme/tests/iron",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
+    "intel-sgx/async-usercalls",
+    "intel-sgx/dcap-artifact-retrieval",
     "intel-sgx/dcap-provider",
     "intel-sgx/dcap-ql-sys",
     "intel-sgx/dcap-ql",
@@ -22,27 +23,36 @@ members = [
     "intel-sgx/fortanix-sgx-abi",
     "intel-sgx/fortanix-sgx-tools",
     "intel-sgx/ias",
+    "intel-sgx/insecure-time",
+    "intel-sgx/pcs",
     "intel-sgx/report-test",
-    "intel-sgx/sgxs",
-    "intel-sgx/sgx-isa",
     "intel-sgx/sgx_pkix",
+    "intel-sgx/sgx-isa",
     "intel-sgx/sgxs-loaders",
     "intel-sgx/sgxs-tools",
+    "intel-sgx/sgxs",
     "ipc-queue",
     "rs-libc",
-    "em-app",
-    "em-app/examples/get-certificate/",
-    "em-app/examples/harmonize/",
 ]
-exclude = ["examples"]
+exclude = [
+    "examples/backtrace_panic",
+    "examples/mpsc-crypto-mining",
+    "examples/tls",
+    "examples/unit_tests",
+    "examples/usercall-extension-bind/app",
+    "examples/usercall-extension-bind/runner",
+    "examples/usercall-extension/app",
+    "examples/usercall-extension/runner",
+    "intel-sgx/sgxs-loaders/tests/driver-crawler",
+]
+resolver = "2"
 
 [patch.crates-io]
+aws-nitro-enclaves-cose_0_1 = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "v0.1.0-patched", package = "aws-nitro-enclaves-cose" }
 aws-nitro-enclaves-image-format = { git = "https://github.com/fortanix/aws-nitro-enclaves-image-format", branch = "fortanixvme-2023-05-07-alpha" }
 getrandom = { git = "https://github.com/fortanix/getrandom", branch = "fortanixvme-2023-05-07-alpha" }
-libc   = { git = "https://github.com/fortanix/libc", branch = "fortanixvme-2023-05-07-alpha" }
-mbedtls = { git = "https://github.com/fortanix/rust-mbedtls", branch = "master" }
-nix   = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
+libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
+nix = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
+rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
-vsock = { git = "https://github.com/fortanix/vsock-rs", branch = "fortanixvme-2023-05-07-alpha" }
-rustc-serialize = { git = "https://github.com/jethrogb/rustc-serialize.git", branch = "portability" }
-nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli.git" }
+vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme-2023-05-07-alpha" }

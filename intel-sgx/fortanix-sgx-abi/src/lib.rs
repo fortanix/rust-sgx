@@ -75,6 +75,7 @@
 //! synchronously or asynchronously.
 #![allow(unused)]
 #![no_std]
+#![cfg_attr(feature = "rustc-dep-of-std", allow(internal_features))]
 #![cfg_attr(feature = "rustc-dep-of-std", feature(staged_api))]
 #![cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
 #![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
@@ -566,13 +567,29 @@ impl Usercalls {
     pub fn send(event_set: u64, tcs: Option<Tcs>) -> Result { unimplemented!() }
 }
 
+#[repr(C)]
+#[cfg_attr(feature = "rustc-dep-of-std", unstable(feature = "sgx_platform", issue = "56975"))]
+#[derive(Copy, Clone, Debug, Default)]
+pub struct InsecureTimeInfo {
+    /// The version of this struct (currently always 0
+    pub version: u64,
+    /// The frequency the timestamp counter ticks at
+    pub frequency: u64,
+}
+
 /// # Miscellaneous
 impl Usercalls {
-    /// This returns the number of nanoseconds since midnight UTC on January 1,
-    /// 1970\. The enclave must not rely on the accuracy of this time for
-    /// security purposes, such as checking credential expiry or preventing
-    /// rollback.
-    pub fn insecure_time() -> u64 { unimplemented!() }
+    /// This returns a tuple where the first element is the number of nanoseconds
+    /// since midnight UTC on January 1, 1970.
+    /// The second element returns a pointer to `InsecureTimeInfo` in usespace that can be
+    /// used to keep track of time inside of the enclave. Runners that do not support this
+    /// field, run on hardware that do not support it, or where users want to explicitly
+    /// turn off time keeping inside the enclave, pass a null pointer. When not null, the
+    /// memory location referenced must remain valid for the lifetime of the enclave. The
+    /// enclave-runner remains in charge to free up this memory chunk.
+    /// The enclave must not rely on the accuracy of this time for security purposes,
+    /// such as checking credential expiry or preventing rollback.
+    pub fn insecure_time() -> (u64, *const InsecureTimeInfo) { unimplemented!() }
 }
 
 /// # Memory
@@ -872,7 +889,7 @@ invoke_with_abi_spec!(types);
 // function declarations inside all `impl Usercalls` blocks.
 macro_rules! define_invoke_with_usercalls {
     // collect all usercall function declarations in a list
-    (@ [$($accumulated:tt)*] $(#[$meta1:meta])* impl Usercalls { $($(#[$meta2:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:ty)* { unimplemented!() } )* } $($remainder:tt)* ) =>
+    (@ [$($accumulated:tt)*] $(#[$meta1:meta])* impl Usercalls { $($(#[$meta2:meta])* pub fn $f:ident($($n:ident: $t:ty),*) $(-> $r:tt)* { unimplemented!() } )* } $($remainder:tt)* ) =>
         { define_invoke_with_usercalls!(@ [$($accumulated)* $(fn $f($($n: $t),*) $(-> $r)*;)*] $($remainder)*); };
     // visit modules
     (@ $accumulated:tt $(#[$meta:meta])* pub mod $modname:ident { $($contents:tt)* } $($remainder:tt)*) =>

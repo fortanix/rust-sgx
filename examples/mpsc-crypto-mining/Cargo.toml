@@ -2,6 +2,7 @@
 name = "mpsc-crypto-mining"
 version = "0.1.0"
 authors = ["belfz <marcinbar1@gmail.com>"]
+publish = false
 
 [dependencies]
 easy-hash = "0.1.0"

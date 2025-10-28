@@ -1,0 +1,31 @@
+[package]
+name = "insecure-time"
+version = "0.1.0"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+edition = "2021"
+description = """
+Insecure time computation based on rdtsc.
+"""
+repository = "https://github.com/fortanix/rust-sgx"
+documentation = "https://edp.fortanix.com/docs/api/insecure_time/"
+keywords = ["sgx", "enclave", "time"]
+categories = ["os", "hardware-support"]
+
+[dependencies]
+alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
+clap = { version = "4.5", features = ["derive"], optional = true }
+
+[dev-dependencies]
+rand = "0.8"
+
+[features]
+default = ["std", "clap"]
+estimate_crystal_clock_freq = []
+rustc-dep-of-std = ["alloc", "core"]
+std = []
+
+# Features only available during testing:
+long_duration_tests = []
+rdtsc_tests = []

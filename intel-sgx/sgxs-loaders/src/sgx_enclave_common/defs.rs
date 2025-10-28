@@ -36,6 +36,7 @@ pub enum EnclaveType {
 }
 
 bitflags! {
+    #[repr(transparent)]
     pub struct PageProperties: u32 {
         const R           = 0x00_01;
         const W           = 0x00_02;

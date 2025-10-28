@@ -4,7 +4,8 @@ extern crate libc;
 
 extern crate sgxs_loaders;
 
-use failure::Error;
+use anyhow::Error;
+use anyhow::anyhow;
 use num_traits::FromPrimitive;
 
 pub use self::dcap_ql_sys::Quote3Error;
@@ -76,10 +77,12 @@ pub fn is_loaded() -> bool {
 /// Since DCAP is being used, assume that no EINITTOKEN provider is necessary.
 pub fn enclave_loader() -> Result<EnclaveCommonLibrary, Error> {
     #[cfg(not(feature = "link"))]
-    dl::load().map_err(failure::err_msg)?;
+    dl::load().map_err(|e| anyhow!(e))?;
     // NB. libsgx_dcap_ql.so.1 transitively links to libsgx_enclave_common.so.1
     // so we should be able to find it already loaded.
     // We can't use the library from `mod dl` if `not(feature = "link")`,
     // because that is not the right library.
-    Ok(EnclaveCommonLibrary::load(Some(Dl::this().into()))?.build())
+    let lib = EnclaveCommonLibrary::load(Some(Dl::this().into()))
+        .or(EnclaveCommonLibrary::load(None))?;
+    Ok(lib.build())
 }

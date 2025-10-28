@@ -7,12 +7,12 @@ use unix_socket::UnixStream;
 #[cfg(feature = "sgxs")]
 use sgxs::sigstruct::{Attributes, Sigstruct};
 
-pub use error::{AesmError, Error, Result};
+pub use error::Result;
 
 mod aesm_protobuf;
 
 #[cfg(feature = "sgxs")]
-use Request_GetLaunchTokenRequest;
+use GetLaunchTokenRequest;
 
 #[derive(Clone, Debug, Default)]
 pub struct AesmClient {
@@ -63,7 +63,7 @@ impl AesmClient {
         sigstruct: &Sigstruct,
         attributes: Attributes,
     ) -> Result<Vec<u8>> {
-        let mut req = Request_GetLaunchTokenRequest::new();
+        let mut req = GetLaunchTokenRequest::new();
         req.set_mr_enclave(sigstruct.enclavehash.to_vec());
         // The field in the request protobuf is called mr_signer, but it wants the modulus.
         req.set_mr_signer(sigstruct.modulus.to_vec());

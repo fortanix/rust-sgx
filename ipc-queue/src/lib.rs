@@ -10,6 +10,8 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 use fortanix_sgx_abi::FifoDescriptor;
 
@@ -21,13 +23,13 @@ use std::os::fortanix_sgx::usercalls::alloc::{UserRef, UserSafeSized};
 #[cfg(not(target_env = "sgx"))]
 use {
     std::ptr,
-    std::sync::Arc,
     self::fifo::FifoBuffer,
 };
 
 mod fifo;
 mod interface_sync;
 mod interface_async;
+pub mod position;
 #[cfg(test)]
 mod test_support;
 
@@ -144,18 +146,22 @@ pub trait AsyncSynchronizer: Clone {
     fn notify(&self, event: QueueEvent);
 }
 
+#[allow(dead_code)]
 pub struct AsyncSender<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
 }
 
+#[allow(dead_code)]
 pub struct AsyncReceiver<T: 'static, S> {
     inner: Fifo<T>,
     synchronizer: S,
+    read_epoch: Arc<AtomicU64>,
 }
 
 /// `DescriptorGuard<T>` can produce a `FifoDescriptor<T>` that is guaranteed
 /// to remain valid as long as the DescriptorGuard is not dropped.
+#[allow(dead_code)]
 pub struct DescriptorGuard<T> {
     descriptor: FifoDescriptor<T>,
     #[cfg(not(target_env = "sgx"))]

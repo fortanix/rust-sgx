@@ -6,40 +6,43 @@
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, ErrorKind as IoErrorKind, Read, Result as IoResult};
 use std::pin::Pin;
+use std::ptr;
 use std::result::Result as StdResult;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{self, Duration};
 use std::{cmp, fmt, str};
 
-use failure::{self, bail};
+use anyhow::bail;
 use fnv::FnvHashMap;
 use futures::future::{poll_fn, Either, Future, FutureExt};
 use futures::lock::Mutex;
-use futures::StreamExt;
 use lazy_static::lazy_static;
 #[cfg(unix)]
 use libc::*;
 #[cfg(unix)]
 use nix::sys::signal;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::stream::Stream as TokioStream;
-use tokio::sync::broadcast;
-use tokio::sync::mpsc as async_mpsc;
-use tokio::sync::Semaphore;
-
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::runtime::Builder as RuntimeBuilder;
+use tokio::sync::{broadcast, mpsc as async_mpsc, oneshot, Semaphore};
+use tokio::sync::broadcast::error::RecvError;
 use fortanix_sgx_abi::*;
-use ipc_queue::{self, DescriptorGuard, Identified, QueueEvent};
+use insecure_time::{Freq, Rdtscp};
+use ipc_queue::{DescriptorGuard, Identified, QueueEvent};
+use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
 
 use crate::loader::{EnclavePanic, ErasedTcs};
 use crate::tcs::{self, CoResult, ThreadResult};
 use self::abi::dispatch;
+use self::abi::ReturnValue;
+use self::abi::UsercallList;
+use self::interface::ToSgxResult;
 use self::interface::{Handler, OutputBuffer};
 
 pub(crate) mod abi;
@@ -49,20 +52,39 @@ lazy_static! {
     static ref DEBUGGER_TOGGLE_SYNC: Mutex<()> = Mutex::new(());
 }
 
-const EV_ABORT: u64 = 0b0000_0000_0000_1000;
+const NANOS_PER_SEC: u64 = 1_000_000_000;
+
+static mut TIME_INFO: LazyLock<Option<InsecureTimeInfo>> = LazyLock::new(|| {
+    if Rdtscp::is_supported() {
+        if let Ok(frequency) = Freq::get() {
+            return Some(InsecureTimeInfo {
+                version: 0,
+                frequency: frequency.as_u64(),
+            })
+        }
+    }
+    None
+});
+
+// This is not an event in the sense that it could be passed to `send()` or
+// `wait()` usercalls in enclave code. However, it's easier for the enclave
+// runner implementation to lump it in with events. Also note that this constant
+// is not public.
+const EV_ABORT: u64 = 0b0000_0000_0001_0000;
 
 const USERCALL_QUEUE_SIZE: usize = 16;
 const RETURN_QUEUE_SIZE: usize = 1024;
+const CANCEL_QUEUE_SIZE: usize = USERCALL_QUEUE_SIZE * 2;
 
 enum UsercallSendData {
     Sync(ThreadResult<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Identified<Usercall>),
+    Async(Identified<Usercall>, Option<oneshot::Receiver<()>>),
 }
 
 // This is the same as UsercallSendData except that it can't be Sync(CoResult::Return(...), ...)
 enum UsercallHandleData {
     Sync(tcs::Usercall<ErasedTcs>, RunningTcs, RefCell<[u8; 1024]>),
-    Async(Identified<Usercall>),
+    Async(Identified<Usercall>, Option<oneshot::Receiver<()>>, Option<async_mpsc::UnboundedSender<UsercallEvent>>),
 }
 
 type EnclaveResult = StdResult<(u64, u64), EnclaveAbort<Option<EnclavePanic>>>;
@@ -79,11 +101,11 @@ macro_rules! forward {
 }
 
 impl<R: std::marker::Unpin + AsyncRead> AsyncRead for ReadOnly<R> {
-    forward!(fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>>);
+    forward!(fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<tokio::io::Result<()>>);
 }
 
 impl<T> AsyncRead for WriteOnly<T> {
-    fn poll_read(self: Pin<&mut Self>, _cx: &mut Context, _buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
+    fn poll_read(self: Pin<&mut Self>, _cx: &mut Context, _buf: &mut ReadBuf) -> Poll<tokio::io::Result<()>> {
         Poll::Ready(Err(IoErrorKind::BrokenPipe.into()))
     }
 }
@@ -111,21 +133,8 @@ impl<W: std::marker::Unpin + AsyncWrite> AsyncWrite for WriteOnly<W> {
 struct Stdin;
 
 impl AsyncRead for Stdin {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<tokio::io::Result<()>> {
         const BUF_SIZE: usize = 8192;
-
-        trait AsIoResult<T> {
-            fn as_io_result(self) -> io::Result<T>;
-        }
-
-        impl<T> AsIoResult<T> for Poll<T> {
-            fn as_io_result(self) -> io::Result<T> {
-                match self {
-                    Poll::Ready(v) => Ok(v),
-                    Poll::Pending => Err(io::ErrorKind::WouldBlock.into()),
-                }
-            }
-        }
 
         struct AsyncStdin {
             rx: async_mpsc::Receiver<VecDeque<u8>>,
@@ -134,7 +143,7 @@ impl AsyncRead for Stdin {
 
         lazy_static::lazy_static! {
             static ref STDIN: Mutex<AsyncStdin> = {
-                let (mut tx, rx) = async_mpsc::channel(8);
+                let (tx, rx) = async_mpsc::channel(8);
                 thread::spawn(move || {
                     let mut buf = [0u8; BUF_SIZE];
                     while let Ok(len) = io::stdin().read(&mut buf) {
@@ -155,7 +164,7 @@ impl AsyncRead for Stdin {
             Poll::Ready(mut stdin) => {
                 if stdin.buf.is_empty() {
                     let pipeerr = tokio::io::Error::new(tokio::io::ErrorKind::BrokenPipe, "broken pipe");
-                    stdin.buf = match Pin::new(&mut stdin.rx).poll_next(cx) {
+                    stdin.buf = match Pin::new(&mut stdin.rx).poll_recv(cx) {
                         Poll::Ready(Some(vec)) => vec,
                         Poll::Ready(None) => return Poll::Ready(Err(pipeerr)),
                         _ => return Poll::Pending,
@@ -165,10 +174,10 @@ impl AsyncRead for Stdin {
                     (&[], inbuf) => inbuf,
                     (inbuf, _) => inbuf,
                 };
-                let len = cmp::min(buf.len(), inbuf.len());
-                buf[..len].copy_from_slice(&inbuf[..len]);
+                let len = cmp::min(buf.remaining(), inbuf.len());
+                buf.put_slice(&inbuf[..len]);
                 stdin.buf.drain(..len);
-                Poll::Ready(Ok(len))
+                Poll::Ready(Ok(()))
             }
             Poll::Pending => Poll::Pending
         }
@@ -179,9 +188,8 @@ pub trait AsyncStream: AsyncRead + AsyncWrite + 'static + Send + Sync {
     fn poll_read_alloc(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<Vec<u8>>>
     {
         let mut v: Vec<u8> = vec![0; 8192];
-        self.poll_read(cx, v.as_mut_slice()).map(move |res| {
-            res.map(|size| { v.truncate(size); v })
-        })
+        let mut buffer = ReadBuf::new(&mut v);
+        self.poll_read(cx, &mut buffer).map(|b| b.map(|_| buffer.filled().to_vec()))
     }
 }
 
@@ -233,15 +241,15 @@ impl AsyncStreamAdapter {
         }
     }
 
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<tokio::io::Result<usize>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<tokio::io::Result<()>> {
         match self.stream.as_mut().poll_read(cx, buf) {
             Poll::Pending => {
                 self.read_queue.push_back(cx.waker().clone());
                 Poll::Pending
             }
-            Poll::Ready(Ok(ret)) => {
+            Poll::Ready(Ok(())) => {
                 notify_other_tasks(cx, &mut self.read_queue);
-                Poll::Ready(Ok(ret))
+                Poll::Ready(Ok(()))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
         }
@@ -292,7 +300,7 @@ impl AsyncStreamContainer {
         }
     }
 
-    async fn async_read(&self, buf: &mut [u8]) -> IoResult<usize> {
+    async fn async_read(&self, buf: &mut ReadBuf<'_>) -> IoResult<()> {
         poll_fn(|cx| {
             let inner_ref = &mut self.inner.lock();
             let mut inner = Pin::new(inner_ref);
@@ -401,15 +409,13 @@ impl AsyncListenerContainer {
 
 impl AsyncListener for tokio::net::TcpListener {
     fn poll_accept(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context,
         local_addr: Option<&mut String>,
         peer_addr: Option<&mut String>,
     ) -> Poll<tokio::io::Result<Option<Box<dyn AsyncStream>>>> {
-        let mut incoming = self.incoming();
-        let inner = Pin::new(&mut incoming);
-        match inner.poll_next(cx) {
-            Poll::Ready(Some(Ok(stream))) => {
+        match tokio::net::TcpListener::poll_accept(&self, cx) {
+            Poll::Ready(Ok((stream, _peer))) => {
                 if let Some(local_addr) = local_addr {
                     *local_addr = stream.local_addr().map(|addr| addr.to_string()).unwrap_or_else(|_err| "error".to_owned());
                 }
@@ -418,8 +424,7 @@ impl AsyncListener for tokio::net::TcpListener {
                 }
                 Poll::Ready(Ok(Some(Box::new(stream))))
             }
-            Poll::Ready(Some(Err(e))) => Poll::Ready(Err(e)),
-            Poll::Ready(None) => Poll::Ready(Ok(None)),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
             Poll::Pending => Poll::Pending,
         }
     }
@@ -502,7 +507,7 @@ struct StoppedTcs {
 struct IOHandlerInput<'tcs> {
     tcs: Option<&'tcs mut RunningTcs>,
     enclave: Arc<EnclaveState>,
-    work_sender: &'tcs crossbeam::crossbeam_channel::Sender<Work>,
+    work_sender: &'tcs crossbeam::channel::Sender<Work>,
 }
 
 struct PendingEvents {
@@ -515,7 +520,7 @@ struct PendingEvents {
 
 impl PendingEvents {
     // Will error if it doesn't fit in a `u64`
-    const EV_MAX_U64: u64 = (EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK) + 1;
+    const EV_MAX_U64: u64 = (EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK | EV_CANCELQ_NOT_FULL) + 1;
     const EV_MAX: usize = Self::EV_MAX_U64 as _;
     // Will error if it doesn't fit in a `usize`
     const _ERROR_IF_USIZE_TOO_SMALL: u64 = u64::MAX + (Self::EV_MAX_U64 - (Self::EV_MAX as u64));
@@ -526,6 +531,8 @@ impl PendingEvents {
     fn new() -> Self {
         PendingEvents {
             counts: [
+                Semaphore::new(0), Semaphore::new(0), Semaphore::new(0), Semaphore::new(0),
+                Semaphore::new(0), Semaphore::new(0), Semaphore::new(0), Semaphore::new(0),
                 Semaphore::new(0), Semaphore::new(0), Semaphore::new(0), Semaphore::new(0),
                 Semaphore::new(0), Semaphore::new(0), Semaphore::new(0), Semaphore::new(0),
             ],
@@ -571,7 +578,9 @@ impl PendingEvents {
             return EV_ABORT;
         }
         if ev != EV_ABORT {
-            permit.forget();
+            if let Ok(permit) = permit {
+                permit.forget();
+            }
         }
         ev
     }
@@ -639,6 +648,7 @@ impl EnclaveKind {
 struct FifoGuards {
     usercall_queue: DescriptorGuard<Usercall>,
     return_queue: DescriptorGuard<Return>,
+    cancel_queue: DescriptorGuard<Cancel>,
     async_queues_called: bool,
 }
 
@@ -651,6 +661,7 @@ pub(crate) struct EnclaveState {
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     // Once set to Some, the guards should not be dropped for the lifetime of the enclave.
     fifo_guards: Mutex<Option<FifoGuards>>,
     return_queue_tx: Mutex<Option<ipc_queue::AsyncSender<Return, QueueSynchronizer>>>,
@@ -684,6 +695,27 @@ impl Work {
     }
 }
 
+enum UsercallEvent {
+    Started(u64, oneshot::Sender<()>),
+    Finished(u64),
+    Cancelled(u64, WritePosition),
+}
+
+trait IgnoreCancel {
+    fn ignore_cancel(&self) -> bool;
+}
+
+impl IgnoreCancel for Identified<Usercall> {
+    fn ignore_cancel(&self) -> bool {
+        self.data.0 != UsercallList::read as u64 &&
+            self.data.0 != UsercallList::read_alloc as u64 &&
+            self.data.0 != UsercallList::write as u64 &&
+            self.data.0 != UsercallList::accept_stream as u64 &&
+            self.data.0 != UsercallList::connect_stream as u64 &&
+            self.data.0 != UsercallList::wait as u64
+    }
+}
+
 impl EnclaveState {
     fn event_queue_add_tcs(
         event_queues: &mut FnvHashMap<TcsAddress, PendingEvents>,
@@ -703,6 +735,7 @@ impl EnclaveState {
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         threads_vector: Vec<ErasedTcs>,
         forward_panics: bool,
+        force_time_usercalls: bool,
     ) -> Arc<Self> {
         let mut fds = FnvHashMap::default();
 
@@ -743,6 +776,7 @@ impl EnclaveState {
             usercall_ext,
             threads_queue,
             forward_panics,
+            force_time_usercalls,
             fifo_guards: Mutex::new(None),
             return_queue_tx: Mutex::new(None),
         })
@@ -750,19 +784,37 @@ impl EnclaveState {
 
     async fn handle_usercall(
         enclave: Arc<EnclaveState>,
-        work_sender: crossbeam::crossbeam_channel::Sender<Work>,
+        work_sender: crossbeam::channel::Sender<Work>,
         tx_return_channel: tokio::sync::mpsc::UnboundedSender<(EnclaveResult, ReturnSource)>,
         mut handle_data: UsercallHandleData,
     ) {
+        let notifier_rx = match handle_data {
+            UsercallHandleData::Async(_, ref mut notifier_rx, _) => notifier_rx.take(),
+            _ => None,
+        };
         let (parameters, mode, tcs) = match handle_data {
             UsercallHandleData::Sync(ref usercall, ref mut tcs, _) => (usercall.parameters(), tcs.mode.into(), Some(tcs)),
-            UsercallHandleData::Async(ref usercall)                => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
+            UsercallHandleData::Async(ref usercall, _, _) => (usercall.data.into(), ReturnSource::AsyncUsercall, None),
         };
         let mut input = IOHandlerInput { enclave: enclave.clone(), tcs, work_sender: &work_sender };
         let handler = Handler(&mut input);
-        let (_handler, result) = {
+        let result = {
             let (p1, p2, p3, p4, p5) = parameters;
-            dispatch(handler, p1, p2, p3, p4, p5).await
+            match notifier_rx {
+                None => dispatch(handler, p1, p2, p3, p4, p5).await.1,
+                Some(notifier_rx) => {
+                    let a = dispatch(handler, p1, p2, p3, p4, p5).boxed_local();
+                    let b = notifier_rx;
+                    match futures::future::select(a, b).await {
+                        Either::Left((ret, _)) => ret.1,
+                        Either::Right((Ok(()), _)) => {
+                            let result: IoResult<usize> = Err(IoErrorKind::Interrupted.into());
+                            ReturnValue::into_registers(Ok(result.to_sgx_result()))
+                        },
+                        Either::Right((Err(_), _)) => panic!("notifier channel closed unexpectedly"),
+                    }
+                },
+            }
         };
         let ret = match result {
             Ok(ret) => {
@@ -773,7 +825,11 @@ impl EnclaveState {
                             entry: CoEntry::Resume(usercall, ret),
                         }).expect("Work sender couldn't send data to receiver");
                     }
-                    UsercallHandleData::Async(usercall) => {
+                    UsercallHandleData::Async(usercall, _, usercall_event_tx) => {
+                        if let Some(usercall_event_tx) = usercall_event_tx {
+                            usercall_event_tx.send(UsercallEvent::Finished(usercall.id)).ok()
+                                .expect("failed to send usercall event");
+                        }
                         let return_queue_tx = enclave.return_queue_tx.lock().await.clone().expect("return_queue_tx not initialized");
                         let ret = Identified {
                             id: usercall.id,
@@ -794,14 +850,11 @@ impl EnclaveState {
                         }
                         EnclavePanic::from(debug_buf)
                     }
-                    UsercallHandleData::Async(_) => {
+                    UsercallHandleData::Async(_, _, _) => {
                         // TODO: https://github.com/fortanix/rust-sgx/issues/235#issuecomment-641811437
                         EnclavePanic::DebugStr("async exit with a panic".to_owned())
                     }
                 };
-                if enclave.forward_panics {
-                    panic!("{}", &panic);
-                }
                 Err(EnclaveAbort::Exit{ panic: Some(panic) })
             }
             Err(EnclaveAbort::Exit { panic: false }) => Err(EnclaveAbort::Exit{ panic: None }),
@@ -815,23 +868,26 @@ impl EnclaveState {
 
     fn syscall_loop(
         enclave: Arc<EnclaveState>,
-        io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
+        mut io_queue_receive: tokio::sync::mpsc::UnboundedReceiver<UsercallSendData>,
         io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
-        work_sender: crossbeam::crossbeam_channel::Sender<Work>,
+        work_sender: crossbeam::channel::Sender<Work>,
     ) -> EnclaveResult {
         let (tx_return_channel, mut rx_return_channel) = tokio::sync::mpsc::unbounded_channel();
         let enclave_clone = enclave.clone();
-        let mut rt = tokio::runtime::Builder::new()
-            .basic_scheduler()
+        let mut rt = RuntimeBuilder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to create tokio Runtime");
         let local_set = tokio::task::LocalSet::new();
 
         let return_future = async move {
-            while let (Some(work), stream) = rx_return_channel.into_future().await {
-                rx_return_channel = stream;
-                let (my_result, mode) = work;
+            while let Some((my_result, mode)) = rx_return_channel.recv().await {
+                if enclave_clone.forward_panics {
+                    if let Err(EnclaveAbort::Exit { panic: Some(panic) }) = &my_result {
+                        panic!("{}", panic);
+                    }
+                }
+
                 let res = match (my_result, mode) {
                     (Err(EnclaveAbort::Secondary), _) |
                     (Ok(_), ReturnSource::ExecutableNonMain) => continue,
@@ -872,34 +928,82 @@ impl EnclaveState {
         };
         let enclave_clone = enclave.clone();
         let io_future = async move {
-            let (usercall_queue_synchronizer, return_queue_synchronizer, sync_usercall_tx) = QueueSynchronizer::new(enclave_clone.clone());
+            let (uqs, rqs, cqs, sync_usercall_tx) = QueueSynchronizer::new(enclave_clone.clone());
 
-            let (usercall_queue_tx, usercall_queue_rx) = ipc_queue::bounded_async(USERCALL_QUEUE_SIZE, usercall_queue_synchronizer);
-            let (return_queue_tx, return_queue_rx) = ipc_queue::bounded_async(RETURN_QUEUE_SIZE, return_queue_synchronizer);
+            let (usercall_queue_tx, usercall_queue_rx) = ipc_queue::bounded_async(USERCALL_QUEUE_SIZE, uqs);
+            let (return_queue_tx, return_queue_rx) = ipc_queue::bounded_async(RETURN_QUEUE_SIZE, rqs);
+            let (cancel_queue_tx, cancel_queue_rx) = ipc_queue::bounded_async(CANCEL_QUEUE_SIZE, cqs);
 
             let fifo_guards = FifoGuards {
                 usercall_queue: usercall_queue_tx.into_descriptor_guard(),
                 return_queue: return_queue_rx.into_descriptor_guard(),
+                cancel_queue: cancel_queue_tx.into_descriptor_guard(),
                 async_queues_called: false,
             };
 
             *enclave_clone.fifo_guards.lock().await = Some(fifo_guards);
             *enclave_clone.return_queue_tx.lock().await = Some(return_queue_tx);
 
+            let usercall_queue_monitor = usercall_queue_rx.position_monitor();
+
+            let (usercall_event_tx, mut usercall_event_rx) = async_mpsc::unbounded_channel();
+            let usercall_event_tx_clone = usercall_event_tx.clone();
             tokio::task::spawn_local(async move {
                 while let Ok(usercall) = usercall_queue_rx.recv().await {
-                    let _ = io_queue_send.send(UsercallSendData::Async(usercall));
+                    let notifier_rx = if usercall.ignore_cancel() {
+                        None
+                    } else {
+                        let (notifier_tx, notifier_rx) = oneshot::channel();
+                        usercall_event_tx_clone.send(UsercallEvent::Started(usercall.id, notifier_tx)).ok().expect("failed to send usercall event");
+                        Some(notifier_rx)
+                    };
+                    let _ = io_queue_send.send(UsercallSendData::Async(usercall, notifier_rx));
                 }
             });
 
-            let mut recv_queue = io_queue_receive.into_future();
-            while let (Some(work), stream) = recv_queue.await {
-                recv_queue = stream.into_future();
+            let usercall_event_tx_clone = usercall_event_tx.clone();
+            let usercall_queue_monitor_clone = usercall_queue_monitor.clone();
+            tokio::task::spawn_local(async move {
+                while let Ok(c) = cancel_queue_rx.recv().await {
+                    let write_position = usercall_queue_monitor_clone.write_position();
+                    let _ = usercall_event_tx_clone.send(UsercallEvent::Cancelled(c.id, write_position));
+                }
+            });
+
+            tokio::task::spawn_local(async move {
+                let mut notifiers = HashMap::new();
+                let mut cancels: HashMap<u64, WritePosition> = HashMap::new();
+                loop {
+                    match usercall_event_rx.recv().await.expect("usercall_event channel closed unexpectedly") {
+                        UsercallEvent::Started(id, notifier) => match cancels.remove(&id) {
+                            Some(_) => { let _ = notifier.send(()); },
+                            _ => { notifiers.insert(id, notifier); },
+                        },
+                        UsercallEvent::Finished(id) => { notifiers.remove(&id); },
+                        UsercallEvent::Cancelled(id, wp) => match notifiers.remove(&id) {
+                            Some(notifier) => { let _ = notifier.send(()); },
+                            None => { cancels.insert(id, wp); },
+                        },
+                    }
+                    // cleanup old cancels
+                    let read_position = usercall_queue_monitor.read_position();
+                    cancels.retain(|_id, wp|
+                        if let Some(past) = read_position.is_past(wp) {
+                            !past
+                        } else {
+                            false
+                        }
+                    );
+                }
+            });
+
+            while let Some(work) = io_queue_receive.recv().await {
                 let enclave_clone = enclave_clone.clone();
                 let tx_return_channel = tx_return_channel.clone();
                 match work {
-                    UsercallSendData::Async(usercall) => {
-                        let uchd = UsercallHandleData::Async(usercall);
+                    UsercallSendData::Async(usercall, notifier_rx) => {
+                        let usercall_event_tx = if usercall.ignore_cancel() { None } else { Some(usercall_event_tx.clone()) };
+                        let uchd = UsercallHandleData::Async(usercall, notifier_rx, usercall_event_tx);
                         let fut = Self::handle_usercall(enclave_clone, work_sender.clone(), tx_return_channel, uchd);
                         tokio::task::spawn_local(fut);
                     }
@@ -962,7 +1066,7 @@ impl EnclaveState {
     ) -> EnclaveResult {
         fn create_worker_threads(
             num_of_worker_threads: usize,
-            work_receiver: crossbeam::crossbeam_channel::Receiver<Work>,
+            work_receiver: crossbeam::channel::Receiver<Work>,
             io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
         ) -> Vec<JoinHandle<()>> {
             let mut thread_handles = vec![];
@@ -981,7 +1085,7 @@ impl EnclaveState {
 
         let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::unbounded_channel();
 
-        let (work_sender, work_receiver) = crossbeam::crossbeam_channel::unbounded();
+        let (work_sender, work_receiver) = crossbeam::channel::unbounded();
         work_sender
             .send(start_work)
             .expect("Work sender couldn't send data to receiver");
@@ -995,7 +1099,8 @@ impl EnclaveState {
         for handler in join_handlers {
             let _ = handler.join();
         }
-        return main_result;
+
+        main_result
     }
 
     pub(crate) fn main_entry(
@@ -1003,8 +1108,11 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
         cmd_args: Vec<Vec<u8>>,
-    ) -> StdResult<(), failure::Error> {
+        num_of_worker_threads: usize,
+    ) -> StdResult<(), anyhow::Error> {
+        assert!(num_of_worker_threads > 0, "worker_threads cannot be zero");
         let mut event_queues =
             FnvHashMap::with_capacity_and_hasher(threads.len() + 1, Default::default());
         let main = Self::event_queue_add_tcs(&mut event_queues, main);
@@ -1027,15 +1135,13 @@ impl EnclaveState {
             entry: CoEntry::Initial(main.tcs, argv as _, argc as _, 0, 0, 0),
         };
 
-        let num_of_worker_threads = num_cpus::get();
-
         let kind = EnclaveKind::Command(Command {
             panic_reason: Mutex::new(PanicReason {
                 primary_panic_reason: None,
                 other_reasons: vec![],
             }),
         });
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
 
         let main_result = EnclaveState::run(enclave.clone(), num_of_worker_threads, main_work);
 
@@ -1046,8 +1152,7 @@ impl EnclaveState {
             Err(EnclaveAbort::IndefiniteWait) | Err(EnclaveAbort::Secondary) | Ok(_) => false,
         };
 
-        let mut rt = tokio::runtime::Builder::new()
-            .basic_scheduler()
+        let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("failed to create tokio Runtime");
@@ -1055,7 +1160,7 @@ impl EnclaveState {
         rt.block_on(async move {
             enclave.abort_all_threads();
             //clear the threads_queue
-            while enclave.threads_queue.pop().is_ok() {}
+            while enclave.threads_queue.pop().is_some() {}
 
             let cmd = enclave.kind.as_command().unwrap();
             let mut cmddata = cmd.panic_reason.lock().await;
@@ -1087,12 +1192,13 @@ impl EnclaveState {
         threads: Vec<ErasedTcs>,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
     ) -> Arc<Self> {
         let event_queues = FnvHashMap::with_capacity_and_hasher(threads.len(), Default::default());
 
         let kind = EnclaveKind::Library(Library {});
 
-        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics);
+        let enclave = EnclaveState::new(kind, event_queues, usercall_ext, threads, forward_panics, force_time_usercalls);
         return enclave;
     }
 
@@ -1103,7 +1209,7 @@ impl EnclaveState {
         p3: u64,
         p4: u64,
         p5: u64,
-    ) -> StdResult<(u64, u64), failure::Error> {
+    ) -> StdResult<(u64, u64), anyhow::Error> {
         let thread = enclave.threads_queue.pop().expect("threads queue empty");
         let work = Work {
             tcs: RunningTcs {
@@ -1318,7 +1424,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    async fn read(&self, fd: Fd, buf: &mut [u8]) -> IoResult<usize> {
+    async fn read(&self, fd: Fd, buf: &mut ReadBuf<'_>) -> IoResult<()> {
         let file_desc = self.lookup_fd(fd).await?;
         file_desc.as_stream()?.async_read(buf).await
     }
@@ -1445,8 +1551,8 @@ impl<'tcs> IOHandlerInput<'tcs> {
             .as_command()
             .ok_or(IoErrorKind::InvalidInput)?;
         let new_tcs = match self.enclave.threads_queue.pop() {
-            Ok(tcs) => tcs,
-            Err(_) => {
+            Some(tcs) => tcs,
+            None => {
                 return Err(IoErrorKind::WouldBlock.into());
             }
         };
@@ -1483,7 +1589,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     fn check_event_set(set: u64) -> IoResult<()> {
-        const EV_ALL: u64 = EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK;
+        const EV_ALL: u64 = EV_USERCALLQ_NOT_FULL | EV_RETURNQ_NOT_EMPTY | EV_UNPARK | EV_CANCELQ_NOT_FULL;
         if (set & !EV_ALL) != 0 {
             return Err(IoErrorKind::InvalidInput.into());
         }
@@ -1552,11 +1658,20 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn insecure_time(&mut self) -> u64 {
+    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
         let time = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap();
-        (time.subsec_nanos() as u64) + time.as_secs() * 1_000_000_000
+        let t = (time.subsec_nanos() as u64) + time.as_secs() * NANOS_PER_SEC;
+        let info = unsafe { match (*TIME_INFO, self.enclave.force_time_usercalls) {
+            (Some(info), false) => {
+                &info
+            },
+            _ => {
+                ptr::null()
+            }
+        } };
+        (t, info)
     }
 
     #[inline(always)]
@@ -1593,12 +1708,16 @@ impl<'tcs> IOHandlerInput<'tcs> {
         &mut self,
         usercall_queue: &mut FifoDescriptor<Usercall>,
         return_queue: &mut FifoDescriptor<Return>,
+        cancel_queue: Option<&mut FifoDescriptor<Cancel>>,
     ) -> StdResult<(), EnclaveAbort<bool>> {
         let mut fifo_guards = self.enclave.fifo_guards.lock().await;
         match &mut *fifo_guards {
             Some(ref mut fifo_guards) if !fifo_guards.async_queues_called => {
                 *usercall_queue = fifo_guards.usercall_queue.fifo_descriptor();
                 *return_queue = fifo_guards.return_queue.fifo_descriptor();
+                if let Some(cancel_queue) = cancel_queue {
+                    *cancel_queue = fifo_guards.cancel_queue.fifo_descriptor();
+                }
                 fifo_guards.async_queues_called = true;
                 Ok(())
             }
@@ -1617,6 +1736,7 @@ impl<'tcs> IOHandlerInput<'tcs> {
 enum Queue {
     Usercall,
     Return,
+    Cancel,
 }
 
 struct QueueSynchronizer {
@@ -1629,7 +1749,7 @@ struct QueueSynchronizer {
 }
 
 impl QueueSynchronizer {
-    fn new(enclave: Arc<EnclaveState>) -> (Self, Self, broadcast::Sender<()>) {
+    fn new(enclave: Arc<EnclaveState>) -> (Self, Self, Self, broadcast::Sender<()>) {
         // This broadcast channel is used to notify enclave-runner of any
         // synchronous usercalls made by the enclave for the purpose of
         // synchronizing access to usercall and return queues.
@@ -1637,6 +1757,7 @@ impl QueueSynchronizer {
         // return RecvError::Lagged.
         let (tx, rx1) = broadcast::channel(1);
         let rx2 = tx.subscribe();
+        let rx3 = tx.subscribe();
         let usercall_queue_synchronizer = QueueSynchronizer {
             queue: Queue::Usercall,
             enclave: enclave.clone(),
@@ -1645,11 +1766,17 @@ impl QueueSynchronizer {
         };
         let return_queue_synchronizer = QueueSynchronizer {
             queue: Queue::Return,
-            enclave,
+            enclave: enclave.clone(),
             subscription: Mutex::new(rx2),
             subscription_maker: tx.clone(),
         };
-        (usercall_queue_synchronizer, return_queue_synchronizer, tx)
+        let cancel_queue_synchronizer = QueueSynchronizer {
+            queue: Queue::Cancel,
+            enclave,
+            subscription: Mutex::new(rx3),
+            subscription_maker: tx.clone(),
+        };
+        (usercall_queue_synchronizer, return_queue_synchronizer, cancel_queue_synchronizer, tx)
     }
 }
 
@@ -1668,6 +1795,7 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
     fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = StdResult<(), ipc_queue::SynchronizationError>> + '_>> {
         match (self.queue, event) {
             (Queue::Usercall, QueueEvent::NotFull) => panic!("enclave runner should not send on the usercall queue"),
+            (Queue::Cancel, QueueEvent::NotFull) => panic!("enclave runner should not send on the cancel queue"),
             (Queue::Return, QueueEvent::NotEmpty)  => panic!("enclave runner should not receive on the return queue"),
             _ => {}
         }
@@ -1677,8 +1805,8 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
         async move {
             let mut subscription = self.subscription.lock().await;
             match subscription.recv().await {
-                Ok(()) | Err(broadcast::RecvError::Lagged(_)) => Ok(()),
-                Err(broadcast::RecvError::Closed) => Err(ipc_queue::SynchronizationError::ChannelClosed),
+                Ok(()) | Err(RecvError::Lagged(_)) => Ok(()),
+                Err(RecvError::Closed) => Err(ipc_queue::SynchronizationError::ChannelClosed),
             }
         }.boxed_local()
     }
@@ -1686,12 +1814,14 @@ impl ipc_queue::AsyncSynchronizer for QueueSynchronizer {
     fn notify(&self, event: QueueEvent) {
         let ev = match (self.queue, event) {
             (Queue::Usercall, QueueEvent::NotEmpty) => panic!("enclave runner should not send on the usercall queue"),
-            (Queue::Return, QueueEvent::NotFull)    => panic!("enclave runner should not receive on the return queue"),
-            (Queue::Usercall, QueueEvent::NotFull)  => EV_USERCALLQ_NOT_FULL,
-            (Queue::Return, QueueEvent::NotEmpty)   => EV_RETURNQ_NOT_EMPTY,
+            (Queue::Cancel, QueueEvent::NotEmpty) => panic!("enclave runner should not send on the cancel queue"),
+            (Queue::Return, QueueEvent::NotFull) => panic!("enclave runner should not receive on the return queue"),
+            (Queue::Usercall, QueueEvent::NotFull) => EV_USERCALLQ_NOT_FULL,
+            (Queue::Return, QueueEvent::NotEmpty) => EV_RETURNQ_NOT_EMPTY,
+            (Queue::Cancel, QueueEvent::NotFull) => EV_CANCELQ_NOT_FULL,
         };
         // When the enclave needs to wait on a queue, it executes the wait() usercall synchronously,
-        // specifying EV_USERCALLQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY, or both in the event_mask.
+        // specifying EV_USERCALLQ_NOT_FULL, EV_RETURNQ_NOT_EMPTY or EV_CANCELQ_NOT_FULL in the event_mask.
         // Userspace will wake any or all threads waiting on the appropriate event when it is triggered.
         for pending_events in self.enclave.event_queues.values() {
             pending_events.push(ev as _);

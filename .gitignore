@@ -1,2 +1,4 @@
-.cargo
 /target
+.vscode
+.idea
+/dist

@@ -1,11 +1,23 @@
 #![deny(warnings)]
 #![no_std]
+
+#[cfg(feature="alloc")]
 extern crate alloc;
+
 #[cfg(feature="std")]
 extern crate std;
 
-use alloc::string::String;
-use alloc::vec::Vec;
+#[cfg(all(feature="alloc", not(feature="std")))]
+use {
+    alloc::string::String,
+    alloc::vec::Vec,
+};
+#[cfg(all(feature="std", not(feature="alloc")))]
+use {
+    std::string::String,
+    std::vec::Vec,
+};
+
 #[cfg(feature="core")]
 use core::net::{IpAddr, SocketAddr};
 #[cfg(all(feature="std", not(feature="core")))]
@@ -130,7 +142,7 @@ impl<'de> Deserialize<'de> for Request {
         struct RequestFieldVisitor;
         impl<'de> Visitor<'de> for RequestFieldVisitor {
             type Value = RequestField;
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(formatter, "variant identifier")
             }
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -164,7 +176,7 @@ impl<'de> Deserialize<'de> for Request {
         }
         impl<'de> Visitor<'de> for RequestValueVisitor<'de> {
             type Value = Request;
-            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, __formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(__formatter, "enum Request")
             }
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
@@ -180,7 +192,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct ConnectFieldVisitor;
                         impl<'de> Visitor<'de> for ConnectFieldVisitor {
                             type Value = ConnectField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -208,7 +220,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for ConnectValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Connect")
                             }
                             #[inline]
@@ -256,7 +268,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct BindFieldVisitor;
                         impl<'de> Visitor<'de> for BindFieldVisitor {
                             type Value = BindField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -285,7 +297,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for BindValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Bind")
                             }
                             #[inline]
@@ -338,7 +350,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct AcceptFieldVisitor;
                         impl<'de> Visitor<'de> for AcceptFieldVisitor {
                             type Value = AcceptField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -366,7 +378,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for AcceptValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Accept")
                             }
                             #[inline]
@@ -411,7 +423,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct CloseFieldVisitor;
                         impl<'de> Visitor<'de> for CloseFieldVisitor {
                             type Value = CloseField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -439,7 +451,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for CloseVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, __formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, __formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(__formatter, "struct variant Request::Close")
                             }
                             #[inline]
@@ -490,7 +502,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct InfoFieldVisitor;
                         impl<'de> Visitor<'de> for InfoFieldVisitor {
                             type Value = InfoField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -519,7 +531,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for InfoValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Info")
                             }
                             #[inline]
@@ -572,7 +584,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct ExitFieldVisitor;
                         impl<'de> Visitor<'de> for ExitFieldVisitor {
                             type Value = ExitField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -600,7 +612,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for ExitValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Exit")
                             }
                             #[inline]
@@ -646,7 +658,7 @@ impl<'de> Deserialize<'de> for Request {
                         struct InitFieldVisitor;
                         impl<'de> Visitor<'de> for InitFieldVisitor {
                             type Value = InitField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -673,7 +685,7 @@ impl<'de> Deserialize<'de> for Request {
                         }
                         impl<'de> Visitor<'de> for InitValueVisitor<'de> {
                             type Value = Request;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Request::Init")
                             }
                             #[inline]
@@ -787,7 +799,7 @@ impl<'de> Deserialize<'de> for Addr {
         struct AddrVariantVisitor;
         impl<'de> Visitor<'de> for AddrVariantVisitor {
             type Value = AddrVariant;
-            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(fmt, "Addr variant identifier")
             }
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -816,7 +828,7 @@ impl<'de> Deserialize<'de> for Addr {
         }
         impl<'de> Visitor<'de> for AddrVisitor<'de> {
             type Value = Addr;
-            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(fmt, "enum Addr")
             }
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
@@ -833,7 +845,7 @@ impl<'de> Deserialize<'de> for Addr {
                         struct IPv4FieldVisitor;
                         impl<'de> Visitor<'de> for IPv4FieldVisitor {
                             type Value = IPv4Field;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -862,7 +874,7 @@ impl<'de> Deserialize<'de> for Addr {
                         }
                         impl<'de> Visitor<'de> for IPv4Visitor<'de> {
                             type Value = Addr;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Addr::IPv4")
                             }
                             #[inline]
@@ -887,7 +899,7 @@ impl<'de> Deserialize<'de> for Addr {
                                             port = Some(MapAccess::next_value::<u16>(&mut map)?);
                                         }
                                         _ => {
-                                            map.next_value()?;
+                                            map.next_value::<()>()?;
                                         }
                                     }
                                 }
@@ -918,7 +930,7 @@ impl<'de> Deserialize<'de> for Addr {
                         struct IPv6FieldVisitor;
                         impl<'de> Visitor<'de> for IPv6FieldVisitor {
                             type Value = IPv6Field;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -950,7 +962,7 @@ impl<'de> Deserialize<'de> for Addr {
                         }
                         impl<'de> Visitor<'de> for IPv6Visitor<'de> {
                             type Value = Addr;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Addr::IPv6")
                             }
                             #[inline]
@@ -1190,7 +1202,7 @@ impl<'de> Deserialize<'de> for Response {
         struct ResponseFieldVisitor;
         impl<'de> Visitor<'de> for ResponseFieldVisitor {
             type Value = ResponseField;
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(formatter, "variant identifier")
             }
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1224,7 +1236,7 @@ impl<'de> Deserialize<'de> for Response {
         }
         impl<'de> Visitor<'de> for ResponseValueVisitor<'de> {
             type Value = Response;
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(formatter, "enum Response")
             }
             fn visit_enum<A>(self, data: A) -> Result<Self::Value, A::Error>
@@ -1242,7 +1254,7 @@ impl<'de> Deserialize<'de> for Response {
                         struct ConnectedFieldVisitor;
                         impl<'de> Visitor<'de> for ConnectedFieldVisitor {
                             type Value = ConnectedField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1272,7 +1284,7 @@ impl<'de> Deserialize<'de> for Response {
                         }
                         impl<'de> Visitor<'de> for ConnectedValueVisitor<'de> {
                             type Value = Response;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Response::Connected")
                             }
                             #[inline]
@@ -1334,7 +1346,7 @@ impl<'de> Deserialize<'de> for Response {
                         struct BoundFieldVisitor;
                         impl<'de> Visitor<'de> for BoundFieldVisitor {
                             type Value = BoundField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1362,7 +1374,7 @@ impl<'de> Deserialize<'de> for Response {
                         }
                         impl<'de> Visitor<'de> for BoundValueVisitor<'de> {
                             type Value = Response;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Response::Bound")
                             }
                             #[inline]
@@ -1410,7 +1422,7 @@ impl<'de> Deserialize<'de> for Response {
                         struct IncomingConnectionFieldVisitor;
                         impl<'de> Visitor<'de> for IncomingConnectionFieldVisitor {
                             type Value = IncomingConnectionField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1440,7 +1452,7 @@ impl<'de> Deserialize<'de> for Response {
                         }
                         impl<'de> Visitor<'de> for IncomingConnectionValueVisitor<'de> {
                             type Value = Response;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Response::IncomingConnection")
                             }
                             #[inline]
@@ -1507,7 +1519,7 @@ impl<'de> Deserialize<'de> for Response {
                         struct InfoFieldVisitor;
                         impl<'de> Visitor<'de> for InfoFieldVisitor {
                             type Value = InfoField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1536,7 +1548,7 @@ impl<'de> Deserialize<'de> for Response {
                         }
                         impl<'de> Visitor<'de> for InfoVisitor<'de> {
                             type Value = Response;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Response::Info")
                             }
                             #[inline]
@@ -1593,7 +1605,7 @@ impl<'de> Deserialize<'de> for Response {
                         struct InitFieldVisitor;
                         impl<'de> Visitor<'de> for InitFieldVisitor {
                             type Value = InitField;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "field identifier")
                             }
                             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1621,7 +1633,7 @@ impl<'de> Deserialize<'de> for Response {
                         }
                         impl<'de> Visitor<'de> for InitValueVisitor<'de> {
                             type Value = Response;
-                            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+                            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                                 Formatter::write_str(formatter, "struct variant Response::Init")
                             }
                             #[inline]
@@ -1903,7 +1915,7 @@ impl<'de> Deserialize<'de> for ErrorKind {
         impl<'de> Visitor<'de> for ErrorKindVariantVisitor {
             type Value = ErrorKindVariant;
 
-            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(fmt, "ErrorKind variant identifier")
             }
 
@@ -1974,7 +1986,7 @@ impl<'de> Deserialize<'de> for ErrorKind {
 
         impl<'de> Visitor<'de> for ErrorKindVisitor<'de> {
             type Value = ErrorKind;
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(formatter, "enum ErrorKind")
             }
 
@@ -2074,7 +2086,7 @@ impl<'de> Deserialize<'de> for Error {
         impl<'de> Visitor<'de> for ErrorVariantVisitor {
             type Value = ErrorVariant;
 
-            fn expecting(&self, fmt: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(fmt, "Error variant identifier")
             }
 
@@ -2109,7 +2121,7 @@ impl<'de> Deserialize<'de> for Error {
 
         impl<'de> Visitor<'de> for ErrorVisitor<'de> {
             type Value = Error;
-            fn expecting(&self, formatter: &mut Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
                 Formatter::write_str(formatter, "enum Error")
             }
 

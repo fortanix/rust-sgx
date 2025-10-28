@@ -7,7 +7,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use failure::Error;
+use anyhow::Error;
 use sgxs::loader::{Load, MappingInfo};
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
@@ -48,9 +48,10 @@ impl Library {
         size: usize,
         usercall_ext: Option<Box<dyn UsercallExtension>>,
         forward_panics: bool,
+        force_time_usercalls: bool,
     ) -> Library {
         Library {
-            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics),
+            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics, force_time_usercalls),
             address,
             size,
         }

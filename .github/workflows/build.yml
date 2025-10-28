@@ -1,0 +1,137 @@
+name: CI
+
+on:
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - 'LICENSE'
+    branches:
+      - master
+  # This CI will be triggered on any merge_group events
+  merge_group:
+  schedule:
+    - cron: "0 0 * * *"  # Run CI on Daily, so we can track changes from nightly rust & Intel PCS
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CFLAGS_x86_64_fortanix_unknown_sgx: "-isystem/usr/include/x86_64-linux-gnu -mlvi-hardening -mllvm -x86-experimental-lvi-inline-asm-hardening"
+  CC_x86_64_fortanix_unknown_sgx: clang-18
+  CC_x86_64-unknown-linux-gnu: clang-18
+  CXX_x86_64-unknown-linux-gnu: clang-18
+
+jobs:
+  test:
+    name: Build+Test
+    runs-on: ubuntu-24.04
+
+    env:
+      CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Conditionally export PCS_API_KEY and PCCS_URL
+      run: |
+        if [ -n "${{ secrets.PCS_API_KEY }}" ]; then
+          echo "PCS_API_KEY=${{ secrets.PCS_API_KEY }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ vars.PCCS_URL }}" ]; then
+          echo "PCCS_URL=${{ vars.PCCS_URL }}" >> $GITHUB_ENV
+        fi
+
+    - name: Install additional dependencies
+      run: |
+        # install gpg
+        sudo apt-get update -y && sudo apt install -y gpg
+        # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
+        cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
+        # Install dependencies for build & test
+        sudo apt-get update -y
+        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
+
+    - name: Setup Rust toolchain
+      run: |
+        rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
+        rustup toolchain add nightly
+        rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
+        rustup update
+
+    - name: Cargo test --all --exclude sgxs-loaders
+      run: cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
+
+    - name: cargo test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+      run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+
+    - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+      run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+
+    - name: Cargo test -p dcap-artifact-retrieval --features rustls-tls
+      run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls
+
+    - name: Cargo test -p dcap-ql --features link
+      run: cargo test --verbose --locked -p dcap-ql --features link
+
+    - name: Cargo test -p dcap-ql --features verify
+      run: cargo test --verbose --locked -p dcap-ql --features verify
+
+    - name: Cargo test -p ias --features mbedtls
+      run: cargo test --verbose --locked -p ias --features mbedtls
+
+    - name: Cargo test -p ias --features client,mbedtls
+      run: cargo test --verbose --locked -p ias --features client,mbedtls
+
+    # uses backtrace, which still requires nightly on SGX
+    - name: Nightly build -p aesm-client --target=x86_64-fortanix-unknown-sgx
+      run: cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
+
+    # uses sgxstd feature
+    - name: Nightly build -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+      run: cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+
+    - name: Nightly test -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+      run: cargo +nightly test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+
+    - name: Nightly test -p pcs --target x86_64-fortanix-unknown-sgx
+      run: cargo +nightly test --verbose --locked -p pcs --target x86_64-fortanix-unknown-sgx --no-run
+
+    - name: Nightly test -p pcs --features verify
+      run: cargo +nightly test --verbose --locked -p pcs --features verify
+
+    # Unfortunately running `faketime '2021-09-10 11:00:00 GMT' cargo test -p nitro-attestation-verify` causes a segmentation
+    #  fault while compiling. We only execute `faketime` during the tests
+    #- run: cargo test --locked -p nitro-attestation-verify --no-run && faketime '2021-09-08 11:00:00 GMT' cargo test --locked -p nitro-attestation-verify --lib
+
+    - name: Cargo test nitro-attestation-verify with faketime
+      run: cargo test --locked -p nitro-attestation-verify --no-run && faketime '2021-09-10 11:00:00 GMT' cargo test --locked -p nitro-attestation-verify --lib
+
+    - name: Build fortanix-sgx-tools for x86_64-unknown-linux-musl
+      # NOTE: Skipping linking with the glibc version of OpenSSL to produce a musl based binary. It is unlikely that this would produce a working binary anyway.
+      run: |
+        mkdir -p /tmp/muslinclude
+        ln -sf /usr/include/x86_64-linux-gnu/openssl /tmp/muslinclude/openssl
+        PKG_CONFIG_ALLOW_CROSS=1 CFLAGS=-I/tmp/muslinclude CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=true cargo build --locked -p fortanix-sgx-tools --target x86_64-unknown-linux-musl
+
+    - name: Build em-app, get-certificate for x86_64-unknown-linux-musl
+      run: cargo build --verbose --locked -p em-app -p get-certificate --target=x86_64-unknown-linux-musl
+
+    - name: Build em-app, get-certificate for x86_64-fortanix-unknown-sgx
+      run: cargo build --verbose --locked -p em-app -p get-certificate --target=x86_64-fortanix-unknown-sgx
+
+    - name: insecure-time test
+      run: cargo +nightly test -p insecure-time --features estimate_crystal_clock_freq
+
+    - name: insecure-time build for SGX platform
+      run: cargo +nightly build -p insecure-time --features estimate_crystal_clock_freq --target x86_64-fortanix-unknown-sgx
+
+    - name: Generate API docs
+      run: ./doc/generate-api-docs.sh
+
+    - name: Run memory allocator stress test
+      run: cd ./examples/mem-alloc-test && cargo run
+
+    - name: snmalloc correntness test
+      run: cd ./examples/mem-correctness-test && cargo run

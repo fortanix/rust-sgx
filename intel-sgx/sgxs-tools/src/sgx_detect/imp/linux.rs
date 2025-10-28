@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 use byteorder::{ReadBytesExt, LE};
-use failure::{Error, Fail, ResultExt};
+use anyhow::{bail, Error, Context, anyhow};
 
 use crate::DetectError;
 use crate::interpret::{AesmStatus, KmodStatus};
@@ -41,7 +41,7 @@ pub fn rdmsr(address: u64) -> Result<u64, Error> {
                 modprobe_msr().context("Failed to load MSR kernel module")?;
                 continue;
             }
-            Err(e) => bail!(e.context("Failed to open MSR device")),
+            Err(e) => bail!(anyhow!(e).context("Failed to open MSR device")),
         }
     }
 }

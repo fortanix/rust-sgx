@@ -51,10 +51,13 @@ impl TryFrom<&Cli> for NitroArgs {
             enclave_cid: None,
             memory_mib,
             cpu_ids: None,
-            debug_mode: false,
+            debug_mode: Some(false),
             cpu_count: Some(cpu_count),
             enclave_name: None,
-            attach_console: true,
+            //TODO: With `fortanixvme-2023-05-07` branch merge the nitro-cli
+            //package is downgraded due to dependency conflicts.
+            //The following should be enabled with/after nitro-cli v1.2.2
+            //attach_console: true,
         })
     }
 }

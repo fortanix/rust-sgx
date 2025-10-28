@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 mod ioctl;
+pub mod debugging;
 
 use std::convert::TryFrom;
 use std::fs::{File, OpenOptions};
@@ -22,6 +23,7 @@ use sgx_isa::{Attributes, Einittoken, ErrorCode, Miscselect, Secinfo, Secs, Sigs
 use sgxs::einittoken::EinittokenProvider;
 use sgxs::loader;
 use sgxs::sgxs::{MeasEAdd, MeasECreate, PageChunks, SgxsRead};
+use thiserror::Error as ThisError;
 
 use crate::{MappingInfo, Tcs};
 use crate::generic::{self, EinittokenError, EnclaveLoad, Mapping};
@@ -52,35 +54,39 @@ pub enum DriverFamily {
     ///
     /// # Compatibility notes
     ///
-    /// Currently, no implementations of this API family support
-    /// partially-measured pages or providing a launch token.
+    /// Currently, no upstream implementations of this API family support
+    /// partially-measured pages or providing a launch token. A Fortanix internal
+    /// SGX driver explicitly adds support for partially-measured pages for backwards
+    /// compatibility reasons.
     Augusta,
 }
 
 use self::DriverFamily::*;
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum SgxIoctlError {
-    #[fail(display = "I/O ctl failed.")]
-    Io(#[cause] IoError),
-    #[fail(display = "The SGX instruction returned an error: {:?}.", _0)]
+    #[error("I/O ctl failed.")]
+    Io(#[source] IoError),
+    #[error("The SGX instruction returned an error: {:?}.", _0)]
     Ret(ErrorCode),
-    #[fail(display = "The enclave was destroyed because the CPU was powered down.")]
+    #[error("The enclave was destroyed because the CPU was powered down.")]
     PowerLostEnclave,
-    #[fail(display = "Launch enclave version rollback detected.")]
+    #[error("Launch enclave version rollback detected.")]
     LeRollback,
 }
 
-#[derive(Fail, Debug)]
+#[derive(ThisError, Debug)]
 pub enum Error {
-    #[fail(display = "Failed to map enclave into memory.")]
-    Map(#[cause] IoError),
-    #[fail(display = "Failed to call ECREATE.")]
-    Create(#[cause] SgxIoctlError),
-    #[fail(display = "Failed to call EADD.")]
-    Add(#[cause] SgxIoctlError),
-    #[fail(display = "Failed to call EINIT.")]
-    Init(#[cause] SgxIoctlError),
+    #[error("Failed to map enclave into memory.")]
+    Map(#[source] IoError),
+    #[error("Failed to call ECREATE.")]
+    Create(#[source] SgxIoctlError),
+    #[error("Failed to call EADD.")]
+    Add(#[source] SgxIoctlError),
+    #[error("Failed to call EEXTEND.")]
+    Extend(#[source] SgxIoctlError),
+    #[error("Failed to call EINIT.")]
+    Init(#[source] SgxIoctlError),
 }
 
 impl Error {
@@ -185,6 +191,7 @@ impl EnclaveLoad for InnerDevice {
             size: ecreate.size,
             tcss: vec![],
         };
+        debugging::register_new_enclave(mapping.base, mapping.size);
 
         let secs = Secs {
             baseaddr: mapping.base,
@@ -223,15 +230,10 @@ impl EnclaveLoad for InnerDevice {
                 ioctl_unsafe!(Add, ioctl::montgomery::add(mapping.device.fd.as_raw_fd(), &adddata))
             },
             Augusta => {
-                let flags = match chunks.0 {
-                    0 => ioctl::augusta::SgxPageFlags::empty(),
-                    0xffff => ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE,
-                    _ => {
-                        return Err(Error::Add(SgxIoctlError::Io(IoError::new(
-                            io::ErrorKind::Other,
-                            "Partially-measured pages not supported in this driver",
-                        ))))
-                    }
+                let (flags, partially_measured) = match chunks.0 {
+                    0 => (ioctl::augusta::SgxPageFlags::empty(), false),
+                    0xffff => (ioctl::augusta::SgxPageFlags::SGX_PAGE_MEASURE, false),
+                    _ => (ioctl::augusta::SgxPageFlags::empty(), true)
                 };
 
                 let data = ioctl::augusta::Align4096(data);
@@ -245,6 +247,30 @@ impl EnclaveLoad for InnerDevice {
                 };
                 ioctl_unsafe!(Add, ioctl::augusta::add(mapping.device.fd.as_raw_fd(), &mut adddata))?;
                 assert_eq!(adddata.length, adddata.count);
+
+                if partially_measured {
+                    for chunk in 0..16 {
+                        if (0x1 << chunk) & chunks.0 != 0 {
+                            // Only supported with Fortanix' internal upstream driver patch
+                            let mut extend = ioctl::augusta::SgxEnclaveExtend {
+                                offset: eadd.offset as u64 + chunk as u64 * 256,
+                            };
+                            let fd = mapping.device.fd.as_raw_fd();
+                            ioctl_unsafe!(Extend, ioctl::augusta::extend(fd, &mut extend))
+                                .or_else(|e| {
+                                    match e {
+                                        Error::Extend(SgxIoctlError::Io(ref io_err)) if io_err.raw_os_error() == Some(Errno::ENOTTY as i32) => {
+                                            return Err(Error::Add(SgxIoctlError::Io(IoError::new(
+                                                io::ErrorKind::Other,
+                                                "Partially-measured pages not supported in this driver",
+                                            ))))
+                                        }
+                                        _ => Err(e),
+                                    }
+                                })?;
+                        }
+                    }
+                }
 
                 let prot = match PageType::try_from(secinfo.flags.page_type()) {
                     Ok(PageType::Reg) => {
@@ -382,6 +408,7 @@ impl EnclaveLoad for InnerDevice {
     }
 
     fn destroy(mapping: &mut Mapping<Self>) {
+        debugging::unregister_terminated_enclave(mapping.base);
         unsafe { let _ = munmap(mapping.base as usize as *mut _, mapping.size as usize); }
     }
 }
@@ -490,7 +517,7 @@ impl loader::Load for Device {
         sigstruct: &Sigstruct,
         attributes: Attributes,
         miscselect: Miscselect,
-    ) -> ::std::result::Result<loader::Mapping<Self>, ::failure::Error> {
+    ) -> ::std::result::Result<loader::Mapping<Self>, ::anyhow::Error> {
         self.inner
             .load(reader, sigstruct, attributes, miscselect)
             .map(Into::into)

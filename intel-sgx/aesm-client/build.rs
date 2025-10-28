@@ -6,8 +6,6 @@
 
 #![deny(warnings)]
 
-extern crate protoc_rust;
-
 use std::env;
 use std::fs::File;
 use std::io::Write;
@@ -16,17 +14,17 @@ use std::path::PathBuf;
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("cargo should set OUT_DIR"));
 
-    protoc_rust::Codegen::new()
-        .out_dir(&out_dir)
+    protobuf_codegen::Codegen::new()
+        .includes(&["src/"])
         .input("src/aesm_proto.proto")
-        .run()
-        .expect("protoc");
+        .cargo_out_dir("protos")
+        .run_from_script();
 
     // Because of https://github.com/rust-lang/rfcs/issues/752, we can't `include!` the generated
     // protobufs directly. Instead, we generate a second generated file that can be `include!`-ed.
     // This trick borrowed from rust-mbedtls.
 
-    let mod_aesm_proto = out_dir.join("mod_aesm_proto.rs");
+    let mod_aesm_proto = out_dir.join("protos").join("mod_aesm_proto.rs");
     File::create(&mod_aesm_proto)
         // FIXME: get rid of `allow(bare_trait_objects)` by updateing protoc-rust
         .and_then(|mut f| f.write_all(b"#[allow(bare_trait_objects)] mod aesm_proto;\n"))

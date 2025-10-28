@@ -1,6 +1,6 @@
 [package]
 name = "ipc-queue"
-version = "0.2.0"
+version = "0.4.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -14,14 +14,14 @@ keywords = ["sgx", "fifo", "queue", "ipc"]
 categories = ["asynchronous"]
 
 [dependencies]
-fortanix-sgx-abi = { version = "0.4.0" } # TODO: add back `path = "../intel-sgx/fortanix-sgx-abi"`
+fortanix-sgx-abi = { version = "0.6.0", path = "../intel-sgx/fortanix-sgx-abi" }
 
 [dev-dependencies]
 static_assertions = "1.1.0"
 
 [target.'cfg(not(target_env = "sgx"))'.dev-dependencies]
 futures = { version = "0.3", features = ["compat", "io-compat"] }
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "1.35", features = ["full"] }
 
 [package.metadata.fortanix-sgx]
 # set number of threads so tests can run properly

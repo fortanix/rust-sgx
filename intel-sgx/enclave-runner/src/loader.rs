@@ -4,14 +4,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use std::arch::x86_64::{self, CpuidResult};
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
+use std::ops::RangeInclusive;
 use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
 
-use failure::{format_err, Error, ResultExt};
-use failure_derive::Fail;
+use thiserror::Error as ThisError;
+use anyhow::{Context, format_err};
 
 #[cfg(feature = "crypto-openssl")]
 use openssl::{
@@ -20,6 +22,7 @@ use openssl::{
 };
 
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use sgxs::sgxs::PageReader;
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
@@ -65,23 +68,25 @@ pub struct EnclaveBuilder<'a> {
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
-    load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, Error>>>,
-    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, Error>>>,
+    load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, anyhow::Error>>>,
+    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
     forward_panics: bool,
+    force_time_usercalls: bool,
     cmd_args: Option<Vec<Vec<u8>>>,
+    num_worker_threads: Option<usize>,
 }
 
-#[derive(Debug, Fail)]
+#[derive(Debug, ThisError)]
 pub enum EnclavePanic {
     /// The first byte of the debug buffer was 0
-    #[fail(display = "Enclave panicked.")]
+    #[error("Enclave panicked.")]
     NoDebugBuf,
     /// The debug buffer could be interpreted as a zero-terminated UTF-8 string
-    #[fail(display = "Enclave panicked: {}", _0)]
+    #[error("Enclave panicked: {}", _0)]
     DebugStr(String),
     /// The first byte of the debug buffer was not 0, but it was also not a
     /// zero-terminated UTF-8 string
-    #[fail(display = "Enclave panicked: {:?}", _0)]
+    #[error("Enclave panicked: {:?}", _0)]
     DebugBuf(Vec<u8>),
 }
 
@@ -145,7 +150,9 @@ impl<'a> EnclaveBuilder<'a> {
             load_and_sign: None,
             hash_enclave: None,
             forward_panics: false,
+            force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
             cmd_args: None,
+            num_worker_threads: None,
         };
 
         let _ = ret.coresident_signature();
@@ -158,11 +165,66 @@ impl<'a> EnclaveBuilder<'a> {
         ret
     }
 
-    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, Error> {
+    fn generate_xfrm(max_ssaframesize_in_pages: u32) -> u64 {
+        fn cpuid(eax: u32, ecx: u32) -> Option<CpuidResult> {
+            unsafe {
+                if eax <= x86_64::__get_cpuid_max(0).0 {
+                    Some(x86_64::__cpuid_count(eax, ecx))
+                } else {
+                    None
+                }
+            }
+        }
+
         fn xgetbv0() -> u64 {
             unsafe { arch::x86_64::_xgetbv(0) }
         }
 
+        debug_assert_ne!(0, max_ssaframesize_in_pages);
+        let xcr0 = xgetbv0();
+
+        // See algorithm of Intel x86 dev manual Chpt 40.7.2.2
+        let xfrm = (0..64)
+            .map(|bit| {
+                let select = 0x1 << bit;
+
+                if bit == 0 || bit == 1 {
+                    return select; // Bit 0 and 1 always need to be set
+                }
+
+                if xcr0 & select == 0 {
+                    return 0;
+                }
+
+                let CpuidResult { ebx: base, eax: size, .. } = match cpuid(0x0d, bit) {
+                    None | Some(CpuidResult { ebx: 0, .. }) => return 0,
+                    Some(v) => v,
+                };
+
+                if max_ssaframesize_in_pages * 0x1000 < base + size {
+                    return 0;
+                }
+
+                select
+            })
+            .fold(0, |xfrm, b| xfrm | b);
+
+        // Intel x86 dev manual Vol 3 Chpt 13.3:
+        // "Executing the XSETBV instruction causes a general-protection fault (#GP) if ECX = 0
+        // and EAX[17] ≠ EAX[18] (TILECFG and TILEDATA must be enabled together). This implies
+        // that the value of XCR0[18:17] is always either 00b or 11b."
+        // The enclave entry code executes xrstor, and we may have just cleared bit 18, so we
+        // need to correct the invariant
+        const XCR0_TILE_BITS: u64 = 0b11 << 17;
+        match xfrm & XCR0_TILE_BITS {
+            XCR0_TILE_BITS | 0 => xfrm,
+            _ => xfrm & !XCR0_TILE_BITS,
+        }
+    }
+
+    fn generate_dummy_signature(&mut self) -> Result<Sigstruct, anyhow::Error> {
+        let mut enclave = self.enclave.try_clone().unwrap();
+        let create_info = PageReader::new(&mut enclave)?;
         let mut enclave = self.enclave.try_clone().unwrap();
         let hash = match self.hash_enclave.take() {
             Some(f) => f(&mut enclave)?,
@@ -172,7 +234,7 @@ impl<'a> EnclaveBuilder<'a> {
 
         let attributes = self.attributes.unwrap_or_else(|| Attributes {
             flags: AttributesFlags::DEBUG | AttributesFlags::MODE64BIT,
-            xfrm: xgetbv0(),
+            xfrm: Self::generate_xfrm(create_info.0.ecreate.ssaframesize),
         });
         signer
             .attributes_flags(attributes.flags, !0)
@@ -266,6 +328,16 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    /// SGXv2 platforms allow enclaves to use the `rdtsc` instruction. This can speed up
+    /// performance significantly as enclave no longer need to call out to userspace to request the
+    /// current time. Unfortunately, older enclaves are not compatible with new enclave runners.
+    /// Also, sometimes the behavior of enclaves always calling out the userspace needs to be
+    /// simulated. This setting enforces the old behavior.
+    pub fn force_insecure_time_usercalls(&mut self, force_time_usercalls: bool) -> &mut Self {
+        self.force_time_usercalls = force_time_usercalls;
+        self
+    }
+
     fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
         self.cmd_args.get_or_insert_with(|| vec![b"enclave".to_vec()])
     }
@@ -298,7 +370,6 @@ impl<'a> EnclaveBuilder<'a> {
     /// Adding command arguments and then calling [`build_library`] will cause
     /// a panic.
     ///
-    /// [`Command`]: struct.Command.html
     /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
     pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
         let arg = arg.as_ref().to_owned();
@@ -306,10 +377,19 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
+    /// Sets the number of worker threads used to run the enclave.
+    ///
+    /// **NOTE:** This is only applicable to [`Command`] enclaves.
+    /// Setting this and then calling [`build_library`](Self::build_library) will cause a panic.
+    pub fn num_worker_threads(&mut self, num_worker_threads: usize) -> &mut Self {
+        self.num_worker_threads = Some(num_worker_threads);
+        self
+    }
+
     fn load<T: Load>(
         mut self,
         loader: &mut T,
-    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool), Error> {
+    ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool, bool), anyhow::Error> {
         let signature = match self.signature {
             Some(sig) => sig,
             None => self
@@ -320,6 +400,7 @@ impl<'a> EnclaveBuilder<'a> {
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
         let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
         let forward_panics = self.forward_panics;
+        let force_time_usercalls = self.force_time_usercalls;
         if mapping.tcss.is_empty() {
             unimplemented!()
         }
@@ -328,26 +409,37 @@ impl<'a> EnclaveBuilder<'a> {
             mapping.info.address(),
             mapping.info.size(),
             forward_panics,
+            force_time_usercalls,
         ))
     }
 
-    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, Error> {
+    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, anyhow::Error> {
+        if let Some(num_worker_threads) = self.num_worker_threads {
+            const NUM_WORKER_THREADS_RANGE: RangeInclusive<usize> = 1..=65536;
+            anyhow::ensure!(
+                NUM_WORKER_THREADS_RANGE.contains(&num_worker_threads),
+                "`num_worker_threads` must be in range {NUM_WORKER_THREADS_RANGE:?}"
+            );
+        }
+        let num_worker_threads = self.num_worker_threads.unwrap_or_else(num_cpus::get);
+
+        self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Command::internal_new(t, a, s, c, fp, args))
+            .map(|(t, a, s, fp, dti)| Command::internal_new(t, a, s, c, fp, dti, args, num_worker_threads))
     }
 
-    /// Panics if you have previously called [`arg`] or [`args`].
+    /// Panics if you have previously called [`arg`], [`args`], or [`num_worker_threads`].
     ///
     /// [`arg`]: struct.EnclaveBuilder.html#method.arg
     /// [`args`]: struct.EnclaveBuilder.html#method.args
-    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, Error> {
-        if self.cmd_args.is_some() {
-            panic!("Command arguments do not apply to Library enclaves.");
-        }
+    /// [`num_worker_threads`]: Self::num_worker_threads()
+    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, anyhow::Error> {
+        assert!(self.cmd_args.is_none(), "Command arguments do not apply to Library enclaves.");
+        assert!(self.num_worker_threads.is_none(), "`num_worker_threads` cannot be specified for Library enclaves.");
         let c = self.usercall_ext.take();
         self.load(loader)
-            .map(|(t, a, s, fp)| Library::internal_new(t, a, s, c, fp))
+            .map(|(t, a, s, fp, dti)| Library::internal_new(t, a, s, c, fp, dti))
     }
 }

@@ -1,0 +1,106 @@
+# This workflow is used for creating GitHub release & publish crate to crates.io.
+# The workflow will use environment "Publish to crates.io" which needs approval to access the `CARGO_REGISTRY_TOKEN`.
+
+name: Create GitHub release and publish crate to crates.io
+
+on:
+  push:
+    tags:
+      - 'em-app_v[0-9]+.[0-9]+.[0-9]+'
+      - 'aesm-client_v[0-9]+.[0-9]+.[0-9]+'
+      - 'async-usercalls_v[0-9]+.[0-9]+.[0-9]+'
+      - 'dcap-artifact-retrieval_v[0-9]+.[0-9]+.[0-9]+'
+      - 'dcap-provider_v[0-9]+.[0-9]+.[0-9]+'
+      - 'dcap-ql-sys_v[0-9]+.[0-9]+.[0-9]+'
+      - 'dcap-ql_v[0-9]+.[0-9]+.[0-9]+'
+      - 'dcap-retrieve-pckid_v[0-9]+.[0-9]+.[0-9]+'
+      - 'enclave-runner_v[0-9]+.[0-9]+.[0-9]+'
+      - 'fortanix-sgx-abi_v[0-9]+.[0-9]+.[0-9]+'
+      - 'fortanix-sgx-tools_v[0-9]+.[0-9]+.[0-9]+'
+      - 'ias_v[0-9]+.[0-9]+.[0-9]+'
+      - 'insecure-time_v[0-9]+.[0-9]+.[0-9]+'
+      - 'pcs_v[0-9]+.[0-9]+.[0-9]+'
+      - 'report-test_v[0-9]+.[0-9]+.[0-9]+'
+      - 'sgx_pkix_v[0-9]+.[0-9]+.[0-9]+'
+      - 'sgx-isa_v[0-9]+.[0-9]+.[0-9]+'
+      - 'sgxs-loaders_v[0-9]+.[0-9]+.[0-9]+'
+      - 'sgxs-tools_v[0-9]+.[0-9]+.[0-9]+'
+      - 'sgxs_v[0-9]+.[0-9]+.[0-9]+'
+      - 'ipc-queue_v[0-9]+.[0-9]+.[0-9]+'
+      - 'rs-libc_v[0-9]+.[0-9]+.[0-9]+'
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  CC_x86_64-unknown-linux-gnu: clang-18
+  CXX_x86_64-unknown-linux-gnu: clang-18
+  PYTHONDONTWRITEBYTECODE: 1
+  CMAKE_POLICY_VERSION_MINIMUM: 3.5
+
+jobs:
+  publish:
+    name: Publish crate to crates.io
+    environment: "Publish to crates.io"
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: sudo ./install_build_deps.sh
+
+
+      - name: Setup Rust toolchain
+        run: rustup update
+
+      - name: Get name of crate to be published
+        run: |
+          # Extract the crate name from the GITHUB_REF_NAME environment variable
+          # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
+          export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
+          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+      - name: Publish crate to crates.io
+        run: |
+          echo "Publishing crate: $CRATE_NAME"
+          cargo publish --locked --package "$CRATE_NAME"
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  release:
+    name: Create GitHub release
+    environment: "Publish to crates.io"
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install build dependencies
+        run: ./install_build_deps.sh
+
+      - name: Setup Rust toolchain
+        run: rustup update
+
+      - name: Get name of crate to be published
+        run: |
+          # Extract the crate name from the GITHUB_REF_NAME environment variable
+          # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
+          export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
+          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+
+      - name: Build artifacts for GitHub Release
+        run: ./build-release-artifacts.py --target x86_64-unknown-linux-gnu --package $CRATE_NAME
+
+      - name: Publish GitHub Release using GitHub CLI
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -d dist ] && [ "$(ls -A dist)" ]; then
+            ls -hlt dist/
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --verify-tag
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag
+          fi

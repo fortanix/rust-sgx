@@ -1,0 +1,17 @@
+[package]
+name = "mem-alloc-test"
+version = "1.0.0"
+edition = "2021"
+authors = ["Fortanix, Inc."]
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.4"
+num_cpus = "1.14.0"
+
+[package.metadata.fortanix-sgx]
+# heap size (in bytes), the default heap size is 0x2000000.
+heap-size=0x4000000
+debug=false

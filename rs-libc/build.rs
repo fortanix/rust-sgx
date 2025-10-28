@@ -5,11 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 extern crate cc;
+use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs::{read_dir, DirEntry};
 use std::path::PathBuf;
-use std::collections::BTreeSet;
 
 fn main() {
     let arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
@@ -59,17 +59,17 @@ fn main() {
         .define("__NO_STRING_INLINES", None)
         .define("__NO_MATH_INLINES", None);
     #[cfg(unix)]
-        {
-            b = b.flag("-ffreestanding");
-        }
+    {
+        b = b.flag("-ffreestanding");
+    }
     #[cfg(windows)]
-        {
-            b = b.define("restrict", "__restrict").ar_flag("/NODEFAULTLIB");
-        }
+    {
+        b = b.define("restrict", "__restrict").ar_flag("/NODEFAULTLIB");
+    }
 
     b.warnings(false).compile(name);
 }
 
-fn sorted<A: Ord, I: Iterator<Item=A>>(iterator: I) -> BTreeSet<A> {
+fn sorted<A: Ord, I: Iterator<Item = A>>(iterator: I) -> BTreeSet<A> {
     iterator.collect()
 }

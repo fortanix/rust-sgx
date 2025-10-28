@@ -13,13 +13,21 @@
 #   the memory mapping offset from the enclave base.
 # * SSAFRAMESIZE is
 
+# Useful links to understand and modify the script:
+# * GDB Python API: https://sourceware.org/gdb/onlinedocs/gdb/Python-API.html#Python-API
+# * GDB basic Python: functions: https://sourceware.org/gdb/onlinedocs/gdb/Basic-Python.html#Basic-Python
+# * Fortanix Debugging Manual: https://edp.fortanix.com/docs/tasks/debugging
+# * Intel Developer's Manual: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
+
 import gdb
 import re
-from subprocess import Popen, PIPE 
+from subprocess import Popen, PIPE
 
+# Constants defined by Intel, see the Intel64 manual, volume 3 chapter 35.8
 TCS_OSSA = 16
 TCS_CSSA = 24
 TCS_OGSBASGX = 56
+
 SSAFRAMESIZE = 1 # No clue how to get this from inferior
 
 def read_long(inferior, address, length):
@@ -30,19 +38,54 @@ def read_long(inferior, address, length):
     ret += b
   return ret
 
-def find_vma_base(addr):
-  s = gdb.execute("info proc mappings", False, True)
+def find_vma_base_from_runner(addr):
+  """Given an address `addr`, find the baseaddress of the enclave that contains the `addr`.
+
+  This function uses a feature of the new ftxsgx-runners (2023-08),
+  and works on both the Montgomery loader and the Augusta loader.
+  """
+  lang_restore = gdb.parameter('language')
+  # Old versions of GDB such as gdb-9.2 on Ubuntu-20.04 do not have `gdb.with_parameter`.
+  # We therefore have to override the language first,
+  # and then carefully restore the old value after.
+  gdb.execute("set language c", from_tty = False, to_string = True)
+
+  # Example output: "$3 = 140737219919872"
+  func_result = gdb.execute(
+    "print (unsigned long) ftxsgx_get_baseaddress_from_pointer({})".format(addr),
+    from_tty = False,
+    to_string = True
+  )
+  func_result = int(func_result.strip().rpartition(" ")[-1])
+  gdb.execute("set language {}".format(lang_restore), from_tty = False, to_string = True)
+  return func_result
+
+def find_vma_base_from_proc_mappings(addr):
+  """Given an address `addr`, find the baseaddress of the enclave that contains the `addr`.
+
+  This function uses `info proc mappings` to do so, thus working on pre-2023-08 ftxsgx-runners,
+  but only works on the Montgomery loader (does not work on the Augusta loader).
+  """
+  s = gdb.execute("info proc mappings", from_tty = False, to_string = True)
   for l in s.split('\n'):
     # Python doesn't support repeated group captures
-    m = re.match("^(?:\s*0x[0-9a-fA-F]+\s){4}", l)
+    m = re.match(r"^(?:\s*0x[0-9a-fA-F]+\s){4}", l)
     if m:
-      addrs = re.findall("0x([0-9a-fA-F]+)", l)
+      addrs = re.findall(r"0x([0-9a-fA-F]+)", l)
       start = int(addrs[0], 16)
       end = int(addrs[1], 16)
       if start <= addr and addr < end:
         offset = int(addrs[3], 16)
         return start-offset
   return None
+
+def find_vma_base(addr):
+  # Try loading the new function first, with a fallback to the old one.
+  # See python docs on both functions for details.
+  try:
+    return find_vma_base_from_runner(addr)
+  except:
+    return find_vma_base_from_proc_mappings(addr)
 
 def get_text_offset(file_name):
   command=['readelf', '-SW', file_name]
@@ -54,7 +97,7 @@ def get_text_offset(file_name):
       if ".text" in line:
           # 1     2    3    4
           # [Nr]  Name Type Address
-          m=re.match('^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s', line)
+          m=re.match(r'^\s+\[\s*(\d+)\]\s+(\.text)\s+(\S+)\s+([0-9a-fA-F]+)\s', line)
           if m is not None:
               return int(m.group(4), 16)
           break
@@ -153,10 +196,8 @@ class SgxState (gdb.Command):
       else:
         print("No state to restore")
     elif args[0] == 'auto':
-      """
-      This should be called after the runner signals SIGTRAP with tcs address in RBX.
-      The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
-      """
+      # This should be called after the runner signals SIGTRAP with tcs address in RBX.
+      # The user could optionally provide path to the executable, in which case the symbol mapping will be loaded.
       tcs=int(gdb.parse_and_eval("$rbx"));
       if len(args) >= 2:
         sgx_load_sym_file(args[1], tcs)
@@ -175,8 +216,8 @@ class SgxState (gdb.Command):
       gdb.execute("set ${} = {}".format(r,v))
 
 class Sgx_Add_Symbol_File (gdb.Command):
-  """
-  Given any address in the enclave and ELF path, load enclave's symbols.
+  """Given any address in the enclave and ELF path, load enclave's symbols.
+
   sgx-add-symbol-file <ADDR_IN_ENCLAVE | auto> <ELF_PATH>
   Specifying address as auto is equivalent to specifying $rbx.
   """
@@ -198,7 +239,9 @@ class Sgx_Add_Symbol_File (gdb.Command):
 
 class SgxBase (gdb.Function):
   """Given an address, return the enclave base address.
-If the address is not inside an enclave, the return value is unspecified."""
+
+  If the address is not inside an enclave, the return value is unspecified.
+  """
 
   def __init__ (self):
     super (SgxBase, self).__init__ ("sgxbase")

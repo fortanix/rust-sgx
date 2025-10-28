@@ -4,7 +4,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use super::*;
+use std::sync::atomic::Ordering;
+use crate::AsyncReceiver;
+use crate::AsyncSender;
+use crate::AsyncSynchronizer;
+#[cfg(not(target_env = "sgx"))]
+use crate::DescriptorGuard;
+use crate::Identified;
+use crate::QueueEvent;
+use crate::RecvError;
+use crate::SendError;
+use crate::SynchronizationError;
+use crate::Transmittable;
+use crate::TryRecvError;
+use crate::TrySendError;
+use crate::position::PositionMonitor;
 
 unsafe impl<T: Send, S: Send> Send for AsyncSender<T, S> {}
 unsafe impl<T: Send, S: Sync> Sync for AsyncSender<T, S> {}
@@ -53,9 +67,12 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
     pub async fn recv(&self) -> Result<Identified<T>, RecvError> {
         loop {
             match self.inner.try_recv_impl() {
-                Ok((val, wake_sender)) => {
+                Ok((val, wake_sender, read_wrapped_around)) => {
                     if wake_sender {
                         self.synchronizer.notify(QueueEvent::NotFull);
+                    }
+                    if read_wrapped_around {
+                        self.read_epoch.fetch_add(1, Ordering::Relaxed);
                     }
                     return Ok(val);
                 }
@@ -67,6 +84,10 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
                 Err(TryRecvError::Closed) => return Err(RecvError::Closed),
             }
         }
+    }
+
+    pub fn position_monitor(&self) -> PositionMonitor<T> {
+        PositionMonitor::new(self.read_epoch.clone(), self.inner.clone())
     }
 
     /// Consumes `self` and returns a DescriptorGuard.
@@ -81,11 +102,13 @@ impl<T: Transmittable, S: AsyncSynchronizer> AsyncReceiver<T, S> {
 #[cfg(not(target_env = "sgx"))]
 #[cfg(test)]
 mod tests {
-    use crate::*;
-    use crate::test_support::TestValue;
     use futures::future::FutureExt;
     use futures::lock::Mutex;
     use tokio::sync::broadcast;
+    use tokio::sync::broadcast::error::{SendError, RecvError};
+
+    use crate::*;
+    use crate::test_support::TestValue;
 
     async fn do_single_sender(len: usize, n: u64) {
         let s = TestAsyncSynchronizer::new();
@@ -155,6 +178,65 @@ mod tests {
         do_multi_sender(1024, 30, 100).await;
     }
 
+    #[tokio::test]
+    async fn positions() {
+        const LEN: usize = 16;
+        let s = TestAsyncSynchronizer::new();
+        let (tx, rx) = bounded_async(LEN, s);
+        let monitor = rx.position_monitor();
+        let mut id = 1;
+
+        let p0 = monitor.write_position();
+        tx.send(Identified { id, data: TestValue(1) }).await.unwrap();
+        let p1 = monitor.write_position();
+        tx.send(Identified { id: id + 1, data: TestValue(2) }).await.unwrap();
+        let p2 = monitor.write_position();
+        tx.send(Identified { id: id + 2, data: TestValue(3) }).await.unwrap();
+        let p3 = monitor.write_position();
+        id += 3;
+        assert!(monitor.read_position().is_past(&p0) == Some(false));
+        assert!(monitor.read_position().is_past(&p1) == Some(false));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(false));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(true));
+        assert!(monitor.read_position().is_past(&p2) == Some(false));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
+
+        rx.recv().await.unwrap();
+        assert!(monitor.read_position().is_past(&p0) == Some(true));
+        assert!(monitor.read_position().is_past(&p1) == Some(true));
+        assert!(monitor.read_position().is_past(&p2) == Some(true));
+        assert!(monitor.read_position().is_past(&p3) == Some(false));
+
+        for i in 0..1000 {
+            let n = 1 + (i % LEN);
+            let p4 = monitor.write_position();
+            for _ in 0..n {
+                tx.send(Identified { id, data: TestValue(id) }).await.unwrap();
+                id += 1;
+            }
+            let p5 = monitor.write_position();
+            for _ in 0..n {
+                rx.recv().await.unwrap();
+                assert!(monitor.read_position().is_past(&p0) == Some(true));
+                assert!(monitor.read_position().is_past(&p1) == Some(true));
+                assert!(monitor.read_position().is_past(&p2) == Some(true));
+                assert!(monitor.read_position().is_past(&p3) == Some(true));
+                assert!(monitor.read_position().is_past(&p4) == Some(true));
+                assert!(monitor.read_position().is_past(&p5) == Some(false));
+            }
+        }
+    }
+
     struct Subscription<T> {
         tx: broadcast::Sender<T>,
         rx: Mutex<broadcast::Receiver<T>>,
@@ -169,11 +251,11 @@ mod tests {
             }
         }
 
-        fn send(&self, val: T) -> Result<(), broadcast::SendError<T>> {
+        fn send(&self, val: T) -> Result<(), SendError<T>> {
             self.tx.send(val).map(|_| ())
         }
 
-        async fn recv(&self) -> Result<T, broadcast::RecvError> {
+        async fn recv(&self) -> Result<T, RecvError> {
             let mut rx = self.rx.lock().await;
             rx.recv().await
         }
@@ -204,7 +286,7 @@ mod tests {
     }
 
     impl AsyncSynchronizer for TestAsyncSynchronizer {
-        fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output = Result<(), SynchronizationError>> + '_>> {
+        fn wait(&self, event: QueueEvent) -> Pin<Box<dyn Future<Output=Result<(), SynchronizationError>> + '_>> {
             async move {
                 match event {
                     QueueEvent::NotEmpty => self.not_empty.recv().await,

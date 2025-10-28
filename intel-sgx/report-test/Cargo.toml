@@ -1,6 +1,6 @@
 [package]
 name = "report-test"
-version = "0.3.3"
+version = "0.5.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -16,9 +16,9 @@ categories = ["development-tools"]
 
 [dependencies]
 # Project dependencies
-"enclave-runner" = { version = "0.5.0", path = "../enclave-runner" }
-"sgxs" = { version = "0.7.0", path = "../sgxs" }
+"enclave-runner" = { version = "0.7.2", path = "../enclave-runner" }
+"sgxs" = { version = "0.8.0", path = "../sgxs" }
 "sgx-isa" = { version = "0.4.0", path = "../sgx-isa" }
 
 # External dependencies
-failure = "0.1.1"   # MIT/Apache-2.0
+anyhow = "1.0"   # MIT/Apache-2.0

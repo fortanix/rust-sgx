@@ -1,0 +1,29 @@
+# This workflow is used to build docker image for ppid-retrieval-tool
+
+name: Docker Image CI
+
+on:
+  push:
+    branches: ["master"]
+    paths:
+      - "intel-sgx/ppid-retrieval-tool/**"
+      - ".github/workflows/**"
+  pull_request:
+    branches: ["master"]
+    paths:
+      - "intel-sgx/ppid-retrieval-tool/**"
+      - ".github/workflows/**"
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the Docker image
+        run: |
+          cd intel-sgx/ppid-retrieval-tool/Docker
+          ./build.sh
+

@@ -13,6 +13,7 @@ use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, IOHandlerInput};
+use tokio::io::ReadBuf;
 use futures::FutureExt;
 use futures::future::Future;
 
@@ -33,7 +34,11 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             unsafe {
                 let ret = match from_raw_parts_mut_nonnull(buf, len) {
-                    Ok(buf) => self.0.read(fd, buf).await,
+                    Ok(buf) => {
+                        let mut buf = ReadBuf::new(buf);
+                        self.0.read(fd, &mut buf).await
+                            .map(|_| buf.filled().len())
+                    },
                     Err(e) => Err(e),
                 };
                 return (self, Ok(ret.to_sgx_result()));
@@ -217,7 +222,7 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
 
     fn insecure_time(
         self,
-    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<u64>)> + 'future>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<(u64, *const InsecureTimeInfo)>)> + 'future>> {
         async move {
             let ret = Ok(self.0.insecure_time());
             return (self, ret);
@@ -252,12 +257,13 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         self,
         usercall_queue: *mut FifoDescriptor<Usercall>,
         return_queue: *mut FifoDescriptor<Return>,
+        cancel_queue: *mut FifoDescriptor<Cancel>,
     ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<Result>)> + 'future>> {
         async move {
             unsafe {
                 let ret = match (usercall_queue.as_mut(), return_queue.as_mut()) {
                     (Some(usercall_queue), Some(return_queue)) => {
-                        self.0.async_queues(usercall_queue, return_queue).await.map(Ok)
+                        self.0.async_queues(usercall_queue, return_queue, cancel_queue.as_mut()).await.map(Ok)
                     },
                     _ => {
                         Ok(Err(IoErrorKind::InvalidInput.into()))
@@ -321,13 +327,13 @@ fn result_from_io_error(err: IoError) -> Result {
     ret as _
 }
 
-trait ToSgxResult {
+pub(super) trait ToSgxResult {
     type Return;
 
     fn to_sgx_result(self) -> Self::Return;
 }
 
-trait SgxReturn {
+pub(super) trait SgxReturn {
     fn on_error() -> Self;
 }
 
