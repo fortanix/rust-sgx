@@ -3428,7 +3428,7 @@ dependencies = [
  "num",
  "openssl",
  "petgraph",
- "proc-macro2 0.4.30",
+ "proc-macro2 1.0.95",
  "proc-mounts",
  "quote 0.6.13",
  "regex",
