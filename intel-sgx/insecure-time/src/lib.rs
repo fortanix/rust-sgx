@@ -27,7 +27,7 @@ use core::ops::Add;
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-pub trait NativeTime: PartialOrd + Copy + Add<core::time::Duration, Output = Self> + ToOwned {
+pub trait NativeTime: Debug + PartialOrd + Copy + Add<core::time::Duration, Output = Self> + ToOwned {
     fn minimum() -> Self;
     fn abs_diff(&self, other: &Self) -> Duration;
     fn now() -> Self;
@@ -523,12 +523,27 @@ impl<T: NativeTime> TscBuilder<T> for LearningFreqTscBuilder<T> {
 
     fn build(self) -> Tsc<T> {
         let LearningFreqTscBuilder { frequency, max_sync_interval, max_acceptable_drift, frequency_learning_period, time_mode, } = self;
-        let tsc_mode = TscMode::Learn {
-            max_sync_interval,
-            max_acceptable_drift,
-            frequency_learning_period,
-            next_sync: Ticks::new(0),
-            frequency: frequency.unwrap_or(Freq(AtomicU64::from(0))),
+        // When the initial frequency is set in the builder, we assume we don't need to resync for
+        // `max_sync_interval` duration
+        let tsc_mode = if let Some((Ok(next_sync), frequency)) = frequency.map(|f| (Ticks::from_duration(max_sync_interval, &f), f)) {
+            // We won't resync until `max_sync_interval`, use the full period to learn the exact
+            // frequency
+            let frequency_learning_period = frequency_learning_period.max(max_sync_interval);
+            TscMode::Learn {
+                max_sync_interval,
+                max_acceptable_drift,
+                frequency_learning_period,
+                next_sync,
+                frequency,
+            }
+        } else {
+            TscMode::Learn {
+                max_sync_interval,
+                max_acceptable_drift,
+                frequency_learning_period,
+                next_sync: Ticks::new(0),
+                frequency: Freq(AtomicU64::from(0)),
+            }
         };
         Tsc::new(tsc_mode, time_mode)
     }
@@ -563,6 +578,10 @@ impl<T: NativeTime> FixedFreqTscBuilder<T> {
     }
 }
 
+enum ResyncResult<T> {
+    WithinFrequencyLearningPeriod(T)
+}
+
 impl<T: NativeTime> Tsc<T> {
     fn new(tsc_mode: TscMode, time_mode: TimeMode<T>) -> Self {
         let now = T::now();
@@ -574,14 +593,14 @@ impl<T: NativeTime> Tsc<T> {
         }
     }
 
-    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<Option<(T, Duration, Freq)>, Error> {
+    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<(T, Duration, Freq), ResyncResult<T>> {
         // Fetch actual time
         let system_now = T::now();
 
         // Calculate new freq
         let diff_system = system_now.abs_diff(&self.t0.1);
         if diff_system < *frequency_learning_period {
-            return Ok(None);
+            return Err(ResyncResult::WithinFrequencyLearningPeriod(system_now));
         }
         let tsc_now = Ticks::now();
         let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
@@ -599,7 +618,7 @@ impl<T: NativeTime> Tsc<T> {
             diff_system * max_acceptable_drift.div_duration_f64(error) as u32
         };
 
-        Ok(Some((system_now, max_sync_interval, estimated_freq)))
+        Ok((system_now, max_sync_interval, estimated_freq))
     }
 
     fn now_ex(&self, freq: &Freq) -> T {
@@ -610,11 +629,15 @@ impl<T: NativeTime> Tsc<T> {
         let now = match &self.tsc_mode {
             TscMode::NoRdtsc => T::now(),
             TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval, next_sync, frequency } => {
-                let tsc_now = Ticks::now();
-                let f = if !frequency.is_zero() {
-                    Freq(frequency.as_u64().into())
+                let (tsc_now, f) = if !frequency.is_zero() {
+                    (Ticks::now(), Freq(frequency.as_u64().into()))
                 } else {
+                    // Calling rdtsc _after_ issuing a insecure_time usercall so frequency
+                    // will be _over_ estimated rather than under estimated when system is
+                    // under heavy load. An under estimated frequency is easier to fix
+                    // afterwards when time needs to be monotonic.
                     let system_now = T::now();
+                    let tsc_now = Ticks::now();
                     let diff_system = system_now.abs_diff(&self.t0.1);
                     if diff_system < *frequency_learning_period {
                         // We don't have enough data to estimate frequency correctly
@@ -623,7 +646,7 @@ impl<T: NativeTime> Tsc<T> {
 
                     let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
                     frequency.set(&estimated_freq);
-                    estimated_freq
+                    (tsc_now, estimated_freq)
                 };
 
                 let now = self.now_ex(&f);
@@ -632,18 +655,20 @@ impl<T: NativeTime> Tsc<T> {
                     now
                 } else {
                     // Re-estimate freq when a time threshold is reached
-                    if let Ok(Some((now, next_sync_interval, estimated_freq))) = self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
-                        // When `next_tsc` overflows, the system has been running for over 10
-                        // years, or an attacker manipulated the TSC value. As we can't trust TSC
-                        // anyway, we do the simple thing and continue trying to sync
-                        let duration = Ticks::from_duration(next_sync_interval, &estimated_freq);
-                        if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
-                            next_sync.set(next_tsc);
-                        }
-                        frequency.set(&estimated_freq);
-                        return now;
+                    match self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
+                        Ok((now, next_sync_interval, estimated_freq)) => {
+                            // When `next_tsc` overflows, the system has been running for over 10
+                            // years, or an attacker manipulated the TSC value. As we can't trust TSC
+                            // anyway, we do the simple thing and continue trying to sync
+                            let duration = Ticks::from_duration(next_sync_interval, &estimated_freq);
+                            if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
+                                next_sync.set(next_tsc);
+                            }
+                            frequency.set(&estimated_freq);
+                            now
+                        },
+                        Err(ResyncResult::WithinFrequencyLearningPeriod(now)) => now,
                     }
-                    now
                 }
             }
             TscMode::Fixed { frequency } => {
@@ -665,8 +690,13 @@ mod tests {
 
     use core::ops::Add;
     use core::time::Duration;
+    #[cfg(all(feature = "std", feature = "rdtsc_tests", not(target_env = "sgx")))]
+    use std::borrow::ToOwned;
     #[cfg(feature = "std")]
-    use std::time::SystemTime;
+    use {
+        std::time::SystemTime,
+        std::thread,
+    };
 
     #[cfg(not(target_env = "sgx"))]
     fn diff_system_time(t0: SystemTime, t1: SystemTime) -> Duration {
@@ -739,40 +769,27 @@ mod tests {
         }
     }
 
-    fn clock_drift<T: NativeTime>(builder: impl TscBuilder<T>, test_duration: Duration, max_acceptable_drift: &Duration, monotonic_time: bool) {
-        /// There's a test that spits out random time values. Those values can't be used to end the
-        /// test
-        #[cfg(feature = "std")]
-        fn test_now<T: NativeTime>() -> SystemTime {
-            SystemTime::now()
-        }
-
-        #[cfg(not(feature = "std"))]
-        fn test_now<T: NativeTime>() -> T {
-            T::now()
-        }
+    fn clock_drift<T: NativeTime, R: NativeTime>(builder: impl TscBuilder<T>, test_duration: Duration, max_acceptable_drift: &Duration, monotonic_time: bool) {
         let tsc = builder.build();
-        let end = test_now::<T>() + test_duration;
+        let reference_start = R::now();
+        let tsc_start = tsc.now();
+        let end = R::now() + test_duration;
         let mut last = None;
 
-        while test_now::<T>() < end {
-            let system_now = T::now();
+        while R::now() < end {
+            let reference_now = R::now();
             let tsc_now = tsc.now();
-            let drift = system_now.abs_diff(&tsc_now);
-            assert!(drift < *max_acceptable_drift, "Found {:?} drift, (max drift was {:?})", drift, max_acceptable_drift);
+            let reference_duration = reference_now.abs_diff(&reference_start);
+            let tsc_duration = tsc_now.abs_diff(&tsc_start);
+            let drift = reference_duration.abs_diff(tsc_duration);
+            assert!(drift < *max_acceptable_drift, "Found {:?} drift, (max drift was {:?} after {}ms)", drift, max_acceptable_drift, reference_duration.as_millis());
             if monotonic_time {
-                assert!(last.unwrap_or(tsc_now) <= tsc_now);
+                assert!(last.unwrap_or(tsc_now) <= tsc_now, "Time ran backwards (last: {:?}, now: {:?})", last, tsc_now);
                 last = Some(tsc_now);
             }
 
-            if system_now.abs_diff(&T::minimum()).as_secs() % 7 == 1 {
-                // Every now and then, don't sleep
-                #[cfg(feature = "std")]
-                std::thread::sleep(Duration::from_micros(10));
-
-                #[cfg(not(feature = "std"))]
-                for _i in 0..100000 {}
-            }
+            #[cfg(feature = "std")]
+            std::thread::sleep(Duration::from_micros(10));
         }
     }
 
@@ -782,7 +799,7 @@ mod tests {
     fn clock_drift_default_learning_freq_builder() {
         let tsc_builder: LearningFreqTscBuilder<SystemTime> = LearningFreqTscBuilder::new();
         let max_drift = tsc_builder.max_acceptable_drift().to_owned();
-        clock_drift(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
     }
 
     #[test]
@@ -792,7 +809,7 @@ mod tests {
         let tsc_builder: LearningFreqTscBuilder<SystemTime> = LearningFreqTscBuilder::new()
             .set_monotonic_time();
         let max_drift = tsc_builder.max_acceptable_drift().to_owned();
-        clock_drift(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &(ADDITIONAL_DRIFT + max_drift), false);
     }
 
     #[test]
@@ -800,7 +817,7 @@ mod tests {
     fn clock_drift_no_rdtsc_monotonic() {
         let tsc_builder: NoRdtscTscBuilder<SystemTime> = NoRdtscTscBuilder::new()
             .set_monotonic_time();
-        clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+        clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
     }
 
     #[test]
@@ -808,45 +825,14 @@ mod tests {
     #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
     fn clock_drift_fix_freq_monotonic() {
         if let Ok(freq) = Freq::get() {
-            let tsc_builder = FixedFreqTscBuilder::new(freq)
+            let tsc_builder = FixedFreqTscBuilder::<SystemTime>::new(freq)
                 .set_monotonic_time();
-            clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
-        }
-    }
-
-    #[cfg(feature = "std")]
-    #[derive(Copy, Clone, PartialOrd, PartialEq)]
-    // Time in nanoseconds since UNIX_EPOCH
-    struct RandTime(u64);
-
-    #[cfg(feature = "std")]
-    impl Add<Duration> for RandTime {
-        type Output = RandTime;
-
-        fn add(self, other: Duration) -> Self::Output {
-            let t = self.0 + other.as_secs() * super::NANOS_PER_SEC + other.subsec_nanos() as u64;
-            RandTime(t)
-        }
-    }
-
-    #[cfg(feature = "std")]
-    impl NativeTime for RandTime {
-        fn minimum() -> RandTime {
-            RandTime(0)
-        }
-
-        fn abs_diff(&self, other: &Self) -> Duration {
-            Duration::from_nanos(self.0.abs_diff(other.0))
-        }
-
-        fn now() -> Self {
-            let t = rand::random::<u64>() % 1000;
-            RandTime(t)
+            clock_drift::<SystemTime, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
         }
     }
 
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
-    #[derive(Copy, Clone, PartialOrd, PartialEq)]
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
     // Time in nanoseconds since UNIX_EPOCH
     struct SgxTime(u64);
 
@@ -876,12 +862,132 @@ mod tests {
         }
     }
 
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+    // A source of time that mimics a system under very heavy load; it takes a very long time
+    // before the result of the time request is serviced.
+    // Time in nanoseconds since UNIX_EPOCH
+    struct LaggingSystemTime(SystemTime);
+
+    impl LaggingSystemTime {
+        const fn system_lag() -> Duration {
+            Duration::from_secs(3)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Add<Duration> for LaggingSystemTime {
+        type Output = LaggingSystemTime;
+
+        fn add(self, other: Duration) -> Self::Output {
+            LaggingSystemTime(self.0 + other)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl NativeTime for LaggingSystemTime {
+        fn minimum() -> Self {
+            LaggingSystemTime(SystemTime::minimum())
+        }
+
+        fn abs_diff(&self, earlier: &Self) -> Duration {
+            self.0.abs_diff(&earlier.0)
+        }
+
+        fn now() -> Self {
+            let now = SystemTime::now();
+            thread::sleep(Self::system_lag());
+            LaggingSystemTime(now)
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    fn very_lagging_system_time() {
+        let tsc_builder: LearningFreqTscBuilder<LaggingSystemTime> = LearningFreqTscBuilder::new()
+            .set_monotonic_time();
+        clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &(LaggingSystemTime::system_lag() * 3), true);
+    }
+
+    #[derive(Debug, Copy, Clone, PartialOrd, PartialEq)]
+    // A source of time that mimics a system under very heavy load; it takes a very long time
+    // before the result of the time request is serviced.
+    // Time in nanoseconds since UNIX_EPOCH
+    struct HighVariationSystemTime(SystemTime);
+
+    impl HighVariationSystemTime {
+        pub fn variation() -> Duration {
+            Duration::from_secs(10)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl Add<Duration> for HighVariationSystemTime {
+        type Output = HighVariationSystemTime ;
+
+        fn add(self, other: Duration) -> Self::Output {
+            HighVariationSystemTime(self.0 + other)
+        }
+    }
+
+    #[cfg(feature = "std")]
+    impl NativeTime for HighVariationSystemTime {
+        fn minimum() -> Self {
+            HighVariationSystemTime(SystemTime::minimum())
+        }
+
+        fn abs_diff(&self, earlier: &Self) -> Duration {
+            self.0.abs_diff(&earlier.0)
+        }
+
+        fn now() -> Self {
+            let now = SystemTime::now();
+            let variation = Duration::from_secs(rand::random::<u64>() % HighVariationSystemTime::variation().as_secs());
+            if rand::random::<bool>() {
+                HighVariationSystemTime(now + variation)
+            } else {
+                HighVariationSystemTime(now - variation)
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    #[cfg(not(target_env = "sgx"))]
+    fn high_variation_system_time_lag() {
+        for monotonic in [false, true] {
+            for _run in 0..30 {
+                let freq = Freq::get().unwrap();
+                let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
+                        .set_monotonic_time()
+                        .set_initial_frequency(freq);
+                clock_drift::<_, SystemTime>(tsc_builder, Duration::from_secs(1), &(2 * HighVariationSystemTime::variation()), monotonic);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
+    fn build_time_learning_freq_tsc_builder() {
+        let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
+            .set_monotonic_time();
+        let t0 = SystemTime::now();
+        let tsc = tsc_builder.build();
+        let build_time = SystemTime::now().duration_since(t0).unwrap();
+        assert!(build_time < Duration::from_millis(10), "Building tsc took {} ms", build_time.as_millis());
+
+        let t0 = SystemTime::now();
+        let _t = tsc.now();
+        let now_time =  SystemTime::now().duration_since(t0).unwrap();
+        assert!(now_time < Duration::from_millis(10), "tsc.now() took {} ms", now_time.as_millis());
+    }
 
     #[test]
     #[cfg(all(target_env = "sgx", feature = "rdtsc_tests"))]
     fn sgx_time() {
         let tsc_builder: LearningFreqTscBuilder<SgxTime> = LearningFreqTscBuilder::new()
             .set_monotonic_time();
-        clock_drift(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+        // WARNING: Its up to the caller to ensure that the enclave runner used for this test does
+        // not enable rdtsc-based time within the enclave
+        clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
     }
 }
