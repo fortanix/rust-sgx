@@ -523,27 +523,22 @@ impl<T: NativeTime> TscBuilder<T> for LearningFreqTscBuilder<T> {
 
     fn build(self) -> Tsc<T> {
         let LearningFreqTscBuilder { frequency, max_sync_interval, max_acceptable_drift, frequency_learning_period, time_mode, } = self;
-        // When the initial frequency is set in the builder, we assume we don't need to resync for
-        // `max_sync_interval` duration
-        let tsc_mode = if let Some((Ok(next_sync), frequency)) = frequency.map(|f| (Ticks::from_duration(max_sync_interval, &f), f)) {
-            // We won't resync until `max_sync_interval`, use the full period to learn the exact
-            // frequency
-            let frequency_learning_period = frequency_learning_period.max(max_sync_interval);
-            TscMode::Learn {
-                max_sync_interval,
-                max_acceptable_drift,
-                frequency_learning_period,
-                next_sync,
-                frequency,
-            }
-        } else {
-            TscMode::Learn {
-                max_sync_interval,
-                max_acceptable_drift,
-                frequency_learning_period,
-                next_sync: Ticks::new(0),
-                frequency: Freq(AtomicU64::from(0)),
-            }
+        let (next_sync, frequency, frequency_learning_period) =
+            // When the initial frequency is set in the builder, we assume we don't need to resync for
+            // `max_sync_interval` duration
+            if let Some((Ok(next_sync), frequency)) = frequency.map(|f| (Ticks::from_duration(max_sync_interval, &f), f)) {
+                // We won't resync until `max_sync_interval`, use the full period to learn the exact
+                // frequency
+                (next_sync, frequency, frequency_learning_period.max(max_sync_interval))
+            } else {
+                (Ticks::new(0), Freq(AtomicU64::from(0)), frequency_learning_period)
+            };
+        let tsc_mode = TscMode::Learn {
+            max_sync_interval,
+            max_acceptable_drift,
+            frequency_learning_period,
+            next_sync,
+            frequency,
         };
         Tsc::new(tsc_mode, time_mode)
     }
