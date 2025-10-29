@@ -966,6 +966,23 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "std", feature = "rdtsc_tests", feature = "long_duration_tests"))]
+    #[cfg(not(target_env = "sgx"))]
+    fn high_variation_system_time_drift() {
+        let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
+                .set_initial_frequency(Freq::get().unwrap())
+                .set_frequency_learning_period(Duration::from_secs(120))
+                .set_max_acceptable_drift(Duration::from_millis(1))
+                .set_max_sync_interval(Duration::from_secs(60))
+                .set_monotonic_time();
+
+        // TSC computes the time based on two `HighVariationSystemTime` at worst this means a
+        // variation of `2 * HighVariationSystemTime::variation()` in addition to its max
+        // acceptable drift
+        clock_drift::<_, SystemTime>(tsc_builder, Duration::from_secs(180), &(2 * HighVariationSystemTime::variation() + Duration::from_millis(1)), true);
+    }
+
+    #[test]
     #[cfg(all(feature = "std", feature = "rdtsc_tests"))]
     fn build_time_learning_freq_tsc_builder() {
         let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
