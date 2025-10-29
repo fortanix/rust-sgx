@@ -525,25 +525,20 @@ impl<T: NativeTime> TscBuilder<T> for LearningFreqTscBuilder<T> {
         let LearningFreqTscBuilder { frequency, max_sync_interval, max_acceptable_drift, frequency_learning_period, time_mode, } = self;
         // When the initial frequency is set in the builder, we assume we don't need to resync for
         // `max_sync_interval` duration
-        let tsc_mode = if let Some((Ok(next_sync), frequency)) = frequency.map(|f| (Ticks::from_duration(max_sync_interval, &f), f)) {
-            // We won't resync until `max_sync_interval`, use the full period to learn the exact
-            // frequency
-            let frequency_learning_period = frequency_learning_period.max(max_sync_interval);
-            TscMode::Learn {
-                max_sync_interval,
-                max_acceptable_drift,
-                frequency_learning_period,
-                next_sync,
-                frequency,
-            }
-        } else {
-            TscMode::Learn {
-                max_sync_interval,
-                max_acceptable_drift,
-                frequency_learning_period,
-                next_sync: Ticks::new(0),
-                frequency: Freq(AtomicU64::from(0)),
-            }
+        let (next_sync, frequency, frequency_learning_period) =
+            if let Some((Ok(next_sync), frequency)) = frequency.map(|f| (Ticks::from_duration(max_sync_interval, &f), f)) {
+                // We won't resync until `max_sync_interval`, use the full period to learn the exact
+                // frequency
+                (next_sync, frequency, frequency_learning_period.max(max_sync_interval))
+            } else {
+                (Ticks::new(0), Freq(AtomicU64::from(0)), frequency_learning_period)
+            };
+        let tsc_mode = TscMode::Learn {
+            max_sync_interval,
+            max_acceptable_drift,
+            frequency_learning_period,
+            next_sync,
+            frequency,
         };
         Tsc::new(tsc_mode, time_mode)
     }
@@ -578,7 +573,7 @@ impl<T: NativeTime> FixedFreqTscBuilder<T> {
     }
 }
 
-enum ResyncResult<T> {
+enum ResyncError<T> {
     WithinFrequencyLearningPeriod(T)
 }
 
@@ -593,14 +588,14 @@ impl<T: NativeTime> Tsc<T> {
         }
     }
 
-    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<(T, Duration, Freq), ResyncResult<T>> {
+    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<(T, Duration, Freq), ResyncError<T>> {
         // Fetch actual time
         let system_now = T::now();
 
         // Calculate new freq
         let diff_system = system_now.abs_diff(&self.t0.1);
         if diff_system < *frequency_learning_period {
-            return Err(ResyncResult::WithinFrequencyLearningPeriod(system_now));
+            return Err(ResyncError::WithinFrequencyLearningPeriod(system_now));
         }
         let tsc_now = Ticks::now();
         let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
@@ -667,7 +662,7 @@ impl<T: NativeTime> Tsc<T> {
                             frequency.set(&estimated_freq);
                             now
                         },
-                        Err(ResyncResult::WithinFrequencyLearningPeriod(now)) => now,
+                        Err(ResyncError::WithinFrequencyLearningPeriod(now)) => now,
                     }
                 }
             }
