@@ -1144,6 +1144,7 @@ dependencies = [
 name = "fortanix-sgx-abi"
 version = "0.6.1"
 dependencies = [
+ "compiler_builtins",
  "rustc-std-workspace-core",
 ]
 
@@ -1172,6 +1173,7 @@ dependencies = [
 name = "fortanix-vme-abi"
 version = "0.1.0"
 dependencies = [
+ "compiler_builtins",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "serde",
@@ -1785,6 +1787,7 @@ name = "insecure-time"
 version = "0.2.0"
 dependencies = [
  "clap 4.5.20",
+ "compiler_builtins",
  "rand 0.8.5",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",

@@ -9,6 +9,7 @@ authors = ["Fortanix, Inc."]
 [dependencies]
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
+compiler_builtins = { version = "0.1.152", optional = true }
 # Avoid using patch section due to https://github.com/rust-lang/cargo/issues/10031
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master", default-features = false, features = ["derive", "alloc"] }
 vsock = { version = "0.2.4", optional = true }
@@ -17,4 +18,4 @@ vsock = { version = "0.2.4", optional = true }
 std = ["serde/std", "vsock"]
 default = ["std"]
 docs = []
-rustc-dep-of-std = ["core", "alloc", "serde/rustc-dep-of-std"]
+rustc-dep-of-std = ["core", "alloc", "compiler_builtins/rustc-dep-of-std", "serde/rustc-dep-of-std"]
