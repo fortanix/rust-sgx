@@ -1,5 +1,3 @@
-#![feature(file_create_new)]
-
 use clap::Parser;
 use fortanix_vme_eif::FtxEif;
 use fortanix_vme_abi::SERVER_PORT;
