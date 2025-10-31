@@ -32,6 +32,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v5
+      with:
+        lfs: 'true'
 
     - name: Conditionally export PCS_API_KEY and PCCS_URL
       run: |
