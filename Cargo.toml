@@ -11,6 +11,7 @@ members = [
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-eif",
     "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/fortanix-vme-tools",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",

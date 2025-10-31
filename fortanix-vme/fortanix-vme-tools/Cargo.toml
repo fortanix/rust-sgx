@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-cargo_toml = "0.10.3"
+cargo_toml = "0.22.0"
 clap = { version = "4.0", features = ["derive"] }
 fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 serde = { version = "1.0", features = ["derive"] }
