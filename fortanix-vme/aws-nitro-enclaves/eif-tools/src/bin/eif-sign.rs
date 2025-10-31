@@ -6,7 +6,7 @@ use std::process::exit;
 use clap::{Arg, crate_authors, crate_version};
 use env_logger;
 use log::LevelFilter;
-use nitro_cli::EifBuilder;
+use aws_nitro_enclaves_image_format::utils::EifBuilder;
 use sha2;
 use sha2::Digest;
 
@@ -74,7 +74,7 @@ fn main() {
         }
     };
 
-    if builder.signature.is_some() {
+    if builder.is_signed() {
         println!("Given EIF file is already signed");
         exit(1);
     }
