@@ -575,8 +575,8 @@ mod tests {
     }
 
     #[cfg(feature = "verify")]
-    #[serde(rename_all = "camelCase")]
     #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     pub struct TcbLevel {
         tcb: Tcb,
         tcb_date: String,
@@ -586,8 +586,8 @@ mod tests {
     }
 
     #[cfg(feature = "verify")]
-    #[serde(rename_all = "camelCase")]
     #[derive(Clone, Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     pub struct QeIdentity {
         version: u16,
         id: String,
@@ -604,8 +604,8 @@ mod tests {
     }
 
     #[cfg(feature = "verify")]
-    #[serde(rename_all = "camelCase")]
     #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
     struct QeIdentitySigned {
         enclave_identity: QeIdentity,
         _signature: String,
