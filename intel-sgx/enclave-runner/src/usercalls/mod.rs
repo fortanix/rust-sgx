@@ -54,7 +54,7 @@ lazy_static! {
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
-static mut TIME_INFO: LazyLock<Option<InsecureTimeInfo>> = LazyLock::new(|| {
+static TIME_INFO: LazyLock<Option<InsecureTimeInfo>> = LazyLock::new(|| {
     if Rdtscp::is_supported() {
         if let Ok(frequency) = Freq::get() {
             return Some(InsecureTimeInfo {
@@ -1658,20 +1658,26 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
+    fn insecure_time_ref(&mut self) -> (u64, Option<&'static InsecureTimeInfo>) {
         let time = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap();
         let t = (time.subsec_nanos() as u64) + time.as_secs() * NANOS_PER_SEC;
-        let info = unsafe { match (*TIME_INFO, self.enclave.force_time_usercalls) {
-            (Some(info), false) => {
-                &info
-            },
-            _ => {
-                ptr::null()
-            }
-        } };
+        let info = match (&*TIME_INFO, self.enclave.force_time_usercalls) {
+            (Some(info), false) => Some(info),
+            _ => None,
+        };
         (t, info)
+    }
+
+    #[inline(always)]
+    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
+        let (ts, info) = self.insecure_time_ref();
+        let info = match info {
+            Some(info) => info,
+            None => ptr::null(),
+        };
+        (ts, info)
     }
 
     #[inline(always)]
