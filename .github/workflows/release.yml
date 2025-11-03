@@ -28,6 +28,8 @@ on:
       - 'sgxs_v[0-9]+.[0-9]+.[0-9]+'
       - 'ipc-queue_v[0-9]+.[0-9]+.[0-9]+'
       - 'rs-libc_v[0-9]+.[0-9]+.[0-9]+'
+    branches:
+      - 'yx/fix-releae-job-for-sgx-target'
 
 env:
   RUST_BACKTRACE: 1
@@ -42,7 +44,7 @@ env:
 jobs:
   publish:
     name: Publish crate to crates.io
-    environment: "Publish to crates.io"
+    # environment: "Publish to crates.io"
     runs-on: ubuntu-24.04
 
     steps:
@@ -57,6 +59,10 @@ jobs:
         run: |
           # Extract the crate name from the GITHUB_REF_NAME environment variable
           # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
+          # export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
+          # echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+          echo "CRATE_NAME=async-usercalls" >> $GITHUB_ENV
+
       - name: Set per-crate config (toolchain/target)
         run: |
           source ./crate-publish-config.sh "$CRATE_NAME"
@@ -68,42 +74,42 @@ jobs:
       - name: Publish crate to crates.io
         run: |
           echo "Publishing crate: $CRATE_NAME"
-          cargo publish --locked --package "$CRATE_NAME"
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          cargo publish --locked --package "$CRATE_NAME" --dry-run
+        # env:
+        #   CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
-  release:
-    name: Create GitHub release
-    environment: "Publish to crates.io"
-    runs-on: ubuntu-24.04
+  # release:
+  #   name: Create GitHub release
+  #   environment: "Publish to crates.io"
+  #   runs-on: ubuntu-24.04
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v5
 
-      - name: Install build dependencies
-        run: ./install_build_deps.sh
+  #     - name: Install build dependencies
+  #       run: ./install_build_deps.sh
 
-      - name: Setup Rust toolchain
-        run: rustup update
+  #     - name: Setup Rust toolchain
+  #       run: rustup update
 
-      - name: Get name of crate to be published
-        run: |
-          # Extract the crate name from the GITHUB_REF_NAME environment variable
-          # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
-          export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
-          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+  #     - name: Get name of crate to be published
+  #       run: |
+  #         # Extract the crate name from the GITHUB_REF_NAME environment variable
+  #         # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
+  #         export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
+  #         echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
 
-      - name: Build artifacts for GitHub Release
-        run: ./build-release-artifacts.py --target x86_64-unknown-linux-gnu --package $CRATE_NAME
+  #     - name: Build artifacts for GitHub Release
+  #       run: ./build-release-artifacts.py --target x86_64-unknown-linux-gnu --package $CRATE_NAME
 
-      - name: Publish GitHub Release using GitHub CLI
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if [ -d dist ] && [ "$(ls -A dist)" ]; then
-            ls -hlt dist/
-            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --verify-tag
-          else
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag
-          fi
+  #     - name: Publish GitHub Release using GitHub CLI
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         if [ -d dist ] && [ "$(ls -A dist)" ]; then
+  #           ls -hlt dist/
+  #           gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --verify-tag
+  #         else
+  #           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag
+  #         fi
