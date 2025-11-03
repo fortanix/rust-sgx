@@ -74,6 +74,7 @@ jobs:
 
   release:
     name: Create GitHub release
+    needs: publish
     environment: "Publish to crates.io"
     runs-on: ubuntu-24.04
 
