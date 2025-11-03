@@ -1658,26 +1658,18 @@ impl<'tcs> IOHandlerInput<'tcs> {
     }
 
     #[inline(always)]
-    fn insecure_time_ref(&mut self) -> (u64, Option<&'static InsecureTimeInfo>) {
+    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
         let time = time::SystemTime::now()
             .duration_since(time::UNIX_EPOCH)
             .unwrap();
         let t = (time.subsec_nanos() as u64) + time.as_secs() * NANOS_PER_SEC;
-        let info = match (&*TIME_INFO, self.enclave.force_time_usercalls) {
-            (Some(info), false) => Some(info),
-            _ => None,
-        };
+        let insecure_time_ref: Option<&'static InsecureTimeInfo> = (&*TIME_INFO).as_ref();
+        let info = if let (Some(info), false) = (insecure_time_ref, self.enclave.force_time_usercalls) {
+                info
+            } else {
+                ptr::null()
+            };
         (t, info)
-    }
-
-    #[inline(always)]
-    fn insecure_time(&mut self) -> (u64, *const InsecureTimeInfo) {
-        let (ts, info) = self.insecure_time_ref();
-        let info = match info {
-            Some(info) => info,
-            None => ptr::null(),
-        };
-        (ts, info)
     }
 
     #[inline(always)]
