@@ -24,7 +24,7 @@ set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
   echo "Usage: source \$0 <crate_name>" >&2
-  return 1 2>/dev/null || exit 1
+  exit 1
 fi
 
 CRATE_NAME="$1"
@@ -33,7 +33,7 @@ CRATE_NAME="$1"
 for tool in "rustup"; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "Error: Required tool '$tool' not found in PATH." >&2
-    return 1 2>/dev/null || exit 1
+    exit 1
   fi
 done
 

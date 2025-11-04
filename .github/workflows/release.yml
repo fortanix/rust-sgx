@@ -57,6 +57,9 @@ jobs:
         run: |
           # Extract the crate name from the GITHUB_REF_NAME environment variable
           # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
+          export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
+          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+
       - name: Set per-crate config (toolchain/target)
         run: |
           source ./crate-publish-config.sh "$CRATE_NAME"
