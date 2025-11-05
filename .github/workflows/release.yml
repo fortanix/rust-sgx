@@ -53,15 +53,21 @@ jobs:
         run: sudo ./install_build_deps.sh
 
 
-      - name: Setup Rust toolchain
-        run: rustup update
-
       - name: Get name of crate to be published
         run: |
           # Extract the crate name from the GITHUB_REF_NAME environment variable
           # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
           export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
           echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+
+      - name: Set per-crate config (toolchain/target)
+        run: |
+          source ./crate-publish-config.sh "$CRATE_NAME"
+          echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET" >> $GITHUB_ENV
+
+      - name: Update Rust toolchain
+        run: rustup update
+
       - name: Publish crate to crates.io
         run: |
           echo "Publishing crate: $CRATE_NAME"
@@ -71,6 +77,7 @@ jobs:
 
   release:
     name: Create GitHub release
+    needs: publish
     environment: "Publish to crates.io"
     runs-on: ubuntu-24.04
 
