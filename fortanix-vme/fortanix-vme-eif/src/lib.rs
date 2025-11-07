@@ -275,26 +275,13 @@ mod tests {
     use super::{Builder, FtxEif};
     use super::initramfs::{Builder as InitramfsBuilder};
 
-    /* Hello world executable created using:
-    echo '#include <stdio.h>
-    #include <unistd.h>
-
-    void main() {
-        int cnt = 0;
-        while(1) {
-            printf("[%3i] Hello world!\n", cnt);
-            sleep(1);
-            cnt++;
-        }
-    }' > main.c
-    gcc -o a.out main.c -static -static-libgcc -flto
-    */
-    const HELLO_WORLD: &'static [u8; 872008] = include_bytes!("../tests/data/hello_world");
-    const KERNEL: &'static [u8; 5083088] = include_bytes!("../tests/data/bzImage");
-    const KERNEL_CONFIG: &'static str = include_str!("../tests/data/bzImage.config");
-    const NSM: &'static [u8; 20504] = include_bytes!("../tests/data/nsm.ko");
-    const INIT: &'static [u8; 742968] = include_bytes!("../tests/data/init");
-    const CMDLINE: &'static str = include_str!("../tests/data/cmdline");
+    // See the build script to see how they are built.
+    const HELLO_WORLD: &[u8] = include_bytes!("../tests/data/hello_world");
+    const KERNEL: &[u8] = include_bytes!("../tests/data/bzImage");
+    const KERNEL_CONFIG: &str = include_str!("../tests/data/bzImage.config");
+    const NSM: &[u8] = include_bytes!("../tests/data/nsm.ko");
+    const INIT: &[u8] = include_bytes!("../tests/data/init");
+    const CMDLINE: &str = include_str!("../tests/data/cmdline");
 
     #[test]
     fn eif_creation() {

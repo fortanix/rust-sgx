@@ -1,3 +1,2 @@
 tests/data/*
 !tests/data/README.txt
-!tests/data/hello_world

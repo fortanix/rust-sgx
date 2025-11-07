@@ -1285,6 +1285,7 @@ version = "0.1.0"
 dependencies = [
  "aws-nitro-enclaves-image-format",
  "blobs-tool",
+ "cc",
  "clap 4.5.51",
  "cpio",
  "flate2",

@@ -1,20 +1,7 @@
 use std::io::Cursor;
 use fortanix_vme_eif::{Builder, FtxEif};
 
-/* Hello world executable created using:
-echo '#include <stdio.h>
-#include <unistd.h>
-
-void main() {
-       int cnt = 0;
-       while(1) {
-               printf("[%3i] Hello world!\n", cnt);
-               sleep(1);
-               cnt++;
-       }
-}' > main.c
-gcc -o a.out main.c -static -static-libgcc -flto
-*/
+// See the build script to see how they are built.
 const HELLO_WORLD: &[u8] = include_bytes!("data/hello_world");
 const KERNEL: &[u8] = include_bytes!("data/bzImage");
 const KERNEL_CONFIG: &str = include_str!("data/bzImage.config");
