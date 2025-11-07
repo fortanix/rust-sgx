@@ -175,13 +175,13 @@ impl Connection {
                     //  - reflect this change on the other connection
                     //  - avoid reading from the socket again
                     // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
-                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave0")? == 0 {
+                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
                         enclave.shutdown(Shutdown::Write)?;
                         golden_set.remove(remote.as_raw_fd());
                     }
                 }
                 if read_set.contains(enclave.as_raw_fd()) {
-                    if Self::transfer_data(enclave, "enclave1", remote, &self.remote_name)? == 0 {
+                    if Self::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
                         remote.shutdown(Shutdown::Write)?;
                         golden_set.remove(enclave.as_raw_fd());
                     }
