@@ -166,6 +166,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cdb031dd78e28731d87d56cc8ffef4a8f36ca26c38fe2de700543e627f8a464a"
 
 [[package]]
+name = "aws-nitro-blobs"
+version = "0.1.0"
+dependencies = [
+ "aws-nitro-blobs-downloader",
+]
+
+[[package]]
+name = "aws-nitro-blobs-downloader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 4.5.51",
+ "env_logger",
+ "futures-util",
+ "hex 0.4.3",
+ "log 0.4.28",
+ "reqwest",
+ "sha2 0.10.9",
+]
+
+[[package]]
 name = "aws-nitro-enclaves-cose"
 version = "0.1.0"
 source = "git+https://github.com/fortanix/aws-nitro-enclaves-cose.git?branch=v0.1.0-patched#fe2558390c13cbd0e82f9c1610e74c4a4ddfd7e1"
@@ -347,20 +368,6 @@ name = "bitflags"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf4b9d6a944f767f8e5e0db018570623c85f3d925ac718db4e06d0187adb21c1"
-
-[[package]]
-name = "blobs-tool"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap 4.5.51",
- "env_logger",
- "futures-util",
- "hex 0.4.3",
- "log 0.4.28",
- "reqwest",
- "sha2 0.10.9",
-]
 
 [[package]]
 name = "block-buffer"
@@ -1283,8 +1290,8 @@ dependencies = [
 name = "fortanix-vme-eif"
 version = "0.1.0"
 dependencies = [
+ "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
- "blobs-tool",
  "cc",
  "clap 4.5.51",
  "cpio",
@@ -1302,7 +1309,7 @@ name = "fortanix-vme-tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "blobs-tool",
+ "aws-nitro-blobs",
  "cargo_toml",
  "clap 4.5.51",
  "fortanix-vme-eif",

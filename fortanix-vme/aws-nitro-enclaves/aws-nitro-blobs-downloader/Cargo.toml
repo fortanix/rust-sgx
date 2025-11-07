@@ -1,5 +1,5 @@
 [package]
-name = "blobs-tool"
+name = "aws-nitro-blobs-downloader"
 version = "0.1.0"
 edition = "2024"
 description = "This is a tool to download Nitro enclave related files. This tool downloads all necessary files from aws's nitro-cli repository."

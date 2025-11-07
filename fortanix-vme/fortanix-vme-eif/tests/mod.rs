@@ -1,13 +1,8 @@
 use std::io::Cursor;
 use fortanix_vme_eif::{Builder, FtxEif};
+use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
 
-// See the build script to see how they are built.
-const HELLO_WORLD: &[u8] = include_bytes!("data/hello_world");
-const KERNEL: &[u8] = include_bytes!("data/bzImage");
-const KERNEL_CONFIG: &str = include_str!("data/bzImage.config");
-const NSM: &[u8] = include_bytes!("data/nsm.ko");
-const INIT: &[u8] = include_bytes!("data/init");
-const CMDLINE: &str = include_str!("data/cmdline");
+const HELLO_WORLD: &[u8] = include_bytes!(std::concat!(std::env!("OUT_DIR"), "/hello_world"));
 
 #[test]
 fn eif_creation_and_extraction() {

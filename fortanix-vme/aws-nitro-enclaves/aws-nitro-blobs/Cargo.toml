@@ -1,0 +1,10 @@
+[package]
+name = "aws-nitro-blobs"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+
+[build-dependencies]
+aws-nitro-blobs-downloader = { path = "../aws-nitro-blobs-downloader" }

@@ -1,14 +1,9 @@
+use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
 use clap::Parser;
 use fortanix_vme_eif::Builder;
 use std::io::{BufReader, BufWriter, Cursor, Write};
 use std::fs::File;
 use std::path::{Path, PathBuf};
-
-const KERNEL: &[u8] = include_bytes!("../data/bzImage");
-const KERNEL_CONFIG: &str = include_str!("../data/bzImage.config");
-const NSM: &[u8] = include_bytes!("../data/nsm.ko");
-const INIT: &[u8] = include_bytes!("../data/init");
-const CMDLINE: &str = include_str!("../data/cmdline");
 
 #[derive(Parser, Debug)]
 #[command(about = "Convert an x86_64-unknown-linux-fortanixvme ELF binary to an AWS EIF file")]

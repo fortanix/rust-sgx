@@ -16,10 +16,10 @@ flate2 = "1.0"
 thiserror = "1.0"
 
 [build-dependencies]
-blobs-tool = { path = "../aws-nitro-enclaves/blobs-tool" }
 cc = "1.2"
 
 [dev-dependencies]
+aws-nitro-blobs = { path = "../aws-nitro-enclaves/aws-nitro-blobs" }
 clap = { version = "4.0", features = ["derive"] }
 hex = "0.4"
 hex-literal = "0.4"

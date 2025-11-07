@@ -1,1 +1,0 @@
-This folder should contain links to nitro blobs after a successful build.

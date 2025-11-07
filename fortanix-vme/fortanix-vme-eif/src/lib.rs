@@ -270,18 +270,15 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
 #[cfg(test)]
 mod tests {
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
+    use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
+    use std::{concat, env};
     use std::io::Cursor;
     use std::ops::Deref;
     use super::{Builder, FtxEif};
     use super::initramfs::{Builder as InitramfsBuilder};
 
-    // See the build script to see how they are built.
-    const HELLO_WORLD: &[u8] = include_bytes!("../tests/data/hello_world");
-    const KERNEL: &[u8] = include_bytes!("../tests/data/bzImage");
-    const KERNEL_CONFIG: &str = include_str!("../tests/data/bzImage.config");
-    const NSM: &[u8] = include_bytes!("../tests/data/nsm.ko");
-    const INIT: &[u8] = include_bytes!("../tests/data/init");
-    const CMDLINE: &str = include_str!("../tests/data/cmdline");
+    // Built by the build script.
+    const HELLO_WORLD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hello_world"));
 
     #[test]
     fn eif_creation() {
