@@ -15,12 +15,12 @@ void main() {
 }' > main.c
 gcc -o a.out main.c -static -static-libgcc -flto
 */
-const HELLO_WORLD: &'static [u8; 872008] = include_bytes!("data/hello_world");
-const KERNEL: &'static [u8; 5083088] = include_bytes!("data/bzImage");
-const KERNEL_CONFIG: &'static str = include_str!("data/bzImage.config");
-const NSM: &'static [u8; 20504] = include_bytes!("data/nsm.ko");
-const INIT: &'static [u8; 742968] = include_bytes!("data/init");
-const CMDLINE: &'static str = include_str!("data/cmdline");
+const HELLO_WORLD: &[u8] = include_bytes!("data/hello_world");
+const KERNEL: &[u8] = include_bytes!("data/bzImage");
+const KERNEL_CONFIG: &str = include_str!("data/bzImage.config");
+const NSM: &[u8] = include_bytes!("data/nsm.ko");
+const INIT: &[u8] = include_bytes!("data/init");
+const CMDLINE: &str = include_str!("data/cmdline");
 
 #[test]
 fn eif_creation_and_extraction() {
