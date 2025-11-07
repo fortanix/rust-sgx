@@ -1,4 +1,5 @@
 use blobs_tool::download::download_blobs;
+use blobs_tool::BLOB_DEFAULT_DIR;
 use clap::{Command, arg, command, value_parser};
 use std::path::PathBuf;
 
@@ -19,7 +20,7 @@ fn main() {
         .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("download") {
-        let default_output = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
+        let default_output = PathBuf::from(BLOB_DEFAULT_DIR);
         let output = matches
             .get_one::<PathBuf>("output")
             .unwrap_or(&default_output);
