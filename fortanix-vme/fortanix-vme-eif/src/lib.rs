@@ -10,6 +10,8 @@ use tempfile::{self, NamedTempFile};
 
 mod initramfs;
 mod error;
+#[cfg(test)]
+mod test_support;
 
 pub use error::Error;
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
@@ -269,22 +271,19 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
 
 #[cfg(test)]
 mod tests {
-    use aws_nitro_enclaves_image_format::defs::EifSectionType;
-    use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
-    use std::{concat, env};
-    use std::io::Cursor;
-    use std::ops::Deref;
     use super::{Builder, FtxEif};
     use super::initramfs::{Builder as InitramfsBuilder};
-
-    // Built by the build script.
-    const HELLO_WORLD: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hello_world"));
+    use super::test_support::TEST_BINARY;
+    use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
+    use aws_nitro_enclaves_image_format::defs::EifSectionType;
+    use std::io::Cursor;
+    use std::ops::Deref;
 
     #[test]
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
-        let eif = Builder::new(name.clone(), Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
+        let eif = Builder::new(name.clone(), Cursor::new(&*TEST_BINARY), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
             .build(Cursor::new(Vec::new()))
             .unwrap()
             .into_inner()
@@ -309,7 +308,7 @@ mod tests {
                     assert_eq!(None, cmdline.replace(content));
                 },
                 EifSectionType::EifSectionRamdisk => {
-                    let expected_initramfs = InitramfsBuilder::new(Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM))
+                    let expected_initramfs = InitramfsBuilder::new(Cursor::new(&*TEST_BINARY), Cursor::new(INIT), Cursor::new(NSM))
                         .build(Cursor::new(Vec::new()))
                         .unwrap()
                         .into_inner()
@@ -326,5 +325,24 @@ mod tests {
             }
         }
         assert_eq!(eif_reader.metadata().unwrap().img_name, name);
+    }
+
+
+    #[test]
+    fn eif_creation_and_extraction() {
+        let name = String::from("TestEnclave");
+        let hello_world = Cursor::new(&*TEST_BINARY);
+        let init = Cursor::new(INIT);
+        let nsm = Cursor::new(NSM);
+        let kernel = Cursor::new(KERNEL);
+        let kernel_config = Cursor::new(KERNEL_CONFIG);
+        let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, CMDLINE)
+            .build(Cursor::new(Vec::new()))
+            .unwrap()
+            .into_inner()
+            .into_inner();
+
+        let mut eif = FtxEif::new(Cursor::new(eif));
+        assert_eq!(eif.application().unwrap(), *TEST_BINARY);
     }
 }
