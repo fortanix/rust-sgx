@@ -10,8 +10,6 @@ use tempfile::{self, NamedTempFile};
 
 mod initramfs;
 mod error;
-#[cfg(test)]
-mod test_support;
 
 pub use error::Error;
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
@@ -273,11 +271,55 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
 mod tests {
     use super::{Builder, FtxEif};
     use super::initramfs::{Builder as InitramfsBuilder};
-    use super::test_support::TEST_BINARY;
     use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
-    use std::io::Cursor;
+    use std::fs::File;
+    use std::io::{Cursor, Read};
     use std::ops::Deref;
+    use std::path::PathBuf;
+    use std::sync::LazyLock;
+
+    pub static TEST_BINARY: LazyLock<Vec<u8>> = LazyLock::new(read_test_binary);
+
+    fn read_test_binary() -> Vec<u8> {
+        let test_resources = {
+            let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            p.push("resources/tests");
+            p
+        };
+
+        let binary_path = {
+            let mut p = PathBuf::from(test_resources.clone());
+            p.push("hello_world");
+            p
+        };
+        if !binary_path.exists() {
+            let compiler = cc::Build::new()
+                .opt_level(0)
+                .target("x86_64-unknown-linux-gnu")
+                .host("x86_64-unknown-linux-gnu")
+                .get_compiler();
+            let mut cmd = compiler.to_command();
+            let src_path = {
+                let mut p = PathBuf::from(test_resources);
+                p.push("hello_world.c");
+                p
+            };
+            cmd.arg(src_path.into_os_string())
+                .args(["-static", "-static-libgcc", "-flto"])
+                .args(["-o", binary_path.to_str().expect("Failed to get path str")]);
+            let status = cmd.status().expect("Failed to execute C compiler");
+            if !status.success() {
+                panic!("Compilation failed, command: {:?}", cmd);
+            }
+        }
+        let mut f = File::open(binary_path).expect("Unable to open test binary file");
+        let mut data = vec![];
+        f.read_to_end(&mut data)
+            .expect("Unable to read test binary");
+        data
+    }
+
 
     #[test]
     fn eif_creation() {
