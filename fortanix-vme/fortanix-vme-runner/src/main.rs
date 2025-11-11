@@ -1,7 +1,7 @@
 use clap::Parser;
 use fortanix_vme_eif::FtxEif;
 use fortanix_vme_abi::SERVER_PORT;
-use ftxvme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs};
+use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs};
 use nitro_cli::common::commands_parser::{RunEnclavesArgs as NitroArgs};
 use std::convert::TryFrom;
 use std::fs::File;
