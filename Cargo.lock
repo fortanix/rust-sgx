@@ -2044,12 +2044,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mopa"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a785740271256c230f57462d3b83e52f998433a7062fc18f96d5999474a9f915"
-
-[[package]]
 name = "native-tls"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3361,7 +3355,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.9.2"
+version = "0.9.3"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -3375,7 +3369,6 @@ dependencies = [
  "fnv",
  "lazy_static",
  "log 0.4.21",
- "mopa",
  "num",
  "openssl",
  "petgraph",
