@@ -1299,20 +1299,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "fortanix-vme-tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "aws-nitro-blobs",
- "cargo_toml",
- "clap 4.5.51",
- "fortanix-vme-eif",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "ftxvme-runner"
+name = "fortanix-vme-runner"
 version = "0.1.0"
 dependencies = [
  "clap 4.5.51",
@@ -1327,6 +1314,19 @@ dependencies = [
  "serde",
  "serde_cbor",
  "vsock 0.2.4",
+]
+
+[[package]]
+name = "fortanix-vme-tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "aws-nitro-blobs",
+ "cargo_toml",
+ "clap 4.5.51",
+ "fortanix-vme-eif",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -2107,8 +2107,8 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.152"
-source = "git+https://github.com/fortanix/libc.git?branch=fortanixvme#b7a815ea60c182f9d4b326f610f68a26239c8030"
+version = "0.2.175"
+source = "git+https://github.com/fortanix/libc.git?branch=fortanixvme-2023-05-07-alpha#7c49dc0a4709ac7702469f80a7bbb855b591eefd"
 
 [[package]]
 name = "libloading"
