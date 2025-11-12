@@ -1119,6 +1119,7 @@ dependencies = [
  "libc",
  "nix 0.13.1",
  "num_cpus",
+ "os_str_bytes",
  "serde",
  "serde_derive 1.0.219",
  "sgx-isa 0.4.1",
@@ -2425,6 +2426,15 @@ dependencies = [
  "libc",
  "pkg-config",
  "vcpkg",
+]
+
+[[package]]
+name = "os_str_bytes"
+version = "7.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63eceb7b5d757011a87d08eb2123db15d87fb0c281f65d101ce30a1e96c3ad5c"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
