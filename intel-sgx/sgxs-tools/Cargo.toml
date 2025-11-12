@@ -56,7 +56,7 @@ fnv = "1"                                        # MIT/Apache-2.0
 proc-mounts = "0.3.0"                            # MIT
 serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
-serde_yaml = "0.8.8"                             # MIT/Apache-2.0
+serde_yaml = "0.8.26"                             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 dcap-ql = { version = "0.4.0", path = "../dcap-ql" }
