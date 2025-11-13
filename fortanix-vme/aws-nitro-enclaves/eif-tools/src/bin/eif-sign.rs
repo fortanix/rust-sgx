@@ -1,14 +1,10 @@
-use std::fs::File;
+use std::fs;
 use std::io::Write;
-use std::path::Path;
 use std::process::exit;
 
-use clap::{Arg, crate_authors, crate_version};
-use env_logger;
+use clap::{crate_authors, crate_version, Arg};
 use log::LevelFilter;
-use aws_nitro_enclaves_image_format::utils::EifBuilder;
-use sha2;
-use sha2::Digest;
+use nitro_cli::common::commands_parser::SignEifArgs;
 
 use eif_tools::*;
 
@@ -17,37 +13,47 @@ fn main() {
         .author(crate_authors!())
         .about("Sign an EIF file")
         .version(crate_version!())
-        .arg(Arg::with_name("verbose")
-            .short("v")
-            .long("verbose")
-            .help("Print extra information about the signing process"))
-        .arg(Arg::with_name("input-eiffile")
-            .short("i")
-            .long("input-file")
-            .required(true)
-            .value_name("FILE")
-            .validator_os(readable_file)
-            .help("Path to input EIF file"))
-        .arg(Arg::with_name("output-eiffile")
-            .short("o")
-            .long("output-file")
-            .required(true)
-            .value_name("FILE")
-            .help("Path to output EIF file"))
-        .arg(Arg::with_name("signing-certificate")
-            .short("c")
-            .long("signing-certificate")
-            .required(true)
-            .value_name("FILE")
-            .validator_os(readable_file)
-            .help("Path to signing certificate used to signed eif file"))
-        .arg(Arg::with_name("private-key")
-            .short("k")
-            .long("private-key")
-            .required(true)
-            .value_name("FILE")
-            .validator_os(readable_file)
-            .help("Path to private key used to signed eif file"))
+        .arg(
+            Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .help("Print extra information about the signing process"),
+        )
+        .arg(
+            Arg::with_name("input-eiffile")
+                .short("i")
+                .long("input-file")
+                .required(true)
+                .value_name("FILE")
+                .validator_os(readable_file)
+                .help("Path to input EIF file"),
+        )
+        .arg(
+            Arg::with_name("output-eiffile")
+                .short("o")
+                .long("output-file")
+                .required(true)
+                .value_name("FILE")
+                .help("Path to output EIF file"),
+        )
+        .arg(
+            Arg::with_name("signing-certificate")
+                .short("c")
+                .long("signing-certificate")
+                .required(true)
+                .value_name("FILE")
+                .validator_os(readable_file)
+                .help("Path to signing certificate used to signed eif file"),
+        )
+        .arg(
+            Arg::with_name("private-key")
+                .short("k")
+                .long("private-key")
+                .required(true)
+                .value_name("FILE")
+                .validator_os(readable_file)
+                .help("Path to private key used to signed eif file"),
+        )
         .get_matches();
 
     let verbose = args.is_present("verbose");
@@ -64,29 +70,27 @@ fn main() {
         logger.filter_level(LevelFilter::Error).init();
     }
 
-    println!("Signing EIF file `{}` to `{}`, please wait", input_path, output_path);
+    println!(
+        "Signing EIF file `{}` to `{}`, please wait",
+        input_path, output_path
+    );
 
-    let mut builder = match EifBuilder::from_eif_file(Path::new(input_path), sha2::Sha384::new()) {
-        Ok(b) => b,
-        Err(e) => {
-            println!("Could not parse input EIF file: {:?}", e);
-            exit(1);
-        }
-    };
-
-    if builder.is_signed() {
-        println!("Given EIF file is already signed");
+    if let Err(e) = fs::copy(input_path, output_path) {
+        println!("Failed to copy eif: {e}");
         exit(1);
     }
 
-    if let Err(e) = builder.set_sign_info(signing_certificate, private_key) {
-        println!("Could not parse given certificate and key: {:?}", e);
-        exit(1);
+    let args = SignEifArgs {
+        eif_path: output_path.to_string(),
+        signing_certificate: Some(signing_certificate.to_string()),
+        private_key: Some(private_key.to_string()),
     };
 
-    let mut output_file = File::create(output_path).expect("Could not create output file");
-    let measurements = builder.write_to(&mut output_file);
-
-    println!("EIF successfully signed: `{}`", output_path);
-    println!("{:#?}", measurements);
+    match nitro_cli::sign_eif(args) {
+        Ok(()) => println!("EIF successfully signed: `{}`", output_path),
+        Err(e) => {
+            println!("Error signing eif: {:#?}", e);
+            exit(1);
+        }
+    }
 }
