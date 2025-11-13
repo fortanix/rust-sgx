@@ -5,6 +5,7 @@ use std::path::PathBuf;
 fn main() {
     env_logger::init();
     let matches = command!()
+        .subcommand_required(true)
         .subcommand(
             Command::new("download")
                 .about("Download aws nitro blobs")

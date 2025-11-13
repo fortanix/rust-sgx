@@ -100,7 +100,7 @@ impl Blob {
     }
 }
 
-pub fn download_blobs(output_dir: &Path) -> anyhow::Result<Vec<String>> {
+pub fn download_blobs(output_dir: &Path) -> anyhow::Result<Vec<PathBuf>> {
     if !output_dir.is_dir() {
         anyhow::bail!("{:?} must be a directory.", output_dir);
     }
@@ -109,7 +109,7 @@ pub fn download_blobs(output_dir: &Path) -> anyhow::Result<Vec<String>> {
     let mut blobs = Vec::new();
     for blob in &BLOBS {
         let blob_file = blob.download(&client, output_dir)?;
-        blobs.push(blob_file.to_string_lossy().to_string());
+        blobs.push(blob_file);
     }
 
     Ok(blobs)
