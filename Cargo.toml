@@ -51,11 +51,9 @@ exclude = [
 resolver = "2"
 
 [patch.crates-io]
-aws-nitro-enclaves-cose_0_1 = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "v0.1.0-patched", package = "aws-nitro-enclaves-cose" }
-aws-nitro-enclaves-image-format = { git = "https://github.com/fortanix/aws-nitro-enclaves-image-format", branch = "fortanixvme-2023-05-07-alpha" }
 getrandom = { git = "https://github.com/fortanix/getrandom", branch = "fortanixvme-2023-05-07-alpha" }
 libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme-2023-05-07-alpha" }
 nix = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
-serde = { git = "https://github.com/fortanix/serde.git" }
+serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
 vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme-2023-05-07-alpha" }

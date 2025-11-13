@@ -6,7 +6,7 @@ description = "This is a tool to download Nitro enclave related files. This tool
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.5.51", features = ["cargo"] }
+clap = { version = "4.4", features = ["cargo"] }
 env_logger = "0.9"
 futures-util = "0.3.28"
 hex = "0.4.3"
