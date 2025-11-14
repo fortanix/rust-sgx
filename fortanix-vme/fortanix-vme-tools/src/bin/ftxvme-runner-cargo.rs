@@ -232,8 +232,8 @@ fn main() -> anyhow::Result<()> {
 
     run_command(ftxvme_elf2eif)?;
 
-    let mut ftxvme_runner = command! {
-        "ftxvme-runner" => args(
+    let mut fortanix_vme_runner = command! {
+        "fortanix-vme-runner" => args(
             "--enclave-file"  => cli.eif_path(),
             "--cpu-count"     => fortanix_vme_config.cpu_count.to_string(),
             "--memory"        => fortanix_vme_config.memory.to_string()
@@ -241,18 +241,18 @@ fn main() -> anyhow::Result<()> {
     };
 
     if cli.simulate {
-        ftxvme_runner.arg("--simulate");
+        fortanix_vme_runner.arg("--simulate");
     }
 
     if cli.verbose {
-        ftxvme_runner.env("RUST_LOG", "debug");
-        ftxvme_runner.arg("--verbose");
+        fortanix_vme_runner.env("RUST_LOG", "debug");
+        fortanix_vme_runner.arg("--verbose");
     }
     if !cli.others.is_empty() {
-        ftxvme_runner.arg("--");
-        ftxvme_runner.args(cli.others);
+        fortanix_vme_runner.arg("--");
+        fortanix_vme_runner.args(cli.others);
     }
-    run_command(ftxvme_runner)?;
+    run_command(fortanix_vme_runner)?;
 
     Ok(())
 }
