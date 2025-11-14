@@ -8,7 +8,7 @@ publish = false
 [dependencies]
 chrono = "0.4"
 serde_cbor = "0.11"
-aws-nitro-enclaves-cose = { version = "0.5.0", default-features = false }
+aws-nitro-enclaves-cose = { version = "0.5", default-features = false }
 mbedtls = { version = "0.13.1", features = ["rdrand", "std", "time", "ssl"], default-features = false, optional = true }
 num-bigint = "0.4"
 serde = { version = "1.0", features = ["derive"] }
