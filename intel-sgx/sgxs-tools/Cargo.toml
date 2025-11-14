@@ -1,6 +1,6 @@
 [package]
 name = "sgxs-tools"
-version = "0.9.2"
+version = "0.9.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 description = """
@@ -50,13 +50,12 @@ atty = "0.2"                                     # MIT
 quote = "0.6"                                    # MIT/Apache-2.0
 proc-macro2 = "0.4"                              # MIT/Apache-2.0
 petgraph = "0.7"                                 # MIT/Apache-2.0
-mopa = "0.2"                                     # MIT/Apache-2.0
 syn = { version = "0.15", features = ["full"] }  # MIT/Apache-2.0
 fnv = "1"                                        # MIT/Apache-2.0
 proc-mounts = "0.3.0"                            # MIT
 serde = "1.0.84"                                 # MIT/Apache-2.0
 serde_derive = "1.0.84"                          # MIT/Apache-2.0
-serde_yaml = "0.8.8"                             # MIT/Apache-2.0
+serde_yaml = "0.8.26"                             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]
 dcap-ql = { version = "0.4.0", path = "../dcap-ql" }

@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::cell::Cell;
 use std::cmp::Ordering;
 use std::fmt;
@@ -11,10 +11,11 @@ use yansi::Paint;
 use crate::{paintalt, SgxSupport};
 use super::debug;
 
-pub trait DetectItem: Print + DebugSupport + Update + mopa::Any {
-    fn default() -> Box<dyn DetectItem> where Self: Sized;
+pub trait DetectItem: Print + DebugSupport + Update + Any {
+    fn default() -> Box<dyn DetectItem>
+    where
+        Self: Sized;
 }
-mopafy!(DetectItem);
 
 pub trait Update {
     fn update(&mut self, _support: &SgxSupport) {}
@@ -121,7 +122,7 @@ impl DetectItemMap {
             Ordering::Greater => {},
         }
 
-        assert_eq!(v, <dyn DetectItem as mopa::Any>::get_type_id(&*self.store[idx as usize]));
+        assert_eq!(v, (&*self.store[idx as usize] as &dyn Any).type_id());
 
         idx
     }
@@ -135,7 +136,9 @@ impl DetectItemMap {
     }
 
     pub fn lookup<T: DetectItem>(&self) -> &T {
-        self.store[self.map[&TypeId::of::<T>()] as usize].downcast_ref().unwrap()
+        (&*self.store[self.map[&TypeId::of::<T>()] as usize] as &dyn Any)
+            .downcast_ref()
+            .unwrap()
     }
 }
 

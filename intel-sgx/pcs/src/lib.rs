@@ -7,7 +7,6 @@
 
 #![deny(warnings)]
 
-extern crate failure;
 extern crate percent_encoding;
 extern crate yasna;
 #[macro_use]

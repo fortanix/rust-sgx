@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -1154,8 +1155,8 @@ fn update<T: DetectItem, U: Dependency<T>>(
     support: &SgxSupport,
     hidden: &Cell<bool>,
 ) {
-    let dependent = dependent.downcast_mut::<U>().unwrap();
-    let dependency = dependency.downcast_ref::<T>().unwrap();
+    let dependent = (dependent as &mut dyn Any).downcast_mut::<U>().unwrap();
+    let dependency = (dependency as &dyn Any).downcast_ref::<T>().unwrap();
     dependent.update_dependency(dependency, support);
 
     let hiddenval = if U::CONTROL_VISIBILITY {

@@ -1,6 +1,6 @@
 [package]
 name = "enclave-runner"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -23,7 +23,7 @@ exclude = ["fake-vdso/.gitignore", "fake-vdso/Makefile", "fake-vdso/main.S"]
 sgxs = { version = "0.8.0", path = "../sgxs" }
 fortanix-sgx-abi = { version = "0.6.1", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
-insecure-time = { version = "0.1", path = "../insecure-time", features = ["estimate_crystal_clock_freq"] }
+insecure-time = { version = "0.2", path = "../insecure-time", features = ["estimate_crystal_clock_freq"] }
 ipc-queue = { version = "0.4.0", path = "../../ipc-queue" }
 
 # External dependencies
@@ -34,7 +34,7 @@ lazy_static = "1.5.0"                             # MIT/Apache-2.0
 libc = "0.2.48"                                   # MIT/Apache-2.0
 nix = "0.13.0"                                    # MIT
 openssl = { version = "0.10", optional = true }   # Apache-2.0
-crossbeam = "0.8.2"                               # MIT/Apache-2.0
+crossbeam = "0.8.4"                               # MIT/Apache-2.0
 num_cpus = "1.10.0"                               # MIT/Apache-2.0
 tokio = { version = "1.35", features = ["full"] } # MIT
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
