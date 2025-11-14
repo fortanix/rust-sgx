@@ -659,7 +659,7 @@ mod tests {
                 // smallest TcbEvaluationDataNumber that's still available.
                 //
                 // Here, we temporarily fix this be hardcoding.
-                if number.number() < 17 {
+                if number.number() < 18 {
                     continue;
                 }
                 let tcb = match client.tcbinfo(&fmspc, Some(number.number())) {
@@ -837,7 +837,7 @@ mod tests {
             // smallest TcbEvaluationDataNumber that's still available.
             //
             // Here, we temporarily fix this be hardcoding.
-            if number < 17 {
+            if number < 18 {
                 continue;
             }
             let qe_identity = match client.qe_identity(Some(number)) {
