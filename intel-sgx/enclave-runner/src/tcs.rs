@@ -48,6 +48,11 @@ impl<T: Tcs> Usercall<T> {
     }
 }
 
+#[link(name = "linux-vdso.so.1", kind = "raw-dylib", modifiers = "+verbatim")]
+unsafe extern "C" {
+    fn __vdso_sgx_enter_enclave();
+}
+
 pub(crate) fn coenter<T: Tcs>(
     tcs: T,
     mut p1: u64,
@@ -67,18 +72,6 @@ pub(crate) fn coenter<T: Tcs>(
 .weak __vdso_sgx_enter_enclave
 .type __vdso_sgx_enter_enclave, function
                 mov __vdso_sgx_enter_enclave@GOTPCREL(%rip), {}
-                jmp 1f
-
-                // Strongly link to another symbol in the VDSO, so that the
-                // linker will include a DT_NEEDED entry for `linux-vdso.so.1`.
-                // This doesn't happen automatically because rustc passes
-                // `--as-needed` to the linker. This is never executed because
-                // of the unconditional jump above.
-.global __vdso_clock_gettime
-.type __vdso_clock_gettime, function
-                call __vdso_clock_gettime@PLT
-
-1:
                 ", out(reg) addr, options(nomem, nostack, att_syntax));
             addr != 0
         }
