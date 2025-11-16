@@ -16,10 +16,10 @@ thiserror = "1.0"
 
 [dev-dependencies]
 aws-nitro-blobs = { path = "../aws-nitro-enclaves/aws-nitro-blobs" }
-cc = "1.2"
 clap = { version = "4.0", features = ["derive"] }
 hex = "0.4"
 hex-literal = "0.4"
+test_resources = { path = "resources/tests" }
 
 [[example]]
 name = "eif-info"

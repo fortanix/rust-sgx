@@ -273,59 +273,15 @@ mod tests {
     use super::initramfs::{Builder as InitramfsBuilder};
     use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
-    use std::fs::File;
-    use std::io::{Cursor, Read};
+    use std::io::Cursor;
     use std::ops::Deref;
-    use std::path::PathBuf;
-    use std::sync::LazyLock;
-
-    pub static TEST_BINARY: LazyLock<Vec<u8>> = LazyLock::new(read_test_binary);
-
-    fn read_test_binary() -> Vec<u8> {
-        let test_resources = {
-            let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            p.push("resources/tests");
-            p
-        };
-
-        let binary_path = {
-            let mut p = PathBuf::from(test_resources.clone());
-            p.push("hello_world");
-            p
-        };
-        if !binary_path.exists() {
-            let compiler = cc::Build::new()
-                .opt_level(0)
-                .target("x86_64-unknown-linux-gnu")
-                .host("x86_64-unknown-linux-gnu")
-                .get_compiler();
-            let mut cmd = compiler.to_command();
-            let src_path = {
-                let mut p = PathBuf::from(test_resources);
-                p.push("hello_world.c");
-                p
-            };
-            cmd.arg(src_path.into_os_string())
-                .args(["-static", "-static-libgcc", "-flto"])
-                .args(["-o", binary_path.to_str().expect("Failed to get path str")]);
-            let status = cmd.status().expect("Failed to execute C compiler");
-            if !status.success() {
-                panic!("Compilation failed, command: {:?}", cmd);
-            }
-        }
-        let mut f = File::open(binary_path).expect("Unable to open test binary file");
-        let mut data = vec![];
-        f.read_to_end(&mut data)
-            .expect("Unable to read test binary");
-        data
-    }
-
+    use test_resources::HELLO_WORLD;
 
     #[test]
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
-        let eif = Builder::new(name.clone(), Cursor::new(&*TEST_BINARY), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
+        let eif = Builder::new(name.clone(), Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
             .build(Cursor::new(Vec::new()))
             .unwrap()
             .into_inner()
@@ -350,7 +306,7 @@ mod tests {
                     assert_eq!(None, cmdline.replace(content));
                 },
                 EifSectionType::EifSectionRamdisk => {
-                    let expected_initramfs = InitramfsBuilder::new(Cursor::new(&*TEST_BINARY), Cursor::new(INIT), Cursor::new(NSM))
+                    let expected_initramfs = InitramfsBuilder::new(Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM))
                         .build(Cursor::new(Vec::new()))
                         .unwrap()
                         .into_inner()
@@ -373,7 +329,7 @@ mod tests {
     #[test]
     fn eif_creation_and_extraction() {
         let name = String::from("TestEnclave");
-        let hello_world = Cursor::new(&*TEST_BINARY);
+        let hello_world = Cursor::new(HELLO_WORLD);
         let init = Cursor::new(INIT);
         let nsm = Cursor::new(NSM);
         let kernel = Cursor::new(KERNEL);
@@ -385,6 +341,6 @@ mod tests {
             .into_inner();
 
         let mut eif = FtxEif::new(Cursor::new(eif));
-        assert_eq!(eif.application().unwrap(), *TEST_BINARY);
+        assert_eq!(eif.application().unwrap(), HELLO_WORLD);
     }
 }
