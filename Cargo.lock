@@ -1641,7 +1641,6 @@ version = "0.1.0"
 dependencies = [
  "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
- "cc",
  "clap 4.4.18",
  "cpio",
  "flate2",
@@ -1650,6 +1649,7 @@ dependencies = [
  "serde_json",
  "sha2 0.9.9",
  "tempfile",
+ "test_resources",
  "thiserror",
 ]
 
@@ -4523,6 +4523,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "test_resources"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
