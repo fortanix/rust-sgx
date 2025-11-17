@@ -7,4 +7,5 @@ build = "build.rs"
 [dependencies]
 
 [build-dependencies]
-aws-nitro-blobs-downloader = { path = "../aws-nitro-blobs-downloader" }
+data_downloader = "0.2"
+hex-literal = "0.4.1"

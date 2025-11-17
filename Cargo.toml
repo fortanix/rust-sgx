@@ -5,7 +5,6 @@ members = [
     "examples/mem-alloc-test",
     "examples/mem-correctness-test",
     "fortanix-vme/aws-nitro-enclaves/aws-nitro-blobs",
-    "fortanix-vme/aws-nitro-enclaves/aws-nitro-blobs-downloader",
     "fortanix-vme/aws-nitro-enclaves/eif-tools",
     "fortanix-vme/aws-nitro-enclaves/nitro-attestation-verify",
     "fortanix-vme/aws-nitro-enclaves/nsm",
