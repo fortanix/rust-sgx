@@ -45,24 +45,19 @@ const NITRO_BLOBS: [(&str, DownloadRequest); 5] = [
 ];
 
 fn main() {
-    let mut out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is missing"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is missing"));
     let downloader = Downloader::builder()
         .storage_dir(out_dir.clone())
         .build()
         .expect("Unable to initialize downloader");
 
-    let mut lines = Vec::with_capacity(NITRO_BLOBS.len());
+    let nitro_blobs_file = out_dir.join("nitro_blobs.rs");
+    let mut fd = File::create(nitro_blobs_file).expect("Unable to create nitro_blobs.rs file");
     for (var, blob) in NITRO_BLOBS {
         let blob_path = downloader.get_path(&blob).unwrap();
         let line = var.replace("{path}", blob_path.to_str().unwrap());
-        lines.push(line);
+        writeln!(fd, "{}", line).expect("Failed to write nito_blobs.rs");
     }
-    let lines = lines.join("\n");
-
-    out_dir.push("nitro_blobs.rs");
-    let mut fd = File::create(out_dir).expect("Unable to create nitro_blobs.rs file");
-    fd.write_all(lines.as_bytes())
-        .expect("Unable to write nitro_blobs.rs");
 
     println!("cargo:rerun-if-changed=build.rs");
 }
