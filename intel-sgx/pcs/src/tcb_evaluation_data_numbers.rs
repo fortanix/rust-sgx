@@ -339,20 +339,11 @@ impl TcbPolicy {
     }
 
     fn minimum_tcb_evaluation_data_number_ex<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
-        tcb_eval.numbers().fold(None, |last, number| {
-            match (last, self.needs_to_be_enforced(number, &now)) {
-                (last, false) => last,
-                (Some(last), true) => {
-                    if last.number() <= number.number() {
-                        // We need the highest TCB Eval Data Number that needs to be enforced
-                        Some(number.clone())
-                    } else {
-                        Some(last)
-                    }
-                },
-                (None, true)  => Some(number.clone()),
-            }
-        })
+        // We need the highest TCB Eval Data Number that needs to be enforced
+        tcb_eval.numbers()
+            .filter(|number| self.needs_to_be_enforced(number, now))
+            .max_by_key(|number| number.number)
+            .cloned()
     }
 
     pub fn minimum_tcb_evaluation_data_number<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>) -> Option<TcbEvalNumber> {
