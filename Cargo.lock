@@ -959,7 +959,7 @@ version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2850f2f5a82cbf437dd5af4d49848fbdfc27c157c3d010345776f952765261c5"
 dependencies = [
- "os_str_bytes",
+ "os_str_bytes 6.6.1",
 ]
 
 [[package]]
@@ -1633,7 +1633,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -1642,6 +1642,7 @@ dependencies = [
  "libc",
  "nix 0.13.1",
  "num_cpus",
+ "os_str_bytes 7.1.1",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "sgx-isa 0.4.1",
@@ -3231,6 +3232,15 @@ name = "os_str_bytes"
 version = "6.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2355d85b9a3786f481747ced0e0ff2ba35213a1f9bd406ed906554d7af805a1"
+
+[[package]]
+name = "os_str_bytes"
+version = "7.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63eceb7b5d757011a87d08eb2123db15d87fb0c281f65d101ce30a1e96c3ad5c"
+dependencies = [
+ "memchr",
+]
 
 [[package]]
 name = "outref"

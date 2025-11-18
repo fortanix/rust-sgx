@@ -4,11 +4,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#[macro_use]
 extern crate clap;
 
+use std::convert::{TryFrom, TryInto};
+use std::ffi::{OsStr, OsString};
 #[cfg(unix)]
 use std::io::{stderr, Write};
+use std::path::Path;
 
 use aesm_client::AesmClient;
 use enclave_runner::EnclaveBuilder;
@@ -17,6 +19,7 @@ use anyhow::Context;
 use libc::{c_int, c_void, siginfo_t};
 #[cfg(unix)]
 use nix::sys::signal;
+use os_str_bytes::OsStrBytesExt;
 #[cfg(unix)]
 use sgxs_loaders::isgx::Device as IsgxDevice;
 #[cfg(windows)]
@@ -24,12 +27,28 @@ use sgxs_loaders::enclaveapi::Sgx as IsgxDevice;
 
 use clap::{App, Arg};
 
-arg_enum!{
-    #[derive(PartialEq, Debug)]
-    #[allow(non_camel_case_types)]
-    pub enum Signature {
-        coresident,
-        dummy
+#[derive(PartialEq, Debug)]
+pub enum Signature<'s> {
+    Coresident,
+    Dummy,
+    File(&'s Path),
+}
+
+impl<'s> TryFrom<&'s OsStr> for Signature<'s> {
+    type Error = OsString;
+
+    fn try_from(s: &'s OsStr) -> Result<Self, Self::Error> {
+        if let Some(path) = s.strip_prefix("file=") {
+            return Ok(Self::File(Path::new(path)));
+        }
+
+        if s == "coresident" {
+            Ok(Self::Coresident)
+        } else if s == "dummy" {
+            Ok(Self::Dummy)
+        } else {
+            Err("expected coresident, dummy or file=<path>".to_owned().into())
+        }
     }
 }
 
@@ -59,9 +78,10 @@ fn main() -> Result<(), anyhow::Error> {
         .arg(Arg::with_name("signature")
             .short("s")
             .long("signature")
+            .long_help("Possible values: coresident, dummy, file=<path>. Defaults to 'coresident' with a fallback to 'dummy' if no coresident signature file is found.")
             .required(false)
             .takes_value(true)
-            .possible_values(&Signature::variants()))
+            .validator_os(|s| Signature::try_from(s.as_ref()).map(|_| ())))
         .arg(Arg::with_name("enclave-args")
             .long_help("Arguments passed to the enclave. \
                 Note that this is not an appropriate channel for passing \
@@ -78,9 +98,10 @@ fn main() -> Result<(), anyhow::Error> {
 
     let mut enclave_builder = EnclaveBuilder::new(file.as_ref());
 
-    match args.value_of("signature").map(|v| v.parse().expect("validated")) {
-        Some(Signature::coresident) => { enclave_builder.coresident_signature().context("While loading coresident signature")?; }
-        Some(Signature::dummy) => { enclave_builder.dummy_signature(); },
+    match args.value_of_os("signature").map(|v| v.try_into().expect("validated")) {
+        Some(Signature::Coresident) => { enclave_builder.coresident_signature().context("While loading coresident signature")?; }
+        Some(Signature::Dummy) => { enclave_builder.dummy_signature(); },
+        Some(Signature::File(path)) => { enclave_builder.signature(path).with_context(|| format!("Failed to load signature file '{}'", path.display()))?; },
         None => (),
     }
 
