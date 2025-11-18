@@ -1,0 +1,25 @@
+[package]
+name = "fortanix-vme-eif"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+aws-nitro-enclaves-image-format = "0.5"
+cpio = "0.2"
+serde_json = "1.0"
+sha2 = "0.9"
+tempfile = "3"
+flate2 = "1.0"
+thiserror = "1.0"
+
+[dev-dependencies]
+aws-nitro-blobs = { path = "../aws-nitro-enclaves/aws-nitro-blobs" }
+clap = { version = "4.0", features = ["derive"] }
+hex = "0.4"
+hex-literal = "0.4"
+test_resources = { path = "resources/tests" }
+
+[[example]]
+name = "eif-info"

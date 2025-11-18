@@ -4,12 +4,15 @@ members = [
     "em-app/examples/get-certificate",
     "examples/mem-alloc-test",
     "examples/mem-correctness-test",
+    "fortanix-vme/aws-nitro-enclaves/aws-nitro-blobs",
     "fortanix-vme/aws-nitro-enclaves/eif-tools",
     "fortanix-vme/aws-nitro-enclaves/nitro-attestation-verify",
     "fortanix-vme/aws-nitro-enclaves/nsm",
     "fortanix-vme/aws-nitro-enclaves/tests/nsm-test",
     "fortanix-vme/fortanix-vme-abi",
+    "fortanix-vme/fortanix-vme-eif",
     "fortanix-vme/fortanix-vme-runner",
+    "fortanix-vme/fortanix-vme-tools",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",
@@ -47,9 +50,9 @@ exclude = [
 resolver = "2"
 
 [patch.crates-io]
-aws-nitro-enclaves-cose_0_1 = { git = "https://github.com/fortanix/aws-nitro-enclaves-cose.git", branch = "v0.1.0-patched", package = "aws-nitro-enclaves-cose" }
-libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme" }
+getrandom = { git = "https://github.com/fortanix/getrandom", branch = "fortanixvme-2023-05-07-alpha" }
+libc = { git = "https://github.com/fortanix/libc.git", branch = "fortanixvme-2023-05-07-alpha" }
 nix = { git = "https://github.com/fortanix/nix.git", branch = "raoul/fortanixvme_r0.20.2" }
 rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
 serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
-vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme" }
+vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "fortanixvme-2023-05-07-alpha" }
