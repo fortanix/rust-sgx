@@ -290,7 +290,7 @@ dependencies = [
  "fastrand",
  "http 0.2.12",
  "http-body 0.4.6",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pin-project-lite",
  "tracing",
  "uuid 1.18.1",
@@ -402,7 +402,7 @@ dependencies = [
  "http 0.2.12",
  "http 1.1.0",
  "once_cell",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "sha2 0.10.9",
  "time 0.3.41",
  "tracing",
@@ -433,7 +433,7 @@ dependencies = [
  "http 0.2.12",
  "http-body 0.4.6",
  "once_cell",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pin-project-lite",
  "pin-utils",
  "tracing",
@@ -1208,7 +1208,7 @@ dependencies = [
  "mbedtls",
  "num_enum",
  "pcs",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pkix",
  "quick-error",
  "reqwest",
@@ -1621,7 +1621,7 @@ version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
 ]
 
 [[package]]
@@ -2283,7 +2283,7 @@ dependencies = [
  "lazy_static",
  "log 0.4.28",
  "mbedtls",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pkix",
  "report-test",
  "reqwest",
@@ -3292,7 +3292,7 @@ dependencies = [
  "hex 0.4.3",
  "mbedtls",
  "num",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pkix",
  "quick-error",
  "reqwest",
@@ -3319,9 +3319,9 @@ checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 
 [[package]]
 name = "percent-encoding"
-version = "2.3.1"
+version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3148f5046208a5d56bcfc03053e3ca6334e51da8dfb19b6cdc8b306fae3283e"
+checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "petgraph"
@@ -3759,7 +3759,7 @@ dependencies = [
  "mime 0.3.16",
  "native-tls",
  "once_cell",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
  "pin-project-lite",
  "rustls 0.22.4",
  "rustls-pemfile 2.2.0",
@@ -4966,7 +4966,7 @@ checksum = "32f8b686cadd1473f4bd0117a5d28d36b1ade384ea9b5069a1c40aefed7fda60"
 dependencies = [
  "form_urlencoded",
  "idna 1.1.0",
- "percent-encoding 2.3.1",
+ "percent-encoding 2.3.2",
 ]
 
 [[package]]
