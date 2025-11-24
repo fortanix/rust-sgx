@@ -31,7 +31,7 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
 
     - name: Conditionally export PCS_API_KEY and PCCS_URL
       run: |
