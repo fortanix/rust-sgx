@@ -17,7 +17,7 @@ pkix = ">=0.1.2, <0.3.0"
 yasna = { version = "0.4", features = ["num-bigint"] }
 
 [dev-dependencies]
-chrono = "0.4.40"
+chrono = "0.4.42"
 pkix = ">=0.1.2, <0.3.0"
 lazy_static = "1.5.0"
 
