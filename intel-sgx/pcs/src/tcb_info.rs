@@ -286,6 +286,10 @@ impl TcbData<Verified> {
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
+
+    pub fn iter_tcblevels(&self) -> impl Iterator<Item = &TcbLevel> + '_ {
+        self.tcb_levels.iter()
+    }
 }
 
 impl TcbData<Unverified> {
