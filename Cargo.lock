@@ -1398,7 +1398,7 @@ dependencies = [
  "serde_json",
  "sgx-isa 0.4.1",
  "sgx_pkix 0.2.2",
- "url 1.7.2",
+ "url 2.5.4",
  "uuid 0.6.5",
  "uuid 0.8.2",
  "vme-pkix",
