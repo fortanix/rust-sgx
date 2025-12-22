@@ -260,6 +260,45 @@ pub trait TcbEvaluationDataNumbersService<'inp>:
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash, Clone)]
+pub enum FmspcPlatform {
+    All,
+    Client,
+    E3,
+    E5
+}
+
+#[derive(Hash)]
+pub struct FmspcsIn {
+    pub(crate) platform: FmspcPlatform
+}
+
+#[derive(Clone)]
+pub struct FmspcPlatformPair {
+    pub(crate) fmspc: Fmspc,
+    pub(crate) platform: FmspcPlatform
+}
+
+#[derive(Clone)]
+pub struct FmspcsOut {
+    pub(crate) fmspcs: Vec<FmspcPlatformPair>
+}
+
+
+impl WithApiVersion for FmspcsIn {
+    fn api_version(&self) -> PcsVersion {
+        PcsVersion::V4
+    }
+}
+
+pub trait FmspcsService<'inp>:
+    ProvisioningServiceApi<'inp, Input = FmspcsIn, Output = FmspcsOut> 
+{
+    fn build_input(&self, platform: FmspcPlatform)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+}
+    
+
 pub struct ClientBuilder {
     retry_timeout: Option<Duration>,
     cache_capacity: usize,
