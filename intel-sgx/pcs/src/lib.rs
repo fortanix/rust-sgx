@@ -30,7 +30,7 @@ use {
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponent};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel};
+pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeWithTcbDeserializer};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 
 mod io;
@@ -53,6 +53,78 @@ pub use crate::pckid::PckID;
 pub enum Platform {
     SGX,
     TDX,
+}
+
+pub trait PlatformType : Into<Platform> + Display + Clone {
+    fn new() -> Self;
+    fn tag() -> &'static str;
+    fn extra_extension() -> &'static str;
+}
+
+
+pub mod platform {
+    use std::fmt::{self, Display, Formatter};
+    use super::Platform;
+
+    #[derive(Clone, PartialEq, Debug)]
+    pub struct SGX;
+
+
+    impl Display for SGX {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+            write!(f, "Intel SGX")
+        }
+    }
+
+    impl Into<Platform> for SGX {
+        fn into(self) -> super::Platform {
+            super::Platform::SGX
+        }
+    }
+
+    impl super::PlatformType for SGX {
+        fn new() -> Self {
+            Self {}
+        }
+        
+        fn tag() -> &'static str {
+            "sgx"
+        }
+        
+        fn extra_extension() -> &'static str {
+            ""
+        }
+    }
+
+    #[derive(Clone, PartialEq, Debug)]
+    pub struct TDX;
+
+    impl Into<Platform> for TDX {
+        fn into(self) -> super::Platform {
+            super::Platform::TDX
+        }
+    }
+
+    impl Display for TDX {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+            write!(f, "Intel TDX")
+        }
+    }
+
+    impl super::PlatformType for TDX {
+        fn new() -> Self {
+            Self {}
+        }
+        
+        fn tag() -> &'static str {
+            "tdx"
+        }
+        
+        fn extra_extension() -> &'static str {
+            ".tdx"
+        }
+    }
+    
 }
 
 impl Display for Platform {

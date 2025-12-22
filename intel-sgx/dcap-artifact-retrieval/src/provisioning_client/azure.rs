@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified};
+use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified, platform};
 use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::time::Duration;
@@ -45,11 +45,13 @@ impl AzureProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let qeid = QeIdApi::new(self.api_version.clone(), pcs::EnclaveIdentity::QE);
+        let tdqeid = QeIdApi::new(self.api_version.clone(), pcs::EnclaveIdentity::TDQE);
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tdqeid, tcbinfo, tcbinfotdx, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -263,6 +265,13 @@ mod tests {
                 .build(reqwest_client());
             assert!(client.qe_identity(None).is_ok());
         }
+    }
+
+    pub fn td_qe_identity() {
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.tdqe_identity(None).is_ok());
     }
 
     #[test]
