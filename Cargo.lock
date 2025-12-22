@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-artifact-retrieval"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "assert_matches",
  "backoff",
@@ -3364,7 +3364,7 @@ dependencies = [
 
 [[package]]
 name = "pcs"
-version = "0.7.3"
+version = "0.7.4"
 dependencies = [
  "anyhow",
  "b64-ct",
