@@ -54,8 +54,9 @@ impl PccsProvisioningClientBuilder {
         let qeid = QeIdApi::new(self.base_url.clone(), self.api_version);
         let tcbinfo = TcbInfoApi::new(self.base_url.clone(), self.api_version);
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let fmspcs = super::intel::FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 

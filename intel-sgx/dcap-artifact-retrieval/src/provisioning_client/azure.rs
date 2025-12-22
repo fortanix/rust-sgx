@@ -17,6 +17,7 @@ use super::{
     StatusCode,
 };
 use crate::Error;
+use crate::intel::FmspcsApi;
 
 /// A Provisioning Certificate client builder for Azure. It is based on the internal logic of the Azure DCAP
 /// provider. Only the PCK certificates are downloaded from Azure. For others Intel is contacted.
@@ -48,8 +49,9 @@ impl AzureProvisioningClientBuilder {
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
