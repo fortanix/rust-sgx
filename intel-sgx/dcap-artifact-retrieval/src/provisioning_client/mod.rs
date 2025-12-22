@@ -7,6 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Display;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
 use std::sync::Mutex;
@@ -20,6 +21,7 @@ use pcs::{
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
+use serde::Deserialize;
 
 use crate::Error;
 
@@ -260,30 +262,51 @@ pub trait TcbEvaluationDataNumbersService<'inp>:
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
-#[derive(Hash, Clone)]
+#[derive(Hash, Clone, PartialEq, Eq, Deserialize)]
 pub enum FmspcPlatform {
+    #[serde(rename = "all")]
     All,
+    #[serde(rename = "client")]
     Client,
     E3,
     E5
 }
 
-#[derive(Hash)]
-pub struct FmspcsIn {
-    pub(crate) platform: FmspcPlatform
+impl Display for FmspcPlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::All => "all",
+            Self::Client => "client",
+            Self::E3 => "E3",
+            Self::E5 => "E5"
+        })
+    }
 }
 
-#[derive(Clone)]
+#[derive(Hash)]
+pub struct FmspcsIn {
+    pub(crate) platform: Option<FmspcPlatform>
+}
+
+#[derive(Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FmspcPlatformPair {
     pub(crate) fmspc: Fmspc,
     pub(crate) platform: FmspcPlatform
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 pub struct FmspcsOut {
     pub(crate) fmspcs: Vec<FmspcPlatformPair>
 }
 
+impl FmspcsOut {
+    pub fn parse(body: &String) -> Result<Self, Error> {
+        let res: FmspcsOut = serde_json::from_str(&body)
+            .map_err(|e| Error::ReadResponseError(format!("Invalid FMSPCs data received: {}", e).into()))?;
+        Ok(res)
+    }
+}
 
 impl WithApiVersion for FmspcsIn {
     fn api_version(&self) -> PcsVersion {
@@ -294,7 +317,7 @@ impl WithApiVersion for FmspcsIn {
 pub trait FmspcsService<'inp>:
     ProvisioningServiceApi<'inp, Input = FmspcsIn, Output = FmspcsOut> 
 {
-    fn build_input(&self, platform: FmspcPlatform)
+    fn build_input(&self, platform: Option<FmspcPlatform>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
     
@@ -325,7 +348,7 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, ES, F>(
+    pub(crate) fn build<PSS, PS, PC, QS, TS, ES, FS, F>(
         self,
         pckcerts_service: PSS,
         pckcert_service: PS,
@@ -333,6 +356,7 @@ impl ClientBuilder {
         qeid_service: QS,
         tcbinfo_service: TS,
         tcb_evaluation_data_numbers_service: ES,
+        fmspcs_service: FS,
         fetcher: F,
     ) -> Client<F>
     where
@@ -342,6 +366,7 @@ impl ClientBuilder {
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
+        FS: for<'a> FmspcsService<'a> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
     {
         Client::new(
@@ -351,6 +376,7 @@ impl ClientBuilder {
             qeid_service,
             tcbinfo_service,
             tcb_evaluation_data_numbers_service,
+            fmspcs_service,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -511,17 +537,19 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
     tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
     tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
+    fmspcs_service: CachedService<FmspcsOut, dyn for<'a> FmspcsService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS, ES>(
+    fn new<PSS, PS, PC, QS, TS, ES, FS>(
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
         tcbinfo_service: TS,
         tcb_evaluation_data_numbers_service: ES,
+        fmspcs_service: FS,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
@@ -534,6 +562,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
+        FS: for<'a> FmspcsService<'a> + Sync + Send + 'static
     {
         Client {
             pckcerts_service: CachedService::new(
@@ -579,6 +608,14 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(Box::new(tcb_evaluation_data_numbers_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            fmspcs_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(fmspcs_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -685,6 +722,8 @@ pub trait ProvisioningClient {
     }
 
     fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error>;
+
+    fn fmspcs(&self, platform: Option<FmspcPlatform>) -> Result<FmspcsOut, Error>;
 }
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
@@ -732,6 +771,10 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error> {
         let input = self.tcb_evaluation_data_numbers_service.pcs_service().build_input();
         self.tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+    }
+
+    fn fmspcs(&self, platform: Option<FmspcPlatform>) -> Result<FmspcsOut, Error> {
+        Err(Error::NoAPIKey)
     }
 }
 

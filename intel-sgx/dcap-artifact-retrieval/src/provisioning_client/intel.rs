@@ -62,8 +62,9 @@ impl IntelProvisioningClientBuilder {
         let qeid = QeIdApi::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
@@ -569,7 +570,7 @@ pub struct FmspcsApi;
 
 
 impl<'inp> FmspcsService<'inp> for FmspcsApi {
-    fn build_input(&self, platform: super::FmspcPlatform)
+    fn build_input(&self, platform: Option<super::FmspcPlatform>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input {
         FmspcsIn {
             platform
@@ -585,7 +586,14 @@ impl<'inp> ProvisioningServiceApi<'inp> for FmspcsApi {
         &'inp self,
         input: &Self::Input,
     ) -> Result<(String, Vec<(String, String)>), Error> {
-        todo!()
+        let url = if let Some(platform) = &input.platform { 
+            format!("{}/sgx/certification/v{}/fmspcs?platform={}",
+                INTEL_BASE_URL, input.api_version() as u8, platform)
+        } else { 
+            format!("{}/sgx/certification/v{}/fmspcs",
+                INTEL_BASE_URL, input.api_version() as u8)
+        };
+        Ok((url, Vec::new()))
     }
 
     fn validate_response(&'inp self, status_code: StatusCode) -> Result<(), Error> {
@@ -613,10 +621,10 @@ impl<'inp> ProvisioningServiceApi<'inp> for FmspcsApi {
     fn parse_response(
         &'inp self,
         response_body: String,
-        response_headers: Vec<(String, String)>,
-        api_version: PcsVersion,
+        _response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        todo!()
+        FmspcsOut::parse(&response_body)
     }
 }
 
@@ -1185,5 +1193,13 @@ mod tests {
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
+    }
+
+     #[test]
+    pub fn fmspcs() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        let eval_numbers = client.tcb_evaluation_data_numbers().unwrap();
     }
 }
