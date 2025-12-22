@@ -8,6 +8,7 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
+use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::mem;
 use std::path::PathBuf;
@@ -33,7 +34,7 @@ use {
 
 use crate::io::{self};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
-use crate::{CpuSvn, Error, Unverified, VerificationType, Verified};
+use crate::{CpuSvn, Error, Unverified, VerificationType, Verified, platform};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
 ///
@@ -69,7 +70,7 @@ impl TryFrom<i64> for SGXType {
 
 /// TCB component as specified in the Intel PCKCrt API v3 and v4
 #[derive(Serialize, Deserialize, Debug, Default)]
-struct IntelSgxTcbComponentsV3 {
+pub struct IntelSgxTcbComponentsV3 {
     sgxtcbcomp01svn: u8,
     sgxtcbcomp02svn: u8,
     sgxtcbcomp03svn: u8,
@@ -92,7 +93,7 @@ struct IntelSgxTcbComponentsV3 {
 /// TCB component as specified in TcbInfo (version 3) of the PCS version 4 API
 /// https://api.trustedservices.intel.com/documents/PCS_V3-V4_migration_guide.pdf
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-struct IntelSgxTcbComponentV4 {
+pub struct TcbComponentEntry {
     svn: u8,
     #[serde(default)]
     category: String,
@@ -100,9 +101,9 @@ struct IntelSgxTcbComponentV4 {
     comp_type: String,
 }
 
-impl From<u8> for IntelSgxTcbComponentV4 {
-    fn from(svn: u8) -> IntelSgxTcbComponentV4 {
-        IntelSgxTcbComponentV4 {
+impl From<u8> for TcbComponentEntry {
+    fn from(svn: u8) -> TcbComponentEntry {
+        TcbComponentEntry {
             svn,
             category: String::new(),
             comp_type: String::new(),
@@ -110,22 +111,175 @@ impl From<u8> for IntelSgxTcbComponentV4 {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-struct IntelSgxTcbComponentsV4 {
-    pub sgxtcbcomponents: [IntelSgxTcbComponentV4; 16],
+mod platform_specific {
+    use super::TcbComponentEntry;
+    use serde::{Serialize, Deserialize};
+
+    #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+    pub struct SGX;
+
+    #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+    pub struct TDX {
+        pub(crate) tdxtcbcomponents: [TcbComponentEntry; 16],
+    }
+}
+
+pub trait PlatformTypeForTcbComponent<T: PlatformTypeForTcbComponent<T>> : PartialEq {
+    type PlatformSpecificTcbComponentData : Eq + Serialize + Clone + Default + Debug + PartialEq;
+
+    fn serialize<S>(data: &TcbComponentsV4<T>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer;
+
+    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<T>, D::Error>
+    where
+        D: Deserializer<'de>;
+
+    fn try_from_v3(c: IntelSgxTcbComponentsV3) -> Result<TcbComponents<T>, Error>;
+}
+
+impl PlatformTypeForTcbComponent<platform::SGX> for platform::SGX {
+    type PlatformSpecificTcbComponentData = platform_specific::SGX;
+
+    fn serialize<S>(data: &TcbComponentsV4<platform::SGX>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Dummy {
+            sgxtcbcomponents: [TcbComponentEntry; 16],
+            pcesvn: u16,
+        }
+
+        let dummy = Dummy {
+            sgxtcbcomponents: data.sgxtcbcomponents.clone(),
+            pcesvn: data.pcesvn,
+        };
+
+        dummy.serialize(serializer)
+    }
+    
+    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<platform::SGX>, D::Error>
+    where
+        D: Deserializer<'de> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Dummy {
+            sgxtcbcomponents: [TcbComponentEntry; 16],
+            pcesvn: u16,
+        }
+
+        let Dummy {
+            sgxtcbcomponents,
+            pcesvn,
+        } = Dummy::deserialize(deserializer)?;
+
+        Ok(TcbComponentsV4 {
+            sgxtcbcomponents,
+            pcesvn,
+            platform_specific_data: platform_specific::SGX
+        })
+    }
+    
+    fn try_from_v3(c: IntelSgxTcbComponentsV3) -> Result<TcbComponents<platform::SGX>, Error> {
+        Ok(TcbComponents::<platform::SGX>(c.into()))
+    }
+
+}
+
+
+impl PlatformTypeForTcbComponent<platform::TDX> for platform::TDX {
+    type PlatformSpecificTcbComponentData = platform_specific::TDX;
+
+    fn serialize<S>(data: &TcbComponentsV4<platform::TDX>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Dummy {
+            sgxtcbcomponents: [TcbComponentEntry; 16],
+            pcesvn: u16,
+            tdxtcbcomponents: [TcbComponentEntry; 16],
+        }
+
+        let dummy = Dummy {
+            sgxtcbcomponents: data.sgxtcbcomponents.clone(),
+            pcesvn: data.pcesvn,
+            tdxtcbcomponents: data.platform_specific_data.tdxtcbcomponents.clone(),
+        };
+
+        dummy.serialize(serializer)
+    }
+    
+    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<platform::TDX>, D::Error>
+    where
+        D: Deserializer<'de> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Dummy {
+            sgxtcbcomponents: [TcbComponentEntry; 16],
+            pcesvn: u16,
+            tdxtcbcomponents: [TcbComponentEntry; 16],
+        }
+
+        let Dummy {
+            sgxtcbcomponents,
+            pcesvn,
+            tdxtcbcomponents,
+        } = Dummy::deserialize(deserializer)?;
+
+        Ok(TcbComponentsV4 {
+            sgxtcbcomponents,
+            pcesvn,
+            platform_specific_data: platform_specific::TDX { 
+                tdxtcbcomponents 
+            },
+        })
+    }
+    
+    fn try_from_v3(_: IntelSgxTcbComponentsV3) -> Result<TcbComponents<platform::TDX>, Error> {
+        Err(Error::InvalidTcbInfo("Attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
+    }
+    
+
+    
+}
+
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TcbComponentsV4<T: PlatformTypeForTcbComponent<T>> {
+    pub sgxtcbcomponents: [TcbComponentEntry; 16],
     pub pcesvn: u16,
+    pub platform_specific_data: T::PlatformSpecificTcbComponentData,
+}
+
+impl<'de, T: PlatformTypeForTcbComponent<T>> Deserialize<'de> for TcbComponentsV4<T> {
+    fn deserialize<D>(deserializer: D) -> Result<TcbComponentsV4<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        T::deserialize(deserializer)
+    }
+}
+
+impl<T: PlatformTypeForTcbComponent<T>> Serialize for TcbComponentsV4<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer {
+        T::serialize(&self, serializer)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum IntelSgxTcbComponents {
+enum IntelSgxTcbComponents<T: PlatformTypeForTcbComponent<T>> {
     V3(IntelSgxTcbComponentsV3),
-    V4(IntelSgxTcbComponentsV4),
+    V4(TcbComponentsV4<T>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-#[serde(from = "IntelSgxTcbComponents")]
-pub struct TcbComponents(IntelSgxTcbComponentsV4);
+#[serde(try_from = "IntelSgxTcbComponents<T>")]
+pub struct TcbComponents<T: PlatformTypeForTcbComponent<T>>(TcbComponentsV4<T>);
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum TcbComponent {
@@ -147,14 +301,29 @@ impl TryFrom<&str> for TcbComponent {
     }
 }
 
-impl TcbComponents {
+impl TcbComponents<platform::SGX> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
-        TcbComponents(IntelSgxTcbComponentsV4 {
+        TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
+            platform_specific_data: platform_specific::SGX
         })
     }
+}
 
+impl TcbComponents<platform::TDX> {
+    pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16, raw_tdxsvn: [u8; 16]) -> Self {
+        TcbComponents (TcbComponentsV4 {
+            sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
+            pcesvn,
+            platform_specific_data: platform_specific::TDX {
+                tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into())
+            }
+        })
+    }
+}
+
+impl<T: PlatformTypeForTcbComponent<T>> TcbComponents<T> {
     fn iter_components<'a>(&'a self) -> impl Iterator<Item = u16> + 'a {
         self.0
             .sgxtcbcomponents
@@ -187,11 +356,11 @@ impl TcbComponents {
     }
 }
 
-impl PartialOrd for TcbComponents {
+impl<T: PlatformTypeForTcbComponent<T>> PartialOrd for TcbComponents<T> {
     /// Compare all 17 components. If all are equal, order as equal. If some
     /// are less and others are greater, ordering is not defined. If some are
     /// less, order as less. If some are greater, order as greater.
-    fn partial_cmp(&self, other: &TcbComponents) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &TcbComponents<T>) -> Option<Ordering> {
         let mut prev: Option<Ordering> = None;
 
         for (a, b) in self.iter_components().zip(other.iter_components()) {
@@ -209,9 +378,9 @@ impl PartialOrd for TcbComponents {
     }
 }
 
-impl std::convert::From<IntelSgxTcbComponentsV3> for IntelSgxTcbComponentsV4 {
+impl std::convert::From<IntelSgxTcbComponentsV3> for TcbComponentsV4<platform::SGX> {
     fn from(c: IntelSgxTcbComponentsV3) -> Self {
-        IntelSgxTcbComponentsV4 {
+        TcbComponentsV4 {
             sgxtcbcomponents: [
                 c.sgxtcbcomp01svn.into(),
                 c.sgxtcbcomp02svn.into(),
@@ -231,22 +400,36 @@ impl std::convert::From<IntelSgxTcbComponentsV3> for IntelSgxTcbComponentsV4 {
                 c.sgxtcbcomp16svn.into(),
             ],
             pcesvn: c.pcesvn,
+            platform_specific_data: platform_specific::SGX
         }
     }
 }
 
-impl std::convert::From<IntelSgxTcbComponents> for TcbComponents {
-    fn from(c: IntelSgxTcbComponents) -> Self {
+// impl std::convert::TryFrom<IntelSgxTcbComponents<platform::SGX>> for TcbComponents<platform::SGX> {   
+//     type Error = Error;
+    
+//     fn try_from(c: IntelSgxTcbComponents<platform::SGX>) -> Result<Self, Self::Error> {
+//         Ok(match c {
+//             IntelSgxTcbComponents::V3(c) => TcbComponents::<platform::SGX>(c.into()),
+//             IntelSgxTcbComponents::V4(c) => TcbComponents::<platform::SGX>(c.into()),
+//         })
+//     }
+// }
+
+impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<IntelSgxTcbComponents<T>> for TcbComponents<T> {   
+    type Error = Error;
+    
+    fn try_from(c: IntelSgxTcbComponents<T>) -> Result<Self, Self::Error> {
         match c {
-            IntelSgxTcbComponents::V3(c) => TcbComponents(c.into()),
-            IntelSgxTcbComponents::V4(c) => TcbComponents(c.into()),
+            IntelSgxTcbComponents::V3(c) => T::try_from_v3(c),
+            IntelSgxTcbComponents::V4(c) => Ok(TcbComponents(c.into())),
         }
     }
 }
 
-impl std::convert::From<IntelSgxTcbComponentsV4> for TcbComponents {
-    fn from(c: IntelSgxTcbComponentsV4) -> Self {
-        TcbComponents(c)
+impl<T: PlatformTypeForTcbComponent<T>> std::convert::From<TcbComponentsV4<T>> for TcbComponents<T> {
+    fn from(tcb_components: TcbComponentsV4<T>) -> Self {
+        TcbComponents::<T>(tcb_components)
     }
 }
 
@@ -289,7 +472,7 @@ impl Serialize for PckCertValue {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PckCertBodyItem {
-    tcb: TcbComponents,
+    tcb: TcbComponents<platform::SGX>,
     tcbm: String,
     cert: PckCertValue,
 }
@@ -368,7 +551,7 @@ impl PckCerts {
 
     /// Order all PCKs according to the tcb info
     /// TCB Info is carefully ordered by Intel
-    fn order_pcks<V: VerificationType>(&self, tcb_info: &TcbData<V>) -> Vec<PckCert<Unverified>> {
+    fn order_pcks<V: VerificationType>(&self, tcb_info: &TcbData<platform::SGX, V>) -> Vec<PckCert<Unverified>> {
         let mut pck_certs = self.as_pck_certs();
 
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
@@ -382,7 +565,7 @@ impl PckCerts {
     /// Code re-implements <https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441>
     pub fn select_pck<V: VerificationType>(
         &self,
-        tcb_info: &TcbData<V>,
+        tcb_info: &TcbData<platform::SGX, V>,
         cpusvn: &[u8; 16],
         pcesvn: u16,
         pceid: u16,
@@ -508,7 +691,7 @@ impl PckCert<Unverified> {
 impl PckCert<Verified> {
     /// Selects the highest matching TCB level
     /// see <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2>
-    pub fn find_tcb_state<V: VerificationType>(&self, tcb_data: &TcbData<V>) -> Option<TcbLevel> {
+    pub fn find_tcb_state<V: VerificationType>(&self, tcb_data: &TcbData<platform::SGX, V>) -> Option<TcbLevel<platform::SGX>> {
         let idx = self.find_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
     }
@@ -586,7 +769,7 @@ impl<V: VerificationType> PckCert<V> {
     }
 
     /// Find the index of the highest matching TCB level
-    fn find_tcb_level_idx<V2: VerificationType>(&self, tcb_info: &TcbData<V2>) -> Option<usize> {
+    fn find_tcb_level_idx<V2: VerificationType>(&self, tcb_info: &TcbData<platform::SGX, V2>) -> Option<usize> {
         // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
         //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
         //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
@@ -602,7 +785,7 @@ impl<V: VerificationType> PckCert<V> {
             .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
     }
 
-    fn valid_for_tcb(&self, comps: &TcbComponents, pceid: u16) -> Result<(), Error> {
+    fn valid_for_tcb(&self, comps: &TcbComponents<platform::SGX>, pceid: u16) -> Result<(), Error> {
         let sgx_extension = self
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
@@ -617,7 +800,7 @@ impl<V: VerificationType> PckCert<V> {
 
 #[derive(Default, Debug)]
 pub struct PlatformTCB {
-    pub tcb_components: TcbComponents,
+    pub tcb_components: TcbComponents<platform::SGX>,
     pub cpusvn: CpuSvn,
 }
 
@@ -1239,7 +1422,7 @@ mod tests {
     #[test]
     fn tcb_level_partial_cmp() {
         let base_tcb = [10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        let base = TcbComponents::from_raw(base_tcb, 40);
+        let base = TcbComponents::<platform::SGX>::from_raw(base_tcb, 40);
         let base = &base;
         let mut other = base.clone();
         assert_eq!(base.partial_cmp(&other), Some(Ordering::Equal));
@@ -1276,20 +1459,22 @@ mod tests {
     #[test]
     fn tcb_components_cpu_svn() {
         let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
-        let comp = TcbComponents::from_raw(raw_cpu_svn, 42);
+        let comp = TcbComponents::<platform::SGX>::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }
 
     #[test]
     #[cfg(feature = "verify")]
     fn pck_for_tcb() {
+        use crate::platform;
+
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let pck_certs = PckCerts::restore(
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
             .unwrap();
-        let tcb_info = crate::TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+        let tcb_info = crate::TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
             .unwrap();
         // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
         // selected
@@ -1302,7 +1487,7 @@ mod tests {
             .verify(&root_cas, None)
             .unwrap();
         let ext = pck_cert.sgx_extension().unwrap();
-        assert_eq!(ext.tcb.tcb_components, TcbComponents::from_raw(cpusvn, pcesvn));
+        assert_eq!(ext.tcb.tcb_components, TcbComponents::<platform::SGX>::from_raw(cpusvn, pcesvn));
         assert_eq!(ext.tcb.cpusvn, cpusvn);
         assert_eq!(ext.pceid, pceid);
     }

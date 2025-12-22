@@ -11,11 +11,11 @@
 //! <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
 
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
-    Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -51,11 +51,12 @@ impl PccsProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.base_url.clone(), self.api_version);
         let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
-        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version);
-        let tcbinfo = TcbInfoApi::new(self.base_url.clone(), self.api_version);
+        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, tcbinfotdx, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -254,21 +255,23 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi {
+pub struct TcbInfoApi<T: PlatformType> {
     base_url: Cow<'static, str>,
     api_version: PcsVersion,
+    type_: PhantomData<T>
 }
 
-impl TcbInfoApi {
+impl<T: PlatformType> TcbInfoApi<T> {
     pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
         TcbInfoApi {
             base_url,
             api_version,
+            type_: PhantomData
         }
     }
 }
 
-impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo<T>> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -285,9 +288,9 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
 /// Implementation of Get TCB Info API (section 3.3 of [reference]).
 ///
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo<T>> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo;
+    type Output = TcbInfo<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
@@ -856,7 +859,7 @@ mod tests {
             let tcb_info = client
                     .tcbinfo(&fmspc, Some(number))
                     .unwrap()
-                    .verify(&root_cas, Platform::SGX, 2)
+                    .verify(&root_cas, 2)
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
