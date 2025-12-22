@@ -12,11 +12,11 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
-    TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::common::*;
@@ -60,10 +60,11 @@ impl IntelProvisioningClientBuilder {
         let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, tcbinfotdx, evaluation_data_numbers, fetcher)
     }
 }
 
@@ -333,17 +334,18 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi {
+pub struct TcbInfoApi<T: PlatformType> {
     api_version: PcsVersion,
+    _type: PhantomData<T>
 }
 
-impl TcbInfoApi {
+impl<T: PlatformType> TcbInfoApi<T> {
     pub fn new(api_version: PcsVersion) -> Self {
-        TcbInfoApi { api_version }
+        TcbInfoApi { api_version, _type: PhantomData }
     }
 }
 
-impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo<T>> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -359,21 +361,21 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
 
 // Implementation of Get TCB Info
 // <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
-impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo<T>> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo;
+    type Output = TcbInfo<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, fmspc, evaluation_data_number)
+                "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                INTEL_BASE_URL, T::tag(), api_version, fmspc, evaluation_data_number)
         } else {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-                INTEL_BASE_URL, api_version, fmspc,
+                "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
+                INTEL_BASE_URL, T::tag(), api_version, fmspc,
             )
         };
         Ok((url, Vec::new()))
@@ -425,7 +427,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
 }
 
 pub struct QeIdApi {
-    api_version: PcsVersion,
+    api_version: PcsVersion
 }
 
 impl QeIdApi {
@@ -860,6 +862,43 @@ mod tests {
         }
     }
 
+    
+
+    #[test]
+    pub fn tcb_info_tdx() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+
+        // List of knowns FMSPCS that has valid TDX TCB
+        let fmspcs = [
+            Fmspc::try_from("00a06d080000").unwrap(), 
+            Fmspc::try_from("70a06d070000").unwrap(), 
+            Fmspc::try_from("00a06e050000").unwrap(), 
+            Fmspc::try_from("50806f000000").unwrap(), 
+            Fmspc::try_from("20a06e050000").unwrap(), 
+            Fmspc::try_from("10a06f010000").unwrap(), 
+            Fmspc::try_from("b0c06f000000").unwrap(), 
+            Fmspc::try_from("20a06f000000").unwrap(), 
+            Fmspc::try_from("60a06f000000").unwrap(), 
+            Fmspc::try_from("c0806f000000").unwrap(), 
+            Fmspc::try_from("20a06d080000").unwrap(), 
+            Fmspc::try_from("10a06d000000").unwrap(), 
+            Fmspc::try_from("00806f050000").unwrap(), 
+            Fmspc::try_from("90c06f000000").unwrap()
+        ];
+
+        for item in fmspcs.iter() {
+            let tcbinfo_tdx = client.tcbinfo_tdx(&item, None);
+            println!("FMSPC: {} => {}", item.to_string(), tcbinfo_tdx.is_ok());
+            assert!(tcbinfo_tdx.is_ok());
+
+            let verify_tcbinfo_tdx = tcbinfo_tdx.unwrap().verify(&root_cas, 2).unwrap();
+        }
+    }
+
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
@@ -1041,9 +1080,9 @@ mod tests {
                 }
             }
             let client = intel_builder.build(reqwest_client());
-            let qe_id = client.qe_identity(None);
-            assert!(qe_id.is_ok());
-            assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+            let qe_id = client.qe_identity(None).unwrap();
+            assert_eq!(qe_id.enclave_type(), EnclaveIdentity::QE);
+            assert!(qe_id.write_to_file(OUTPUT_TEST_DIR).is_ok());
         }
     }
 
@@ -1125,7 +1164,7 @@ mod tests {
             let tcb_info = client
                     .tcbinfo(&fmspc, Some(number))
                     .unwrap()
-                    .verify(&root_cas, Platform::SGX, 2)
+                    .verify(&root_cas, 2)
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }

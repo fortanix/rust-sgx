@@ -23,8 +23,9 @@ use {
 use crate::io::{self};
 use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Default, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum EnclaveIdentity {
+    #[default]
     QE,
     QVE,
     QAE,
@@ -306,13 +307,38 @@ pub struct QeIdentitySigned {
     raw_enclave_identity: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    #[serde(skip)]
+    enclave_type: EnclaveIdentity
 }
 
-impl QeIdentitySigned {
-    const FILENAME_PREFIX: &'static str = "qe3_identity";
+impl QeIdentitySigned { 
     const FILENAME_EXTENSION: &'static str = ".id";
 
+    fn filename_prefix(id: &EnclaveIdentity) -> &'static str {
+        match id {
+            EnclaveIdentity::QE => "qe3_identity",
+            EnclaveIdentity::QVE => "qve_identity",
+            EnclaveIdentity::QAE => "qae_identity",
+            EnclaveIdentity::TDQE => "tdqe_identity",
+        }
+    }
+
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
+        fn preemptive_determine_enclave_identity_type(raw_enclave_identity: &String) -> Result<EnclaveIdentity, Error> {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Dummy {
+                #[serde(with = "enclave_identity")]
+                id: EnclaveIdentity,
+            }
+
+            let Dummy {
+                id
+            } = serde_json::from_str(&raw_enclave_identity)?;
+
+            Ok(id)
+        }
+
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct IntelQeIdentitySigned<'a> {
@@ -325,42 +351,50 @@ impl QeIdentitySigned {
             enclave_identity,
             signature,
         } = serde_json::from_str(&body)?;
-        Ok(QeIdentitySigned::new(enclave_identity.to_string(), signature, ca_chain))
+        let raw_enclave_identity = enclave_identity.to_string();
+        let enclave_type = preemptive_determine_enclave_identity_type(&raw_enclave_identity)?;
+
+        Ok(QeIdentitySigned::new(raw_enclave_identity, signature, ca_chain, enclave_type))
     }
 
-    pub fn new(raw_enclave_identity: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
+    pub fn new(raw_enclave_identity: String, signature: Vec<u8>, ca_chain: Vec<String>, enclave_type: EnclaveIdentity) -> Self {
         QeIdentitySigned {
             raw_enclave_identity,
             signature,
             ca_chain,
+            enclave_type
         }
     }
 
-    pub fn create_filename(evaluation_data_number: Option<u64>) -> String {
-        io::compose_filename(Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION, evaluation_data_number)
+    pub fn enclave_type(&self) -> EnclaveIdentity {
+        self.enclave_type.clone()
+    }
+
+    pub fn create_filename(enclave_type: &EnclaveIdentity, evaluation_data_number: Option<u64>) -> String {
+        io::compose_filename(Self::filename_prefix(enclave_type), Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
         let id = QeIdentity::<Unverified>::try_from(self)?;
-        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
+        let filename = Self::create_filename(&self.enclave_type, Some(id.tcb_evaluation_data_number));
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
         let id = QeIdentity::<Unverified>::try_from(self)?;
-        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
+        let filename = Self::create_filename(&self.enclave_type, Some(id.tcb_evaluation_data_number));
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
 
-    pub fn read_from_file(input_dir: &str, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
-        let filename = Self::create_filename(evaluation_data_number);
+    pub fn read_from_file(input_dir: &str, enclave_type: EnclaveIdentity, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
+        let filename = Self::create_filename(&enclave_type, evaluation_data_number);
         let identity: Self = io::read_from_file(input_dir, &filename)?;
         Ok(identity)
     }
 
-    pub fn read_all<'a>(input_dir: &'a str) -> impl Iterator<Item = Result<Self, Error>> + 'a {
-        io::all_files(input_dir, Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION)
+    pub fn read_all<'a>(input_dir: &'a str, enclave_type: EnclaveIdentity) -> impl Iterator<Item = Result<Self, Error>> + 'a {
+        io::all_files(input_dir, Self::filename_prefix(&enclave_type), Self::FILENAME_EXTENSION)
             .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
     }
 
@@ -473,7 +507,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_qe3_identity() {
-        let qe_id = QeIdentitySigned::read_from_file("./tests/data/", None).expect("validated");
+        let qe_id = QeIdentitySigned::read_from_file("./tests/data/", EnclaveIdentity::QE, None).expect("validated");
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
@@ -491,10 +525,35 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupted_qe3_identity() {
-        let qeid = QeIdentitySigned::read_from_file("./tests/data/corrupted/", None).unwrap();
+        let qeid = QeIdentitySigned::read_from_file("./tests/data/corrupted/", EnclaveIdentity::QE, None).unwrap();
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
         assert!(qeid.verify(&root_certs, EnclaveIdentity::QE).is_err());
+    }
+
+
+    #[test]
+    #[cfg(not(target_env = "sgx"))]
+    fn parse_qe3_identity_json() {
+        use std::convert::TryFrom;
+        use crate::{QeIdentity, Unverified};
+
+        let ca_chain = vec![
+            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(), 
+            include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
+        ];
+
+        let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_certs = [&root_cert[..]];
+
+        let qe_id_sgx = QeIdentitySigned::parse(&include_str!("../tests/data/qe-identity/qeid-sgx.json").to_string(), ca_chain.clone()).unwrap();
+        QeIdentity::<Unverified>::try_from(&qe_id_sgx).unwrap();
+        qe_id_sgx.verify(&root_certs, EnclaveIdentity::QE).unwrap();
+
+
+        let qe_id_tdx = QeIdentitySigned::parse(&include_str!("../tests/data/qe-identity/qeid-tdx.json").to_string(), ca_chain).unwrap();
+        QeIdentity::<Unverified>::try_from(&qe_id_tdx).unwrap();
+        qe_id_tdx.verify(&root_certs, EnclaveIdentity::TDQE).unwrap();
     }
 }

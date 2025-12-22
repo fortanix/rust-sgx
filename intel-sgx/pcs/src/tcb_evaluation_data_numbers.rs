@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use crate::{io, Error, Fmspc, Platform, pckcrt::TcbComponents, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{EnclaveIdentity, Error, Fmspc, Platform, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified, io, pckcrt::TcbComponents, platform};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
@@ -75,12 +75,12 @@ impl TcbEvaluationDataNumbers<Unverified> {
     /// Given a particular TCB level, select the best available TCB eval number.
     /// That is the one that gives the most favorable TCB status, and the higher
     /// one if there's a tie.
-    pub fn select_best(input_dir: &str, fmspc: &Fmspc, tcb_components: &TcbComponents, qesvn: u16) -> Result<TcbEvalNumber, Error> {
+    pub fn select_best(input_dir: &str, fmspc: &Fmspc, tcb_components: &TcbComponents<platform::SGX>, qesvn: u16) -> Result<TcbEvalNumber, Error> {
         let evalnums = RawTcbEvaluationDataNumbers::read_from_file(input_dir)?.evaluation_data_numbers()?;
         let mut tcb_levels: std::collections::HashMap<_, _> = evalnums.numbers().map(|num| (num.number as u64, (num, None, None))).collect();
 
-        for tcbinfo in TcbInfo::read_all(input_dir, fmspc) {
-            let tcb_data = TcbData::parse(tcbinfo?.raw_tcb_info())?;
+        for tcbinfo in TcbInfo::<platform::SGX>::read_all(input_dir, fmspc) {
+            let tcb_data = TcbData::<platform::SGX, Unverified>::parse(tcbinfo?.raw_tcb_info())?;
             if let Some(level) = tcb_data.tcb_levels()
                 .iter()
                 .find(|level| level.tcb <= *tcb_components)
@@ -91,7 +91,7 @@ impl TcbEvaluationDataNumbers<Unverified> {
             }
         };
 
-        for qeid in QeIdentitySigned::read_all(input_dir) {
+        for qeid in QeIdentitySigned::read_all(input_dir, EnclaveIdentity::QE) {
             let qeid: QeIdentity::<Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
             if let Some(level) = qeid.tcb_levels()
                 .iter()
@@ -356,7 +356,7 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     use {
         super::TcbEvaluationDataNumbers,
-        crate::{Error, Unverified}
+        crate::{Error, Unverified, platform}
     };
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber};
@@ -448,30 +448,30 @@ mod tests {
     #[test]
     fn select_best() {
         use crate::pckcrt::TcbComponents;
-        fn select(tcb_components: &TcbComponents, qesvn: u16) -> Result<u16, Error> {
+        fn select(tcb_components: &TcbComponents<platform::SGX>, qesvn: u16) -> Result<u16, Error> {
             use std::convert::TryInto;
             TcbEvaluationDataNumbers::<Unverified>::select_best("./tests/data/eval-num-select-best", &"00606a000000".try_into().unwrap(), tcb_components, qesvn)
                 .map(|num| num.number)
         }
         // platform and QE are nonsensical: just choose highest
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 0).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([0; 16], 0), 0).unwrap(), 19);
         // platform is nonsensical: choose eval nums based on QE up-to-date
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 8).unwrap(), 19);
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 6).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([0; 16], 0), 8).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([0; 16], 0), 6).unwrap(), 8);
         // QE is nonsensical: choose eval nums based on platform up-to-date
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 19);
-        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 18);
-        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 17);
-        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 14);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 14);
         // platform and QE are fully up to date: choose highest
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 19);
         // QE is up to date: choose up-to-date eval nums based on platform
-        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 18);
-        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 17);
-        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 8);
         // platform is up to date: choose up-to-date eval nums based on QE
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 6).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 6).unwrap(), 8);
         // neither platform and QE are up to date: choose highest eval nums where they were both up to date
-        assert_eq!(select(&TcbComponents::from_raw([4, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 5).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<platform::SGX>::from_raw([4, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 5).unwrap(), 8);
     }
 }
