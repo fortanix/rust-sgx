@@ -21,11 +21,11 @@ use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    Client, ClientBuilder, Fetcher, FmspcsIn, FmspcsOut, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
+    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion, 
 };
-use crate::Error;
+use crate::{Error, FmspcsService};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
@@ -564,6 +564,62 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
         RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
     }
 }
+
+pub struct FmspcsApi;
+
+
+impl<'inp> FmspcsService<'inp> for FmspcsApi {
+    fn build_input(&self, platform: super::FmspcPlatform)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        FmspcsIn {
+            platform
+        }
+    }
+}
+
+impl<'inp> ProvisioningServiceApi<'inp> for FmspcsApi {
+    type Input = FmspcsIn;
+    type Output = FmspcsOut;
+
+    fn build_request(
+        &'inp self,
+        input: &Self::Input,
+    ) -> Result<(String, Vec<(String, String)>), Error> {
+        todo!()
+    }
+
+    fn validate_response(&'inp self, status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::BadRequest => Err(Error::PCSError(
+                status_code,
+                "Invalid request parameters",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &'inp self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        todo!()
+    }
+}
+
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
