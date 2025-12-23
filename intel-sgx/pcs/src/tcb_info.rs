@@ -18,7 +18,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::pckcrt::{TcbComponent, TcbComponents};
+use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}, platform};
 use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -216,7 +216,7 @@ impl<'de> Deserialize<'de> for AdvisoryID {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct TcbData<V: VerificationType = Verified> {
+pub struct TcbData<V: VerificationType = Verified, T: PlatformType = platform::SGX> {
     id: Platform,
     version: u16,
     issue_date: DateTime<Utc>,
@@ -227,10 +227,11 @@ pub struct TcbData<V: VerificationType = Verified> {
     tcb_evaluation_data_number: u64,
     tcb_levels: Vec<TcbLevel>,
     type_: PhantomData<V>,
+    platform_: PhantomData<T>
 }
 
-impl<'de> Deserialize<'de> for TcbData<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbData<Unverified>, D::Error>
+impl<'de, T: PlatformType> Deserialize<'de> for TcbData<Unverified, T> {
+    fn deserialize<D>(deserializer: D) -> Result<TcbData<Unverified, T>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -274,11 +275,12 @@ impl<'de> Deserialize<'de> for TcbData<Unverified> {
             tcb_evaluation_data_number,
             tcb_levels,
             type_: PhantomData,
+            platform_: PhantomData
         })
     }
 }
 
-impl TcbData<Verified> {
+impl<T: PlatformType> TcbData<Verified, T> {
     pub fn version(&self) -> u16 {
         self.version
     }
@@ -288,7 +290,7 @@ impl TcbData<Verified> {
     }
 }
 
-impl TcbData<Unverified> {
+impl<T: PlatformType > TcbData<Unverified, T> {
     pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
         let data: TcbData<Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
         if data.version != 2 && data.version != 3 {
@@ -313,7 +315,7 @@ impl TcbData<Unverified> {
 
 }
 
-impl<V: VerificationType> TcbData<V> {
+impl<V: VerificationType, T: PlatformType> TcbData<V, T> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
     }
@@ -339,13 +341,14 @@ impl<V: VerificationType> TcbData<V> {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct TcbInfo {
+pub struct TcbInfo<T: PlatformType> {
     raw_tcb_info: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    _type: PhantomData<T>
 }
 
-impl TcbInfo {
+impl<T: PlatformType> TcbInfo<T> {
     const FILENAME_EXTENSION: &'static str = ".tcb";
 
     pub fn new(raw_tcb_info: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
@@ -353,6 +356,7 @@ impl TcbInfo {
             raw_tcb_info,
             signature,
             ca_chain,
+            _type: PhantomData
         }
     }
 
@@ -388,8 +392,8 @@ impl TcbInfo {
     }
 
     pub fn restore(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
-        let filename = TcbInfo::create_filename(&fmspc.to_string(), evaluation_data_number);
-        let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
+        let filename = TcbInfo::<T>::create_filename(&fmspc.to_string(), evaluation_data_number);
+        let info: TcbInfo<T> = io::read_from_file(input_dir, &filename)?;
         Ok(info)
     }
 
@@ -411,13 +415,13 @@ impl TcbInfo {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16) -> Result<TcbData<Verified>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16) -> Result<TcbData<Verified, T>, Error> {
         let now = Utc::now();
-        self.verify_ex(trusted_root_certs, platform, min_version, &now)
+        self.verify_ex(trusted_root_certs, min_version, &now)
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified>, Error> {
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified, T>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -463,10 +467,10 @@ impl TcbInfo {
             tcb_evaluation_data_number,
             tcb_levels,
             ..
-        } = TcbData::parse(&self.raw_tcb_info)?;
+        } = TcbData::<Unverified, T>::parse(&self.raw_tcb_info)?;
 
-        if id != platform {
-            return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {platform} platform")))
+        if id != T::new().into() {
+            return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {} platform", T::new())))
         }
 
         if min_version > version {
@@ -480,7 +484,7 @@ impl TcbInfo {
             return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
         }
 
-        Ok(TcbData::<Verified> {
+        Ok(TcbData::<Verified, T> {
             id,
             version,
             issue_date,
@@ -491,11 +495,12 @@ impl TcbInfo {
             tcb_evaluation_data_number,
             tcb_levels,
             type_: PhantomData,
+            platform_: PhantomData
         })
     }
 
     pub fn data(&self) -> Result<TcbData<Unverified>, Error> {
-        TcbData::parse(&self.raw_tcb_info)
+        TcbData::<Unverified, T>::parse(&self.raw_tcb_info)
     }
 }
 

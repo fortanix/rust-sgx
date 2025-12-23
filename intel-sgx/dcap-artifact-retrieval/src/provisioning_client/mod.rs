@@ -16,8 +16,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
-    QeIdentitySigned, TcbComponent, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformType, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponent, TcbInfo, Unverified, platform
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -136,6 +135,21 @@ impl WithApiVersion for PcsVersion {
     }
 }
 
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+pub enum TeePlatform {
+    SGX,
+    TDX,
+}
+
+impl Display for TeePlatform {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::SGX => "sgx",
+            Self::TDX => "tdx"
+        })
+    }
+}
+
 #[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
@@ -239,8 +253,8 @@ impl WithApiVersion for TcbInfoIn<'_> {
     }
 }
 
-pub trait TcbInfoService<'inp>:
-    ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
+pub trait TcbInfoService<'inp, T: PlatformType>:
+    ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo<T>>
 {
     fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
@@ -302,9 +316,9 @@ pub struct FmspcsOut {
 
 impl FmspcsOut {
     pub fn parse(body: &String) -> Result<Self, Error> {
-        let res: FmspcsOut = serde_json::from_str(&body)
+        let fmspcs: Vec<FmspcPlatformPair> = serde_json::from_str(&body)
             .map_err(|e| Error::ReadResponseError(format!("Invalid FMSPCs data received: {}", e).into()))?;
-        Ok(res)
+        Ok(FmspcsOut { fmspcs })
     }
 }
 
@@ -364,7 +378,7 @@ impl ClientBuilder {
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
+        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
         FS: for<'a> FmspcsService<'a> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
@@ -535,7 +549,7 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
         CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
     pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
-    tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
+    tcbinfo_service: CachedService<TcbInfo<platform::SGX>, dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send>,
     tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
     fmspcs_service: CachedService<FmspcsOut, dyn for<'a> FmspcsService<'a> + Sync + Send>,
     fetcher: F,
@@ -560,7 +574,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
+        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
         FS: for<'a> FmspcsService<'a> + Sync + Send + 'static
     {
@@ -638,7 +652,7 @@ pub trait ProvisioningClient {
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error>;
 
-    fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error>;
+    fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
 
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
@@ -753,7 +767,7 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error> {
+    fn tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
         let input = self.tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
@@ -774,7 +788,8 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     }
 
     fn fmspcs(&self, platform: Option<FmspcPlatform>) -> Result<FmspcsOut, Error> {
-        Err(Error::NoAPIKey)
+        let input = self.fmspcs_service.pcs_service().build_input(platform);
+        self.fmspcs_service.call_service(&self.fetcher, &input)
     }
 }
 
