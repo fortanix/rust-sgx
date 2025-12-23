@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified};
+use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified, platform};
 use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::time::Duration;
@@ -47,7 +47,7 @@ impl AzureProvisioningClientBuilder {
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let fmspcs = FmspcsApi { };
         self.client_builder
