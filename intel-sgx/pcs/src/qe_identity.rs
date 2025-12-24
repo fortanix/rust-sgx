@@ -21,7 +21,7 @@ use {
 };
 
 use crate::io::{self};
-use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{Error, PlatformType, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum EnclaveIdentity {
@@ -95,7 +95,7 @@ impl TcbLevel {
 
 #[derive(Clone, Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct QeIdentity<V: VerificationType = Verified> {
+pub struct QeIdentity<T: PlatformType, V: VerificationType = Verified> {
     version: u16,
     #[serde(with = "enclave_identity")]
     id: EnclaveIdentity,
@@ -121,10 +121,12 @@ pub struct QeIdentity<V: VerificationType = Verified> {
     tcb_levels: Vec<TcbLevel>,
     #[serde(skip)]
     type_: PhantomData<V>,
+    #[serde(skip)]
+    platform_: PhantomData<T>
 }
 
-impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<QeIdentity<Unverified>, D::Error>
+impl<'de, T: PlatformType> Deserialize<'de> for QeIdentity<T, Unverified> {
+    fn deserialize<D>(deserializer: D) -> Result<QeIdentity<T, Unverified>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -171,7 +173,7 @@ impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
             tcb_levels,
         } = Dummy::deserialize(deserializer)?;
 
-        Ok(QeIdentity::<Unverified> {
+        Ok(QeIdentity::<T, Unverified> {
             version,
             id,
             issue_date,
@@ -185,11 +187,12 @@ impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
             isvprodid,
             tcb_levels,
             type_: PhantomData,
+            platform_: PhantomData
         })
     }
 }
 
-impl QeIdentity {
+impl<T: PlatformType> QeIdentity<T> {
     /// Returns the most recent TCB level matching the isvsvn
     pub fn find_tcb_level<'a>(&'a self, isvsvn: u16) -> Option<&'a TcbLevel> {
         // Note: tcb levels are ordered in descending order
@@ -226,7 +229,7 @@ impl QeIdentity {
     }
 }
 
-impl<V: VerificationType> QeIdentity<V> {
+impl<T: PlatformType, V: VerificationType> QeIdentity<T, V> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
     }
@@ -236,10 +239,10 @@ impl<V: VerificationType> QeIdentity<V> {
     }
 }
 
-impl TryFrom<&QeIdentitySigned> for QeIdentity<Unverified> {
+impl<T: PlatformType> TryFrom<&QeIdentitySigned<T>> for QeIdentity<T, Unverified> {
     type Error = Error;
 
-    fn try_from(id: &QeIdentitySigned) -> Result<Self, Self::Error> {
+    fn try_from(id: &QeIdentitySigned<T>) -> Result<Self, Self::Error> {
         serde_json::from_str(&id.raw_enclave_identity).map_err(|e| Error::ParseError(e))
     }
 }
@@ -302,13 +305,15 @@ where
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
-pub struct QeIdentitySigned {
+pub struct QeIdentitySigned<T: PlatformType> {
     raw_enclave_identity: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    #[serde(skip)]
+    type_: PhantomData<T>
 }
 
-impl QeIdentitySigned {
+impl<T: PlatformType> QeIdentitySigned<T> {
     const FILENAME_PREFIX: &'static str = "qe3_identity";
     const FILENAME_EXTENSION: &'static str = ".id";
 
@@ -333,6 +338,7 @@ impl QeIdentitySigned {
             raw_enclave_identity,
             signature,
             ca_chain,
+            type_: PhantomData
         }
     }
 
@@ -341,14 +347,14 @@ impl QeIdentitySigned {
     }
 
     pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        let id = QeIdentity::<Unverified>::try_from(self)?;
+        let id = QeIdentity::<T, Unverified>::try_from(self)?;
         let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let id = QeIdentity::<Unverified>::try_from(self)?;
+        let id = QeIdentity::<T, Unverified>::try_from(self)?;
         let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
@@ -377,7 +383,7 @@ impl QeIdentitySigned {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], enclave_identity: EnclaveIdentity) -> Result<QeIdentity, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], enclave_identity: EnclaveIdentity) -> Result<QeIdentity<T>, Error> {
         // check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -410,7 +416,7 @@ impl QeIdentitySigned {
 
         crate::check_root_ca(trusted_root_certs, &root_list)?;
 
-        let QeIdentity::<Unverified> {
+        let QeIdentity::<T, Unverified> {
             version,
             id,
             issue_date,
@@ -424,6 +430,7 @@ impl QeIdentitySigned {
             isvprodid,
             tcb_levels,
             type_: PhantomData,
+            platform_: PhantomData
         } = serde_json::from_str(&self.raw_enclave_identity).map_err(|e| Error::ParseError(e))?;
 
         if version != 2 {
@@ -443,7 +450,7 @@ impl QeIdentitySigned {
             return Err(Error::Qe3NotValid(format!("QE3 expired on {}", next_update)))
         }
 
-        Ok(QeIdentity::<Verified> {
+        Ok(QeIdentity::<T, Verified> {
             version,
             id,
             issue_date,
@@ -457,6 +464,7 @@ impl QeIdentitySigned {
             isvprodid,
             tcb_levels,
             type_: PhantomData,
+            platform_: PhantomData
         })
     }
 }
@@ -473,7 +481,9 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_qe3_identity() {
-        let qe_id = QeIdentitySigned::read_from_file("./tests/data/", None).expect("validated");
+        use crate::platform;
+
+        let qe_id = QeIdentitySigned::<platform::SGX>::read_from_file("./tests/data/", None).expect("validated");
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];
@@ -491,7 +501,9 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupted_qe3_identity() {
-        let qeid = QeIdentitySigned::read_from_file("./tests/data/corrupted/", None).unwrap();
+        use crate::platform;
+
+        let qeid = QeIdentitySigned::<platform::SGX>::read_from_file("./tests/data/corrupted/", None).unwrap();
 
         let root_cert = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certs = [&root_cert[..]];

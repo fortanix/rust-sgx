@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, QeId, QeIdentitySigned, TcbInfo, Unverified
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -51,12 +51,14 @@ impl PccsProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.base_url.clone(), self.api_version);
         let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
-        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version);
-        let tcbinfo = TcbInfoApi::new(self.base_url.clone(), self.api_version);
+        let qeid = QeIdApi::<platform::SGX>::new(self.base_url.clone(), self.api_version.clone());
+        let qeidtdx = QeIdApi::<platform::TDX>::new(self.base_url.clone(), self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
         let fmspcs = super::intel::FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, qeidtdx, tcbinfo, tcbinfotdx, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
@@ -348,21 +350,23 @@ impl<'inp, T: PlatformType> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     }
 }
 
-pub struct QeIdApi {
+pub struct QeIdApi<T: PlatformType> {
     base_url: Cow<'static, str>,
     api_version: PcsVersion,
+    type_: PhantomData<T>
 }
 
-impl QeIdApi {
+impl<T: PlatformType> QeIdApi<T> {
     pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
         QeIdApi {
             base_url,
             api_version,
+            type_: PhantomData
         }
     }
 }
 
-impl<'inp> QeIdService<'inp> for QeIdApi {
+impl<'inp, T: PlatformType> QeIdService<'inp, T> for QeIdApi<T> {
     fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version,
@@ -374,9 +378,9 @@ impl<'inp> QeIdService<'inp> for QeIdApi {
 /// Implementation of Get Intel's QE Identity API (section 3.4 of [reference]).
 ///
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
+impl<'inp, T: PlatformType> ProvisioningServiceApi<'inp> for QeIdApi<T> {
     type Input = QeIdIn;
-    type Output = QeIdentitySigned;
+    type Output = QeIdentitySigned<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
