@@ -59,12 +59,14 @@ impl IntelProvisioningClientBuilder {
         let pck_certs = PckCertsApi::new(self.api_version.clone(), self.api_key.clone());
         let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
+        let qeid = QeIdApi::<platform::SGX>::new(self.api_version.clone());
+        let qeidtdx = QeIdApi::<platform::TDX>::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, qeidtdx, tcbinfo, tcbinfotdx, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
@@ -426,17 +428,18 @@ impl<'inp, T: PlatformType> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     }
 }
 
-pub struct QeIdApi {
+pub struct QeIdApi<T: PlatformType> {
     api_version: PcsVersion,
+    type_: PhantomData<T>
 }
 
-impl QeIdApi {
+impl<T: PlatformType> QeIdApi<T> {
     pub fn new(api_version: PcsVersion) -> Self {
-        QeIdApi { api_version }
+        QeIdApi { api_version, type_: PhantomData }
     }
 }
 
-impl<'inp> QeIdService<'inp> for QeIdApi {
+impl<'inp, T:PlatformType> QeIdService<'inp, T> for QeIdApi<T> {
     fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version.clone(),
@@ -447,21 +450,21 @@ impl<'inp> QeIdService<'inp> for QeIdApi {
 
 /// Implementation of qe/identity
 /// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
+impl<'inp, T:PlatformType> ProvisioningServiceApi<'inp> for QeIdApi<T> {
     type Input = QeIdIn;
-    type Output = QeIdentitySigned;
+    type Output = QeIdentitySigned<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, tcb_evaluation_data_number
+                "{}/{}/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
+                INTEL_BASE_URL, T::new(), api_version, tcb_evaluation_data_number
             )
         } else {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                INTEL_BASE_URL, api_version,
+                "{}/{}/certification/v{}/qe/identity?update=early",
+                INTEL_BASE_URL, T::new(), api_version,
             )
         };
         Ok((url, Vec::new()))
@@ -925,6 +928,39 @@ mod tests {
         }
     }
 
+    
+
+    #[test]
+    pub fn tcb_info_tdx() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+
+        // List of knowns FMSPCS that has valid TDX TCB
+        let fmspcs = [
+            Fmspc::try_from("00a06d080000").unwrap(), 
+            Fmspc::try_from("70a06d070000").unwrap(), 
+            Fmspc::try_from("00a06e050000").unwrap(), 
+            Fmspc::try_from("50806f000000").unwrap(), 
+            Fmspc::try_from("20a06e050000").unwrap(), 
+            Fmspc::try_from("10a06f010000").unwrap(), 
+            Fmspc::try_from("b0c06f000000").unwrap(), 
+            Fmspc::try_from("20a06f000000").unwrap(), 
+            Fmspc::try_from("60a06f000000").unwrap(), 
+            Fmspc::try_from("c0806f000000").unwrap(), 
+            Fmspc::try_from("20a06d080000").unwrap(), 
+            Fmspc::try_from("10a06d000000").unwrap(), 
+            Fmspc::try_from("00806f050000").unwrap(), 
+            Fmspc::try_from("90c06f000000").unwrap()
+        ];
+
+        for item in fmspcs.iter() {
+            let tcbinfo_tdx = client.tcbinfo_tdx(&item, None);
+            println!("FMSPC: {} => {}", item.to_string(), tcbinfo_tdx.is_ok());
+            assert!(tcbinfo_tdx.is_ok());
+        }
+    }
+
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
@@ -1201,6 +1237,11 @@ mod tests {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
         let client = intel_builder.build(reqwest_client());
-        let _eval_numbers = client.fmspcs(None).unwrap();
+        let eval_numbers = client.fmspcs(None).unwrap();
+
+        for item in eval_numbers.fmspcs.iter() {
+            println!("{:#?} => {}", item.fmspc, item.platform);
+        }
+
     }
 }

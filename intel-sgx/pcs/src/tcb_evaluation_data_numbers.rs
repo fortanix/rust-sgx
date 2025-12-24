@@ -80,7 +80,7 @@ impl TcbEvaluationDataNumbers<Unverified> {
         let mut tcb_levels: std::collections::HashMap<_, _> = evalnums.numbers().map(|num| (num.number as u64, (num, None, None))).collect();
 
         for tcbinfo in TcbInfo::<platform::SGX>::read_all(input_dir, fmspc) {
-            let tcb_data = TcbData::<Unverified, platform::SGX>::parse(tcbinfo?.raw_tcb_info())?;
+            let tcb_data = TcbData::<platform::SGX, Unverified>::parse(tcbinfo?.raw_tcb_info())?;
             if let Some(level) = tcb_data.tcb_levels()
                 .iter()
                 .find(|level| level.tcb <= *tcb_components)
@@ -91,8 +91,8 @@ impl TcbEvaluationDataNumbers<Unverified> {
             }
         };
 
-        for qeid in QeIdentitySigned::read_all(input_dir) {
-            let qeid: QeIdentity::<Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
+        for qeid in QeIdentitySigned::<platform::SGX>::read_all(input_dir) {
+            let qeid: QeIdentity::<platform::SGX, Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
             if let Some(level) = qeid.tcb_levels()
                 .iter()
                 .find(|level| level.tcb.isvsvn <= qesvn)

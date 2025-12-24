@@ -234,8 +234,8 @@ impl WithApiVersion for QeIdIn {
     }
 }
 
-pub trait QeIdService<'inp>:
-    ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned>
+pub trait QeIdService<'inp, T: PlatformType>:
+    ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned<T>>
 {
     fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
@@ -362,13 +362,15 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, ES, FS, F>(
+    pub(crate) fn build<PSS, PS, PC, QS, QDS, TS, TDS, ES, FS, F>(
         self,
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
+        qeidtdx_service: QDS,
         tcbinfo_service: TS,
+        tcbinfotdx_service: TDS,
         tcb_evaluation_data_numbers_service: ES,
         fmspcs_service: FS,
         fetcher: F,
@@ -377,8 +379,10 @@ impl ClientBuilder {
         PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
-        QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
+        QS: for<'a> QeIdService<'a, platform::SGX> + Sync + Send + 'static,
+        QDS: for<'a> QeIdService<'a, platform::TDX> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
+        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
         FS: for<'a> FmspcsService<'a> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
@@ -388,7 +392,9 @@ impl ClientBuilder {
             pckcert_service,
             pckcrl_service,
             qeid_service,
+            qeidtdx_service,
             tcbinfo_service,
+            tcbinfotdx_service,
             tcb_evaluation_data_numbers_service,
             fmspcs_service,
             fetcher,
@@ -548,20 +554,24 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     pckcert_service:
         CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
     pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
-    qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
+    qeid_service: CachedService<QeIdentitySigned<platform::SGX>, dyn for<'a> QeIdService<'a, platform::SGX> + Sync + Send>,
+    qeidtdx_service: CachedService<QeIdentitySigned<platform::TDX>, dyn for<'a> QeIdService<'a, platform::TDX> + Sync + Send>,
     tcbinfo_service: CachedService<TcbInfo<platform::SGX>, dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send>,
+    tcbinfotdx_service: CachedService<TcbInfo<platform::TDX>, dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send>,
     tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
     fmspcs_service: CachedService<FmspcsOut, dyn for<'a> FmspcsService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS, ES, FS>(
+    fn new<PSS, PS, PC, QS, QDS, TS, TDS, ES, FS>(
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
+        qeidtdx_service: QDS,
         tcbinfo_service: TS,
+        tcbinfotdx_service: TDS,
         tcb_evaluation_data_numbers_service: ES,
         fmspcs_service: FS,
         fetcher: F,
@@ -573,8 +583,10 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
-        QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
+        QS: for<'a> QeIdService<'a, platform::SGX> + Sync + Send + 'static,
+        QDS: for<'a> QeIdService<'a, platform::TDX> + Sync + Send + 'static,
         TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
+        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
         FS: for<'a> FmspcsService<'a> + Sync + Send + 'static
     {
@@ -611,9 +623,25 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
                 cache_capacity,
                 cache_shelf_time,
             ),
+            qeidtdx_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(qeidtdx_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
             tcbinfo_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(Box::new(tcbinfo_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            tcbinfotdx_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(tcbinfotdx_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -654,9 +682,11 @@ pub trait ProvisioningClient {
 
     fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
 
+    fn tcbinfo_tdx(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
+
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
-    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::SGX>, Error>;
 
     /// Retrieve PCK certificates using `pckcerts()` and fallback to the
     /// following method if that's not supported:
@@ -772,12 +802,17 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
+    fn tcbinfo_tdx(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        let input = self.tcbinfotdx_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+        self.tcbinfotdx_service.call_service(&self.fetcher, &input)
+    }
+
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
         let input = self.pckcrl_service.pcs_service().build_input(ca);
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 
-    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::SGX>, Error> {
         let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
         self.qeid_service.call_service(&self.fetcher, &input)
     }

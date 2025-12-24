@@ -18,7 +18,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}, platform};
+use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}};
 use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -216,7 +216,7 @@ impl<'de> Deserialize<'de> for AdvisoryID {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
-pub struct TcbData<V: VerificationType = Verified, T: PlatformType = platform::SGX> {
+pub struct TcbData<T: PlatformType, V: VerificationType = Verified> {
     id: Platform,
     version: u16,
     issue_date: DateTime<Utc>,
@@ -230,8 +230,8 @@ pub struct TcbData<V: VerificationType = Verified, T: PlatformType = platform::S
     platform_: PhantomData<T>
 }
 
-impl<'de, T: PlatformType> Deserialize<'de> for TcbData<Unverified, T> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbData<Unverified, T>, D::Error>
+impl<'de, T: PlatformType> Deserialize<'de> for TcbData<T, Unverified> {
+    fn deserialize<D>(deserializer: D) -> Result<TcbData<T, Unverified>, D::Error>
     where
         D: Deserializer<'de>,
     {
@@ -280,7 +280,7 @@ impl<'de, T: PlatformType> Deserialize<'de> for TcbData<Unverified, T> {
     }
 }
 
-impl<T: PlatformType> TcbData<Verified, T> {
+impl<T: PlatformType> TcbData<T, Verified> {
     pub fn version(&self) -> u16 {
         self.version
     }
@@ -290,9 +290,9 @@ impl<T: PlatformType> TcbData<Verified, T> {
     }
 }
 
-impl<T: PlatformType > TcbData<Unverified, T> {
-    pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
-        let data: TcbData<Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
+impl<T: PlatformType > TcbData<T, Unverified> {
+    pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<T, Unverified>, Error> {
+        let data: TcbData<T, Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
         if data.version != 2 && data.version != 3 {
             return Err(Error::UnknownTcbInfoVersion(data.version));
         }
@@ -315,7 +315,7 @@ impl<T: PlatformType > TcbData<Unverified, T> {
 
 }
 
-impl<V: VerificationType, T: PlatformType> TcbData<V, T> {
+impl<V: VerificationType, T: PlatformType> TcbData<T, V> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
     }
@@ -379,14 +379,14 @@ impl<T: PlatformType> TcbInfo<T> {
     }
 
     pub fn store(&self, output_dir: &str) -> Result<String, Error> {
-        let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
+        let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
         let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
         io::write_to_file(&self, output_dir, &filename)?;
         Ok(filename)
     }
 
     pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
+        let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
         let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
         io::write_to_file_if_not_exist(&self, output_dir, &filename)
     }
@@ -415,13 +415,13 @@ impl<T: PlatformType> TcbInfo<T> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16) -> Result<TcbData<Verified, T>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16) -> Result<TcbData<T, Verified>, Error> {
         let now = Utc::now();
         self.verify_ex(trusted_root_certs, min_version, &now)
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified, T>, Error> {
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<T, Verified>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -467,7 +467,7 @@ impl<T: PlatformType> TcbInfo<T> {
             tcb_evaluation_data_number,
             tcb_levels,
             ..
-        } = TcbData::<Unverified, T>::parse(&self.raw_tcb_info)?;
+        } = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
 
         if id != T::new().into() {
             return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {} platform", T::new())))
@@ -484,7 +484,7 @@ impl<T: PlatformType> TcbInfo<T> {
             return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
         }
 
-        Ok(TcbData::<Verified, T> {
+        Ok(TcbData::<T, Verified> {
             id,
             version,
             issue_date,
@@ -499,8 +499,8 @@ impl<T: PlatformType> TcbInfo<T> {
         })
     }
 
-    pub fn data(&self) -> Result<TcbData<Unverified>, Error> {
-        TcbData::<Unverified, T>::parse(&self.raw_tcb_info)
+    pub fn data(&self) -> Result<TcbData<T, Unverified>, Error> {
+        TcbData::<T, Unverified>::parse(&self.raw_tcb_info)
     }
 }
 
@@ -511,7 +511,8 @@ mod tests {
     use {
         chrono::{Utc, TimeZone},
         crate::Error,
-        crate::tcb_info::{Fmspc, Platform, TcbInfo},
+        crate::tcb_info::{Fmspc, TcbInfo},
+        crate::platform,
         tempdir::TempDir,
     };
     use std::convert::TryFrom;
@@ -521,20 +522,15 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info() {
         let info =
-            TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
+            TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        match info.verify(&root_certificates, Platform::SGX, 2) {
+        match info.verify(&root_certificates, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
             e => assert!(false, "wrong result: {:?}", e),
         }
         let juni_5_2020 = Utc.with_ymd_and_hms(2020, 6, 5, 12, 0, 0).unwrap();
-        assert!(info.verify_ex(&root_certificates, Platform::SGX, 2, &juni_5_2020).is_ok());
-
-        match info.verify(&root_certificates, Platform::TDX, 2) {
-            Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info belongs to the SGX platform, expected one for the TDX platform")),
-            e => assert!(false, "wrong result: {:?}", e),
-        }
+        assert!(info.verify_ex(&root_certificates, 2, &juni_5_2020).is_ok());
 
         // Test serialization/deserialization
         let temp_dir = TempDir::new("tempdir").unwrap();
@@ -547,21 +543,21 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupt_tcb_info() {
-        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates, Platform::SGX, 2).is_err());
+        assert!(tcb_info.verify(&root_certificates, 2).is_err());
     }
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info_v3() {
-        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         let june_5_2025 = Utc.with_ymd_and_hms(2025, 6, 5, 12, 0, 0).unwrap();
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &june_5_2025).is_ok());
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &june_5_2025).is_err());
+        assert!(tcb_info.verify_ex(&root_certificates, 3, &june_5_2025).is_ok());
+        assert!(tcb_info.verify_ex(&root_certificates, 4, &june_5_2025).is_err());
     }
 
     #[test]

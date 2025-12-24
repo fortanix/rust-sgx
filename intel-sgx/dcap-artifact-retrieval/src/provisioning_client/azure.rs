@@ -46,12 +46,14 @@ impl AzureProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
+        let qeid = QeIdApi::<platform::SGX>::new(self.api_version.clone());
+        let qeidtdx = QeIdApi::<platform::TDX>::new(self.api_version.clone());
         let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fmspcs, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, qeidtdx, tcbinfo, tcbinfotdx, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
