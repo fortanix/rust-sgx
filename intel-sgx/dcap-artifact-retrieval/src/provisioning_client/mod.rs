@@ -688,6 +688,8 @@ pub trait ProvisioningClient {
 
     fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::SGX>, Error>;
 
+    fn qe_identity_tdx(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::TDX>, Error>;
+
     /// Retrieve PCK certificates using `pckcerts()` and fallback to the
     /// following method if that's not supported:
     /// 1. Call `pckcert()` with PCK ID to get best available PCK cert.
@@ -815,6 +817,12 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::SGX>, Error> {
         let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
         self.qeid_service.call_service(&self.fetcher, &input)
+    }
+
+
+    fn qe_identity_tdx(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned<platform::TDX>, Error> {
+        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
+        self.qeidtdx_service.call_service(&self.fetcher, &input)
     }
 
     fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error> {

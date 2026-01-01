@@ -269,6 +269,13 @@ mod tests {
         }
     }
 
+    pub fn qe_identity_tdx() {
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.qe_identity_tdx(None).is_ok());
+    }
+
     #[test]
     pub fn test_pckcerts_with_fallback() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {

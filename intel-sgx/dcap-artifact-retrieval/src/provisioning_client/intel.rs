@@ -1149,6 +1149,17 @@ mod tests {
     }
 
     #[test]
+    pub fn qe_identity_tdx() {
+        let mut intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let qe_id = client.qe_identity_tdx(None);
+        assert!(qe_id.is_ok());
+        assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+    }
+
+    #[test]
     pub fn qe_identity_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
