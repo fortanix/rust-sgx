@@ -345,6 +345,7 @@ pub struct TcbInfo<T: PlatformType> {
     raw_tcb_info: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    #[serde(skip)]
     _type: PhantomData<T>
 }
 
