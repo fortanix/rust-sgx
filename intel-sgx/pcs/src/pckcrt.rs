@@ -1283,13 +1283,15 @@ mod tests {
     #[test]
     #[cfg(feature = "verify")]
     fn pck_for_tcb() {
+        use crate::platform;
+
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let pck_certs = PckCerts::restore(
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
             .unwrap();
-        let tcb_info = crate::TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+        let tcb_info = crate::TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
             .unwrap();
         // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
         // selected
