@@ -33,7 +33,7 @@ use {
 
 use crate::io::{self};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
-use crate::{CpuSvn, Error, Unverified, VerificationType, Verified};
+use crate::{CpuSvn, Error, PlatformType, Unverified, VerificationType, Verified};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
 ///
@@ -368,7 +368,7 @@ impl PckCerts {
 
     /// Order all PCKs according to the tcb info
     /// TCB Info is carefully ordered by Intel
-    fn order_pcks<V: VerificationType>(&self, tcb_info: &TcbData<V>) -> Vec<PckCert<Unverified>> {
+    fn order_pcks<T: PlatformType, V: VerificationType>(&self, tcb_info: &TcbData<T, V>) -> Vec<PckCert<Unverified>> {
         let mut pck_certs = self.as_pck_certs();
 
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
@@ -380,9 +380,9 @@ impl PckCerts {
 
     /// Given the cpusvn, pcesvn and qe_id, searches for the best PCK certificate
     /// Code re-implements <https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441>
-    pub fn select_pck<V: VerificationType>(
+    pub fn select_pck<T: PlatformType, V: VerificationType>(
         &self,
-        tcb_info: &TcbData<V>,
+        tcb_info: &TcbData<T, V>,
         cpusvn: &[u8; 16],
         pcesvn: u16,
         pceid: u16,
@@ -508,7 +508,7 @@ impl PckCert<Unverified> {
 impl PckCert<Verified> {
     /// Selects the highest matching TCB level
     /// see <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2>
-    pub fn find_tcb_state<V: VerificationType>(&self, tcb_data: &TcbData<V>) -> Option<TcbLevel> {
+    pub fn find_tcb_state<T: PlatformType, V: VerificationType>(&self, tcb_data: &TcbData<T, V>) -> Option<TcbLevel> {
         let idx = self.find_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
     }
@@ -586,7 +586,7 @@ impl<V: VerificationType> PckCert<V> {
     }
 
     /// Find the index of the highest matching TCB level
-    fn find_tcb_level_idx<V2: VerificationType>(&self, tcb_info: &TcbData<V2>) -> Option<usize> {
+    fn find_tcb_level_idx<T: PlatformType, V2: VerificationType>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
         // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
         //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
         //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
@@ -1283,13 +1283,15 @@ mod tests {
     #[test]
     #[cfg(feature = "verify")]
     fn pck_for_tcb() {
+        use crate::platform;
+
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let pck_certs = PckCerts::restore(
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
             .unwrap();
-        let tcb_info = crate::TcbInfo::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+        let tcb_info = crate::TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
             .unwrap();
         // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
         // selected

@@ -12,20 +12,20 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, QeId, QeIdentitySigned,
-    TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, Platform, PlatformType, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    Client, ClientBuilder, Fetcher, FmspcsIn, FmspcsOut, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion,
+    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService, WithApiVersion, 
 };
-use crate::Error;
+use crate::{Error, FmspcsService, TeePlatform};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
@@ -59,11 +59,14 @@ impl IntelProvisioningClientBuilder {
         let pck_certs = PckCertsApi::new(self.api_version.clone(), self.api_key.clone());
         let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let qeid = QeIdApi::<platform::SGX>::new(self.api_version.clone());
+        let qeidtdx = QeIdApi::<platform::TDX>::new(self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, qeidtdx, tcbinfo, tcbinfotdx, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
@@ -333,17 +336,18 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi {
+pub struct TcbInfoApi<T: PlatformType> {
     api_version: PcsVersion,
+    _type: PhantomData<T>
 }
 
-impl TcbInfoApi {
+impl<T: PlatformType> TcbInfoApi<T> {
     pub fn new(api_version: PcsVersion) -> Self {
-        TcbInfoApi { api_version }
+        TcbInfoApi { api_version, _type: PhantomData }
     }
 }
 
-impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformType> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -359,21 +363,21 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
 
 // Implementation of Get TCB Info
 // <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
-impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformType> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo;
+    type Output = TcbInfo<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, fmspc, evaluation_data_number)
+                "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                INTEL_BASE_URL, T::new(), api_version, fmspc, evaluation_data_number)
         } else {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-                INTEL_BASE_URL, api_version, fmspc,
+                "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
+                INTEL_BASE_URL, T::new(), api_version, fmspc,
             )
         };
         Ok((url, Vec::new()))
@@ -424,17 +428,18 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
     }
 }
 
-pub struct QeIdApi {
+pub struct QeIdApi<T: PlatformType> {
     api_version: PcsVersion,
+    type_: PhantomData<T>
 }
 
-impl QeIdApi {
+impl<T: PlatformType> QeIdApi<T> {
     pub fn new(api_version: PcsVersion) -> Self {
-        QeIdApi { api_version }
+        QeIdApi { api_version, type_: PhantomData }
     }
 }
 
-impl<'inp> QeIdService<'inp> for QeIdApi {
+impl<'inp, T:PlatformType> QeIdService<'inp, T> for QeIdApi<T> {
     fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         QeIdIn {
             api_version: self.api_version.clone(),
@@ -445,21 +450,21 @@ impl<'inp> QeIdService<'inp> for QeIdApi {
 
 /// Implementation of qe/identity
 /// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
+impl<'inp, T:PlatformType> ProvisioningServiceApi<'inp> for QeIdApi<T> {
     type Input = QeIdIn;
-    type Output = QeIdentitySigned;
+    type Output = QeIdentitySigned<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, tcb_evaluation_data_number
+                "{}/{}/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
+                INTEL_BASE_URL, T::new(), api_version, tcb_evaluation_data_number
             )
         } else {
             format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                INTEL_BASE_URL, api_version,
+                "{}/{}/certification/v{}/qe/identity?update=early",
+                INTEL_BASE_URL, T::new(), api_version,
             )
         };
         Ok((url, Vec::new()))
@@ -564,6 +569,69 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
         RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
     }
 }
+
+pub struct FmspcsApi;
+
+
+impl<'inp> FmspcsService<'inp> for FmspcsApi {
+    fn build_input(&self, platform: Option<super::FmspcPlatform>)
+        -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        FmspcsIn {
+            platform
+        }
+    }
+}
+
+impl<'inp> ProvisioningServiceApi<'inp> for FmspcsApi {
+    type Input = FmspcsIn;
+    type Output = FmspcsOut;
+
+    fn build_request(
+        &'inp self,
+        input: &Self::Input,
+    ) -> Result<(String, Vec<(String, String)>), Error> {
+        let url = if let Some(platform) = &input.platform { 
+            format!("{}/sgx/certification/v{}/fmspcs?platform={}",
+                INTEL_BASE_URL, input.api_version() as u8, platform)
+        } else { 
+            format!("{}/sgx/certification/v{}/fmspcs",
+                INTEL_BASE_URL, input.api_version() as u8)
+        };
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(&'inp self, status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::BadRequest => Err(Error::PCSError(
+                status_code,
+                "Invalid request parameters",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &'inp self,
+        response_body: String,
+        _response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        FmspcsOut::parse(&response_body)
+    }
+}
+
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
@@ -860,6 +928,39 @@ mod tests {
         }
     }
 
+    
+
+    #[test]
+    pub fn tcb_info_tdx() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+
+        // List of knowns FMSPCS that has valid TDX TCB
+        let fmspcs = [
+            Fmspc::try_from("00a06d080000").unwrap(), 
+            Fmspc::try_from("70a06d070000").unwrap(), 
+            Fmspc::try_from("00a06e050000").unwrap(), 
+            Fmspc::try_from("50806f000000").unwrap(), 
+            Fmspc::try_from("20a06e050000").unwrap(), 
+            Fmspc::try_from("10a06f010000").unwrap(), 
+            Fmspc::try_from("b0c06f000000").unwrap(), 
+            Fmspc::try_from("20a06f000000").unwrap(), 
+            Fmspc::try_from("60a06f000000").unwrap(), 
+            Fmspc::try_from("c0806f000000").unwrap(), 
+            Fmspc::try_from("20a06d080000").unwrap(), 
+            Fmspc::try_from("10a06d000000").unwrap(), 
+            Fmspc::try_from("00806f050000").unwrap(), 
+            Fmspc::try_from("90c06f000000").unwrap()
+        ];
+
+        for item in fmspcs.iter() {
+            let tcbinfo_tdx = client.tcbinfo_tdx(&item, None);
+            println!("FMSPC: {} => {}", item.to_string(), tcbinfo_tdx.is_ok());
+            assert!(tcbinfo_tdx.is_ok());
+        }
+    }
+
     #[test]
     pub fn tcb_info_with_evaluation_data_number() {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
@@ -1048,6 +1149,17 @@ mod tests {
     }
 
     #[test]
+    pub fn qe_identity_tdx() {
+        let mut intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let qe_id = client.qe_identity_tdx(None);
+        assert!(qe_id.is_ok());
+        assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+    }
+
+    #[test]
     pub fn qe_identity_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
@@ -1125,9 +1237,22 @@ mod tests {
             let tcb_info = client
                     .tcbinfo(&fmspc, Some(number))
                     .unwrap()
-                    .verify(&root_cas, Platform::SGX, 2)
+                    .verify(&root_cas, 2)
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
+    }
+
+     #[test]
+    pub fn fmspcs() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        let eval_numbers = client.fmspcs(None).unwrap();
+
+        for item in eval_numbers.fmspcs.iter() {
+            println!("{:#?} => {}", item.fmspc, item.platform);
+        }
+
     }
 }

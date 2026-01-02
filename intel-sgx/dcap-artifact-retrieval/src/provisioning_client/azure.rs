@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified};
+use pcs::{CpuSvn, EncPpid, PceId, PceIsvsvn, PckCert, QeId, Unverified, platform};
 use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use super::{
     StatusCode,
 };
 use crate::Error;
+use crate::intel::FmspcsApi;
 
 /// A Provisioning Certificate client builder for Azure. It is based on the internal logic of the Azure DCAP
 /// provider. Only the PCK certificates are downloaded from Azure. For others Intel is contacted.
@@ -45,11 +46,14 @@ impl AzureProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let qeid = QeIdApi::<platform::SGX>::new(self.api_version.clone());
+        let qeidtdx = QeIdApi::<platform::TDX>::new(self.api_version.clone());
+        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.api_version.clone());
+        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.api_version.clone());
         let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let fmspcs = FmspcsApi { };
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, qeidtdx, tcbinfo, tcbinfotdx, evaluation_data_numbers, fmspcs, fetcher)
     }
 }
 
@@ -263,6 +267,13 @@ mod tests {
                 .build(reqwest_client());
             assert!(client.qe_identity(None).is_ok());
         }
+    }
+
+    pub fn qe_identity_tdx() {
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.qe_identity_tdx(None).is_ok());
     }
 
     #[test]

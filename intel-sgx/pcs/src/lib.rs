@@ -55,6 +55,60 @@ pub enum Platform {
     TDX,
 }
 
+pub trait PlatformType : Into<Platform> + Display + Clone {
+    fn new() -> Self;
+}
+
+
+pub mod platform {
+    use std::fmt::{self, Display, Formatter};
+    use super::Platform;
+
+    #[derive(Clone, PartialEq, Debug)]
+    pub struct SGX;
+
+
+    impl Display for SGX {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+            write!(f, "sgx")
+        }
+    }
+
+    impl Into<Platform> for SGX {
+        fn into(self) -> super::Platform {
+            super::Platform::SGX
+        }
+    }
+
+    impl super::PlatformType for SGX {
+        fn new() -> Self {
+            Self {}
+        }
+    }
+
+    #[derive(Clone, PartialEq, Debug)]
+    pub struct TDX;
+
+    impl Into<Platform> for TDX {
+        fn into(self) -> super::Platform {
+            super::Platform::TDX
+        }
+    }
+
+    impl Display for TDX {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+            write!(f, "tdx")
+        }
+    }
+
+    impl super::PlatformType for TDX {
+        fn new() -> Self {
+            Self {}
+        }
+    }
+    
+}
+
 impl Display for Platform {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {

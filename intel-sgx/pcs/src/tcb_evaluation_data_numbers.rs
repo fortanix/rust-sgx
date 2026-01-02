@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use crate::{io, Error, Fmspc, Platform, pckcrt::TcbComponents, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{Error, Fmspc, Platform, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified, io, pckcrt::TcbComponents, platform};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
@@ -79,8 +79,8 @@ impl TcbEvaluationDataNumbers<Unverified> {
         let evalnums = RawTcbEvaluationDataNumbers::read_from_file(input_dir)?.evaluation_data_numbers()?;
         let mut tcb_levels: std::collections::HashMap<_, _> = evalnums.numbers().map(|num| (num.number as u64, (num, None, None))).collect();
 
-        for tcbinfo in TcbInfo::read_all(input_dir, fmspc) {
-            let tcb_data = TcbData::parse(tcbinfo?.raw_tcb_info())?;
+        for tcbinfo in TcbInfo::<platform::SGX>::read_all(input_dir, fmspc) {
+            let tcb_data = TcbData::<platform::SGX, Unverified>::parse(tcbinfo?.raw_tcb_info())?;
             if let Some(level) = tcb_data.tcb_levels()
                 .iter()
                 .find(|level| level.tcb <= *tcb_components)
@@ -91,8 +91,8 @@ impl TcbEvaluationDataNumbers<Unverified> {
             }
         };
 
-        for qeid in QeIdentitySigned::read_all(input_dir) {
-            let qeid: QeIdentity::<Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
+        for qeid in QeIdentitySigned::<platform::SGX>::read_all(input_dir) {
+            let qeid: QeIdentity::<platform::SGX, Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
             if let Some(level) = qeid.tcb_levels()
                 .iter()
                 .find(|level| level.tcb.isvsvn <= qesvn)
