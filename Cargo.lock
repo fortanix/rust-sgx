@@ -1192,7 +1192,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-artifact-retrieval"
-version = "0.4.3"
+version = "0.5.0"
 dependencies = [
  "backoff",
  "clap 2.34.0",
@@ -3327,7 +3327,7 @@ dependencies = [
 
 [[package]]
 name = "pcs"
-version = "0.7.4"
+version = "0.8.0"
 dependencies = [
  "anyhow",
  "b64-ct",
