@@ -161,7 +161,7 @@ impl<V: VerificationType> PckCrl<V> {
     }
 
     #[cfg(feature = "verify")]
-    fn ca(&self) -> Result<DcapArtifactIssuer, Error> {
+    pub fn ca(&self) -> Result<DcapArtifactIssuer, Error> {
         let issuer = self
             .as_mbedtls_crl()
             .and_then(|crl| crl.issuer().map_err(|_| Error::InvalidCrlFormat))?;

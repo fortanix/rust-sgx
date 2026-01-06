@@ -167,6 +167,7 @@ impl<'a> EnclaveBuilder<'a> {
 
     fn generate_xfrm(max_ssaframesize_in_pages: u32) -> u64 {
         fn cpuid(eax: u32, ecx: u32) -> Option<CpuidResult> {
+            #![allow(unused_unsafe)]
             unsafe {
                 if eax <= x86_64::__get_cpuid_max(0).0 {
                     Some(x86_64::__cpuid_count(eax, ecx))
