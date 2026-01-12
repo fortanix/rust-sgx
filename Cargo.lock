@@ -37,7 +37,7 @@ dependencies = [
  "sgx-isa 0.4.1",
  "sgxs",
  "sgxs-loaders",
- "thiserror",
+ "thiserror 1.0.59",
  "unix_socket2",
  "winapi",
 ]
@@ -660,6 +660,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "bindgen"
+version = "0.70.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
+dependencies = [
+ "bitflags 2.5.0",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "log 0.4.28",
+ "prettyplease",
+ "proc-macro2 1.0.95",
+ "quote 1.0.41",
+ "regex",
+ "rustc-hash",
+ "shlex",
+ "syn 2.0.100",
+]
+
+[[package]]
 name = "bit-vec"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -726,7 +746,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serde_urlencoded",
- "thiserror",
+ "thiserror 1.0.59",
  "tokio",
  "tokio-util",
  "tower-service",
@@ -1200,7 +1220,7 @@ dependencies = [
  "hex-literal",
  "reqwest",
  "sha2 0.10.9",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -1518,7 +1538,7 @@ dependencies = [
  "rustc_version",
  "sgx-isa 0.4.1",
  "sgxs",
- "thiserror",
+ "thiserror 1.0.59",
  "tokio",
 ]
 
@@ -1635,7 +1655,7 @@ dependencies = [
  "log 0.4.28",
  "nu-ansi-term",
  "regex",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -1693,7 +1713,7 @@ dependencies = [
  "sgx-isa 0.4.1",
  "sgxs",
  "sgxs-loaders",
- "thiserror",
+ "thiserror 1.0.59",
  "toml",
  "xmas-elf",
 ]
@@ -1721,7 +1741,7 @@ dependencies = [
  "sha2 0.9.9",
  "tempfile",
  "test_resources",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -1768,7 +1788,7 @@ dependencies = [
  "clap 4.4.18",
  "fortanix-vme-eif",
  "serde",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -2589,6 +2609,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2758,7 +2787,7 @@ version = "2.28.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "225db657202fc57aea23750995667c399a9250238268bff9ab15053b2ccaad8c"
 dependencies = [
- "bindgen",
+ "bindgen 0.65.1",
  "cc",
  "cfg-if 1.0.0",
  "cmake",
@@ -2910,7 +2939,7 @@ version = "1.4.2"
 source = "git+https://github.com/aws/aws-nitro-enclaves-cli.git?rev=v1.4.2#6e8512e4d9e1ba82e0e5c4c9d9d0b3987724f217"
 dependencies = [
  "aws-nitro-enclaves-image-format",
- "bindgen",
+ "bindgen 0.70.1",
  "chrono",
  "ciborium",
  "clap 4.4.18",
@@ -3354,7 +3383,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa925f9becb532d758b0014b472c576869910929cf4c3f8054b386f19ab9e21"
 dependencies = [
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -3538,7 +3567,7 @@ checksum = "58678a64de2fced2bdec6bca052a6716a0efe692d6e3f53d1bda6a1def64cfc0"
 dependencies = [
  "once_cell",
  "protobuf-support",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -3553,7 +3582,7 @@ dependencies = [
  "protobuf-parse",
  "regex",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -3568,7 +3597,7 @@ dependencies = [
  "protobuf",
  "protobuf-support",
  "tempfile",
- "thiserror",
+ "thiserror 1.0.59",
  "which",
 ]
 
@@ -3578,7 +3607,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1ed294a835b0f30810e13616b1cd34943c6d1e84a8f3b0dcfe466d256c3e7e7"
 dependencies = [
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -3745,7 +3774,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.17",
  "libredox",
- "thiserror",
+ "thiserror 1.0.59",
 ]
 
 [[package]]
@@ -4372,7 +4401,7 @@ dependencies = [
  "openssl-sys",
  "sgx-isa 0.4.1",
  "sha2 0.10.9",
- "thiserror",
+ "thiserror 1.0.59",
  "time 0.3.41",
 ]
 
@@ -4388,7 +4417,7 @@ dependencies = [
  "report-test",
  "sgx-isa 0.4.1",
  "sgxs",
- "thiserror",
+ "thiserror 1.0.59",
  "winapi",
 ]
 
@@ -4425,7 +4454,7 @@ dependencies = [
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
- "thiserror",
+ "thiserror 1.0.59",
  "winapi",
  "yansi",
 ]
@@ -4626,6 +4655,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "tdx-attest-rs"
+version = "0.1.2"
+source = "git+https://github.com/intel/confidential-computing.tee.dcap.git?tag=DCAP_1.24#717f2a91ca732c3309b0c59d21757463133eb440"
+dependencies = [
+ "tdx-attest-sys",
+]
+
+[[package]]
+name = "tdx-attest-sys"
+version = "0.1.0"
+source = "git+https://github.com/intel/confidential-computing.tee.dcap.git?tag=DCAP_1.24#717f2a91ca732c3309b0c59d21757463133eb440"
+dependencies = [
+ "bindgen 0.70.1",
+]
+
+[[package]]
+name = "tdx-isa"
+version = "0.1.0"
+dependencies = [
+ "tdx-attest-rs",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "tempdir"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4685,7 +4738,16 @@ version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.59",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+dependencies = [
+ "thiserror-impl 2.0.17",
 ]
 
 [[package]]
@@ -4693,6 +4755,17 @@ name = "thiserror-impl"
 version = "1.0.59"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
+dependencies = [
+ "proc-macro2 1.0.95",
+ "quote 1.0.41",
+ "syn 2.0.100",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
 dependencies = [
  "proc-macro2 1.0.95",
  "quote 1.0.41",
