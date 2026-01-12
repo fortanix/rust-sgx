@@ -35,6 +35,7 @@ members = [
     "intel-sgx/sgxs",
     "intel-tdx/tdx-isa",
     "ipc-queue",
+    "memory-layout",
     "rs-libc",
 ]
 exclude = [
