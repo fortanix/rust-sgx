@@ -32,7 +32,7 @@ use {
     super::{DcapArtifactIssuer, PckCrl},
 };
 
-use crate::io::{self};
+use crate::io::{self, WriteOptions};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
 use crate::{CpuSvn, Error, Unverified, VerificationType, Verified, platform};
 
@@ -502,15 +502,9 @@ impl PckCerts {
         format!("{}.certs", base16::encode_lower(qe_id))
     }
 
-    pub fn store(&self, output_dir: &str, qe_id: &[u8]) -> Result<String, Error> {
+    pub fn store(&self, output_dir: &str, qe_id: &[u8], option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let filename = PckCerts::filename(qe_id);
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn store_if_not_exist(&self, output_dir: &str, qe_id: &[u8]) -> Result<Option<PathBuf>, Error> {
-        let filename = PckCerts::filename(qe_id);
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn restore(input_dir: &str, qe_id: &[u8]) -> Result<Self, Error> {
@@ -730,8 +724,8 @@ impl<V: VerificationType> PckCert<V> {
         &self.cert
     }
 
-    pub fn write_to_file(&self, output_dir: &str, filename: &str) -> Result<(), Error> {
-        Ok(io::write_to_file(&self, output_dir, &filename)?)
+    pub fn write_to_file(&self, output_dir: &str, filename: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn sgx_extension(&self) -> Result<SGXPCKCertificateExtension, ASN1Error> {
