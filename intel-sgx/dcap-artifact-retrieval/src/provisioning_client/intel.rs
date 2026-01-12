@@ -12,7 +12,8 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, 
+    PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform,
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
@@ -577,7 +578,7 @@ mod tests {
 
     use pcs::{
         DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers,
+        TcbEvaluationDataNumbers, WriteOptionsBuilder,
     };
 
     use crate::provisioning_client::{
@@ -626,7 +627,7 @@ mod tests {
                     "Intel SGX Root CA"
                 );
                 pcks.fmspc().unwrap();
-                pcks.store(OUTPUT_TEST_DIR, pckid.qe_id.as_slice()).unwrap();
+                pcks.store(OUTPUT_TEST_DIR, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -856,7 +857,7 @@ mod tests {
                     .unwrap();
                 assert!(client
                     .tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
+                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -928,7 +929,7 @@ mod tests {
                     Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
                     res @Err(_) => res.unwrap(),
                 };
-                tcb.store(OUTPUT_TEST_DIR).unwrap();
+                tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -1010,7 +1011,7 @@ mod tests {
                 let client = intel_builder.build(reqwest_client());
                 assert!(client
                     .pckcrl(ca)
-                    .and_then(|crl| { Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()) })
+                    .and_then(|crl| { Ok(crl.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -1082,7 +1083,7 @@ mod tests {
             let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None).unwrap();
             assert_eq!(qe_id.enclave_type(), EnclaveIdentity::QE);
-            assert!(qe_id.write_to_file(OUTPUT_TEST_DIR).is_ok());
+            assert!(qe_id.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).is_ok());
         }
     }
 

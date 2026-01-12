@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::clap_app;
-use pcs::{PckID, DcapArtifactIssuer};
+use pcs::{PckID, DcapArtifactIssuer, WriteOptionsBuilder};
 use reqwest::Url;
 use rustc_serialize::hex::ToHex;
 use serde::de::{value, IntoDeserializer};
@@ -72,19 +72,19 @@ fn download_dcap_artifacts(
         // instead we mimic it using pckcert API.
         let pckcerts = prov_client.pckcerts_with_fallback(&pckid)?;
 
-        let pckcerts_file = pckcerts.store(output_dir, pckid.qe_id.as_slice())?;
+        let pckcerts_file = pckcerts.store(output_dir, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build())?;
 
         if verbose {
-            println!("   pckcerts:    {}", pckcerts_file);
+            println!("   pckcerts:    {}", pckcerts_file.unwrap().display());
         }
 
         let fmspc = pckcerts.fmspc()?;
         let evaluation_data_numbers = prov_client
             .tcb_evaluation_data_numbers()?;
 
-        let file = evaluation_data_numbers.write_to_file(output_dir)?;
+        let file = evaluation_data_numbers.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
         if verbose {
-            println!("   tcb evaluation data numbers:    {}\n", file);
+            println!("   tcb evaluation data numbers:    {}\n", file.unwrap().display());
         }
 
         for number in evaluation_data_numbers.evaluation_data_numbers()?.numbers() {
@@ -93,9 +93,9 @@ fn download_dcap_artifacts(
 
             match tcb_info {
                 Ok(tcb_info) => {
-                    let file = tcb_info.store(output_dir)?;
+                    let file = tcb_info.store(output_dir, WriteOptionsBuilder::new().build())?;
                     if verbose {
-                        println!("   tcb info:    {}", file);
+                        println!("   tcb info:    {}", file.unwrap().display());
                     }
                 },
                 Err(Error::PCSError(StatusCode::Gone, _)) => {
@@ -114,9 +114,9 @@ fn download_dcap_artifacts(
 
             match qe_identity {
                 Ok(qe_identity) => {
-                    let file = qe_identity.write_to_file(output_dir)?;
+                    let file = qe_identity.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
                     if verbose {
-                        println!("   qe identity: {}\n", file);
+                        println!("   qe identity: {}\n", file.unwrap().display());
                     }
                 }
                 Err(Error::PCSError(StatusCode::Gone, _)) => {
@@ -132,17 +132,17 @@ fn download_dcap_artifacts(
     }
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
-        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKProcessorCA).map_err(|e| e.into()))?;
+        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKProcessorCA, WriteOptionsBuilder::new().build()).map_err(|e| e.into()))?;
     if verbose {
         println!("==[ generic ]==");
-        println!("   PCKProcessorCA Crl:      {}", pckcrl);
+        println!("   PCKProcessorCA Crl:      {}", pckcrl.unwrap().display());
     }
 
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
-        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKPlatformCA).map_err(|e| e.into()))?;
+        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKPlatformCA, WriteOptionsBuilder::new().build()).map_err(|e| e.into()))?;
     if verbose {
-        println!("   PCKPlatformCA Crl:      {}", pckcrl);
+        println!("   PCKPlatformCA Crl:      {}", pckcrl.unwrap().display());
     }
     Ok(())
 }

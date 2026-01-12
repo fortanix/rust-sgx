@@ -1,5 +1,5 @@
 use chrono::{DateTime, Duration, Utc};
-use crate::{EnclaveIdentity, Error, Fmspc, Platform, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified, io, pckcrt::TcbComponents, platform};
+use crate::{EnclaveIdentity, Error, Fmspc, Platform, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents, platform};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
@@ -223,13 +223,8 @@ impl RawTcbEvaluationDataNumbers {
         &self.ca_chain
     }
 
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
-    }
-
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, Self::DEFAULT_FILENAME)
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME, option)
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {

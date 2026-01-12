@@ -20,7 +20,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::io::{self};
+use crate::io::{self, WriteOptions};
 use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Serialize, Default, Deserialize, Clone, Debug, PartialEq, Eq)]
@@ -374,17 +374,10 @@ impl QeIdentitySigned {
         io::compose_filename(Self::filename_prefix(enclave_type), Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let id = QeIdentity::<Unverified>::try_from(self)?;
         let filename = Self::create_filename(&self.enclave_type, Some(id.tcb_evaluation_data_number));
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let id = QeIdentity::<Unverified>::try_from(self)?;
-        let filename = Self::create_filename(&self.enclave_type, Some(id.tcb_evaluation_data_number));
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn read_from_file(input_dir: &str, enclave_type: EnclaveIdentity, evaluation_data_number: Option<u64>) -> Result<Self, Error> {

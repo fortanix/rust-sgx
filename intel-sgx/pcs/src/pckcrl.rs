@@ -4,12 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-
-use std::path::PathBuf;
-
 use pkix::pem::PEM_CRL;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::marker::PhantomData;
+use std::path::PathBuf;
+
 #[cfg(feature = "verify")]
 use {
     mbedtls::alloc::List as MbedtlsList,
@@ -19,6 +18,8 @@ use {
     std::ops::Deref,
 };
 
+
+use crate::io::WriteOptions;
 use crate::io::{self};
 use crate::{DcapArtifactIssuer, Error, Unverified, VerificationType, Verified};
 
@@ -117,27 +118,14 @@ impl<V: VerificationType> PckCrl<V> {
     }
 
     #[cfg(feature = "verify")]
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let filename = self.filename()?;
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
-    pub fn write_to_file_as(&self, output_dir: &str, ca: DcapArtifactIssuer) -> Result<String, Error> {
+    pub fn write_to_file_as(&self, output_dir: &str, ca: DcapArtifactIssuer, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let filename = Self::filename_from_ca(ca);
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    #[cfg(feature = "verify")]
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let filename = self.filename()?;
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
-    }
-
-    pub fn write_to_file_if_not_exist_as(&self, output_dir: &str, ca: DcapArtifactIssuer) -> Result<Option<PathBuf>, Error> {
-        let filename = Self::filename_from_ca(ca);
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn crl_as_pem(&self) -> &String {
