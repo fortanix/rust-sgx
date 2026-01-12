@@ -439,7 +439,7 @@ mod tests {
 
     use pcs::{
         EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers,
+        TcbEvaluationDataNumbers, WriteOptionsBuilder,
     };
 
     use super::Client;
@@ -631,7 +631,7 @@ mod tests {
 
                 assert!(client
                     .tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
+                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -674,7 +674,7 @@ mod tests {
                     Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
                     res @Err(_) => res.unwrap(),
                 };
-                tcb.store(OUTPUT_TEST_DIR).unwrap();
+                tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -729,11 +729,11 @@ mod tests {
             let client = make_client(api_version);
             assert!(client
                 .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
-                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()))
                 .is_ok());
             assert!(client
                 .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
-                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()))
                 .is_ok());
         }
     }
@@ -782,7 +782,7 @@ mod tests {
             let client = make_client(api_version);
             let qe_id = client.qe_identity(None);
             assert!(qe_id.is_ok());
-            assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+            assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).is_ok());
         }
     }
 

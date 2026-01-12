@@ -32,6 +32,7 @@ pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, 
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
+pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 
 mod io;
 mod iso8601;

@@ -19,6 +19,7 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
+use crate::io::WriteOptions;
 use crate::pckcrt::PlatformTypeForTcbComponent;
 use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}, platform};
 use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
@@ -611,17 +612,10 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         io::compose_filename(fmspc, file_extension.as_str(), evaluation_data_number)
     }
 
-    pub fn store(&self, output_dir: &str) -> Result<String, Error> {
+    pub fn store(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
         let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn restore(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
@@ -756,6 +750,8 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info() {
+        use crate::WriteOptionsBuilder;
+
         let info =
             TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
@@ -770,7 +766,7 @@ mod tests {
         // Test serialization/deserialization
         let temp_dir = TempDir::new("tempdir").unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
-        info.store(&path).unwrap();
+        info.store(&path, WriteOptionsBuilder::new().build()).unwrap();
         let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
         assert_eq!(info, info2);
     }
