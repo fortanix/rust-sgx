@@ -1,0 +1,8 @@
+[package]
+name = "tdx-isa"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tdx_module = { git = "https://github.com/intel/confidential-computing.tee.dcap.git", tag = "DCAP_1.24", optional = true, package = "tdx-attest-rs" }
+thiserror = "2"
