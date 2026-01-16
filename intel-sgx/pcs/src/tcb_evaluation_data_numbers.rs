@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use crate::{
-    EnclaveIdentity, Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, 
-    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents, platform
+    Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, 
+    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents
 };
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::RawValue;
@@ -18,7 +18,7 @@ use {
 /// Implementation of the TcbEvaluationDataNumbers model
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
 #[derive(Clone, Debug)]
-pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbEvaluationNumber<T>, V: VerificationType = Verified> {
+pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified> {
     #[allow(unused)]
     version: u16,
     #[allow(unused)]
@@ -31,14 +31,14 @@ pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbEvaluationNumber<T>, V:
     platform_: PhantomData<T>,
 }
 
-impl<'de, T: PlatformTypeForTcbEvaluationNumber<T>> Deserialize<'de> for TcbEvaluationDataNumbers<T, Unverified> {
+impl<'de, T: PlatformTypeForTcbInfo<T>> Deserialize<'de> for TcbEvaluationDataNumbers<T, Unverified> {
     fn deserialize<D>(deserializer: D) -> Result<TcbEvaluationDataNumbers<T, Unverified>, D::Error>
     where
         D: Deserializer<'de>,
     {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct Dummy<S: PlatformTypeForTcbEvaluationNumber<S>> {
+        struct Dummy<S: PlatformTypeForTcbInfo<S>> {
             #[allow(unused)]
             #[serde(deserialize_with = "crate::deserialize_platform_id")]
             id: S,
@@ -68,13 +68,13 @@ impl<'de, T: PlatformTypeForTcbEvaluationNumber<T>> Deserialize<'de> for TcbEval
     }
 }
 
-impl<T: PlatformTypeForTcbEvaluationNumber<T>, V: VerificationType> TcbEvaluationDataNumbers<T, V> {
+impl<T: PlatformTypeForTcbInfo<T>, V: VerificationType> TcbEvaluationDataNumbers<T, V> {
     pub fn numbers(&self) -> Iter<'_, TcbEvalNumber> {
         self.tcb_eval_numbers.iter()
     }
 }
 
-impl<T: PlatformTypeForTcbEvaluationNumber<T>> TcbEvaluationDataNumbers<T, Unverified> {
+impl<T: PlatformTypeForTcbInfo<T>> TcbEvaluationDataNumbers<T, Unverified> {
     /// Given a particular TCB level, select the best available TCB eval number.
     /// That is the one that gives the most favorable TCB status, and the higher
     /// one if there's a tie.
@@ -94,7 +94,7 @@ impl<T: PlatformTypeForTcbEvaluationNumber<T>> TcbEvaluationDataNumbers<T, Unver
             }
         };
 
-        for qeid in QeIdentitySigned::read_all(input_dir, EnclaveIdentity::QE) {
+        for qeid in QeIdentitySigned::read_all(input_dir) {
             let qeid: QeIdentity::<Unverified> = serde_json::from_str(&qeid?.raw_qe_identity()).map_err(|e| Error::ParseError(e))?;
             if let Some(level) = qeid.tcb_levels()
                 .iter()
@@ -177,20 +177,8 @@ impl TcbEvalNumber {
     }
 }
 
-pub trait PlatformTypeForTcbEvaluationNumber<T: PlatformTypeForTcbEvaluationNumber<T>> : PlatformTypeForTcbInfo<T> {
-
-}
-
-impl PlatformTypeForTcbEvaluationNumber<platform::SGX> for platform::SGX {
-
-}
-
-impl PlatformTypeForTcbEvaluationNumber<platform::TDX> for platform::TDX {
-
-}
-
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct RawTcbEvaluationDataNumbers<T: PlatformTypeForTcbEvaluationNumber<T>> {
+pub struct RawTcbEvaluationDataNumbers<T: PlatformTypeForTcbInfo<T>> {
     raw_tcb_evaluation_data_numbers: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
@@ -198,8 +186,9 @@ pub struct RawTcbEvaluationDataNumbers<T: PlatformTypeForTcbEvaluationNumber<T>>
     platform_: PhantomData<T>,
 }
 
-impl<T: PlatformTypeForTcbEvaluationNumber<T>> RawTcbEvaluationDataNumbers<T> {
-    const DEFAULT_FILENAME: &'static str = "tcb_evaluation_data_numbers.numbers";
+impl<T: PlatformTypeForTcbInfo<T>> RawTcbEvaluationDataNumbers<T> {
+    const DEFAULT_FILENAME: &'static str = "tcb_evaluation_data_numbers";
+    const FILENAME_EXTENSION: &'static str = ".numbers";
 
     pub fn new(raw_tcb_evaluation_data_numbers: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
         RawTcbEvaluationDataNumbers {
@@ -210,8 +199,8 @@ impl<T: PlatformTypeForTcbEvaluationNumber<T>> RawTcbEvaluationDataNumbers<T> {
         }
     }
 
-    pub fn filename() -> String {
-        Self::DEFAULT_FILENAME.into()
+    fn filename() -> String {
+        format!("{}{}{}", Self::DEFAULT_FILENAME, T::extra_extension(), Self::FILENAME_EXTENSION)
     }
 
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
@@ -229,7 +218,7 @@ impl<T: PlatformTypeForTcbEvaluationNumber<T>> RawTcbEvaluationDataNumbers<T> {
     }
 
     /// Returns the raw TCB evaluation data numbers as signed by Intel
-    pub fn raw_sgx_tcb_evaluation_data_numbers(&self) -> &str {
+    pub fn raw_tcb_evaluation_data_numbers(&self) -> &str {
         &self.raw_tcb_evaluation_data_numbers
     }
 
@@ -242,12 +231,14 @@ impl<T: PlatformTypeForTcbEvaluationNumber<T>> RawTcbEvaluationDataNumbers<T> {
     }
 
     pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME, option)
+        let filename = Self::filename();
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let identity: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
-        Ok(identity)
+        let filename = Self::filename();
+        let numbers: Self = io::read_from_file(input_dir, &filename)?;
+        Ok(numbers)
     }
 
     /// Returns the TCB evaluation data numbers present. Warning: These values should not
@@ -346,7 +337,7 @@ impl TcbPolicy {
         *tcb_eval.tcb_recovery_event_date() + self.grace_period <= *now
     }
 
-    fn minimum_tcb_evaluation_data_number_ex<T: PlatformTypeForTcbEvaluationNumber<T>, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
+    fn minimum_tcb_evaluation_data_number_ex<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
         // We need the highest TCB Eval Data Number that needs to be enforced
         tcb_eval.numbers()
             .filter(|number| self.needs_to_be_enforced(number, now))
@@ -354,7 +345,7 @@ impl TcbPolicy {
             .cloned()
     }
 
-    pub fn minimum_tcb_evaluation_data_number<T: PlatformTypeForTcbEvaluationNumber<T>, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>) -> Option<TcbEvalNumber> {
+    pub fn minimum_tcb_evaluation_data_number<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>) -> Option<TcbEvalNumber> {
         self.minimum_tcb_evaluation_data_number_ex(tcb_eval, &Utc::now())
     }
 }
@@ -423,7 +414,7 @@ mod tests {
     #[test]
     fn minimum_tcb_evaluation_data_number() {
         let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
-        let numbers: TcbEvaluationDataNumbers<platform::SGX, Unverified> = serde_json::from_str(numbers.raw_sgx_tcb_evaluation_data_numbers()).unwrap();
+        let numbers: TcbEvaluationDataNumbers<platform::SGX, Unverified> = serde_json::from_str(numbers.raw_tcb_evaluation_data_numbers()).unwrap();
 
         let april_8_2025 = Utc.with_ymd_and_hms(2025, 4, 8, 0, 0, 0).unwrap();
         let march_12_2024 = Utc.with_ymd_and_hms(2024, 3, 12, 0, 0, 0).unwrap();
