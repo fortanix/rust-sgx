@@ -52,11 +52,13 @@ impl PccsProvisioningClientBuilder {
         let pck_cert = PckCertApi::new(self.base_url.clone(), self.api_version);
         let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
         let qeid = QeIdApi::new(self.base_url.clone(), self.api_version.clone());
-        let tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
-        let tcbinfotdx = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
-        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let sgx_tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
+        let tdx_tcbinfo = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
+        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, tcbinfotdx, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
 }
 
@@ -438,8 +440,8 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers, WriteOptionsBuilder,
+        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers,
+        TcbEvaluationDataNumbers, WriteOptionsBuilder, platform,
     };
 
     use super::Client;
@@ -593,7 +595,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
+                let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
                 let selected = pckcerts
@@ -630,7 +632,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
 
                 assert!(client
-                    .tcbinfo(&pckcerts.fmspc().unwrap(), None)
+                    .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
                     .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
@@ -651,7 +653,7 @@ mod tests {
             let fmspc = pckcerts.fmspc().unwrap();
 
             let evaluation_data_numbers = client
-                .tcb_evaluation_data_numbers()
+                .sgx_tcb_evaluation_data_numbers()
                 .unwrap()
                 .evaluation_data_numbers()
                 .unwrap();
@@ -666,7 +668,7 @@ mod tests {
                 if number.number() < 18 {
                     continue;
                 }
-                let tcb = match client.tcbinfo(&fmspc, Some(number.number())) {
+                let tcb = match client.sgx_tcbinfo(&fmspc, Some(number.number())) {
                     Ok(tcb) => tcb,
                     // API query with update="standard" will return QE Identity with TCB Evaluation Data Number M.
                     // A 410 Gone response is returned when the inputted TCB Evaluation Data Number is < M,
@@ -690,18 +692,18 @@ mod tests {
             {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
-                let tcb_info = client.tcbinfo(&fmspc, None).unwrap();
+                let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
-                    let mut cache = client.tcbinfo_service.cache.lock().unwrap();
+                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
 
                     assert!(cache.len() > 0);
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
                         let input = client
-                            .tcbinfo_service
+                            .sgx_tcbinfo_service
                             .pcs_service()
                             .build_input(&fmspc, None);
                         input.hash(&mut hasher);
@@ -716,7 +718,7 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let tcb_info_from_service = client.tcbinfo(&fmspc, None).unwrap();
+                let tcb_info_from_service = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 assert_eq!(tcb_info, tcb_info_from_service);
             }
