@@ -28,10 +28,10 @@ use {
 };
 
 pub use crate::pckcrl::PckCrl;
-pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponent};
+pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponentType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
-pub use crate::tcb_evaluation_data_numbers::{PlatformTypeForTcbEvaluationNumber, RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
+pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 
 mod io;
@@ -55,7 +55,7 @@ pub trait PlatformType : Display + Clone {
     fn platform_id() -> &'static str;
 }
 
-pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbEvaluationNumber<T>>(deserializer: D) -> Result<T, D::Error> {
+pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbInfo<T>>(deserializer: D) -> Result<T, D::Error> {
     let platform_str = String::deserialize(deserializer)?;
     if platform_str == T::platform_id() {
         Ok(T::new())

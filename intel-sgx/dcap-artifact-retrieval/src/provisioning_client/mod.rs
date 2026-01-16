@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformType, PlatformTypeForTcbEvaluationNumber, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponent, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -269,7 +269,7 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
     }
 }
 
-pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbEvaluationNumber<T>>:
+pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo<T>>:
     ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers<T>>
 {
     fn build_input(&self)
@@ -671,8 +671,8 @@ pub trait ProvisioningClient {
             //    also try with highest microcode version of both components. We found cases where
             //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
             //    Cert for that level
-            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate);
-            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate);
+            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
+            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
             if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
                 let early_ucode = cpu_svn[early_ucode_idx];
                 let late_ucode = cpu_svn[late_ucode_idx];

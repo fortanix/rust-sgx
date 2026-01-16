@@ -21,7 +21,7 @@ use {
 
 use crate::io::WriteOptions;
 use crate::pckcrt::PlatformTypeForTcbComponent;
-use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}, platform};
+use crate::{PlatformType, pckcrt::{TcbComponentType, TcbComponents}, platform};
 use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -522,7 +522,7 @@ impl<'de, T: PlatformTypeForTcbInfo<T>> TcbData<T, Unverified> {
     }
 
     /// Returns the index of the TCB component
-    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+    pub fn tcb_component_index(&self, comp: TcbComponentType) -> Option<usize> {
         if let Some(c) = self.tcb_levels.first() {
             c.components().tcb_component_index(comp)
         } else {
@@ -606,13 +606,13 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         io::compose_filename(fmspc, file_extension.as_str(), evaluation_data_number)
     }
 
-    pub fn store(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
         let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
         io::write_to_file(&self, output_dir, &filename, option)
     }
 
-    pub fn restore(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
+    pub fn read_from_file(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
         let filename = TcbInfo::<T>::create_filename(&fmspc.to_string(), evaluation_data_number);
         let info: TcbInfo<T> = io::read_from_file(input_dir, &filename)?;
         Ok(info)
@@ -741,7 +741,7 @@ mod tests {
         use crate::WriteOptionsBuilder;
 
         let info =
-            TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
+            TcbInfo::<platform::SGX>::read_from_file("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         match info.verify(&root_certificates, 2) {
@@ -754,15 +754,15 @@ mod tests {
         // Test serialization/deserialization
         let temp_dir = TempDir::new("tempdir").unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
-        info.store(&path, WriteOptionsBuilder::new().build()).unwrap();
-        let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
+        info.write_to_file(&path, WriteOptionsBuilder::new().build()).unwrap();
+        let info2 = TcbInfo::read_from_file(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
         assert_eq!(info, info2);
     }
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupt_tcb_info() {
-        let tcb_info = TcbInfo::<platform::SGX>::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::read_from_file("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         assert!(tcb_info.verify(&root_certificates, 2).is_err());
@@ -771,7 +771,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info_v3() {
-        let tcb_info = TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::read_from_file("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         let june_5_2025 = Utc.with_ymd_and_hms(2025, 6, 5, 12, 0, 0).unwrap();

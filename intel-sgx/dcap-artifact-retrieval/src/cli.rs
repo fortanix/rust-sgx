@@ -32,7 +32,7 @@ enum Origin {
     Pccs,
 }
 
-fn str_deserialize(s: &str) -> value::StrDeserializer<value::Error> {
+fn str_deserialize<'a>(s: &'a str) -> value::StrDeserializer<'a, value::Error> {
     s.into_deserializer()
 }
 
@@ -72,7 +72,7 @@ fn download_dcap_artifacts(
         // instead we mimic it using pckcert API.
         let pckcerts = prov_client.pckcerts_with_fallback(&pckid)?;
 
-        let pckcerts_file = pckcerts.store(output_dir, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build())?;
+        let pckcerts_file = pckcerts.write_to_file(output_dir, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build())?;
 
         if verbose {
             println!("   pckcerts:    {}", pckcerts_file.unwrap().display());
@@ -93,7 +93,7 @@ fn download_dcap_artifacts(
 
             match tcb_info {
                 Ok(tcb_info) => {
-                    let file = tcb_info.store(output_dir, WriteOptionsBuilder::new().build())?;
+                    let file = tcb_info.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
                     if verbose {
                         println!("   tcb info:    {}", file.unwrap().display());
                     }

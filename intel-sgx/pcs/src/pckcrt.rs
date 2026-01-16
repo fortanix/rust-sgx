@@ -70,7 +70,7 @@ impl TryFrom<i64> for SGXType {
 
 /// TCB component as specified in the Intel PCKCrt API v3 and v4
 #[derive(Serialize, Deserialize, Debug, Default)]
-pub struct IntelSgxTcbComponentsV3 {
+pub struct TcbComponentsV3 {
     sgxtcbcomp01svn: u8,
     sgxtcbcomp02svn: u8,
     sgxtcbcomp03svn: u8,
@@ -135,7 +135,7 @@ pub trait PlatformTypeForTcbComponent<T: PlatformTypeForTcbComponent<T>> : Parti
     where
         D: Deserializer<'de>;
 
-    fn try_from_v3(c: IntelSgxTcbComponentsV3) -> Result<TcbComponents<T>, Error>;
+    fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<T>, Error>;
 }
 
 impl PlatformTypeForTcbComponent<platform::SGX> for platform::SGX {
@@ -181,7 +181,7 @@ impl PlatformTypeForTcbComponent<platform::SGX> for platform::SGX {
         })
     }
     
-    fn try_from_v3(c: IntelSgxTcbComponentsV3) -> Result<TcbComponents<platform::SGX>, Error> {
+    fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<platform::SGX>, Error> {
         Ok(TcbComponents::<platform::SGX>(c.into()))
     }
 
@@ -237,20 +237,17 @@ impl PlatformTypeForTcbComponent<platform::TDX> for platform::TDX {
         })
     }
     
-    fn try_from_v3(_: IntelSgxTcbComponentsV3) -> Result<TcbComponents<platform::TDX>, Error> {
+    fn try_from_v3(_: TcbComponentsV3) -> Result<TcbComponents<platform::TDX>, Error> {
         Err(Error::InvalidTcbInfo("Attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
     }
-    
-
-    
 }
 
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TcbComponentsV4<T: PlatformTypeForTcbComponent<T>> {
-    pub sgxtcbcomponents: [TcbComponentEntry; 16],
-    pub pcesvn: u16,
-    pub platform_specific_data: T::PlatformSpecificTcbComponentData,
+    sgxtcbcomponents: [TcbComponentEntry; 16],
+    pcesvn: u16,
+    platform_specific_data: T::PlatformSpecificTcbComponentData,
 }
 
 impl<'de, T: PlatformTypeForTcbComponent<T>> Deserialize<'de> for TcbComponentsV4<T> {
@@ -272,29 +269,29 @@ impl<T: PlatformTypeForTcbComponent<T>> Serialize for TcbComponentsV4<T> {
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum IntelSgxTcbComponents<T: PlatformTypeForTcbComponent<T>> {
-    V3(IntelSgxTcbComponentsV3),
+enum TcbComponentsCompatibilitySelector<T: PlatformTypeForTcbComponent<T>> {
+    V3(TcbComponentsV3),
     V4(TcbComponentsV4<T>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-#[serde(try_from = "IntelSgxTcbComponents<T>")]
+#[serde(try_from = "TcbComponentsCompatibilitySelector<T>")]
 pub struct TcbComponents<T: PlatformTypeForTcbComponent<T>>(TcbComponentsV4<T>);
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum TcbComponent {
+pub enum TcbComponentType {
     EarlyMicrocodeUpdate,
     LateMicrocodeUpdate,
 }
 
-impl TryFrom<&str> for TcbComponent {
+impl TryFrom<&str> for TcbComponentType {
     type Error = ();
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         if s == "Early Microcode Update" {
-            Ok(TcbComponent::EarlyMicrocodeUpdate)
+            Ok(TcbComponentType::EarlyMicrocodeUpdate)
         } else if s == "SGX Late Microcode Update" {
-            Ok(TcbComponent::LateMicrocodeUpdate)
+            Ok(TcbComponentType::LateMicrocodeUpdate)
         } else {
             Err(())
         }
@@ -320,6 +317,10 @@ impl TcbComponents<platform::TDX> {
                 tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into())
             }
         })
+    }
+
+    pub fn tdx_tcb_components(&self) -> &[TcbComponentEntry; 16] {
+        &self.0.platform_specific_data.tdxtcbcomponents
     }
 }
 
@@ -349,10 +350,10 @@ impl<T: PlatformTypeForTcbComponent<T>> TcbComponents<T> {
     }
 
     /// Returns the index of the TCB component
-    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+    pub fn tcb_component_index(&self, comp: TcbComponentType) -> Option<usize> {
         self.0.sgxtcbcomponents
             .iter()
-            .position(|c| TcbComponent::try_from(c.comp_type.as_str()) == Ok(comp))
+            .position(|c| TcbComponentType::try_from(c.comp_type.as_str()) == Ok(comp))
     }
 }
 
@@ -378,8 +379,8 @@ impl<T: PlatformTypeForTcbComponent<T>> PartialOrd for TcbComponents<T> {
     }
 }
 
-impl std::convert::From<IntelSgxTcbComponentsV3> for TcbComponentsV4<platform::SGX> {
-    fn from(c: IntelSgxTcbComponentsV3) -> Self {
+impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform::SGX> {
+    fn from(c: TcbComponentsV3) -> Self {
         TcbComponentsV4 {
             sgxtcbcomponents: [
                 c.sgxtcbcomp01svn.into(),
@@ -405,24 +406,13 @@ impl std::convert::From<IntelSgxTcbComponentsV3> for TcbComponentsV4<platform::S
     }
 }
 
-// impl std::convert::TryFrom<IntelSgxTcbComponents<platform::SGX>> for TcbComponents<platform::SGX> {   
-//     type Error = Error;
-    
-//     fn try_from(c: IntelSgxTcbComponents<platform::SGX>) -> Result<Self, Self::Error> {
-//         Ok(match c {
-//             IntelSgxTcbComponents::V3(c) => TcbComponents::<platform::SGX>(c.into()),
-//             IntelSgxTcbComponents::V4(c) => TcbComponents::<platform::SGX>(c.into()),
-//         })
-//     }
-// }
-
-impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<IntelSgxTcbComponents<T>> for TcbComponents<T> {   
+impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<TcbComponentsCompatibilitySelector<T>> for TcbComponents<T> {   
     type Error = Error;
     
-    fn try_from(c: IntelSgxTcbComponents<T>) -> Result<Self, Self::Error> {
+    fn try_from(c: TcbComponentsCompatibilitySelector<T>) -> Result<Self, Self::Error> {
         match c {
-            IntelSgxTcbComponents::V3(c) => T::try_from_v3(c),
-            IntelSgxTcbComponents::V4(c) => Ok(TcbComponents(c.into())),
+            TcbComponentsCompatibilitySelector::V3(c) => T::try_from_v3(c),
+            TcbComponentsCompatibilitySelector::V4(c) => Ok(TcbComponents(c.into())),
         }
     }
 }
@@ -502,12 +492,12 @@ impl PckCerts {
         format!("{}.certs", base16::encode_lower(qe_id))
     }
 
-    pub fn store(&self, output_dir: &str, qe_id: &[u8], option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+    pub fn write_to_file(&self, output_dir: &str, qe_id: &[u8], option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let filename = PckCerts::filename(qe_id);
         io::write_to_file(&self, output_dir, &filename, option)
     }
 
-    pub fn restore(input_dir: &str, qe_id: &[u8]) -> Result<Self, Error> {
+    pub fn read_from_file(input_dir: &str, qe_id: &[u8]) -> Result<Self, Error> {
         let filename = PckCerts::filename(qe_id);
         let pcks: PckCerts = io::read_from_file(input_dir, &filename)?;
         Ok(pcks)
@@ -1294,7 +1284,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_pckcrts() {
-        let pcks = PckCerts::restore(
+        let pcks = PckCerts::read_from_file(
             "./tests/data/",
             &base16::decode("16a5b41ebb076d263a1e39e64e7175e7".as_bytes()).unwrap(),
         )
@@ -1325,7 +1315,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_pckcrts_with_missing_certs() {
-        let pcks = PckCerts::restore(
+        let pcks = PckCerts::read_from_file(
             "./tests/data/",
             &base16::decode("00000000000000000000000000000000".as_bytes()).unwrap(),
         )
@@ -1390,7 +1380,7 @@ mod tests {
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn pckcrts_conversion() {
-        let pcks = PckCerts::restore(
+        let pcks = PckCerts::read_from_file(
             "./tests/data/",
             &base16::decode("16a5b41ebb076d263a1e39e64e7175e7".as_bytes()).unwrap(),
         )
@@ -1464,11 +1454,11 @@ mod tests {
 
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
-        let pck_certs = PckCerts::restore(
+        let pck_certs = PckCerts::read_from_file(
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
             .unwrap();
-        let tcb_info = crate::TcbInfo::<platform::SGX>::restore("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
+        let tcb_info = crate::TcbInfo::<platform::SGX>::read_from_file("./tests/data/", &Fmspc::try_from("90806F000000").unwrap(), Some(19))
             .unwrap();
         // This TCB matches exactly with the first PCK cert in the list. This PCK cert must be
         // selected
