@@ -13,7 +13,7 @@ extern crate yasna;
 extern crate quick_error;
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display};
 
 use serde::de::{self};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -31,7 +31,7 @@ pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponent};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
-pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
+pub use crate::tcb_evaluation_data_numbers::{PlatformTypeForTcbEvaluationNumber, RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 
 mod io;
@@ -50,22 +50,23 @@ pub type PceIsvsvn = u16;
 pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub enum Platform {
-    SGX,
-    TDX,
-}
-
-pub trait PlatformType : Into<Platform> + Display + Clone {
+pub trait PlatformType : Display + Clone {
     fn new() -> Self;
-    fn tag() -> &'static str;
+    fn platform_id() -> &'static str;
 }
 
+pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbEvaluationNumber<T>>(deserializer: D) -> Result<T, D::Error> {
+    let platform_str = String::deserialize(deserializer)?;
+    if platform_str == T::platform_id() {
+        Ok(T::new())
+    } else {
+        Err(serde::de::Error::custom(format!("Invalid platform id: {platform_str}, expected {}", T::platform_id())))
+    }            
+}
 
 pub mod platform {
     use std::fmt::{self, Display, Formatter};
     use serde::{Serialize, Deserialize};
-    use super::Platform;
 
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct SGX;
@@ -77,30 +78,18 @@ pub mod platform {
         }
     }
 
-    impl Into<Platform> for SGX {
-        fn into(self) -> super::Platform {
-            super::Platform::SGX
-        }
-    }
-
     impl super::PlatformType for SGX {
         fn new() -> Self {
             Self {}
         }
         
-        fn tag() -> &'static str {
-            "sgx"
+        fn platform_id() -> &'static str {
+            "SGX"
         }
     }
 
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct TDX;
-
-    impl Into<Platform> for TDX {
-        fn into(self) -> super::Platform {
-            super::Platform::TDX
-        }
-    }
 
     impl Display for TDX {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -113,26 +102,12 @@ pub mod platform {
             Self {}
         }
         
-        fn tag() -> &'static str {
-            "tdx"
+        fn platform_id() -> &'static str {
+            "TDX"
         }
     }
     
 }
-
-impl Display for Platform {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Platform::SGX => write!(f, "SGX"),
-            Platform::TDX => write!(f, "TDX"),
-        }
-    }
-}
-
-fn sgx_platform() -> Platform {
-    Platform::SGX
-}
-
 
 quick_error! {
     #[derive(Debug)]

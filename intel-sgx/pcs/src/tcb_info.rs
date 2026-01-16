@@ -22,7 +22,7 @@ use {
 use crate::io::WriteOptions;
 use crate::pckcrt::PlatformTypeForTcbComponent;
 use crate::{PlatformType, pckcrt::{TcbComponent, TcbComponents}, platform};
-use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -355,8 +355,10 @@ impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Dummy {
-            #[serde(default = "crate::sgx_platform")]
-            id: Platform,
+            #[allow(unused)]
+            #[serde(default)]
+            #[serde(deserialize_with = "crate::deserialize_platform_id")]
+            id: platform::SGX,
             version: u16,
             #[serde(with = "crate::iso8601")]
             issue_date: DateTime<Utc>,
@@ -371,7 +373,7 @@ impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
         }
 
         let Dummy {
-            id,
+            id: _,
             version,
             issue_date,
             next_update,
@@ -382,24 +384,20 @@ impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
             tcb_levels,
         } = Dummy::deserialize(deserializer)?;
 
-        if id == Platform::SGX {
-            Ok(TcbData {
-                id,
-                version,
-                issue_date,
-                next_update,
-                fmspc,
-                pce_id,
-                tcb_type,
-                tcb_evaluation_data_number,
-                tcb_levels,
-                platform_specific_data: platform_specific::SGX,
-                type_: PhantomData,
-                platform_: PhantomData
-            })
-        } else {
-            Err(de::Error::custom(format!("Invalid TCB ID detected: {id}")))
-        }
+        Ok(TcbData {
+            version,
+            issue_date,
+            next_update,
+            fmspc,
+            pce_id,
+            tcb_type,
+            tcb_evaluation_data_number,
+            tcb_levels,
+            platform_specific_data: platform_specific::SGX,
+            type_: PhantomData,
+            platform_: PhantomData
+        })
+
     }
     
     fn extra_extension() -> &'static str {
@@ -419,8 +417,9 @@ impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct Dummy {
-            #[serde(default = "crate::sgx_platform")]
-            id: Platform,
+            #[allow(unused)]
+            #[serde(deserialize_with = "crate::deserialize_platform_id")]
+            id: platform::TDX,
             version: u16,
             #[serde(with = "crate::iso8601")]
             issue_date: DateTime<Utc>,
@@ -436,7 +435,7 @@ impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
         }
 
         let Dummy {
-            id,
+            id: _,
             version,
             issue_date,
             next_update,
@@ -449,27 +448,23 @@ impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
             tcb_levels,
         } = Dummy::deserialize(deserializer)?;
 
-        if id == Platform::TDX {
-            Ok(TcbData {
-                id,
-                version,
-                issue_date,
-                next_update,
-                fmspc,
-                pce_id,
-                tcb_type,
-                tcb_evaluation_data_number,
-                tcb_levels,
-                platform_specific_data: platform_specific::TDX {
-                    tdx_module,
-                    tdx_module_identities
-                },
-                type_: PhantomData,
-                platform_: PhantomData
-            })
-        } else {
-            Err(de::Error::custom(format!("Invalid TCB ID detected: {id}")))
-        }
+        Ok(TcbData {
+            version,
+            issue_date,
+            next_update,
+            fmspc,
+            pce_id,
+            tcb_type,
+            tcb_evaluation_data_number,
+            tcb_levels,
+            platform_specific_data: platform_specific::TDX {
+                tdx_module,
+                tdx_module_identities
+            },
+            type_: PhantomData,
+            platform_: PhantomData
+        })
+
     }
     
     fn extra_extension() -> &'static str {
@@ -480,7 +475,6 @@ impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
 #[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct TcbData<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified> {
-    id: Platform,
     version: u16,
     issue_date: DateTime<Utc>,
     next_update: DateTime<Utc>,
@@ -684,7 +678,6 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let TcbData {
-            id,
             version,
             issue_date,
             next_update,
@@ -696,10 +689,6 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
             tcb_levels,
             ..
         } = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
-
-        if id != T::new().into() {
-            return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {} platform", T::new())))
-        }
 
         if min_version > version {
             return Err(Error::UntrustedTcbInfoVersion(version, min_version))
@@ -713,7 +702,6 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         }
 
         Ok(TcbData::<T, Verified> {
-            id,
             version,
             issue_date,
             next_update,
@@ -821,10 +809,12 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
 
+        let januari_30_2026 = Utc.with_ymd_and_hms(2026, 1, 30, 12, 0, 0).unwrap();
+
         // Parse and verify TDX TCB Info
         let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
         assert!(TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).is_ok());
-        assert!(tdx_tcbinfo.verify(&root_certificates, 0).is_ok());
+        tdx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
 
         // Passing SGX TCB Info JSON to the TDX type must throw error
         let sgx_tcbinfo_in_tdx_type = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), vec![]).unwrap();
@@ -833,7 +823,7 @@ mod tests {
         // Parse and verify SGX TCB Info
         let sgx_tcbinfo = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), ca_chain.clone()).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(sgx_tcbinfo.raw_tcb_info()).is_ok());
-        sgx_tcbinfo.verify(&root_certificates, 0).unwrap();
+        sgx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
 
         // Passing TDX TCB Info JSON to the SGX type must throw error
         let tgx_tcbinfo_in_sdx_type = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), vec![]).unwrap();

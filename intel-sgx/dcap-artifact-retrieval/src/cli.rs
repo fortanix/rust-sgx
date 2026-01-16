@@ -80,7 +80,7 @@ fn download_dcap_artifacts(
 
         let fmspc = pckcerts.fmspc()?;
         let evaluation_data_numbers = prov_client
-            .tcb_evaluation_data_numbers()?;
+            .sgx_tcb_evaluation_data_numbers()?;
 
         let file = evaluation_data_numbers.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
         if verbose {
@@ -89,7 +89,7 @@ fn download_dcap_artifacts(
 
         for number in evaluation_data_numbers.evaluation_data_numbers()?.numbers() {
             let tcb_info = prov_client
-                .tcbinfo(&fmspc, Some(number.number()));
+                .sgx_tcbinfo(&fmspc, Some(number.number()));
 
             match tcb_info {
                 Ok(tcb_info) => {
