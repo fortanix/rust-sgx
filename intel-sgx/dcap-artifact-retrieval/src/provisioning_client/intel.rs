@@ -12,7 +12,7 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbEvaluationNumber, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
@@ -508,12 +508,12 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     }
 }
 
-pub struct TcbEvaluationDataNumbersApi<T: PlatformTypeForTcbEvaluationNumber<T>> {
+pub struct TcbEvaluationDataNumbersApi<T: PlatformTypeForTcbInfo<T>> {
     base_url: Cow<'static, str>,
     _platform: PhantomData<T>,
 }
 
-impl<T: PlatformTypeForTcbEvaluationNumber<T>> TcbEvaluationDataNumbersApi<T> {
+impl<T: PlatformTypeForTcbInfo<T>> TcbEvaluationDataNumbersApi<T> {
     pub fn new(base_url: Cow<'static, str>) -> Self {
         TcbEvaluationDataNumbersApi {
             base_url,
@@ -522,7 +522,7 @@ impl<T: PlatformTypeForTcbEvaluationNumber<T>> TcbEvaluationDataNumbersApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbEvaluationNumber<T> + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T> for TcbEvaluationDataNumbersApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T> for TcbEvaluationDataNumbersApi<T> {
     fn build_input(&self)
         -> <Self as ProvisioningServiceApi<'inp>>::Input {
         TcbEvaluationDataNumbersIn
@@ -531,7 +531,7 @@ impl<'inp, T: PlatformTypeForTcbEvaluationNumber<T> + PlatformApiTag> TcbEvaluat
 
 /// Implementation of TCB Evaluation Data Numbers endpoint
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
-impl<'inp, T: PlatformTypeForTcbEvaluationNumber<T> + PlatformApiTag> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi<T> {
     type Input = TcbEvaluationDataNumbersIn;
     type Output = RawTcbEvaluationDataNumbers<T>;
 
@@ -581,12 +581,12 @@ mod tests {
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use pcs::PlatformTypeForTcbEvaluationNumber;
+    use pcs::PlatformTypeForTcbInfo;
     use pcs::TcbInfo;
     use pcs::platform;
     use pcs::{
         DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers, WriteOptionsBuilder,
+        WriteOptionsBuilder,
     };
 
     use crate::provisioning_client::{
@@ -635,7 +635,7 @@ mod tests {
                     "Intel SGX Root CA"
                 );
                 pcks.fmspc().unwrap();
-                pcks.store(OUTPUT_TEST_DIR, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build()).unwrap();
+                pcks.write_to_file(OUTPUT_TEST_DIR, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -865,7 +865,7 @@ mod tests {
                     .unwrap();
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
+                    .and_then(|tcb| { Ok(tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -904,7 +904,7 @@ mod tests {
             println!("FMSPC: {} => {}", item.to_string(), tdx_tcbinfo.is_ok());
             assert!(tdx_tcbinfo.is_ok());
 
-            let verify_tdx_tcbinfo = tdx_tcbinfo.unwrap().verify(&root_cas, 2).unwrap();
+            let _ = tdx_tcbinfo.unwrap().verify(&root_cas, 2).unwrap();
         }
     }
 
@@ -937,7 +937,7 @@ mod tests {
                     Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
                     res @Err(_) => res.unwrap(),
                 };
-                tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
+                tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -1090,7 +1090,6 @@ mod tests {
             }
             let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None).unwrap();
-            assert_eq!(qe_id.enclave_type(), EnclaveIdentity::QE);
             assert!(qe_id.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).is_ok());
         }
     }
@@ -1151,7 +1150,7 @@ mod tests {
         }
     }
 
-    trait TcbEvaluationDataNumberDelegate<T: PlatformTypeForTcbEvaluationNumber<T>> {
+    trait TcbEvaluationDataNumberDelegate<T: PlatformTypeForTcbInfo<T>> {
         fn tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
         fn tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
     }
@@ -1176,7 +1175,7 @@ mod tests {
         }
     }
     
-    fn tcb_evaluation_data_numbers_test_base<T: PlatformTypeForTcbEvaluationNumber<T> + TcbEvaluationDataNumberDelegate<T> + std::fmt::Debug>() {
+    fn tcb_evaluation_data_numbers_test_base<T: PlatformTypeForTcbInfo<T> + TcbEvaluationDataNumberDelegate<T> + std::fmt::Debug>() {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)

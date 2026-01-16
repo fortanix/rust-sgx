@@ -15,7 +15,7 @@ use std::marker::PhantomData;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, EnclaveIdentity, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -440,8 +440,7 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers, WriteOptionsBuilder, platform,
+        PckID, WriteOptionsBuilder
     };
 
     use super::Client;
@@ -633,7 +632,7 @@ mod tests {
 
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
+                    .and_then(|tcb| { Ok(tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -676,7 +675,7 @@ mod tests {
                     Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
                     res @Err(_) => res.unwrap(),
                 };
-                tcb.store(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
+                tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
