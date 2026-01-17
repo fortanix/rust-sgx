@@ -15,8 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId,
-    QeIdentitySigned, TcbComponent, TcbInfo, RawTcbEvaluationDataNumbers, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -134,6 +133,23 @@ impl WithApiVersion for PcsVersion {
     }
 }
 
+trait PlatformApiTag {
+    fn tag() -> &'static str;
+}
+
+impl PlatformApiTag for platform::SGX {
+    fn tag() -> &'static str {
+        "sgx"
+    }
+}
+
+impl PlatformApiTag for platform::TDX {
+    fn tag() -> &'static str {
+        "tdx"
+    }
+}
+
+
 #[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
@@ -237,8 +253,8 @@ impl WithApiVersion for TcbInfoIn<'_> {
     }
 }
 
-pub trait TcbInfoService<'inp>:
-    ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo>
+pub trait TcbInfoService<'inp, T: PlatformTypeForTcbInfo<T>>:
+    ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo<T>>
 {
     fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
@@ -253,8 +269,8 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
     }
 }
 
-pub trait TcbEvaluationDataNumbersService<'inp>:
-    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers>
+pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo<T>>:
+    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers<T>>
 {
     fn build_input(&self)
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
@@ -286,14 +302,16 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, ES, F>(
+    pub(crate) fn build<PSS, PS, PC, QS, TS, TDS, ES, TES, F>(
         self,
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
-        tcbinfo_service: TS,
-        tcb_evaluation_data_numbers_service: ES,
+        sgx_tcbinfo_service: TS,
+        tdx_tcbinfo_service: TDS,
+        sgx_tcb_evaluation_data_numbers_service: ES,
+        tdx_tcb_evaluation_data_numbers_service: TES,
         fetcher: F,
     ) -> Client<F>
     where
@@ -301,8 +319,10 @@ impl ClientBuilder {
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
-        ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
+        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
+        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
+        ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
+        TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
     {
         Client::new(
@@ -310,8 +330,10 @@ impl ClientBuilder {
             pckcert_service,
             pckcrl_service,
             qeid_service,
-            tcbinfo_service,
-            tcb_evaluation_data_numbers_service,
+            sgx_tcbinfo_service,
+            tdx_tcbinfo_service,
+            sgx_tcb_evaluation_data_numbers_service,
+            tdx_tcb_evaluation_data_numbers_service,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -470,19 +492,23 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
         CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
     pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
-    tcbinfo_service: CachedService<TcbInfo, dyn for<'a> TcbInfoService<'a> + Sync + Send>,
-    tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers, dyn for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send>,
+    sgx_tcbinfo_service: CachedService<TcbInfo<platform::SGX>, dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send>,
+    tdx_tcbinfo_service: CachedService<TcbInfo<platform::TDX>, dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send>,
+    sgx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::SGX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send>,
+    tdx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::TDX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS, ES>(
+    fn new<PSS, PS, PC, QS, TS, TDS, ES, TES>(
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
         qeid_service: QS,
-        tcbinfo_service: TS,
-        tcb_evaluation_data_numbers_service: ES,
+        sgx_tcbinfo_service: TS,
+        tdx_tcbinfo_service: TDS,
+        sgx_tcb_evaluation_data_numbers_service: ES,
+        tdx_tcb_evaluation_data_numbers_service: TES,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
@@ -493,8 +519,10 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
         PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
         QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a> + Sync + Send + 'static,
-        ES: for<'a> TcbEvaluationDataNumbersService<'a> + Sync + Send + 'static,
+        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
+        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
+        ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
+        TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
     {
         Client {
             pckcerts_service: CachedService::new(
@@ -529,17 +557,33 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
                 cache_capacity,
                 cache_shelf_time,
             ),
-            tcbinfo_service: CachedService::new(
+            sgx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(tcbinfo_service)),
+                    PcsService::new(Box::new(sgx_tcbinfo_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
                 cache_shelf_time,
             ),
-            tcb_evaluation_data_numbers_service: CachedService::new(
+            tdx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(tcb_evaluation_data_numbers_service)),
+                    PcsService::new(Box::new(tdx_tcbinfo_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            sgx_tcb_evaluation_data_numbers_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(sgx_tcb_evaluation_data_numbers_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            tdx_tcb_evaluation_data_numbers_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(tdx_tcb_evaluation_data_numbers_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -562,7 +606,9 @@ pub trait ProvisioningClient {
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error>;
 
-    fn tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error>;
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
 
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
@@ -615,7 +661,7 @@ pub trait ProvisioningClient {
         let _ign_err = get_and_collect(&mut pckcerts_map, &[u8::MAX; 16], pck_id.pce_isvsvn);
 
         let fmspc = pck_cert.sgx_extension()?.fmspc;
-        let tcb_info = self.tcbinfo(&fmspc, None)?;
+        let tcb_info = self.sgx_tcbinfo(&fmspc, None)?;
         let tcb_data = tcb_info.data()?;
         for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
             // 3. Get PCK based on TCB levels
@@ -625,8 +671,8 @@ pub trait ProvisioningClient {
             //    also try with highest microcode version of both components. We found cases where
             //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
             //    Cert for that level
-            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponent::EarlyMicrocodeUpdate);
-            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponent::LateMicrocodeUpdate);
+            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
+            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
             if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
                 let early_ucode = cpu_svn[early_ucode_idx];
                 let late_ucode = cpu_svn[late_ucode_idx];
@@ -645,7 +691,9 @@ pub trait ProvisioningClient {
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
 
-    fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error>;
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
 }
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
@@ -675,9 +723,14 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo, Error> {
-        let input = self.tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
-        self.tcbinfo_service.call_service(&self.fetcher, &input)
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        let input = self.sgx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+        self.sgx_tcbinfo_service.call_service(&self.fetcher, &input)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        let input = self.tdx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+        self.tdx_tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
@@ -690,9 +743,15 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 
-    fn tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers, Error> {
-        let input = self.tcb_evaluation_data_numbers_service.pcs_service().build_input();
-        self.tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        let input = self.sgx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
+        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+    }
+    
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
+        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+    
     }
 }
 

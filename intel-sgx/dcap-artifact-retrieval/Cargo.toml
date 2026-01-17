@@ -1,6 +1,6 @@
 [package]
 name = "dcap-artifact-retrieval"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -28,7 +28,7 @@ mbedtls = { version = ">=0.12.0, <0.14.0", features = [
     "std",
 ], default-features = false }
 num_enum = { version = "0.7", features = ["complex-expressions"] }
-pcs = { version = "0.7.3", path = "../pcs" }
+pcs = { version = "0.8", path = "../pcs" }
 percent-encoding = "2.3.2"
 pkix = "0.2.0"
 quick-error = "1.1.0"
@@ -44,7 +44,7 @@ rustls-tls = ["reqwest?/rustls-tls"]
 
 [dev-dependencies]
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
-pcs = { version = "0.7", path = "../pcs", features = ["verify"] }
+pcs = { version = "0.8", path = "../pcs", features = ["verify"] }
 
 [build-dependencies]
 mbedtls = { version = ">=0.12.0, <0.14.0", features = ["ssl", "x509"] }

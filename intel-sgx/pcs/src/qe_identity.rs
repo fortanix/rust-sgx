@@ -21,7 +21,7 @@ use {
 };
 
 use crate::io::{self};
-use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{Error, TcbStatus, Unverified, VerificationType, Verified, WriteOptions};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum EnclaveIdentity {
@@ -340,17 +340,10 @@ impl QeIdentitySigned {
         io::compose_filename(Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let id = QeIdentity::<Unverified>::try_from(self)?;
         let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let id = QeIdentity::<Unverified>::try_from(self)?;
-        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn read_from_file(input_dir: &str, evaluation_data_number: Option<u64>) -> Result<Self, Error> {

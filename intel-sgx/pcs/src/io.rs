@@ -13,27 +13,43 @@ use serde::de::DeserializeOwned;
 
 use crate::Error;
 
-/// Write given object in json to given filename under given dir (override existing file).
-pub fn write_to_file<T: serde::ser::Serialize>(obj: &T, dir: &str, filename: &str) -> Result<(), Error> {
-    let path = Path::new(dir);
-    let path = path.join(filename);
-    write_to_path(&path, obj)
+
+pub struct WriteOptions {
+    no_overwrite: bool,
 }
 
-/// Write given object in json to given filename under given dir if file is not exist.
-///
-/// - Returns `Ok(None)` if file already exist.
-/// - Returns `Ok(Some(filename))` if succeed to write to new file.
-pub fn write_to_file_if_not_exist<T: serde::ser::Serialize>(
-    obj: &T,
-    dir: &str,
-    filename: &str,
-) -> Result<Option<PathBuf>, Error> {
+pub struct WriteOptionsBuilder {
+    no_overwrite: bool,
+}
+
+impl WriteOptionsBuilder {
+    pub fn new() -> Self {
+        Self {
+            no_overwrite: false
+        }
+    }
+
+    pub fn disallow_overwrite(mut self) -> Self {
+        self.no_overwrite = true;
+        self
+    }
+
+    pub fn build(self) -> WriteOptions {
+        WriteOptions { 
+            no_overwrite : self.no_overwrite,
+        }
+    }
+}
+
+/// Write given object in json to given filename under given dir.
+pub fn write_to_file<T: serde::ser::Serialize>(obj: &T, dir: &str, filename: &str, options: WriteOptions) -> Result<Option<PathBuf>, Error> {
     let path = Path::new(dir);
     let path = path.join(filename);
-    if path.exists() {
-        return Ok(None);
+
+    if options.no_overwrite && path.exists() {
+        return Ok(None)
     }
+
     write_to_path(&path, obj)?;
     Ok(Some(path))
 }
