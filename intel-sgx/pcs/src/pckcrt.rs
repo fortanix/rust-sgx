@@ -34,7 +34,7 @@ use {
 
 use crate::io::{self, WriteOptions};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
-use crate::{CpuSvn, Error, Unverified, VerificationType, Verified, platform};
+use crate::{CpuSvn, Error, PlatformTypeForTcbInfo, Unverified, VerificationType, Verified, platform};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
 ///
@@ -274,7 +274,7 @@ enum TcbComponentsCompatibilitySelector<T: PlatformTypeForTcbComponent<T>> {
     V4(TcbComponentsV4<T>),
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]
 #[serde(try_from = "TcbComponentsCompatibilitySelector<T>")]
 pub struct TcbComponents<T: PlatformTypeForTcbComponent<T>>(TcbComponentsV4<T>);
 
@@ -357,11 +357,11 @@ impl<T: PlatformTypeForTcbComponent<T>> TcbComponents<T> {
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> PartialOrd for TcbComponents<T> {
+impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> PartialOrd<TcbComponents<U>> for TcbComponents<T> {
     /// Compare all 17 components. If all are equal, order as equal. If some
     /// are less and others are greater, ordering is not defined. If some are
     /// less, order as less. If some are greater, order as greater.
-    fn partial_cmp(&self, other: &TcbComponents<T>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &TcbComponents<U>) -> Option<Ordering> {
         let mut prev: Option<Ordering> = None;
 
         for (a, b) in self.iter_components().zip(other.iter_components()) {
@@ -374,8 +374,18 @@ impl<T: PlatformTypeForTcbComponent<T>> PartialOrd for TcbComponents<T> {
                 | (Ordering::Greater, Some(Ordering::Greater)) => (),
             }
         }
-
         prev
+    }
+}
+
+impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> PartialEq<TcbComponents<U>> for TcbComponents<T> {
+    fn eq(&self, other: &TcbComponents<U>) -> bool {
+        for (a, b) in self.iter_components().zip(other.iter_components()) {
+            if a != b {
+                return false;
+            }
+        }
+        true
     }
 }
 
@@ -535,7 +545,7 @@ impl PckCerts {
 
     /// Order all PCKs according to the tcb info
     /// TCB Info is carefully ordered by Intel
-    fn order_pcks<V: VerificationType>(&self, tcb_info: &TcbData<platform::SGX, V>) -> Vec<PckCert<Unverified>> {
+    fn order_pcks<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(&self, tcb_info: &TcbData<T, V>) -> Vec<PckCert<Unverified>> {
         let mut pck_certs = self.as_pck_certs();
 
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
@@ -547,9 +557,9 @@ impl PckCerts {
 
     /// Given the cpusvn, pcesvn and qe_id, searches for the best PCK certificate
     /// Code re-implements <https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441>
-    pub fn select_pck<V: VerificationType>(
+    pub fn select_pck<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(
         &self,
-        tcb_info: &TcbData<platform::SGX, V>,
+        tcb_info: &TcbData<T, V>,
         cpusvn: &[u8; 16],
         pcesvn: u16,
         pceid: u16,
@@ -675,7 +685,7 @@ impl PckCert<Unverified> {
 impl PckCert<Verified> {
     /// Selects the highest matching TCB level
     /// see <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2>
-    pub fn find_tcb_state<V: VerificationType>(&self, tcb_data: &TcbData<platform::SGX, V>) -> Option<TcbLevel<platform::SGX>> {
+    pub fn find_tcb_state<V: VerificationType, T: PlatformTypeForTcbInfo<T>>(&self, tcb_data: &TcbData<T, V>) -> Option<TcbLevel<T>> {
         let idx = self.find_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
     }
@@ -753,7 +763,7 @@ impl<V: VerificationType> PckCert<V> {
     }
 
     /// Find the index of the highest matching TCB level
-    fn find_tcb_level_idx<V2: VerificationType>(&self, tcb_info: &TcbData<platform::SGX, V2>) -> Option<usize> {
+    fn find_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo<T>>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
         // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
         //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
         //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
