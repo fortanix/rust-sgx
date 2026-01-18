@@ -39,16 +39,8 @@ jobs:
           echo "PCCS_URL=${{ vars.PCCS_URL }}" >> $GITHUB_ENV
         fi
 
-    - name: Install additional dependencies
-      run: |
-        # install gpg
-        sudo apt-get update -y && sudo apt install -y gpg
-        # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
-        cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
-        # Install dependencies for build & test
-        sudo apt-get update -y
-        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
+    - name: Install build dependencies
+      run: sudo ./install_build_deps.sh
 
     - name: Setup Rust toolchain
       run: |
