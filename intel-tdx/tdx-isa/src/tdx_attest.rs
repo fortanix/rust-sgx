@@ -1,13 +1,19 @@
+//! Low-level TDX attestation bindings and error translation.
+//!
+//! This module re-exports the raw attestation FFI functions and provides a
+//! Rust-friendly error enum mirroring the upstream TDX attestation errors.
+
 use thiserror::Error;
 
-pub use tdx_module::{tdx_attest_error_t, tdx_report_data_t, tdx_report_t, tdx_rtmr_event_t};
-pub use tdx_module::tdx_att_get_report;
-pub use tdx_module::tdx_att_get_quote;
 pub use tdx_module::tdx_att_extend;
+pub use tdx_module::tdx_att_get_quote;
+pub use tdx_module::tdx_att_get_report;
 pub use tdx_module::tdx_att_get_supported_att_key_ids;
+pub use tdx_module::{tdx_attest_error_t, tdx_report_data_t, tdx_report_t, tdx_rtmr_event_t};
 
 #[derive(Error, Debug)]
 pub enum TdxAttestError {
+    /// Lower bound for error translations.
     #[error("Indicate min error to allow better translation, should be unexpected in production")]
     Min,
     #[error("The parameter is incorrect")]
@@ -30,14 +36,17 @@ pub enum TdxAttestError {
     DeviceFailure,
     #[error("Only supported RTMR index is 2 and 3")]
     InvalidRtmrIndex,
-    #[error("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list")]
+    #[error(
+        "The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"
+    )]
     UnsupportedAttKeyId,
+    /// Upper bound for error translations.
     #[error("Indicate max error to allow better translation, should be unexpected in production")]
     Max,
 }
 
-
 #[rustfmt::skip]
+/// Translate a raw TDX attestation error into a Rust result.
 pub fn parse_tdx_attest_error(err: tdx_attest_error_t) -> Result<(), TdxAttestError> {
     match err {
         tdx_attest_error_t::TDX_ATTEST_SUCCESS =>                       Ok(()),
