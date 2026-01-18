@@ -1,22 +1,30 @@
+//! Safe(er) Rust wrappers for the TDX attestation APIs.
+//!
+//! This module exposes higher-level types around the raw TDX attestation
+//! interfaces and mirrors the semantics described in the upstream TDX
+//! attestation headers.
+
 pub mod tdx_attest;
 
 use tdx_attest::{TdxAttestError, tdx_report_data_t, tdx_report_t};
 use tdx_module::tdx_uuid_t;
 pub use uuid::Uuid;
 
+/// Size of a TDX report in bytes.
 pub const TDX_REPORT_LEN: usize = 1024;
+/// Size of the report data field in bytes.
 pub const TDX_REPORT_DATA_LEN: usize = 64;
 const TDX_RTMR_EVENT_HEADER_LEN: usize = 68;
+/// Size of the RTMR extend data field in bytes.
 pub const TDX_RTMR_EXTEND_DATA_LEN: usize = 48;
 
-/// The generated TDX Report
+/// The generated TDX Report returned by the TDX module.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TdxReport([u8; TDX_REPORT_LEN]);
 
+/// A TDX Quote (opaque byte blob) returned by the platform quoting stack.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TdxQuote(Vec<u8>);
-
-
 
 impl From<tdx_report_t> for TdxReport {
     fn from(report: tdx_report_t) -> Self {
@@ -32,20 +40,27 @@ impl From<TdxReport> for tdx_report_t {
 }
 
 impl TdxReport {
-    /// Create an empty report
+    /// Create an empty report buffer.
     pub fn new() -> Self {
         Self([0; TDX_REPORT_LEN])
     }
 
+    /// Return the raw report bytes.
     pub fn read_raw(&self) -> &[u8; TDX_REPORT_LEN] {
         &self.0
     }
 
     /// Request a TDX Report of the calling TD.
     ///
-    /// # Param
-    /// - **report_data**\
-    ///   A set of data that the caller/TD wants to cryptographically bind to the Quote, typically a hash. May be all zeros for the Report data.
+    /// The caller provides data intended to be cryptographically bound to the
+    /// resulting report. This data does not need confidentiality protection.
+    ///
+    /// # Parameters
+    /// - **report_data**: Data to cryptographically bind to the report, typically
+    ///   a hash. It may be all zeros.
+    ///
+    /// # Errors
+    /// Propagates the underlying TDX attestation error code.
     pub fn get_report(report_data: [u8; TDX_REPORT_DATA_LEN]) -> Result<TdxReport, TdxAttestError> {
         let mut tdx_report = tdx_report_t {
             d: [0; TDX_REPORT_LEN],
@@ -60,24 +75,33 @@ impl TdxReport {
 }
 
 impl TdxQuote {
+    /// Wrap a raw quote buffer returned by the platform.
     pub fn new(raw: Vec<u8>) -> Self {
         Self(raw)
     }
 
+    /// Return the raw quote bytes.
     pub fn read_raw(&self) -> &[u8] {
         &self.0
     }
 
     /// Request a Quote of the calling TD.
     ///
-    /// # Param
-    /// - **report_data**
-    ///   A TDX Report of the calling TD.
-    /// - **attestation_key_ids**
-    ///   List of the attestation key IDs supported by the Quote verifier.
+    /// The caller provides report data intended to be cryptographically bound to
+    /// the resulting Quote and an optional list of attestation key IDs supported
+    /// by the verifier. If the list is empty, the platform default key ID is used.
     ///
-    /// # Return on success
-    /// Tuple of generated [`TdxReport`] & selected attestation key ID.
+    /// # Parameters
+    /// - **report_data**: Data to cryptographically bind to the Quote.
+    /// - **attestation_key_ids**: List of attestation key IDs supported by the
+    ///   verifier.
+    ///
+    /// # Returns
+    /// On success, returns the generated [`TdxQuote`] and the selected attestation
+    /// key ID.
+    ///
+    /// # Errors
+    /// Propagates the underlying TDX attestation error code.
     pub fn get_quote(
         report_data: [u8; TDX_REPORT_DATA_LEN],
         attestation_key_ids: Vec<Uuid>,
@@ -106,6 +130,22 @@ impl TdxQuote {
 }
 
 /// RTMR event payload for extend operation.
+/// 
+/// RTMR[rtmr_index] = SHA384(RTMR[rtmr_index] || extend_data)
+/// - `rtmr_index`: only supported RTMR index is 2 and 3.
+/// - `event_data`: field is currently expected to be empty by the platform
+///   quoting infrastructure.
+/// - `rtmr_index` and `extend_data` are fields in the structure that is an input of
+///   this API.
+/// 
+/// ## Notes
+/// 
+/// This API does not return either the new or old value of the specified RTMR.
+/// The [`TdxReport::get_report`] API may be used for this.
+/// The input to this API includes a description of the “extend data”. This is
+/// intended to facilitate reconstruction of the RTMR value. This, in turn,
+/// suggests maintenance of an event log by the callee. Currently, event_data is
+/// not supported.
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct TdxRtmrEvent {
     version: u32,
@@ -116,6 +156,7 @@ pub struct TdxRtmrEvent {
 }
 
 impl TdxRtmrEvent {
+    /// Build a new RTMR extend event.
     pub fn new(
         version: u32,
         rtmr_index: u64,
@@ -151,6 +192,8 @@ impl TryFrom<TdxRtmrEvent> for Vec<u8> {
 }
 
 /// Extend one of the TDX runtime measurement registers (RTMRs).
+///
+/// Please check doc of [`TdxRtmrEvent`] for details of input.
 pub fn extend_rtmr(rtmr_event: TdxRtmrEvent) -> Result<(), TdxAttestError> {
     let bytes: Vec<u8> = rtmr_event.try_into()?;
     tdx_attest::parse_tdx_attest_error(tdx_attest::tdx_att_extend(&bytes))
