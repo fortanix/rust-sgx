@@ -35,6 +35,7 @@ members = [
     "intel-sgx/sgxs",
     "ipc-queue",
     "rs-libc",
+    "fortanix-vme/fortanix-vme-initramfs",
 ]
 exclude = [
     "examples/backtrace_panic",

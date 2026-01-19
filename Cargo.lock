@@ -1664,14 +1664,23 @@ dependencies = [
  "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
  "clap 4.4.18",
- "cpio",
- "flate2",
+ "fortanix-vme-initramfs",
  "hex 0.4.3",
- "hex-literal",
  "serde_json",
  "sha2 0.9.9",
  "tempfile",
  "test_resources",
+ "thiserror",
+]
+
+[[package]]
+name = "fortanix-vme-initramfs"
+version = "0.1.0"
+dependencies = [
+ "cpio",
+ "flate2",
+ "hex-literal",
+ "sha2 0.9.9",
  "thiserror",
 ]
 
