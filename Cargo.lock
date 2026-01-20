@@ -4682,9 +4682,9 @@ dependencies = [
 name = "tdx-isa"
 version = "0.1.0"
 dependencies = [
+ "memory-layout",
  "tdx-attest-rs",
  "thiserror 2.0.17",
- "uuid 1.19.0",
 ]
 
 [[package]]
