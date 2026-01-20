@@ -13,6 +13,13 @@ use std::os::raw::c_void;
 
 use sgx_isa::Enclu;
 use sgxs::loader::Tcs;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
+thread_local! {
+    pub static EXITING: RefCell<Option<Arc<AtomicBool>>> = RefCell::new(None);
+}
 
 pub(crate) type DebugBuffer = [u8; 1024];
 
@@ -20,6 +27,7 @@ pub(crate) type DebugBuffer = [u8; 1024];
 pub enum CoResult<Y, R> {
     Yield(Y),
     Return(R),
+    Abort,
 }
 
 #[derive(Debug)]
@@ -38,14 +46,47 @@ impl<T: Tcs> Usercall<T> {
     pub fn coreturn(
         self,
         retval: (u64, u64),
-        debug_buf: Option<&RefCell<DebugBuffer>>,
+        exiting: &Arc<AtomicBool>,
+        debug_buf: Option<&RefCell<DebugBuffer>>
     ) -> ThreadResult<T> {
-        coenter(self.tcs, 0, retval.0, retval.1, 0, 0, debug_buf)
+        coenter(self.tcs, 0, retval.0, retval.1, 0, 0, exiting, debug_buf)
     }
 
     pub fn tcs_address(&self) -> *mut c_void {
         self.tcs.address()
     }
+}
+
+/// Check if __vdso_sgx_enter_enclave exists. We're using weak linkage, so
+/// it might not.
+#[cfg(target_os = "linux")]
+pub(crate) fn has_vdso_sgx_enter_enclave() -> bool {
+    unsafe {
+        let addr: usize;
+        asm!("
+.weak __vdso_sgx_enter_enclave
+.type __vdso_sgx_enter_enclave, function
+            mov __vdso_sgx_enter_enclave@GOTPCREL(%rip), {}
+            jmp 1f
+
+            // Strongly link to another symbol in the VDSO, so that the
+            // linker will include a DT_NEEDED entry for `linux-vdso.so.1`.
+            // This doesn't happen automatically because rustc passes
+            // `--as-needed` to the linker. This is never executed because
+            // of the unconditional jump above.
+.global __vdso_clock_gettime
+.type __vdso_clock_gettime, function
+            call __vdso_clock_gettime@PLT
+
+1:
+            ", out(reg) addr, options(nomem, nostack, att_syntax));
+        addr != 0
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn has_vdso_sgx_enter_enclave() -> bool {
+    false
 }
 
 pub(crate) fn coenter<T: Tcs>(
@@ -55,41 +96,10 @@ pub(crate) fn coenter<T: Tcs>(
     mut p3: u64,
     mut p4: u64,
     mut p5: u64,
-    debug_buf: Option<&RefCell<DebugBuffer>>,
+    exiting: &Arc<AtomicBool>,
+    debug_buf: Option<&RefCell<DebugBuffer>>
 ) -> ThreadResult<T> {
-    /// Check if __vdso_sgx_enter_enclave exists. We're using weak linkage, so
-    /// it might not.
-    #[cfg(target_os = "linux")]
-    fn has_vdso_sgx_enter_enclave() -> bool {
-        unsafe {
-            let addr: usize;
-            asm!("
-.weak __vdso_sgx_enter_enclave
-.type __vdso_sgx_enter_enclave, function
-                mov __vdso_sgx_enter_enclave@GOTPCREL(%rip), {}
-                jmp 1f
-
-                // Strongly link to another symbol in the VDSO, so that the
-                // linker will include a DT_NEEDED entry for `linux-vdso.so.1`.
-                // This doesn't happen automatically because rustc passes
-                // `--as-needed` to the linker. This is never executed because
-                // of the unconditional jump above.
-.global __vdso_clock_gettime
-.type __vdso_clock_gettime, function
-                call __vdso_clock_gettime@PLT
-
-1:
-                ", out(reg) addr, options(nomem, nostack, att_syntax));
-            addr != 0
-        }
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    fn has_vdso_sgx_enter_enclave() -> bool {
-        false
-    }
-
-    let sgx_result: u32;
+    let mut enclu_leaf = Enclu::EEnter as u32;
 
     unsafe {
         let mut uninit_debug_buf: std::mem::MaybeUninit<DebugBuffer>;
@@ -136,6 +146,9 @@ pub(crate) fn coenter<T: Tcs>(
                 ..Default::default()
             };
             let ret: i32;
+
+            // set exiting flag in thread local storage variable to check it in signal handler in case of a signal
+            EXITING.with(|cell| *cell.borrow_mut() = Some(exiting.clone()));
             asm!("
                     sub $0x8, %rsp                   // align stack
                     push {}                          // push argument: run
@@ -161,11 +174,14 @@ pub(crate) fn coenter<T: Tcs>(
                 lateout("r15") _, // V
                 options(att_syntax)
             );
+            // Enclave work is done - unset TLS variable
+            EXITING.with(|cell| { *cell.borrow_mut() = None;});
+
             if ret == 0 {
-                sgx_result = run.function;
-                match sgx_result.try_into() {
-                    Ok(Enclu::EExit) => { /* normal case */ },
-                    Ok(Enclu::EResume) => {
+                enclu_leaf = run.function;
+                match enclu_leaf.try_into() {
+                    Ok(Enclu::EExit) => { /* normal case or enclave work was intervened by the sighup */ },
+                    Ok(Enclu::EResume) => { /* given vdso code this never may be the case */
                         if let Some(mut debug_buf) = debug_buf {
                             let _ = write!(&mut debug_buf[..], "Enclave triggered exception: {:?}\0", run);
                         } else {
@@ -182,31 +198,42 @@ pub(crate) fn coenter<T: Tcs>(
                 panic!("Error entering enclave (VDSO): ret = {:?}, run = {:?}", std::io::Error::from_raw_os_error(-ret), run);
             }
         } else {
-            asm!("
-                    lea 1f(%rip), %rcx // set SGX AEP
-                    xchg {0}, %rbx
-1:                  enclu
-                    xchg %rbx, {0}
-                ",
-                inout(reg) tcs.address() => _, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
-                inout("eax") Enclu::EEnter as u32 => sgx_result,
-                out("rcx") _,
-                inout("rdx") p3,
-                inout("rdi") p1,
-                inout("rsi") p2,
-                inout("r8") p4,
-                inout("r9") p5,
-                inout("r10") debug_buf_ptr => _,
-                out("r11") _,
-                options(nostack, att_syntax)
-            );
+            while !exiting.load(Ordering::SeqCst) && enclu_leaf != (Enclu::EExit as u32) {
+                asm!("
+                        lea 1f(%rip), %rcx // set SGX AEP
+                        push %rbx          // rbx is used internally by LLVM and cannot be designated as being clobbered. Store/restoring it
+                        mov {0}, %rbx
+                        enclu
+1:                      pop %rbx
+                    ",
+                    inout(reg) tcs.address() => _, // rbx is used internally by LLVM and cannot be used as an operand for inline asm (#84658)
+                    inout("eax") enclu_leaf as u32 => enclu_leaf,
+                    out("rcx") _,
+                    inout("rdx") p3,
+                    inout("rdi") p1,
+                    inout("rsi") p2,
+                    inout("r8") p4,
+                    inout("r9") p5,
+                    inout("r10") debug_buf_ptr => _,
+                    out("r11") _,
+                    lateout("r12") _, // these may be clobbered in case of AEX
+                    lateout("r13") _, // V
+                    lateout("r14") _, // V
+                    lateout("r15") _, // V
+                    options(nostack, att_syntax)
+                );
+            }
         }
     };
 
-    if sgx_result != (Enclu::EExit as u32) {
-        panic!("Invalid return value in EAX! eax={}", sgx_result);
+    if exiting.load(Ordering::SeqCst) {
+        return CoResult::Abort
     }
 
+    if enclu_leaf != (Enclu::EExit as u32) {
+        panic!("Invalid return value in EAX! eax={}", enclu_leaf);
+    }
+    
     if p1 == 0 {
         CoResult::Return((tcs, p2, p3))
     } else {

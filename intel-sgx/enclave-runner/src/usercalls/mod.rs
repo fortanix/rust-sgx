@@ -15,6 +15,8 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
+#[cfg(unix)]
+use std::os::unix::thread::JoinHandleExt;
 use std::time::{self, Duration};
 use std::{cmp, fmt, str};
 
@@ -38,12 +40,13 @@ use ipc_queue::position::WritePosition;
 use sgxs::loader::Tcs as SgxsTcs;
 
 use crate::loader::{EnclavePanic, ErasedTcs};
-use crate::tcs::{self, CoResult, ThreadResult};
+use crate::tcs::{self, CoResult, ThreadResult, EXITING};
 use self::abi::dispatch;
 use self::abi::ReturnValue;
 use self::abi::UsercallList;
 use self::interface::ToSgxResult;
 use self::interface::{Handler, OutputBuffer};
+use sgx_isa::Enclu;
 
 pub(crate) mod abi;
 mod interface;
@@ -657,7 +660,7 @@ pub(crate) struct EnclaveState {
     event_queues: FnvHashMap<TcsAddress, PendingEvents>,
     fds: Mutex<FnvHashMap<Fd, Arc<AsyncFileDesc>>>,
     last_fd: AtomicUsize,
-    exiting: AtomicBool,
+    exiting: Arc<AtomicBool>,
     usercall_ext: Box<dyn UsercallExtension>,
     threads_queue: crossbeam::queue::SegQueue<StoppedTcs>,
     forward_panics: bool,
@@ -678,15 +681,15 @@ enum CoEntry {
 }
 
 impl Work {
-    fn do_work(self, io_send_queue: &mut tokio::sync::mpsc::UnboundedSender<UsercallSendData>) {
+    fn do_work(self, io_send_queue: &mut tokio::sync::mpsc::UnboundedSender<UsercallSendData>, exiting: &Arc<AtomicBool>) {
         let buf = RefCell::new([0u8; 1024]);
         let usercall_send_data = match self.entry {
             CoEntry::Initial(erased_tcs, p1, p2, p3, p4, p5) => {
-                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, Some(&buf));
+                let coresult = tcs::coenter(erased_tcs, p1, p2, p3, p4, p5, &exiting, Some(&buf));
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
             CoEntry::Resume(usercall, coresult) => {
-                let coresult = usercall.coreturn(coresult, Some(&buf));
+                let coresult = usercall.coreturn(coresult, &exiting, Some(&buf));
                 UsercallSendData::Sync(coresult, self.tcs, buf)
             }
         };
@@ -772,7 +775,7 @@ impl EnclaveState {
             event_queues,
             fds: Mutex::new(fds),
             last_fd,
-            exiting: AtomicBool::new(false),
+            exiting: Arc::new(AtomicBool::new(false)),
             usercall_ext,
             threads_queue,
             forward_panics,
@@ -1039,6 +1042,9 @@ impl EnclaveState {
                         };
                         tokio::task::spawn_local(fut);
                     }
+                    UsercallSendData::Sync(CoResult::Abort, _, _) => {
+                        // enclave interuption - do nothing
+                    }
                 };
             }
             unreachable!();
@@ -1068,20 +1074,27 @@ impl EnclaveState {
             num_of_worker_threads: usize,
             work_receiver: crossbeam::channel::Receiver<Work>,
             io_queue_send: tokio::sync::mpsc::UnboundedSender<UsercallSendData>,
+            exiting: Arc<AtomicBool>
         ) -> Vec<JoinHandle<()>> {
             let mut thread_handles = vec![];
             for _ in 0..num_of_worker_threads {
                 let work_receiver = work_receiver.clone();
                 let mut io_queue_send = io_queue_send.clone();
+                let exiting = exiting.clone();
 
                 thread_handles.push(thread::spawn(move || {
                     while let Ok(work) = work_receiver.recv() {
-                        work.do_work(&mut io_queue_send);
+                        work.do_work(&mut io_queue_send, &exiting);
                     }
                 }));
             }
             thread_handles
         }
+
+        #[cfg(unix)]
+        if tcs::has_vdso_sgx_enter_enclave() {
+            catch_sighup()
+        };
 
         let (io_queue_send, io_queue_receive) = tokio::sync::mpsc::unbounded_channel();
 
@@ -1091,12 +1104,22 @@ impl EnclaveState {
             .expect("Work sender couldn't send data to receiver");
 
         let join_handlers =
-            create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send.clone());
+            create_worker_threads(num_of_worker_threads, work_receiver, io_queue_send.clone(), enclave.exiting.clone());
         // main syscall polling loop
         let main_result =
             EnclaveState::syscall_loop(enclave.clone(), io_queue_receive, io_queue_send, work_sender);
 
         for handler in join_handlers {
+            #[cfg(unix)]
+            if tcs::has_vdso_sgx_enter_enclave() {
+                // The enclave thread may be in a long-running `AEX/enclu[ERESUME]` loop.
+                // for vdso case: return execution control back to the enclave-runner worker thread
+                //    by issuing a sighup signal and rewriting IP in the signal handler. The
+                //    `pthread_kill` function ensures that the signal is thread-directed (i.e., the
+                //    signal is handled by the specified thread).
+                unsafe { libc::pthread_kill(handler.as_pthread_t() as _, signal::SIGHUP as _); }
+                // for non-vdso case: execution control returned using AEP set next after Enclu to break AEX/enclu[EResume] loop (signal not required).
+            }
             let _ = handler.join();
         }
 
@@ -1318,6 +1341,34 @@ extern "C" fn handle_trap(_signo: c_int, _info: *mut siginfo_t, context: *mut c_
         }
     }
     return;
+}
+
+#[cfg(unix)]
+fn catch_sighup() {
+    unsafe {
+        extern "C" fn handle_sighup(_signo: c_int, _info: *mut siginfo_t, context: *mut c_void) {
+            let instruction_ptr = unsafe { (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] as *const u8};
+            // enclu instruction code
+            const ENCLU: [u8; 3] = [0x0f, 0x01, 0xd7];
+            let is_enclu = ENCLU.iter().enumerate().all(|(idx, v)| {
+                unsafe { *instruction_ptr.offset(idx as isize) == *v }
+            });
+            // `EXITING` may be `None` when:
+            //  - The thread is no longer executing in the enclave
+            //  - The destructor of this thread local variable already executed
+            if is_enclu && EXITING.with(|cell| cell.borrow().as_ref().is_some_and(|val| val.load(Ordering::SeqCst))) {
+                // Interrupt enclave execution by setting IP to the instruction following the ENCLU to mimic normal ENCLU[EEXIT])
+                unsafe {
+                    (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RIP as usize] += ENCLU.len() as i64;
+                    (*(context as *mut ucontext_t)).uc_mcontext.gregs[REG_RAX as usize] = Enclu::EExit as i64;
+                }
+            }
+        }
+
+        let hdl = signal::SigHandler::SigAction(handle_sighup);
+        let sig_action = signal::SigAction::new(hdl, signal::SaFlags::empty(), signal::SigSet::empty());
+        signal::sigaction(signal::SIGHUP, &sig_action).unwrap();
+    }
 }
 
 #[cfg(unix)]
