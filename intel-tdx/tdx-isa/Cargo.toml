@@ -2,8 +2,9 @@
 name = "tdx-isa"
 version = "0.1.0"
 edition = "2024"
+readme = "README.md"
 
 [dependencies]
 tdx_module = { git = "https://github.com/intel/confidential-computing.tee.dcap.git", tag = "DCAP_1.24", package = "tdx-attest-rs" }
 thiserror = "2"
-uuid = "1"
+memory-layout = { version = "0.1", path = "../../memory-layout" }
