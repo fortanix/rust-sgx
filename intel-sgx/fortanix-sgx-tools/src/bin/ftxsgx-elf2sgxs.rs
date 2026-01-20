@@ -41,6 +41,8 @@ struct Symbols<'a> {
     sgx_entry: &'a DynSymEntry,
     HEAP_BASE: &'a DynSymEntry,
     HEAP_SIZE: &'a DynSymEntry,
+    UNMAPPED_BASE: &'a DynSymEntry,
+    UNMAPPED_SIZE: &'a DynSymEntry,
     RELA: &'a DynSymEntry,
     RELACOUNT: &'a DynSymEntry,
     ENCLAVE_SIZE: &'a DynSymEntry,
@@ -113,6 +115,7 @@ pub struct LayoutInfo<'a> {
     ssaframesize: u32,
     heap_size: u64,
     stack_size: u64,
+    unmapped_size: u64,
     threads: usize,
     debug: bool,
     library: bool,
@@ -233,13 +236,15 @@ impl<'a> LayoutInfo<'a> {
         // Tool must support both variants for backwards compatibility at least until 'https://github.com/fortanix/rust-sgx/issues/174' is merged into rust-lang.
         //
         // Variables have been renamed due to missing 'toolchain' version checks. Rename will cause compile-time failure if using old tool with new toolchain assembly code.
-        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE
+        let syms = read_syms!(mandatory: sgx_entry, HEAP_BASE, HEAP_SIZE, RELA, RELACOUNT, ENCLAVE_SIZE, CFGDATA_BASE, DEBUG, TEXT_BASE, TEXT_SIZE, UNMAPPED_BASE, UNMAPPED_SIZE
                               optional: EH_FRM_HDR_BASE, EH_FRM_HDR_SIZE, EH_FRM_OFFSET, EH_FRM_LEN, EH_FRM_HDR_OFFSET, EH_FRM_HDR_LEN
                               in syms : elf);
 
 
         check_size!(syms.HEAP_BASE == 8);
         check_size!(syms.HEAP_SIZE == 8);
+        check_size!(syms.UNMAPPED_BASE == 8);
+        check_size!(syms.UNMAPPED_SIZE == 8);
         check_size!(syms.RELA == 8);
         check_size!(syms.RELACOUNT == 8);
         check_size!(syms.ENCLAVE_SIZE == 8);
@@ -386,6 +391,7 @@ impl<'a> LayoutInfo<'a> {
         ssaframesize: u32,
         heap_size: u64,
         stack_size: u64,
+        unmapped_size: u64,
         threads: usize,
         debug: bool,
         library: bool,
@@ -410,6 +416,7 @@ impl<'a> LayoutInfo<'a> {
             ssaframesize,
             heap_size,
             stack_size,
+            unmapped_size,
             threads,
             debug,
             library,
@@ -425,12 +432,15 @@ impl<'a> LayoutInfo<'a> {
         &self,
         writer: &mut CanonicalSgxsWriter<W>,
         heap_addr: u64,
+        unmapped_addr: u64,
         memory_size: u64,
         enclave_size: Option<u64>,
     ) -> Result<(), anyhow::Error> {
         let mut splices = vec![
             Splice::for_sym_u64(self.sym.HEAP_BASE, heap_addr),
             Splice::for_sym_u64(self.sym.HEAP_SIZE, self.heap_size),
+            Splice::for_sym_u64(self.sym.UNMAPPED_BASE, unmapped_addr),
+            Splice::for_sym_u64(self.sym.UNMAPPED_SIZE, self.unmapped_size),
             Splice::for_sym_u64(
                 self.sym.RELA,               
                 self.dynamic
@@ -574,7 +584,8 @@ impl<'a> LayoutInfo<'a> {
             .ok_or_else(|| format_err!("No loadable segments found"))?;
 
         let heap_addr = size_fit_page(max_addr);
-        let mut thread_start = heap_addr + self.heap_size;
+        let unmapped_addr = size_fit_page(heap_addr + self.heap_size);
+        let mut thread_start = size_fit_page(unmapped_addr + self.unmapped_size);
         const THREAD_GUARD_SIZE: u64 = 0x10000;
         const TLS_SIZE: u64 = 0x1000;
         let nssa = 1u32;
@@ -599,7 +610,7 @@ impl<'a> LayoutInfo<'a> {
         )?;
 
         // Output ELF sections
-        self.write_elf_segments(&mut writer, heap_addr, memory_size, enclave_size)?;
+        self.write_elf_segments(&mut writer, heap_addr, unmapped_addr, memory_size, enclave_size)?;
 
         // Output heap
         let secinfo = SecinfoTruncated {
@@ -725,6 +736,7 @@ fn main_result(args: ArgMatches) -> Result<(), anyhow::Error> {
     let heap_size = u64::parse_arg(args.value_of("heap-size").unwrap());
     let stack_size = u64::parse_arg(args.value_of("stack-size").unwrap());
     let threads = usize::parse_arg(args.value_of("threads").unwrap());
+    let unmapped_size = u64::parse_arg(args.value_of("unmapped-memory-size").unwrap());
 
     let debug = args.is_present("debug");
     let library = args.is_present("library");
@@ -740,6 +752,7 @@ fn main_result(args: ArgMatches) -> Result<(), anyhow::Error> {
         ssaframesize,
         heap_size,
         stack_size,
+        unmapped_size,
         threads,
         debug,
         library,
@@ -797,6 +810,16 @@ fn main() {
                 .validator(u64::validate_arg)
                 .required(true)
                 .help("Specify stack size"),
+        )
+        .arg(
+            Arg::with_name("unmapped-memory-size")
+                .short("U")
+                .long("unmapped-memory-size")
+                .value_name("BYTES")
+                .validator(u64::validate_arg)
+                .required(false)
+                .default_value("0")
+                .help("Specify the (minimum) size of unmapped memory (useable on SGXv2 capable processors only)"),
         )
         .arg(
             Arg::with_name("debug")
