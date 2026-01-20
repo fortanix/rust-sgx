@@ -13,6 +13,8 @@ pub use self::mbedtls::Mbedtls;
 pub const SHA256_DIGEST_LEN: usize = 32;
 
 pub(super) mod private {
+    use pkix::types::DerSequence;
+
     pub trait Crypto {
         type Error: std::error::Error + Send + Sync + 'static;
 
@@ -24,5 +26,11 @@ pub(super) mod private {
         ///
         /// Returns `Ok(())` if the signature is correct, an error otherwise.
         fn rsa_sha256_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> ::std::result::Result<(), Self::Error>;
+
+        //TODO add support for CRLs
+        /// Verify an x.509 certificate chain `cert_chain`, given a list of trusted CAs `ca_certs`
+        ///
+        /// Returns `Ok(())` if the certificate chain is valid, an error otherwise.
+        fn x509_verify_chain(cert_chain: &Vec<DerSequence>, ca_certs: &Vec<DerSequence>) -> ::std::result::Result<(), crate::verifier::Error>;
     }
 }
