@@ -1,6 +1,15 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+***/
+
 //! ioctl-based TDX attestation backend.
 
-use crate::{TdxAttestError, TdxReport, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE};
+use crate::{
+    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestError, TdxReport,
+};
 
 const TDX_ATTEST_DEV_PATH: &str = "/dev/tdx_guest";
 

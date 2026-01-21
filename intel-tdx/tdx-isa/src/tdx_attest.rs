@@ -1,9 +1,18 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+***/
+
 //! Low-level TDX attestation bindings and error translation.
 //!
 //! This module re-exports the raw attestation FFI functions and provides
 //! backend helpers for the `tdx-attest-rs` approach.
 
-use crate::{TdxAttestError, TdxReport, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE};
+use crate::{
+    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestError, TdxReport,
+};
 
 pub use tdx_module::tdx_att_extend;
 pub use tdx_module::tdx_att_get_quote;
