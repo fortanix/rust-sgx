@@ -4683,6 +4683,7 @@ name = "tdx-isa"
 version = "0.1.0"
 dependencies = [
  "memory-layout",
+ "nix 0.30.1",
  "tdx-attest-rs",
  "thiserror 2.0.17",
 ]
