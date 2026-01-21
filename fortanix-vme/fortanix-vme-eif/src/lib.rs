@@ -11,6 +11,10 @@ use tempfile::{self, NamedTempFile};
 mod initramfs;
 mod error;
 
+pub mod eif_types {
+    pub use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader};
+}
+
 pub use error::Error;
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
 
