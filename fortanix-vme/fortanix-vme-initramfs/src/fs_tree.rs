@@ -117,7 +117,7 @@ impl FsTreeBuilder {
     }
 
     pub fn normalize_path(basename: &str) -> PathBuf {
-        // Path in initramfs must relative to the current directory
+        // Path in initramfs must be relative to the current directory.
         // Make sure that given paths does not start with '.', './'
         let mut path = PathBuf::from(REL_TO_CUR);
         if let Some(basename) = basename.strip_prefix("/") {
@@ -163,6 +163,7 @@ impl fmt::Debug for FsTreeEntry {
                 .debug_struct("FsTreeEntry::File")
                 .field("path", path)
                 .field("mode", mode)
+                .field("content", &"...") // Omit content
                 .finish(),
         }
     }
@@ -251,7 +252,6 @@ mod tests {
             .add_file("init", Cursor::new(content.clone()))
             .add_file("nsm.ko", Cursor::new(content.clone()));
         let files = builder.build();
-        // Note that files is sorted to keep order
         let expected = FsTree(vec![
             make_directory("./rootfs"),
             make_directory("./rootfs/bin"),
