@@ -11,7 +11,7 @@ use std::process;
 use anyhow::Error;
 use petgraph::visit::EdgeRef;
 
-use enclave_runner::EnclaveBuilder;
+use enclave_runner_sgx::EnclaveBuilder;
 use report_test::ReportBuilder;
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::loader::Load;

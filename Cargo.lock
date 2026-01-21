@@ -1450,8 +1450,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "enclave-runner"
-version = "0.7.3"
+name = "enclave-runner-sgx"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -1631,7 +1631,7 @@ dependencies = [
  "aesm-client",
  "anyhow",
  "clap 2.34.0",
- "enclave-runner",
+ "enclave-runner-sgx",
  "libc",
  "nix 0.13.1",
  "num_cpus",
@@ -3731,7 +3731,7 @@ name = "report-test"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "enclave-runner",
+ "enclave-runner-sgx",
  "sgx-isa 0.4.1",
  "sgxs",
 ]
@@ -4328,7 +4328,7 @@ dependencies = [
  "clap 2.34.0",
  "crypto-hash",
  "dcap-ql",
- "enclave-runner",
+ "enclave-runner-sgx",
  "env_logger",
  "fnv",
  "lazy_static",

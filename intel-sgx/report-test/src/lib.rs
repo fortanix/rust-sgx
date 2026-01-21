@@ -8,7 +8,7 @@
        html_favicon_url = "https://edp.fortanix.com/favicon.ico",
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
-extern crate enclave_runner;
+extern crate enclave_runner_sgx as enclave_runner;
 extern crate anyhow;
 extern crate sgx_isa;
 extern crate sgxs;

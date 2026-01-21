@@ -1,6 +1,6 @@
 [package]
-name = "enclave-runner"
-version = "0.7.3"
+name = "enclave-runner-sgx"
+version = "0.1.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -11,7 +11,7 @@ This crate can be used to load and interface with SGX applications compiled for
 the `x86_64-fortanix-unknown-sgx` target.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://edp.fortanix.com/docs/api/enclave_runner/"
+documentation = "https://edp.fortanix.com/docs/api/enclave_runner_sgx/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["os", "hardware-support"]

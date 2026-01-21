@@ -13,7 +13,7 @@ use std::io::{stderr, Write};
 use std::path::Path;
 
 use aesm_client::AesmClient;
-use enclave_runner::EnclaveBuilder;
+use enclave_runner_sgx::EnclaveBuilder;
 use anyhow::Context;
 #[cfg(unix)]
 use libc::{c_int, c_void, siginfo_t};
