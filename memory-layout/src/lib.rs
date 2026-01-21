@@ -40,6 +40,7 @@ macro_rules! impl_default_clone_eq {
 #[macro_export]
 macro_rules! struct_def {
     (
+        $(#[doc = $doc:expr])*
         #[repr(C $(, align($align:tt))*)]
         $(#[cfg_attr(feature = "large_array_derive", derive($($cfgderive:meta),*))])*
         $(#[cfg_attr(feature = "serde", derive($($serdederive:meta),*))])*
@@ -53,6 +54,7 @@ macro_rules! struct_def {
         #[repr(C $(, align($align))*)]
         $(#[cfg_attr(feature = "serde", derive($($serdederive),*))])*
         $(#[derive($($derive),*)])*
+        $(#[doc = $doc])*
         pub struct $name $impl
 
         impl $name {
@@ -80,8 +82,8 @@ macro_rules! struct_def {
                 struct _Unaligned $impl
 
                 impl _Unaligned {
-                    unsafe fn _check_size(self) -> [u8; $name::UNPADDED_SIZE] {
-                        ::core::mem::transmute(self)
+                    fn _check_size(self) -> [u8; $name::UNPADDED_SIZE] {
+                        unsafe { ::core::mem::transmute(self) }
                     }
                 }
 
