@@ -5,11 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ***/
 
-//! Safe(er) Rust wrappers for the TDX attestation APIs.
-//!
-//! This module exposes higher-level types around the raw TDX attestation
-//! interfaces and mirrors the semantics described in the upstream TDX
-//! attestation headers.
+#![doc = include_str!("../README.md")]
 
 #[macro_use]
 extern crate memory_layout;
