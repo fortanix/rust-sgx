@@ -2,6 +2,7 @@
 members = [
     "em-app",
     "em-app/examples/get-certificate",
+    "enclave-runner",
     "examples/mem-alloc-test",
     "examples/mem-correctness-test",
     "fortanix-vme/aws-nitro-enclaves/aws-nitro-blobs",
