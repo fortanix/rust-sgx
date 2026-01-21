@@ -5,6 +5,14 @@ edition = "2024"
 readme = "README.md"
 
 [dependencies]
-tdx_module = { git = "https://github.com/intel/confidential-computing.tee.dcap.git", tag = "DCAP_1.24", package = "tdx-attest-rs" }
+tdx_module = { git = "https://github.com/intel/confidential-computing.tee.dcap.git", tag = "DCAP_1.24", package = "tdx-attest-rs", optional = true }
 thiserror = "2"
 memory-layout = { version = "0.1", path = "../../memory-layout" }
+nix = { version = "0.30",features = ["ioctl"], optional = true }
+
+[features]
+default = ["ioctl"]
+large_array_derive = ["memory-layout/large_array_derive"]
+serde = ["memory-layout/serde"]
+ioctl = ["dep:nix"]
+tdx-module = ["dep:tdx_module"]

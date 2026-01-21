@@ -9,11 +9,46 @@ extern crate memory_layout;
 
 use memory_layout::impl_default_clone_eq;
 use std::slice;
-use tdx_module::tdx_rtmr_event_t;
+use thiserror::Error;
 
+#[cfg(feature = "tdx-module")]
 pub mod tdx_attest;
+#[cfg(feature = "ioctl")]
+pub mod tdx_ioctl;
 
-use tdx_attest::{TdxAttestError, tdx_report_data_t, tdx_report_t};
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum TdxAttestError {
+    /// Lower bound for error translations.
+    #[error("Indicate min error to allow better translation, should be unexpected in production")]
+    Min,
+    #[error("The parameter is incorrect")]
+    InvalidParameter,
+    #[error("Not enough memory is available to complete this operation")]
+    OutOfMemory,
+    #[error("vsock related failure")]
+    VsockFailure,
+    #[error("Failed to get the TD Report")]
+    ReportFailure,
+    #[error("Failed to extend rtmr")]
+    ExtendFailure,
+    #[error("Request feature is not supported")]
+    NotSupported,
+    #[error("Failed to get the TD Quote")]
+    QuoteFailure,
+    #[error("The device driver return busy")]
+    Busy,
+    #[error("Failed to acess tdx attest device")]
+    DeviceFailure,
+    #[error("Only supported RTMR index is 2 and 3")]
+    InvalidRtmrIndex,
+    #[error(
+        "The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"
+    )]
+    UnsupportedAttKeyId,
+    /// Upper bound for error translations.
+    #[error("Indicate max error to allow better translation, should be unexpected in production")]
+    Max,
+}
 
 /// SHA384
 pub const TEE_HASH_384_SIZE: usize = 48;
@@ -34,8 +69,11 @@ pub const TEE_REPORT2_VERSION: usize = 0x0;
 /// VERSION for Report Type2 which mr_servicetd is used
 pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
 
-// Ref: https://github.com/intel/confidential-computing.sgx/blob/main/common/inc/sgx_report2.h
 struct_def! {
+    /// Rust definition of `REPORTTYPE` from `REPORTMACSTRUCT`.
+    ///
+    /// Ref: Intel TDX Module ABI Specification, section 4.7.4.
+    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
     #[repr(C, align(4))]
     #[derive(Clone, Debug, Default, Eq, PartialEq)]
     pub struct TeeReportType {
@@ -58,17 +96,19 @@ impl TeeReportType {
     pub const UNPADDED_SIZE: usize = 4;
 }
 
-
 pub const TDX_REPORT_MAC_STRUCT_SIZE: usize = 256;
 pub const TDX_REPORT_MAC_STRUCT_RESERVED1_BYTES: usize = 12;
 pub const TDX_REPORT_MAC_STRUCT_RESERVED2_BYTES: usize = 32;
 
-// Ref: https://github.com/intel/confidential-computing.sgx/blob/main/common/inc/sgx_report2.h
 struct_def! {
+    /// Rust definition of `REPORTMACSTRUCT` from `TDREPORT_STRUCT`.
+    ///
+    /// Ref: Intel TDX Module ABI Specification, section 4.7.3.
+    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
     #[repr(C, align(256))]
     #[cfg_attr(
         feature = "large_array_derive",
-        derive(Clone, Debug, Default, Eq, PartialEq)
+        derive(Clone, Debug, Eq, PartialEq)
     )]
     pub struct TdxReportMac {
         /// (  0) TEE Report type
@@ -78,7 +118,7 @@ struct_def! {
         /// ( 16) Security Version of the CPU
         pub cpu_svn: [u8; TEE_CPU_SVN_SIZE],
         /// ( 32) SHA384 of TEE_TCB_INFO for TEEs
-        pub tee_tcb_info_hash:[u8; TEE_HASH_384_SIZE],
+        pub tee_tcb_info_hash: [u8; TEE_HASH_384_SIZE],
         /// ( 80) SHA384 of TEE_INFO
         pub tee_info_hash: [u8; TEE_HASH_384_SIZE],
         /// (128) Data provided by the user
@@ -100,12 +140,16 @@ pub const TEE_TCB_INFO_SIZE: usize = 239;
 pub const TDX_REPORT_RESERVED_SIZE: usize = 17;
 pub const TEE_INFO_SIZE: usize = 512;
 
-// Ref: https://github.com/intel/confidential-computing.sgx/blob/main/common/inc/sgx_report2.h
 struct_def! {
+    /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
+    /// `TDG.MR.REPORT` is one variant of syscall `TDCALL`.
+    ///
+    /// Ref: Intel TDX Module ABI Specification, section 4.7.2.
+    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
     #[repr(C, align(1024))]
     #[cfg_attr(
         feature = "large_array_derive",
-        derive(Clone, Debug, Default, Eq, PartialEq)
+        derive(Clone, Debug, Eq, PartialEq)
     )]
     pub struct TdxReport {
         /// (  0) Report mac struct for SGX report type 2
@@ -119,19 +163,6 @@ struct_def! {
     }
 }
 
-impl From<tdx_report_t> for TdxReport {
-    fn from(report: tdx_report_t) -> Self {
-        Self::try_copy_from(&report.d).expect("validated size")
-    }
-}
-
-impl From<TdxReport> for tdx_report_t {
-    fn from(report: TdxReport) -> Self {
-        let mut d = [0u8; TDX_REPORT_SIZE];
-        d.copy_from_slice(report.as_ref());
-        tdx_report_t { d }
-    }
-}
 
 impl TdxReport {
     pub const UNPADDED_SIZE: usize = 1024;
@@ -148,15 +179,18 @@ impl TdxReport {
     /// # Errors
     /// Propagates the underlying TDX attestation error code.
     pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<Self, TdxAttestError> {
-        let mut tdx_report = tdx_report_t {
-            d: [0; TDX_REPORT_SIZE],
-        };
-        let report_data = tdx_report_data_t { d: report_data };
-        tdx_attest::parse_tdx_attest_error(tdx_attest::tdx_att_get_report(
-            Some(&report_data),
-            &mut tdx_report,
-        ))?;
-        Ok(tdx_report.into())
+        #[cfg(feature = "ioctl")]
+        {
+            return tdx_ioctl::get_report(report_data);
+        }
+        #[cfg(all(not(feature = "ioctl"), feature = "tdx-module"))]
+        {
+            return tdx_attest::get_report(report_data);
+        }
+        #[cfg(not(any(feature = "ioctl", feature = "tdx-module")))]
+        {
+            Err(TdxAttestError::NotSupported)
+        }
     }
 }
 
@@ -164,19 +198,9 @@ pub const TDX_RTMR_EVENT_HEADER_SIZE: usize = 68;
 /// Size of the RTMR extend data field in bytes.
 pub const TDX_RTMR_EXTEND_DATA_SIZE: usize = 48;
 
-#[repr(u8)]
-pub enum TdxStatus {
-    Success = 0,
-    InvalidParameter = 1,
-    AccessDenied = 2,
-    InternalError = 255,
-}
-
-pub const REMR_EXTEND_DATA_SIZE: usize = 48;
-
 /// Extend one of the TDX runtime measurement registers (RTMRs).
 ///
-/// RTMR[rtmr_index] = SHA384(RTMR[rtmr_index] || extend_data)
+/// `RTMR[rtmr_index] = SHA384(RTMR[rtmr_index] || extend_data)`
 /// - `rtmr_index`: only supported RTMR index is 2 and 3.
 /// - `event_data`: field is currently expected to be empty by the platform
 ///   quoting infrastructure.
@@ -193,29 +217,20 @@ pub const REMR_EXTEND_DATA_SIZE: usize = 48;
 /// not supported.
 pub fn extend_rtmr(
     rtmr_index: u64,
-    extend_data: [u8; REMR_EXTEND_DATA_SIZE],
+    extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
 ) -> Result<(), TdxAttestError> {
-    match rtmr_index {
-        2..=3 => (),
-        _ => return Err(TdxAttestError::InvalidRtmrIndex),
-    };
-    // From: `tdx_attest_sys` crate generated binding code
-    // ```C
-    // typedef struct _tdx_rtmr_event_t {
-    //     uint32_t	version;
-    //     uint64_t 	rtmr_index;
-    //     uint8_t 	extend_data[48];
-    //     uint32_t 	event_type;
-    //     uint32_t 	event_data_size;
-    //     uint8_t 	event_data[];
-    // } tdx_rtmr_event_t;
-    // ```
-    let mut rtmr_event = [0u8; std::mem::size_of::<tdx_rtmr_event_t>()];
-    rtmr_event[0..0 + 4].copy_from_slice(&1u32.to_ne_bytes());
-    rtmr_event[4..4 + 8].copy_from_slice(&rtmr_index.to_ne_bytes());
-    rtmr_event[12..12 + REMR_EXTEND_DATA_SIZE].copy_from_slice(&extend_data);
-
-    tdx_attest::parse_tdx_attest_error(tdx_attest::tdx_att_extend(&rtmr_event))
+    #[cfg(feature = "ioctl")]
+    {
+        return tdx_ioctl::extend_rtmr(rtmr_index, extend_data);
+    }
+    #[cfg(all(not(feature = "ioctl"), feature = "tdx-module"))]
+    {
+        return tdx_attest::extend_rtmr(rtmr_index, extend_data);
+    }
+    #[cfg(not(any(feature = "ioctl", feature = "tdx-module")))]
+    {
+        Err(TdxAttestError::NotSupported)
+    }
 }
 
 #[cfg(test)]
@@ -223,18 +238,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tdx_att_get_report() {
+    fn test_tdx_att_get_report_invalid_device() {
+        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
+            TdxAttestError::DeviceFailure
+        } else {
+            TdxAttestError::NotSupported
+        };
         let result = TdxReport::get_report([0; TDX_REPORT_DATA_SIZE]);
-        assert!(matches!(result, Err(TdxAttestError::DeviceFailure)));
+        match result {
+            Ok(_) => panic!("expecting error"),
+            Err(err) => assert_eq!(err, expected_err),
+        }
     }
 
     #[test]
-    fn test_tdx_att_extend() {
+    fn test_tdx_att_extend_invalid_device() {
+        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
+            TdxAttestError::DeviceFailure
+        } else {
+            TdxAttestError::NotSupported
+        };
+
         let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
         extend_data[0] = 123;
-        let result = extend_rtmr(2, extend_data);
-        assert!(matches!(result, Err(TdxAttestError::DeviceFailure)));
-        let result = extend_rtmr(77, extend_data);
-        assert!(matches!(result, Err(TdxAttestError::InvalidRtmrIndex)));
+        let err = extend_rtmr(2, extend_data).expect_err("expecting err");
+        assert_eq!(err, expected_err);
+    }
+
+    #[test]
+    fn test_tdx_att_extend_invalid_index() {
+        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
+            TdxAttestError::InvalidRtmrIndex
+        } else {
+            TdxAttestError::NotSupported
+        };
+
+        let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
+        extend_data[0] = 123;
+
+        let err = extend_rtmr(77, extend_data).expect_err("expecting err");
+        assert_eq!(err, expected_err);
     }
 }

@@ -1,9 +1,9 @@
 //! Low-level TDX attestation bindings and error translation.
 //!
-//! This module re-exports the raw attestation FFI functions and provides a
-//! Rust-friendly error enum mirroring the upstream TDX attestation errors.
+//! This module re-exports the raw attestation FFI functions and provides
+//! backend helpers for the `tdx-attest-rs` approach.
 
-use thiserror::Error;
+use crate::{TdxAttestError, TdxReport, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE};
 
 pub use tdx_module::tdx_att_extend;
 pub use tdx_module::tdx_att_get_quote;
@@ -11,38 +11,42 @@ pub use tdx_module::tdx_att_get_report;
 pub use tdx_module::tdx_att_get_supported_att_key_ids;
 pub use tdx_module::{tdx_attest_error_t, tdx_report_data_t, tdx_report_t, tdx_rtmr_event_t};
 
-#[derive(Error, Debug)]
-pub enum TdxAttestError {
-    /// Lower bound for error translations.
-    #[error("Indicate min error to allow better translation, should be unexpected in production")]
-    Min,
-    #[error("The parameter is incorrect")]
-    InvalidParameter,
-    #[error("Not enough memory is available to complete this operation")]
-    OutOfMemory,
-    #[error("vsock related failure")]
-    VsockFailure,
-    #[error("Failed to get the TD Report")]
-    ReportFailure,
-    #[error("Failed to extend rtmr")]
-    ExtendFailure,
-    #[error("Request feature is not supported")]
-    NotSupported,
-    #[error("Failed to get the TD Quote")]
-    QuoteFailure,
-    #[error("The device driver return busy")]
-    Busy,
-    #[error("Failed to acess tdx attest device")]
-    DeviceFailure,
-    #[error("Only supported RTMR index is 2 and 3")]
-    InvalidRtmrIndex,
-    #[error(
-        "The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"
-    )]
-    UnsupportedAttKeyId,
-    /// Upper bound for error translations.
-    #[error("Indicate max error to allow better translation, should be unexpected in production")]
-    Max,
+/// Request a TDX Report of the calling TD using `tdx-attest-rs`.
+pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReport, TdxAttestError> {
+    let mut tdx_report = tdx_report_t {
+        d: [0; TDX_REPORT_SIZE],
+    };
+    let report_data = tdx_report_data_t { d: report_data };
+    parse_tdx_attest_error(tdx_att_get_report(Some(&report_data), &mut tdx_report))?;
+    Ok(tdx_report.into())
+}
+
+/// Extend one of the TDX runtime measurement registers (RTMRs) using `tdx-attest-rs`.
+pub fn extend_rtmr(
+    rtmr_index: u64,
+    extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
+) -> Result<(), TdxAttestError> {
+    match rtmr_index {
+        2..=3 => (),
+        _ => return Err(TdxAttestError::InvalidRtmrIndex),
+    };
+    // From: `tdx_attest_sys` crate generated binding code
+    // ```C
+    // typedef struct _tdx_rtmr_event_t {
+    //     uint32_t	version;
+    //     uint64_t 	rtmr_index;
+    //     uint8_t 	extend_data[48];
+    //     uint32_t 	event_type;
+    //     uint32_t 	event_data_size;
+    //     uint8_t 	event_data[];
+    // } tdx_rtmr_event_t;
+    // ```
+    let mut rtmr_event = [0u8; std::mem::size_of::<tdx_rtmr_event_t>()];
+    rtmr_event[0..0 + 4].copy_from_slice(&1u32.to_ne_bytes());
+    rtmr_event[4..4 + 8].copy_from_slice(&rtmr_index.to_ne_bytes());
+    rtmr_event[12..12 + TDX_RTMR_EXTEND_DATA_SIZE].copy_from_slice(&extend_data);
+
+    parse_tdx_attest_error(tdx_att_extend(&rtmr_event))
 }
 
 #[rustfmt::skip]
@@ -63,5 +67,21 @@ pub fn parse_tdx_attest_error(err: tdx_attest_error_t) -> Result<(), TdxAttestEr
         tdx_attest_error_t::TDX_ATTEST_ERROR_INVALID_RTMR_INDEX =>      Err(TdxAttestError::InvalidRtmrIndex),
         tdx_attest_error_t::TDX_ATTEST_ERROR_UNSUPPORTED_ATT_KEY_ID =>  Err(TdxAttestError::UnsupportedAttKeyId),
         tdx_attest_error_t::TDX_ATTEST_ERROR_MAX =>                     Err(TdxAttestError::Max),
+    }
+}
+
+#[cfg(feature = "tdx-module")]
+impl From<tdx_report_t> for TdxReport {
+    fn from(report: tdx_report_t) -> Self {
+        Self::try_copy_from(&report.d).expect("validated size")
+    }
+}
+
+#[cfg(feature = "tdx-module")]
+impl From<TdxReport> for tdx_report_t {
+    fn from(report: TdxReport) -> Self {
+        let mut d = [0u8; TDX_REPORT_SIZE];
+        d.copy_from_slice(report.as_ref());
+        tdx_report_t { d }
     }
 }
