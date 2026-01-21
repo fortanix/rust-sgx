@@ -1,19 +1,19 @@
 # tdx-isa
 
-Rust wrapper crate for TDX attestation structures and functions from the
-[`tdx-attest-rs`](https://github.com/intel/confidential-computing.tee.dcap/tree/main/QuoteGeneration/quote_wrapper/tdx-attest-rs)
-dependency.
+Rust wrapper crate for TDX attestation structures and functions. It supports
+two backends:
+
+- `ioctl` (default): uses `/dev/tdx_guest` via `nix` ioctls.
+- `tdx-module`: uses
+  [`tdx-attest-rs`](https://github.com/intel/confidential-computing.tee.dcap/tree/main/QuoteGeneration/quote_wrapper/tdx-attest-rs). It still requries `/dev/tdx_guest`.
 
 ## Build dependencies
 
-- `libtdx-attest-dev` DEB package on Ubuntu. You can use
+- `ioctl` backend (default): no additional build dependencies beyond Rust and
+  `nix`.
+- `tdx-module` backend: requires the system TDX attest headers and library via
+  `libtdx-attest-dev` on Debian/Ubuntu. You can use
   [install_build_deps.sh](../../install_build_deps.sh) for convenience.
-- This crate depends on
-  [`tdx-attest-sys`](https://github.com/intel/confidential-computing.tee.dcap/tree/main/QuoteGeneration/quote_wrapper/tdx-attest-sys),
-  which expects the system TDX attest headers and library. On Debian/Ubuntu,
-  `libtdx-attest-dev` provides the headers (and depends on `libtdx-attest`).
-  `libtdx-attest` provides the library.
-- `SGX_SDK` environment variable (optional): This variable is read by
-  [`tdx-attest-sys`](https://github.com/intel/confidential-computing.tee.dcap/tree/main/QuoteGeneration/quote_wrapper/tdx-attest-sys)
-  to locate the header for generating Rust bindings. It expects
-  `$SGX_SDK/include/tdx_attest.h`.
+- `tdx-module` backend: `tdx-attest-sys` expects the header at
+  `$SGX_SDK/include/tdx_attest.h`. Set `SGX_SDK` if the headers are not in a
+  standard location. This is not needed for the `ioctl` backend.
