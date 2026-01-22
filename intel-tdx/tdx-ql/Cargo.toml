@@ -6,12 +6,8 @@ readme = "README.md"
 
 [dependencies]
 sgx-isa = { path = "../../intel-sgx/sgx-isa" }
-intel_tdx_attest = { git = "https://github.com/intel/confidential-computing.tee.dcap.git", tag = "DCAP_1.24", package = "tdx-attest-rs", optional = true }
-nix = { version = "0.30", features = ["ioctl"], optional = true }
+nix = { version = "0.30", features = ["ioctl"] }
 thiserror = "2"
 
 [features]
-default = ["ioctl"]
 large_array_derive = ["sgx-isa/large_array_derive"]
-ioctl = ["dep:nix"]
-tdx-module = ["dep:intel_tdx_attest"]
