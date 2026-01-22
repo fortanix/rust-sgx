@@ -16,9 +16,6 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 #![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
 
-#[macro_use]
-extern crate memory_layout;
-
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 extern crate std;
 
@@ -112,6 +109,10 @@ fn ti_reserved2() -> [u8; 456] {
 #[cfg(not(feature = "large_array_derive"))]
 #[macro_use]
 mod large_array_impl;
+#[cfg(feature = "large_array_derive")]
+macro_rules! impl_default_clone_eq {
+    ($n:ident) => {};
+}
 
 pub mod tdx;
 
@@ -141,6 +142,99 @@ macro_rules! enum_def {
     )
 }
 
+macro_rules! struct_def {
+    (
+        #[repr(C $(, align($align:tt))*)]
+        $(#[cfg_attr(feature = "large_array_derive", derive($($cfgderive:meta),*))])*
+        $(#[cfg_attr(feature = "serde", derive($($serdederive:meta),*))])*
+        $(#[derive($($derive:meta),*)])*
+        pub struct $name:ident $impl:tt
+    ) => {
+        $(
+            impl_default_clone_eq!($name);
+            #[cfg_attr(feature = "large_array_derive", derive($($cfgderive),*))]
+        )*
+        #[repr(C $(, align($align))*)]
+        $(#[cfg_attr(feature = "serde", derive($($serdederive),*))])*
+        $(#[derive($($derive),*)])*
+        pub struct $name $impl
+
+        impl $name {
+            /// If `src` has the correct length for this type, returns `Some<T>`
+            /// copied from `src`, else returns `None`.
+            pub fn try_copy_from(src: &[u8]) -> Option<Self> {
+                if src.len() == Self::UNPADDED_SIZE {
+                    unsafe {
+                        let mut ret : Self = ::core::mem::zeroed();
+                        ::core::ptr::copy_nonoverlapping(src.as_ptr(),
+                                                         &mut ret as *mut _ as *mut _,
+                                                         Self::UNPADDED_SIZE);
+                        Some(ret)
+                    }
+                } else {
+                    None
+                }
+            }
+
+            // Compile time check that the size argument is correct.
+            // Not otherwise used.
+            fn _type_tests() {
+                #[repr(C)]
+                $(#[cfg_attr(feature = "serde", derive($($serdederive),*))])*
+                struct _Unaligned $impl
+
+                impl _Unaligned {
+                    unsafe fn _check_size(self) -> [u8; $name::UNPADDED_SIZE] {
+                        ::core::mem::transmute(self)
+                    }
+                }
+
+                // Should also check packed size against unaligned size here,
+                // but Rust doesn't allow packed structs to contain aligned
+                // structs, so this can't be tested.
+            }
+        }
+
+        $(
+        // check that alignment is set correctly
+        #[test]
+        #[allow(non_snake_case)]
+        fn $name() {
+            assert_eq!($align, ::core::mem::align_of::<$name>());
+        }
+        )*
+
+        impl AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                unsafe {
+                    slice::from_raw_parts(self as *const $name as *const u8, Self::UNPADDED_SIZE)
+                }
+            }
+        }
+
+        struct_def!(@align bytes $($align)* name $name);
+    };
+    (@align bytes 16 name $name:ident) => {
+        struct_def!(@align type Align16 name $name);
+    };
+    (@align bytes 128 name $name:ident) => {
+        struct_def!(@align type Align128 name $name);
+    };
+    (@align bytes 512 name $name:ident) => {
+        struct_def!(@align type Align512 name $name);
+    };
+    (@align bytes $($other:tt)*) => {};
+    (@align type $ty:ident name $name:ident) => {
+        #[cfg(target_env = "sgx")]
+        impl AsRef<arch::$ty<[u8; $name::UNPADDED_SIZE]>> for $name {
+            fn as_ref(&self) -> &arch::$ty<[u8; $name::UNPADDED_SIZE]> {
+                unsafe {
+                    &*(self as *const _ as *const _)
+                }
+            }
+        }
+    };
+}
 
 enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
