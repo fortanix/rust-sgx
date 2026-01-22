@@ -187,3 +187,34 @@ impl Display for TdxAttestErrorCode {
         }
     }
 }
+
+#[cfg(not(feature = "large_array_derive"))]
+mod debug_impl {
+    use super::*;
+
+    impl ::core::fmt::Debug for TdxReportMac {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.debug_struct("TdxReportMac")
+                .field("report_type", &self.report_type)
+                .field("reserved1", &self.reserved1)
+                .field("cpu_svn", &self.cpu_svn)
+                .field("tee_tcb_info_hash", &self.tee_tcb_info_hash)
+                .field("tee_info_hash", &self.tee_info_hash)
+                .field("report_data", &self.report_data)
+                .field("reserved2", &self.reserved2)
+                .field("mac", &self.mac)
+                .finish()
+        }
+    }
+
+    impl ::core::fmt::Debug for TdxReport {
+        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+            f.debug_struct("TdxReport")
+                .field("report_mac", &self.report_mac)
+                .field("tee_tcb_info", &self.tee_tcb_info)
+                .field("reserved", &self.reserved)
+                .field("tee_info", &self.tee_info)
+                .finish()
+        }
+    }
+}
