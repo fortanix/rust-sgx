@@ -1280,6 +1280,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derivative"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+dependencies = [
+ "proc-macro2 1.0.95",
+ "quote 1.0.41",
+ "syn 1.0.81",
+]
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1678,6 +1689,7 @@ name = "fortanix-vme-initramfs"
 version = "0.1.0"
 dependencies = [
  "cpio",
+ "derivative",
  "flate2",
  "hex-literal",
  "sha2 0.9.9",
