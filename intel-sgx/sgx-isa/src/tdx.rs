@@ -7,6 +7,8 @@
 
 //! Constants and structures related to the Intel TDX.
 
+use core::fmt::Display;
+
 use crate::slice;
 
 /// SHA384
@@ -124,4 +126,65 @@ struct_def! {
 
 impl TdxReport {
     pub const UNPADDED_SIZE: usize = 1024;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TdxAttestErrorCode {
+    Success,
+    Unexpected(u32),
+    InvalidParameter,
+    OutOfMemory,
+    VsockFailure,
+    ReportFailure,
+    ExtendFailure,
+    NotSupported,
+    QuoteFailure,
+    Busy,
+    DeviceFailure,
+    InvalidRtmrIndex,
+    UnsupportedAttKeyId,
+}
+
+#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+impl std::error::Error for TdxAttestErrorCode {}
+
+impl From<u32> for TdxAttestErrorCode {
+    fn from(v: u32) -> Self {
+        match v {
+            0x0000 => Self::Success,
+            0x0002 => Self::InvalidParameter,
+            0x0003 => Self::OutOfMemory,
+            0x0004 => Self::VsockFailure,
+            0x0005 => Self::ReportFailure,
+            0x0006 => Self::ExtendFailure,
+            0x0007 => Self::NotSupported,
+            0x0008 => Self::QuoteFailure,
+            0x0009 => Self::Busy,
+            0x000a => Self::DeviceFailure,
+            0x000b => Self::InvalidRtmrIndex,
+            0x000c => Self::UnsupportedAttKeyId,
+            num => Self::Unexpected(num),
+        }
+    }
+}
+
+impl Display for TdxAttestErrorCode {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TdxAttestErrorCode::Success => f.write_str("Success"),
+            TdxAttestErrorCode::Unexpected(num) => f.write_fmt(format_args!("Unexoected error code: {}", num)),
+            TdxAttestErrorCode::InvalidParameter => f.write_str("The parameter is incorrect"),
+            TdxAttestErrorCode::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
+            TdxAttestErrorCode::VsockFailure => f.write_str("vsock related failure"),
+            TdxAttestErrorCode::ReportFailure => f.write_str("Failed to get the TD Report"),
+            TdxAttestErrorCode::ExtendFailure => f.write_str("Failed to extend rtmr"),
+            TdxAttestErrorCode::NotSupported => f.write_str("Request feature is not supported"),
+            TdxAttestErrorCode::QuoteFailure => f.write_str("Failed to get the TD Quote"),
+            TdxAttestErrorCode::Busy => f.write_str("The device driver return busy"),
+            TdxAttestErrorCode::DeviceFailure => f.write_str("Failed to acess tdx attest device"),
+            TdxAttestErrorCode::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
+            TdxAttestErrorCode::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
+        }
+    }
+}
+
 }
