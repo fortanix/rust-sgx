@@ -14,11 +14,11 @@ use crate::{
     TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestError, TdxReport,
 };
 
-pub use tdx_module::tdx_att_extend;
-pub use tdx_module::tdx_att_get_quote;
-pub use tdx_module::tdx_att_get_report;
-pub use tdx_module::tdx_att_get_supported_att_key_ids;
-pub use tdx_module::{tdx_attest_error_t, tdx_report_data_t, tdx_report_t, tdx_rtmr_event_t};
+pub use intel_tdx_attest::tdx_att_extend;
+pub use intel_tdx_attest::tdx_att_get_quote;
+pub use intel_tdx_attest::tdx_att_get_report;
+pub use intel_tdx_attest::tdx_att_get_supported_att_key_ids;
+pub use intel_tdx_attest::{tdx_attest_error_t, tdx_report_data_t, tdx_report_t, tdx_rtmr_event_t};
 
 /// Request a TDX Report of the calling TD using `tdx-attest-rs`.
 pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReport, TdxAttestError> {
@@ -27,7 +27,7 @@ pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReport, 
     };
     let report_data = tdx_report_data_t { d: report_data };
     parse_tdx_attest_error(tdx_att_get_report(Some(&report_data), &mut tdx_report))?;
-    Ok(tdx_report.into())
+    Ok(tdx_report_from_raw(&tdx_report))
 }
 
 /// Extend one of the TDX runtime measurement registers (RTMRs) using `tdx-attest-rs`.
@@ -79,18 +79,7 @@ pub fn parse_tdx_attest_error(err: tdx_attest_error_t) -> Result<(), TdxAttestEr
     }
 }
 
-#[cfg(feature = "tdx-module")]
-impl From<tdx_report_t> for TdxReport {
-    fn from(report: tdx_report_t) -> Self {
-        Self::try_copy_from(&report.d).expect("validated size")
-    }
+fn tdx_report_from_raw(report: &tdx_report_t) -> TdxReport {
+    TdxReport::try_copy_from(&report.d).expect("validated size")
 }
 
-#[cfg(feature = "tdx-module")]
-impl From<TdxReport> for tdx_report_t {
-    fn from(report: TdxReport) -> Self {
-        let mut d = [0u8; TDX_REPORT_SIZE];
-        d.copy_from_slice(report.as_ref());
-        tdx_report_t { d }
-    }
-}
