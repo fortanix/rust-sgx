@@ -4658,6 +4658,7 @@ dependencies = [
 name = "tdx-ql"
 version = "0.1.0"
 dependencies = [
+ "clap 4.4.18",
  "nix 0.30.1",
  "sgx-isa 0.4.1",
 ]
