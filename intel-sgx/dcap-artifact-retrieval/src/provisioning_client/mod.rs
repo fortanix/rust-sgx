@@ -149,7 +149,6 @@ impl PlatformApiTag for platform::TDX {
     }
 }
 
-
 #[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
@@ -695,6 +694,33 @@ pub trait ProvisioningClient {
 
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
 }
+
+
+pub trait ProvisioningClientFuncSelector<T: PlatformTypeForTcbInfo<T>> {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
+}
+
+impl ProvisioningClientFuncSelector<platform::SGX> for platform::SGX {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        pc.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        pc.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
+impl ProvisioningClientFuncSelector<platform::TDX> for platform::TDX {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        pc.tdx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        pc.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
