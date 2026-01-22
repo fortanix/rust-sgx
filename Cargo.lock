@@ -4587,28 +4587,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "tdx-attest-rs"
-version = "0.1.2"
-source = "git+https://github.com/intel/confidential-computing.tee.dcap.git?tag=DCAP_1.24#717f2a91ca732c3309b0c59d21757463133eb440"
-dependencies = [
- "tdx-attest-sys",
-]
-
-[[package]]
-name = "tdx-attest-sys"
-version = "0.1.0"
-source = "git+https://github.com/intel/confidential-computing.tee.dcap.git?tag=DCAP_1.24#717f2a91ca732c3309b0c59d21757463133eb440"
-dependencies = [
- "bindgen 0.70.1",
-]
-
-[[package]]
 name = "tdx-ql"
 version = "0.1.0"
 dependencies = [
  "nix 0.30.1",
  "sgx-isa 0.4.1",
- "tdx-attest-rs",
  "thiserror 2.0.18",
 ]
 

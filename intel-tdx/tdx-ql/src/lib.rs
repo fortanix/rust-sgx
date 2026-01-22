@@ -10,9 +10,6 @@
 pub use sgx_isa::tdx::{TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TdxReport};
 use thiserror::Error;
 
-#[cfg(feature = "tdx-module")]
-pub mod tdx_attest;
-#[cfg(feature = "ioctl")]
 pub mod tdx_ioctl;
 
 #[derive(Error, Debug, PartialEq, Eq)]
@@ -63,18 +60,7 @@ pub enum TdxAttestError {
 pub fn get_tdx_report(
     report_data: [u8; TDX_REPORT_DATA_SIZE],
 ) -> Result<TdxReport, TdxAttestError> {
-    #[cfg(feature = "ioctl")]
-    {
-        return tdx_ioctl::get_report(report_data);
-    }
-    #[cfg(all(not(feature = "ioctl"), feature = "tdx-module"))]
-    {
-        return tdx_attest::get_report(report_data);
-    }
-    #[cfg(not(any(feature = "ioctl", feature = "tdx-module")))]
-    {
-        Err(TdxAttestError::NotSupported)
-    }
+    tdx_ioctl::get_report(report_data)
 }
 
 pub const TDX_RTMR_EVENT_HEADER_SIZE: usize = 68;
@@ -102,18 +88,7 @@ pub fn extend_tdx_rtmr(
     rtmr_index: u64,
     extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
 ) -> Result<(), TdxAttestError> {
-    #[cfg(feature = "ioctl")]
-    {
-        return tdx_ioctl::extend_rtmr(rtmr_index, extend_data);
-    }
-    #[cfg(all(not(feature = "ioctl"), feature = "tdx-module"))]
-    {
-        return tdx_attest::extend_rtmr(rtmr_index, extend_data);
-    }
-    #[cfg(not(any(feature = "ioctl", feature = "tdx-module")))]
-    {
-        Err(TdxAttestError::NotSupported)
-    }
+    tdx_ioctl::extend_rtmr(rtmr_index, extend_data)
 }
 
 #[cfg(test)]
@@ -122,44 +97,27 @@ mod tests {
 
     #[test]
     fn test_tdx_att_get_report_invalid_device() {
-        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
-            TdxAttestError::DeviceFailure
-        } else {
-            TdxAttestError::NotSupported
-        };
         let result = get_tdx_report([0; TDX_REPORT_DATA_SIZE]);
         match result {
             Ok(_) => panic!("expecting error"),
-            Err(err) => assert_eq!(err, expected_err),
+            Err(err) => assert_eq!(err, TdxAttestError::DeviceFailure),
         }
     }
 
     #[test]
     fn test_tdx_att_extend_invalid_device() {
-        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
-            TdxAttestError::DeviceFailure
-        } else {
-            TdxAttestError::NotSupported
-        };
-
         let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
         extend_data[0] = 123;
         let err = extend_tdx_rtmr(2, extend_data).expect_err("expecting err");
-        assert_eq!(err, expected_err);
+        assert_eq!(err, TdxAttestError::DeviceFailure);
     }
 
     #[test]
     fn test_tdx_att_extend_invalid_index() {
-        let expected_err = if cfg!(any(feature = "ioctl", feature = "tdx-module")) {
-            TdxAttestError::InvalidRtmrIndex
-        } else {
-            TdxAttestError::NotSupported
-        };
-
         let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
         extend_data[0] = 123;
 
         let err = extend_tdx_rtmr(77, extend_data).expect_err("expecting err");
-        assert_eq!(err, expected_err);
+        assert_eq!(err, TdxAttestError::InvalidRtmrIndex);
     }
 }
