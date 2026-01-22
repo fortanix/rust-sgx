@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 cpio = "0.2"
+derivative = "2.2.0"
 flate2 = "1.0"
 thiserror = "1.0"
 

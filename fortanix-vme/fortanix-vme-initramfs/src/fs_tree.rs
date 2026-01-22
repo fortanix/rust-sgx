@@ -1,5 +1,6 @@
 use crate::{Error, ReadSeek};
 use cpio::NewcBuilder;
+use derivative::Derivative;
 use std::fmt;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -139,6 +140,22 @@ impl FsTreeBuilder {
 #[derive(Debug, Eq, PartialEq)]
 pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
 
+type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
+
+impl FsTree {
+    pub fn into_cpio_input(self) -> Result<Vec<CpioInput>, Error> {
+        let mut inputs = Vec::with_capacity(self.0.len());
+        for entry in self.0 {
+            let input = entry.into_cpio_input()?;
+            inputs.push(input);
+        }
+
+        Ok(inputs)
+    }
+}
+
+#[derive(Derivative)]
+#[derivative(Debug, PartialEq)]
 pub enum FsTreeEntry {
     Directory {
         path: PathBuf,
@@ -147,52 +164,20 @@ pub enum FsTreeEntry {
     File {
         path: PathBuf,
         mode: u32,
+        #[derivative(Debug(format_with = "redact"))]
+        #[derivative(PartialEq = "ignore")]
         content: Box<dyn ReadSeek>,
     },
 }
 
-impl fmt::Debug for FsTreeEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FsTreeEntry::Directory { path, mode } => f
-                .debug_struct("FsTreeEntry::Directory")
-                .field("path", path)
-                .field("mode", mode)
-                .finish(),
-            FsTreeEntry::File { path, mode, .. } => f
-                .debug_struct("FsTreeEntry::File")
-                .field("path", path)
-                .field("mode", mode)
-                .field("content", &"...") // Omit content
-                .finish(),
-        }
-    }
-}
-
-impl PartialEq for FsTreeEntry {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                FsTreeEntry::Directory { path: p1, mode: m1 },
-                FsTreeEntry::Directory { path: p2, mode: m2 },
-            ) => p1 == p2 && m1 == m2,
-            (
-                FsTreeEntry::File {
-                    path: p1, mode: m1, ..
-                },
-                FsTreeEntry::File {
-                    path: p2, mode: m2, ..
-                },
-            ) => p1 == p2 && m1 == m2,
-            _ => false,
-        }
-    }
+fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "...")
 }
 
 impl Eq for FsTreeEntry {}
 
 impl FsTreeEntry {
-    pub(crate) fn into_cpio_input(self) -> Result<(NewcBuilder, Box<dyn ReadSeek>), Error> {
+    pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
         match self {
             FsTreeEntry::Directory { path, mode } => {
                 let name = path
@@ -211,8 +196,7 @@ impl FsTreeEntry {
                     .to_str()
                     .ok_or(Error::PathError(path.display().to_string()))?;
                 let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                let buffer = Box::new(content);
-                Ok((builder, buffer))
+                Ok((builder, content))
             }
         }
     }
@@ -283,5 +267,12 @@ mod tests {
             make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
         ]);
         assert_eq!(files, expected);
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        let entry1 = make_file("/tmp/a.txt", Cursor::new(vec![1, 2, 3, 4]));
+        let entry2 = make_file("/tmp/a.txt", Cursor::new(vec![5, 6, 7, 8]));
+        assert_eq!(entry1, entry2);
     }
 }

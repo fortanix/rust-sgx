@@ -11,6 +11,7 @@ members = [
     "fortanix-vme/aws-nitro-enclaves/tests/nsm-test",
     "fortanix-vme/fortanix-vme-abi",
     "fortanix-vme/fortanix-vme-eif",
+    "fortanix-vme/fortanix-vme-initramfs",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/fortanix-vme-tools",
     "fortanix-vme/vme-pkix",
@@ -35,7 +36,6 @@ members = [
     "intel-sgx/sgxs",
     "ipc-queue",
     "rs-libc",
-    "fortanix-vme/fortanix-vme-initramfs",
 ]
 exclude = [
     "examples/backtrace_panic",

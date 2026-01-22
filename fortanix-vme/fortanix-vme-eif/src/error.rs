@@ -4,8 +4,8 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Initramfs error: {0}")]
-    InitramfsError(#[source] InitramfsError),
+    #[error("Initramfs error")]
+    InitramfsError(#[from] InitramfsError),
     #[error("Writing kernel to file failed")]
     KernelWriteError(#[source] io::Error),
     #[error("Writing kernel config to file failed")]
@@ -25,11 +25,5 @@ pub enum Error {
 impl Error {
     pub fn eif_identity_info(error: String) -> Self {
         Error::EifIdentityInfoError { error }
-    }
-}
-
-impl From<InitramfsError> for Error {
-    fn from(err: InitramfsError) -> Self {
-        Self::InitramfsError(err)
     }
 }

@@ -10,6 +10,7 @@ use std::rc::Rc;
 use tempfile::{self, NamedTempFile};
 
 mod error;
+mod initramfs;
 
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
 pub use error::Error;
@@ -195,7 +196,7 @@ impl<T: Read + Seek> FtxEif<T> {
             .ok_or(Error::EifParseError(String::from("No ramdisks found")))?;
 
         let initramfs = Initramfs::from(Cursor::new(initramfs.deref()));
-        let app = initramfs.find_entry_by_path(initramfs::APP_PATH)?;
+        let app = initramfs.read_entry_by_path(initramfs::APP_PATH)?;
         Ok(app)
     }
 
@@ -296,60 +297,6 @@ impl<
         tmp.rewind().map_err(Error::EifWriteError)?;
         io::copy(&mut tmp, &mut output).map_err(Error::EifWriteError)?;
         Ok(FtxEif::new(output))
-    }
-}
-
-mod initramfs {
-    use super::*;
-    use fortanix_vme_initramfs::Builder as InitramfsBuilder;
-    use fortanix_vme_initramfs::{FsTree, FsTreeBuilder};
-    use std::io::Cursor;
-
-    const CMD_CONTENT: &str = "/bin/a.out";
-    const ENV_CONTENT: &str = "";
-    pub const APP_PATH: &str = "rootfs/bin/a.out";
-    pub const ENV_PATH: &str = "env";
-    pub const CMD_PATH: &str = "cmd";
-    pub const NSM_PATH: &str = "nsm.ko";
-    pub const INIT_PATH: &str = "init";
-
-    pub fn build_fs_tree<
-        R: Read + Seek + 'static,
-        S: Read + Seek + 'static,
-        T: Read + Seek + 'static,
-    >(
-        application: R,
-        init: S,
-        nsm: T,
-    ) -> FsTree {
-        FsTreeBuilder::new()
-            .add_file(ENV_PATH, Box::new(Cursor::new(ENV_CONTENT.as_bytes())))
-            .add_file(CMD_PATH, Box::new(Cursor::new(CMD_CONTENT.as_bytes())))
-            .add_executable(INIT_PATH, Box::new(init))
-            .add_executable(NSM_PATH, Box::new(nsm))
-            .add_executable(APP_PATH, Box::new(application))
-            .add_directory("rootfs/dev")
-            .add_directory("rootfs/proc")
-            .add_directory("rootfs/run")
-            .add_directory("rootfs/sys")
-            .add_directory("rootfs/tmp")
-            .build()
-    }
-
-    pub fn build<
-        R: Read + Seek + 'static,
-        S: Read + Seek + 'static,
-        T: Read + Seek + 'static,
-        U: Read + Write,
-    >(
-        application: R,
-        init: S,
-        nsm: T,
-        output: U,
-    ) -> Result<U, Error> {
-        let fs_tree = build_fs_tree(application, init, nsm);
-        let builder = InitramfsBuilder::new(fs_tree);
-        Ok(builder.build(output)?.into_inner())
     }
 }
 

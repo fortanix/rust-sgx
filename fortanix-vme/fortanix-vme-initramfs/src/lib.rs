@@ -18,15 +18,15 @@ pub struct Initramfs<R: Read>(R);
 
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("Can't extract data from initramfs: {0}")]
+    #[error("Can't extract data from initramfs")]
     ExtractError(#[source] io::Error),
     #[error("Expected trailer in initramfs missing")]
     ExpectedTrailer,
     #[error("Path conversion error: {0}")]
     PathError(String),
-    #[error("Reading initramfs failed: {0}")]
+    #[error("Reading initramfs failed")]
     ParseError(#[source] io::Error),
-    #[error("Reading from initramfs failed: {0}")]
+    #[error("Reading from initramfs failed")]
     ReadError(#[source] io::Error),
     #[error(
         "Unexpected data in initramfs file {path:?} (found \"{found:?}\", expected \"{expected:?}\")"
@@ -36,7 +36,7 @@ pub enum Error {
         found: String,
         expected: String,
     },
-    #[error("Creating initramfs failed: {0}")]
+    #[error("Creating initramfs failed")]
     WriteError(#[source] io::Error),
     #[error("Invalid entry name (found \"{found:?}\", expected \"{expected:?}\")")]
     WrongEntryName { found: String, expected: String },
@@ -74,32 +74,6 @@ impl Error {
     }
 }
 
-pub struct Builder {
-    fs_tree: FsTree,
-}
-
-impl Builder {
-    pub fn new(fs_tree: FsTree) -> Builder {
-        Self { fs_tree }
-    }
-
-    fn build_initramfs<U: Read + Write>(self, output: U) -> Result<U, Error> {
-        let mut inputs = Vec::with_capacity(self.fs_tree.0.len());
-        for entry in self.fs_tree.0 {
-            let input = entry.into_cpio_input()?;
-            inputs.push(input);
-        }
-        cpio::write_cpio(inputs.drain(..), output).map_err(Error::WriteError)
-    }
-
-    pub fn build<U: Read + Write>(self, output: U) -> Result<Initramfs<U>, Error> {
-        let encoder = GzEncoder::new(output, Compression::default());
-        let encoder = self.build_initramfs(encoder)?;
-        let encoder = encoder.finish().map_err(Error::WriteError)?;
-        Ok(Initramfs(encoder))
-    }
-}
-
 pub trait ReadSeek: Read + Seek {}
 impl<R: Read + Seek> ReadSeek for R {}
 
@@ -110,6 +84,17 @@ impl<R: Read> From<R> for Initramfs<R> {
 }
 
 impl<R: Read> Initramfs<R> {
+    pub fn from_fs_tree<U: Read + Write>(
+        fs_tree: FsTree,
+        output: U,
+    ) -> Result<Initramfs<U>, Error> {
+        let encoder = GzEncoder::new(output, Compression::default());
+        let inputs = fs_tree.into_cpio_input()?;
+        let encoder = cpio::write_cpio(inputs.into_iter(), encoder).map_err(Error::WriteError)?;
+        let encoder = encoder.finish().map_err(Error::WriteError)?;
+        Ok(Initramfs(encoder))
+    }
+
     pub fn verify(self, fs_tree: FsTree) -> Result<(), Error> {
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
@@ -150,7 +135,7 @@ impl<R: Read> Initramfs<R> {
         Ok(())
     }
 
-    pub fn find_entry_by_path(self, path: &str) -> Result<Vec<u8>, Error> {
+    pub fn read_entry_by_path(self, path: &str) -> Result<Vec<u8>, Error> {
         let normalized = FsTreeBuilder::normalize_path(path);
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
@@ -232,7 +217,7 @@ impl<R: Read> Initramfs<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Builder, Initramfs, fs_tree::FsTreeBuilder};
+    use super::{Initramfs, fs_tree::FsTreeBuilder};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
     use std::io::Cursor;
@@ -243,16 +228,25 @@ mod tests {
         let app0 = vec![1, 2, 3];
         let init0 = vec![4, 5, 6];
         let nsm0 = vec![7, 8, 9];
-        let fs_tree = FsTreeBuilder::new()
-            .add_executable("app", Cursor::new(app0.clone()))
-            .add_executable("init", Cursor::new(init0.clone()))
-            .add_executable("nsm", Cursor::new(nsm0.clone()))
-            .build();
-        let builder = Builder::new(fs_tree);
-        let initramfs: Initramfs<Cursor<Vec<u8>>> = builder.build(Cursor::new(Vec::new())).unwrap();
-        let initramfs: Vec<u8> = initramfs.into_inner().into_inner();
-        assert_eq!(initramfs.len(), 188);
-        let sha256 = Sha256::digest(&initramfs);
+        let build_fs_tree = {
+            let app0 = app0.clone();
+            let init0 = init0.clone();
+            let nsm0 = nsm0.clone();
+            move || {
+                FsTreeBuilder::new()
+                    .add_executable("app", Cursor::new(app0.clone()))
+                    .add_executable("init", Cursor::new(init0.clone()))
+                    .add_executable("nsm", Cursor::new(nsm0.clone()))
+                    .build()
+            }
+        };
+
+        let fs_tree = build_fs_tree();
+        let initramfs: Initramfs<Cursor<Vec<u8>>> =
+            Initramfs::<Cursor<Vec<_>>>::from_fs_tree(fs_tree, Cursor::new(Vec::new())).unwrap();
+        let initramfs_blob: Vec<u8> = initramfs.into_inner().into_inner();
+        assert_eq!(initramfs_blob.len(), 188);
+        let sha256 = Sha256::digest(&initramfs_blob);
         assert_eq!(
             sha256[..],
             hex!("07b33a2c4abb76d839912f0dfeade8868cb79b28305c86fdfcf3646c5cf504c3")[..]
@@ -262,9 +256,13 @@ mod tests {
 
         // Parse initramfs and verify binaries in it.
         for (path, expected) in path_bin_pairs {
-            let initramfs = Initramfs::from(Cursor::new(initramfs.clone()));
-            let bin = initramfs.find_entry_by_path(path).unwrap();
+            let initramfs = Initramfs::from(Cursor::new(initramfs_blob.clone()));
+            let bin = initramfs.read_entry_by_path(path).unwrap();
             assert_eq!(expected, bin, "Binary with path {} is corrupted", path);
         }
+
+        let fs_tree = build_fs_tree();
+        let initramfs = Initramfs::from(Cursor::new(initramfs_blob));
+        initramfs.verify(fs_tree).unwrap();
     }
 }
