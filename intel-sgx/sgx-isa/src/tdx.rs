@@ -95,6 +95,13 @@ impl TdxReportMac {
     pub const UNPADDED_SIZE: usize = 256;
 }
 
+#[cfg(target_env = "sgx")]
+impl AsRef<tdx_arch::Align256<[u8; TdxReportMac::UNPADDED_SIZE]>> for TdxReportMac {
+    fn as_ref(&self) -> &tdx_arch::Align256<[u8; Self::UNPADDED_SIZE]> {
+        unsafe { &*(self as *const _ as *const _) }
+    }
+}
+
 /// Size of a TDX report in bytes.
 pub const TDX_REPORT_SIZE: usize = 1024;
 pub const TEE_TCB_INFO_SIZE: usize = 239;
@@ -126,6 +133,11 @@ struct_def! {
 
 impl TdxReport {
     pub const UNPADDED_SIZE: usize = 1024;
+
+    #[cfg(target_env = "sgx")]
+    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
+        Ok(tdx_arch::everifyreport2(self.report_mac.as_ref())?)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -215,6 +227,40 @@ mod debug_impl {
                 .field("reserved", &self.reserved)
                 .field("tee_info", &self.tee_info)
                 .finish()
+        }
+    }
+}
+
+/// Since this is not upstreamed to rust yet.
+#[cfg(target_env = "sgx")]
+mod tdx_arch {
+    use crate::Enclu;
+    use core::arch::asm;
+
+    /// Wrapper struct to force 256-byte alignment.
+    #[repr(align(256))]
+    pub struct Align256<T>(pub T);
+
+    /// Call the `EVERIFYREPORT2` instruction to verify a 256-bit TDX REPORT MAC struct.
+    /// The concrete type is [`crate::tdx::TdxReportMac`].
+    pub fn everifyreport2(tdx_report_mac: &Align256<[u8; 256]>) -> Result<(), u32> {
+        unsafe {
+            let error: u32;
+            asm!(
+                "xchg %rbx, {0}",
+                "enclu",
+                "mov {0}, %rbx",
+                "jz 1f",
+                "xor %eax, %eax",
+                "1:",
+                inout(reg) tdx_report_mac => _,
+                inlateout("eax") Enclu::EVerifyReport2 as u32 => error,
+                options(att_syntax, nostack),
+            );
+            match error {
+                0 => Ok(()),
+                err => Err(err),
+            }
         }
     }
 }
