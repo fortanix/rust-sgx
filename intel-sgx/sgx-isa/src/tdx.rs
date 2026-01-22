@@ -126,6 +126,7 @@ struct_def! {
 
 impl TdxReport {
     pub const UNPADDED_SIZE: usize = 1024;
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TdxAttestErrorCode {
@@ -185,6 +186,4 @@ impl Display for TdxAttestErrorCode {
             TdxAttestErrorCode::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
         }
     }
-}
-
 }

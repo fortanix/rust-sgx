@@ -6,6 +6,32 @@
 
 use super::*;
 
+macro_rules! impl_default_clone_eq {
+    ($t:ident) => {
+        impl Default for $t {
+            fn default() -> $t {
+                unsafe { ::core::mem::zeroed() }
+            }
+        }
+        impl Clone for $t {
+            fn clone(&self) -> $t {
+                unsafe { ::core::ptr::read(self) }
+            }
+        }
+        impl PartialEq for $t {
+            fn eq(&self, other: &$t) -> bool {
+                unsafe {
+                    let lhs: &[u8; Self::UNPADDED_SIZE] = ::core::mem::transmute(self);
+                    let rhs: &[u8; Self::UNPADDED_SIZE] = ::core::mem::transmute(other);
+                    lhs.get(..) == rhs.get(..)
+                }
+            }
+        }
+        // This cannot be derived because the derivation asserts that the members are Eq.
+        impl Eq for $t {}
+    }
+}
+
 impl ::core::fmt::Debug for Secs {
     fn fmt(&self, __arg_0: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
         match *self {
