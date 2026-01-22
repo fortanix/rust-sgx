@@ -223,6 +223,7 @@ macro_rules! struct_def {
     (@align bytes 128 name $name:ident) => {
         struct_def!(@align type Align128 name $name);
     };
+
     (@align bytes 512 name $name:ident) => {
         struct_def!(@align type Align512 name $name);
     };
@@ -266,14 +267,15 @@ enum_def! {
 #[derive(Clone,Copy,Debug,PartialEq,Eq)]
 #[repr(u32)]
 pub enum Enclu {
-    EReport     = 0,
-    EGetkey     = 1,
-    EEnter      = 2,
-    EResume     = 3,
-    EExit       = 4,
-    EAccept     = 5,
-    EModpe      = 6,
-    EAcceptcopy = 7,
+    EReport        = 0,
+    EGetkey        = 1,
+    EEnter         = 2,
+    EResume        = 3,
+    EExit          = 4,
+    EAccept        = 5,
+    EModpe         = 6,
+    EAcceptcopy    = 7,
+    EVerifyReport2 = 8,
 }
 }
 
