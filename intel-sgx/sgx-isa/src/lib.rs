@@ -142,8 +142,10 @@ macro_rules! enum_def {
     )
 }
 
+#[macro_export]
 macro_rules! struct_def {
     (
+        $(#[doc = $doc:expr])*
         #[repr(C $(, align($align:tt))*)]
         $(#[cfg_attr(feature = "large_array_derive", derive($($cfgderive:meta),*))])*
         $(#[cfg_attr(feature = "serde", derive($($serdederive:meta),*))])*
@@ -157,6 +159,7 @@ macro_rules! struct_def {
         #[repr(C $(, align($align))*)]
         $(#[cfg_attr(feature = "serde", derive($($serdederive),*))])*
         $(#[derive($($derive),*)])*
+        $(#[doc = $doc])*
         pub struct $name $impl
 
         impl $name {
