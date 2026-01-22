@@ -113,6 +113,8 @@ fn ti_reserved2() -> [u8; 456] {
 #[macro_use]
 mod large_array_impl;
 
+pub mod tdx;
+
 macro_rules! enum_def {
     (
         #[derive($($derive:meta),*)]
