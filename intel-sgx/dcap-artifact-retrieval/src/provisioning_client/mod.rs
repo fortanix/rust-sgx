@@ -149,7 +149,6 @@ impl PlatformApiTag for platform::TDX {
     }
 }
 
-
 #[derive(Hash)]
 pub struct PckCertsIn<'a> {
     enc_ppid: &'a EncPpid,
@@ -626,7 +625,7 @@ pub trait ProvisioningClient {
     ///     - When late microcode value is higher than the early microcode
     ///       value, also try to get PCK cert with TCB level where the early
     ///       microcode value is set to the late microcode value.
-    /// 
+    ///
     /// Note that PCK certs for some TCB levels may be missing.
     fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
         let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
@@ -696,6 +695,33 @@ pub trait ProvisioningClient {
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
 }
 
+
+pub trait ProvisioningClientFuncSelector<T: PlatformTypeForTcbInfo<T>> {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
+}
+
+impl ProvisioningClientFuncSelector<platform::SGX> for platform::SGX {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        pc.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        pc.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
+impl ProvisioningClientFuncSelector<platform::TDX> for platform::TDX {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        pc.tdx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        pc.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
+
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
         let input = self
@@ -747,11 +773,11 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         let input = self.sgx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
         self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
     }
-    
+
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
         self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
-    
+
     }
 }
 
