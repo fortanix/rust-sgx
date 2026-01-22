@@ -7,44 +7,10 @@
 
 #![doc = include_str!("../README.md")]
 
+use sgx_isa::tdx::TdxAttestErrorCode;
 pub use sgx_isa::tdx::{TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TdxReport};
-use thiserror::Error;
 
 pub mod tdx_ioctl;
-
-#[derive(Error, Debug, PartialEq, Eq)]
-pub enum TdxAttestError {
-    /// Lower bound for error translations.
-    #[error("Indicate min error to allow better translation, should be unexpected in production")]
-    Min,
-    #[error("The parameter is incorrect")]
-    InvalidParameter,
-    #[error("Not enough memory is available to complete this operation")]
-    OutOfMemory,
-    #[error("vsock related failure")]
-    VsockFailure,
-    #[error("Failed to get the TD Report")]
-    ReportFailure,
-    #[error("Failed to extend rtmr")]
-    ExtendFailure,
-    #[error("Request feature is not supported")]
-    NotSupported,
-    #[error("Failed to get the TD Quote")]
-    QuoteFailure,
-    #[error("The device driver return busy")]
-    Busy,
-    #[error("Failed to acess tdx attest device")]
-    DeviceFailure,
-    #[error("Only supported RTMR index is 2 and 3")]
-    InvalidRtmrIndex,
-    #[error(
-        "The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"
-    )]
-    UnsupportedAttKeyId,
-    /// Upper bound for error translations.
-    #[error("Indicate max error to allow better translation, should be unexpected in production")]
-    Max,
-}
 
 /// Request a TDX Report of the calling TD.
 ///
@@ -59,7 +25,7 @@ pub enum TdxAttestError {
 /// Propagates the underlying TDX attestation error code.
 pub fn get_tdx_report(
     report_data: [u8; TDX_REPORT_DATA_SIZE],
-) -> Result<TdxReport, TdxAttestError> {
+) -> Result<TdxReport, TdxAttestErrorCode> {
     tdx_ioctl::get_report(report_data)
 }
 
@@ -87,12 +53,13 @@ pub const TDX_RTMR_EXTEND_DATA_SIZE: usize = 48;
 pub fn extend_tdx_rtmr(
     rtmr_index: u64,
     extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
-) -> Result<(), TdxAttestError> {
+) -> Result<(), TdxAttestErrorCode> {
     tdx_ioctl::extend_rtmr(rtmr_index, extend_data)
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
@@ -100,7 +67,7 @@ mod tests {
         let result = get_tdx_report([0; TDX_REPORT_DATA_SIZE]);
         match result {
             Ok(_) => panic!("expecting error"),
-            Err(err) => assert_eq!(err, TdxAttestError::DeviceFailure),
+            Err(err) => assert_eq!(err, TdxAttestErrorCode::DeviceFailure),
         }
     }
 
@@ -109,7 +76,7 @@ mod tests {
         let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
         extend_data[0] = 123;
         let err = extend_tdx_rtmr(2, extend_data).expect_err("expecting err");
-        assert_eq!(err, TdxAttestError::DeviceFailure);
+        assert_eq!(err, TdxAttestErrorCode::DeviceFailure);
     }
 
     #[test]
@@ -118,6 +85,6 @@ mod tests {
         extend_data[0] = 123;
 
         let err = extend_tdx_rtmr(77, extend_data).expect_err("expecting err");
-        assert_eq!(err, TdxAttestError::InvalidRtmrIndex);
+        assert_eq!(err, TdxAttestErrorCode::InvalidRtmrIndex);
     }
 }

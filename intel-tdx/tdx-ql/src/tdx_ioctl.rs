@@ -8,7 +8,7 @@
 //! ioctl-based TDX attestation backend.
 
 use crate::{
-    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestError, TdxReport,
+    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestErrorCode, TdxReport,
 };
 
 const TDX_ATTEST_DEV_PATH: &str = "/dev/tdx_guest";
@@ -22,7 +22,9 @@ struct TdxReportReq {
 nix::ioctl_readwrite!(tdx_cmd_get_report, b'T', 1, TdxReportReq);
 
 /// Request a TDX Report of the calling TD via ioctl on `/dev/tdx_guest`.
-pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReport, TdxAttestError> {
+pub fn get_report(
+    report_data: [u8; TDX_REPORT_DATA_SIZE],
+) -> Result<TdxReport, TdxAttestErrorCode> {
     use std::os::fd::AsRawFd;
     let mut req = TdxReportReq {
         report_data,
@@ -33,10 +35,10 @@ pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReport, 
         .read(true)
         .write(true)
         .open(TDX_ATTEST_DEV_PATH)
-        .map_err(|_| TdxAttestError::DeviceFailure)?;
+        .map_err(|_| TdxAttestErrorCode::DeviceFailure)?;
 
     unsafe { tdx_cmd_get_report(file.as_raw_fd(), &mut req) }
-        .map_err(|_| TdxAttestError::ReportFailure)?;
+        .map_err(|_| TdxAttestErrorCode::ReportFailure)?;
     Ok(TdxReport::try_copy_from(&req.td_report).expect("validated size"))
 }
 
@@ -52,10 +54,10 @@ nix::ioctl_readwrite!(tdx_cmd_extend_rtmr, b'T', 3, TdxExtendRtmrReq);
 pub fn extend_rtmr(
     rtmr_index: u64,
     extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
-) -> Result<(), TdxAttestError> {
+) -> Result<(), TdxAttestErrorCode> {
     let rtmr_index = match rtmr_index {
         2..=3 => rtmr_index as u8,
-        _ => return Err(TdxAttestError::InvalidRtmrIndex),
+        _ => return Err(TdxAttestErrorCode::InvalidRtmrIndex),
     };
 
     use std::os::fd::AsRawFd;
@@ -68,11 +70,11 @@ pub fn extend_rtmr(
         .read(true)
         .write(true)
         .open(TDX_ATTEST_DEV_PATH)
-        .map_err(|_| TdxAttestError::DeviceFailure)?;
+        .map_err(|_| TdxAttestErrorCode::DeviceFailure)?;
 
     unsafe { tdx_cmd_extend_rtmr(file.as_raw_fd(), &mut req) }.map_err(|errno| match errno {
-        nix::errno::Errno::EINVAL => TdxAttestError::InvalidRtmrIndex,
-        _ => TdxAttestError::ExtendFailure,
+        nix::errno::Errno::EINVAL => TdxAttestErrorCode::InvalidRtmrIndex,
+        _ => TdxAttestErrorCode::ExtendFailure,
     })?;
 
     Ok(())
