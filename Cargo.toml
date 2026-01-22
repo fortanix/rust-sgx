@@ -47,6 +47,7 @@ exclude = [
     "examples/usercall-extension/app",
     "examples/usercall-extension/runner",
     "intel-sgx/sgxs-loaders/tests/driver-crawler",
+    "fortanix-vme/tools/elf2uki",
 ]
 resolver = "2"
 
