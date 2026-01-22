@@ -9,7 +9,7 @@
 
 use core::fmt::Display;
 
-use crate::slice;
+use crate::{slice, struct_def};
 
 /// SHA384
 pub const TEE_HASH_384_SIZE: usize = 48;
