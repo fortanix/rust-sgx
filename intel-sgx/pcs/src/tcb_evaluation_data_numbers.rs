@@ -1,6 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use crate::{
-    Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, 
+    Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus,
     Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents
 };
 use serde::{Deserialize, Deserializer, Serialize};
@@ -199,7 +199,7 @@ impl<T: PlatformTypeForTcbInfo<T>> RawTcbEvaluationDataNumbers<T> {
         }
     }
 
-    fn filename() -> String {
+    pub fn filename() -> String {
         format!("{}{}{}", Self::DEFAULT_FILENAME, T::extra_extension(), Self::FILENAME_EXTENSION)
     }
 
