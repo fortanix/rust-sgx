@@ -50,7 +50,7 @@ pub type PceIsvsvn = u16;
 pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
-pub trait PlatformType : Display + Clone {
+pub trait PlatformType : Display + Clone + Send {
     fn new() -> Self;
     fn platform_id() -> &'static str;
 }
@@ -61,7 +61,7 @@ pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbI
         Ok(T::new())
     } else {
         Err(serde::de::Error::custom(format!("Invalid platform id: {platform_str}, expected {}", T::platform_id())))
-    }            
+    }
 }
 
 pub mod platform {
@@ -82,7 +82,7 @@ pub mod platform {
         fn new() -> Self {
             Self {}
         }
-        
+
         fn platform_id() -> &'static str {
             "SGX"
         }
@@ -101,12 +101,12 @@ pub mod platform {
         fn new() -> Self {
             Self {}
         }
-        
+
         fn platform_id() -> &'static str {
             "TDX"
         }
     }
-    
+
 }
 
 quick_error! {
