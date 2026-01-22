@@ -48,7 +48,7 @@ struct TdxExtendRtmrReq {
     index: u8,
 }
 
-nix::ioctl_readwrite!(tdx_cmd_extend_rtmr, b'T', 3, TdxExtendRtmrReq);
+nix::ioctl_write_ptr!(tdx_cmd_extend_rtmr, b'T', 3, TdxExtendRtmrReq);
 
 /// Extend one of the TDX runtime measurement registers (RTMRs) via ioctl on `/dev/tdx_guest`.
 pub fn extend_rtmr(
