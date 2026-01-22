@@ -8,5 +8,8 @@ readme = "README.md"
 sgx-isa = { path = "../../intel-sgx/sgx-isa" }
 nix = { version = "0.30", features = ["ioctl"] }
 
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
+
 [features]
 large_array_derive = ["sgx-isa/large_array_derive"]
