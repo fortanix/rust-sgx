@@ -55,8 +55,8 @@ jobs:
     - name: Nightly test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
       run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
-    - name: Cargo test -p tdx-isa --all-features
-      run: cargo -p tdx-isa --all-features
+    - name: Cargo test -p tdx-ql --features tdx-module
+      run: cargo test -p tdx-ql --features tdx-module
 
     - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
       run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
