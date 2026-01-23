@@ -55,13 +55,8 @@ _Noreturn void die(const char *msg);
         } \
     } while (0)
 
-#define finit_module(fd, param_values, flags) (int)syscall(__NR_finit_module, fd, param_values, flags)
 #define DEFAULT_PATH_ENV "PATH=/sbin:/usr/sbin:/bin:/usr/bin"
-#define NSM_PATH "nsm.ko"
 #define TIMEOUT 20000 // millis
-#define VSOCK_PORT 9000
-#define VSOCK_CID 3
-#define HEART_BEAT 0xB7
 
 const char *const default_envp[] = {
     DEFAULT_PATH_ENV,
@@ -278,10 +273,10 @@ pid_t launch(char **argv, char **envp) {
     }
 
     if (argv == NULL)
-    argv = (char **) default_argv;
+        argv = (char **) default_argv;
 
     if (envp == NULL)
-    envp = (char **) default_envp;
+        envp = (char **) default_envp;
 
     // Unblock signals before execing.
     sigset_t set;
@@ -351,47 +346,6 @@ char **read_config(FILE *env_file) {
     return env;
 }
 
-void enclave_ready() {
-    int socket_fd;
-    struct sockaddr_vm sa = {
-        .svm_family = AF_VSOCK,
-        .svm_cid = VSOCK_CID,
-        .svm_port = VSOCK_PORT,
-        .svm_reserved1 = 0,
-    };
-
-    uint8_t buf[1];
-    buf[0] = HEART_BEAT;
-    errno = -EINVAL;
-
-    socket_fd = socket(AF_VSOCK, SOCK_STREAM, 0);
-    die_on(socket_fd < 0, "socket");
-
-    die_on(connect(socket_fd, (struct sockaddr*) &sa, sizeof(sa)), "connect");
-    die_on(write(socket_fd, buf, 1) != 1, "write heartbeat");
-    die_on(read(socket_fd, buf, 1) != 1, "read heartbeat");
-    die_on(buf[0] != HEART_BEAT, "received wrong heartbeat");
-    die_on(close(socket_fd), "close");
-}
-
-void init_nsm_driver() {
-    int fd;
-    int rc;
-
-    fd = open(NSM_PATH, O_RDONLY | O_CLOEXEC);
-    if (fd < 0 && errno == ENOENT) {
-        return;
-    }
-    die_on(fd < 0, "failed to open nsm fd");
-    rc = finit_module(fd, "", 0);
-    die_on(rc < 0, "failed to insert nsm driver");
-
-    die_on(close(fd), "close nsm fd");
-    rc = unlink(NSM_PATH);
-    if (rc < 0)
-        warn("Could not unlink " NSM_PATH);
-}
-
 int main() {
     // Block all signals in init. SIGCHLD will still cause wait() to return.
     sigset_t set;
@@ -402,12 +356,6 @@ int main() {
     // Init /dev and start /dev/console for early debugging
     init_dev();
     init_console();
-
-    // Insert the Nitro Secure Module driver
-    init_nsm_driver();
-
-    // Signal nitro-cli that the enclave has started
-    enclave_ready();
 
     FILE *env_file = fopen("/env", "r");
     FILE *cmd_file = fopen("/cmd", "r");
