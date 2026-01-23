@@ -9,7 +9,7 @@ use thiserror::Error;
 
 mod fs_tree;
 
-pub use fs_tree::{FsTree, FsTreeBuilder, FsTreeEntry};
+pub use fs_tree::{FsTree, FsTreeEntry};
 
 const DEFAULT_UID: u32 = 0;
 const DEFAULT_GID: u32 = 0;
@@ -136,7 +136,7 @@ impl<R: Read> Initramfs<R> {
     }
 
     pub fn read_entry_by_path(self, path: &str) -> Result<Vec<u8>, Error> {
-        let normalized = FsTreeBuilder::normalize_path(path);
+        let normalized = FsTree::normalize_path(path);
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
         loop {
@@ -217,7 +217,7 @@ impl<R: Read> Initramfs<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Initramfs, fs_tree::FsTreeBuilder};
+    use super::{Initramfs, fs_tree::FsTree};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
     use std::io::Cursor;
@@ -233,11 +233,10 @@ mod tests {
             let init0 = init0.clone();
             let nsm0 = nsm0.clone();
             move || {
-                FsTreeBuilder::new()
+                FsTree::new()
                     .add_executable("app", Cursor::new(app0.clone()))
                     .add_executable("init", Cursor::new(init0.clone()))
                     .add_executable("nsm", Cursor::new(nsm0.clone()))
-                    .build()
             }
         };
 

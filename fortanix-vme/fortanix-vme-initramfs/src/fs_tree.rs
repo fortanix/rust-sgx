@@ -1,6 +1,7 @@
 use crate::{Error, ReadSeek};
 use cpio::NewcBuilder;
 use derivative::Derivative;
+use normalize_path::NormalizePath;
 use std::fmt;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -10,15 +11,12 @@ const DEFAULT_DIR_PERMS: u32 = 0o40775;
 const DEFAULT_EXEC_PERMS: u32 = 0o100775;
 const REL_TO_CUR: &str = "./";
 
-/// A builder for constructing an [`FsTree`] incrementally.
+/// A builder for constructing an initramfs filesystem [`FsTree`] incrementally.
 ///
-/// `FsTreeBuilder` provides an interface for adding directories and files
+/// `FsTree` provides an interface for adding directories and files
 /// (including executables) to a filesystem tree. Parent directories are created
 /// automatically as needed, and all paths are normalized to be relative to the
 /// root of the tree.
-///
-/// The builder is consumed on each method call and produces a finalized
-/// [`FsTree`] when [`build`](Self::build) is invoked.
 ///
 /// # Example
 ///
@@ -31,26 +29,24 @@ const REL_TO_CUR: &str = "./";
 ///     .add_file("etc/config", Cursor::new(b"key=value\n"))
 ///     .build();
 /// ```
-#[derive(Debug, Default)]
-pub struct FsTreeBuilder {
-    entries: Vec<FsTreeEntry>,
-}
+#[derive(Debug, Eq, PartialEq)]
+pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
 
-impl FsTreeBuilder {
+type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
+
+impl FsTree {
     pub fn new() -> Self {
-        Self {
-            entries: Vec::new(),
-        }
+        Self(Vec::new())
     }
 
-    pub fn add_directory(mut self, dirname: &str) -> FsTreeBuilder {
+    pub fn add_directory(mut self, dirname: &str) -> FsTree {
         let path = Self::normalize_path(dirname);
         self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
         self
     }
 
     fn dir_exists(&self, dir: &PathBuf) -> bool {
-        self.entries
+        self.0
             .iter()
             .any(|e| matches!(e, FsTreeEntry::Directory { path, .. } if path == dir))
     }
@@ -58,7 +54,7 @@ impl FsTreeBuilder {
     fn add_directory_with_parents(&mut self, dir: &Path, mode: u32) {
         let mut to_add = Vec::new();
         for dir in dir.ancestors() {
-            if dir == Path::new("") || dir == Path::new(".") {
+            if dir == Path::new(".") {
                 break;
             }
 
@@ -75,29 +71,24 @@ impl FsTreeBuilder {
 
         // Add in reverse order to preserve the the order of directory
         // hiearchy while adding into initramfs
-        self.entries.extend(to_add.into_iter().rev());
+        self.0.extend(to_add.into_iter().rev());
     }
 
-    pub fn add_executable<T>(self, basename: &str, content: T) -> FsTreeBuilder
+    pub fn add_executable<T>(self, basename: &str, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_EXEC_PERMS)
     }
 
-    pub fn add_file<T>(self, basename: &str, content: T) -> FsTreeBuilder
+    pub fn add_file<T>(self, basename: &str, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_FILE_PERMS)
     }
 
-    pub fn add_file_with_permissions<T>(
-        mut self,
-        basename: &str,
-        content: T,
-        mode: u32,
-    ) -> FsTreeBuilder
+    pub fn add_file_with_permissions<T>(mut self, basename: &str, content: T, mode: u32) -> FsTree
     where
         T: ReadSeek + 'static,
     {
@@ -113,36 +104,31 @@ impl FsTreeBuilder {
             self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
         }
 
-        self.entries.push(entry);
+        self.0.push(entry);
         self
     }
 
-    pub fn normalize_path(basename: &str) -> PathBuf {
-        // Path in initramfs must be relative to the current directory.
-        // Make sure that given paths does not start with '.', './'
-        let mut path = PathBuf::from(REL_TO_CUR);
-        if let Some(basename) = basename.strip_prefix("/") {
-            path.push(basename);
-        } else if let Some(basename) = basename.strip_prefix("./") {
-            path.push(basename);
+    /// Normalizes a path and anchors it to the current working directory.
+    ///
+    /// This function performs standard path normalization, removes any leading
+    /// absolute root separators (`/`), and prepends the internal `./`
+    /// prefix to ensure the path is relative for the initramfs environment.
+    pub(crate) fn normalize_path(basename: &str) -> PathBuf {
+        // Do the regular normalization first
+        let normalized = Path::new(basename).normalize();
+        // Normalized path may begin with "/", drop it if exists
+        let stripped = if let Ok(stripped) = normalized.strip_prefix("/") {
+            stripped
         } else {
-            path.push(basename);
-        }
+            &normalized
+        };
 
+        // Path in initramfs must be relative to the current directory.
+        let mut path = PathBuf::from(REL_TO_CUR);
+        path.push(stripped);
         path
     }
 
-    pub fn build(self) -> FsTree {
-        FsTree(self.entries)
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
-
-type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
-
-impl FsTree {
     pub fn into_cpio_input(self) -> Result<Vec<CpioInput>, Error> {
         let mut inputs = Vec::with_capacity(self.0.len());
         for entry in self.0 {
@@ -222,9 +208,9 @@ mod tests {
     }
 
     #[test]
-    fn test_fstree_builder() {
+    fn test_structure() {
         let content = vec![0, 1, 2, 3, 4];
-        let builder = FsTreeBuilder::new()
+        let files = FsTree::new()
             .add_file("rootfs/bin/a.out", Cursor::new(content.clone()))
             .add_directory("rootfs/dev")
             .add_directory("rootfs/proc")
@@ -235,7 +221,7 @@ mod tests {
             .add_file("env", Cursor::new(content.clone()))
             .add_file("init", Cursor::new(content.clone()))
             .add_file("nsm.ko", Cursor::new(content.clone()));
-        let files = builder.build();
+
         let expected = FsTree(vec![
             make_directory("./rootfs"),
             make_directory("./rootfs/bin"),
@@ -254,9 +240,8 @@ mod tests {
     }
 
     #[test]
-    fn test_fstree_builder_long() {
-        let builder = FsTreeBuilder::new().add_file("a/b/c/d/e/f/g.txt", Cursor::new(vec![]));
-        let files = builder.build();
+    fn test_long_paths() {
+        let files = FsTree::new().add_file("a/b/c/d/e/f/g.txt", Cursor::new(vec![]));
         let expected = FsTree(vec![
             make_directory("./a"),
             make_directory("./a/b"),
@@ -265,6 +250,21 @@ mod tests {
             make_directory("./a/b/c/d/e"),
             make_directory("./a/b/c/d/e/f"),
             make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
+        ]);
+        assert_eq!(files, expected);
+    }
+
+    #[test]
+    fn test_relative_paths() {
+        let files = FsTree::new()
+            .add_directory("a/b/c/../../d/e/")
+            .add_directory("/x/y/../z");
+        let expected = FsTree(vec![
+            make_directory("./a"),
+            make_directory("./a/d"),
+            make_directory("./a/d/e"),
+            make_directory("./x"),
+            make_directory("./x/z"),
         ]);
         assert_eq!(files, expected);
     }

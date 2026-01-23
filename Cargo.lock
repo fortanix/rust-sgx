@@ -1692,6 +1692,7 @@ dependencies = [
  "derivative",
  "flate2",
  "hex-literal",
+ "normalize-path",
  "sha2 0.9.9",
  "thiserror",
 ]
@@ -2974,6 +2975,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "normalize-path"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5438dd2b2ff4c6df6e1ce22d825ed2fa93ee2922235cc45186991717f0a892d"
 
 [[package]]
 name = "nsm"

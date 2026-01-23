@@ -1,6 +1,5 @@
 use crate::Error;
-use fortanix_vme_initramfs::Initramfs;
-use fortanix_vme_initramfs::{FsTree, FsTreeBuilder};
+use fortanix_vme_initramfs::{FsTree, Initramfs};
 use std::io::{Cursor, Read, Seek, Write};
 
 const CMD_CONTENT: &str = "/bin/a.out";
@@ -20,7 +19,7 @@ pub fn build_fs_tree<
     init: S,
     nsm: T,
 ) -> FsTree {
-    FsTreeBuilder::new()
+    FsTree::new()
         .add_file(ENV_PATH, Box::new(Cursor::new(ENV_CONTENT.as_bytes())))
         .add_file(CMD_PATH, Box::new(Cursor::new(CMD_CONTENT.as_bytes())))
         .add_executable(INIT_PATH, Box::new(init))
@@ -31,7 +30,6 @@ pub fn build_fs_tree<
         .add_directory("rootfs/run")
         .add_directory("rootfs/sys")
         .add_directory("rootfs/tmp")
-        .build()
 }
 
 pub fn build<
