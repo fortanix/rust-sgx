@@ -8,79 +8,41 @@ use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::Error;
-use sgxs::loader::{Load, MappingInfo};
+use enclave_runner::stream_router::StreamRouter;
+use sgxs::loader::Load;
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
 use crate::usercalls::EnclaveState;
-use crate::usercalls::UsercallExtension;
-use std::fmt;
 use std::os::raw::c_void;
 
+/// If this library's TCSs are all currently servicing other calls, the `call`
+/// function will block until a TCS becomes available.
 pub struct Library {
-    enclave: Arc<EnclaveState>,
-    address: *mut c_void,
-    size: usize,
-}
-
-impl fmt::Debug for Library {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Library")
-            .field("address", &self.address)
-            .field("size", &self.size)
-            .finish()
-    }
-}
-
-impl MappingInfo for Library {
-    fn address(&self) -> *mut c_void {
-        self.address
-    }
-
-    fn size(&self) -> usize {
-        self.size
-    }
+    _private: (),
 }
 
 impl Library {
     pub(crate) fn internal_new(
         tcss: Vec<ErasedTcs>,
-        address: *mut c_void,
-        size: usize,
-        usercall_ext: Option<Box<dyn UsercallExtension>>,
+        _address: *mut c_void,
+        _size: usize,
+        stream_router: Box<dyn StreamRouter>,
         forward_panics: bool,
         force_time_usercalls: bool,
-    ) -> Library {
-        Library {
-            enclave: EnclaveState::library(
-                tcss,
-                usercall_ext,
-                forward_panics,
-                force_time_usercalls,
-            ),
-            address,
-            size,
-        }
+    ) -> enclave_runner::Library {
+        let enclave =
+            EnclaveState::library(tcss, stream_router, forward_panics, force_time_usercalls);
+        (Arc::new(move |p1, p2, p3, p4, p5| {
+            EnclaveState::library_entry(&enclave, p1, p2, p3, p4, p5)
+        }) as Arc<dyn Fn(u64, u64, u64, u64, u64) -> _>)
+            .into()
     }
 
-    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Library, Error> {
-        EnclaveBuilder::new(enclave_path.as_ref()).build_library(loader)
-    }
-
-    /// If this library's TCSs are all currently servicing other calls, this
-    /// function will block until a TCS becomes available.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the parameters passed-in match what the
-    /// enclave is expecting.
-    pub unsafe fn call(
-        &self,
-        p1: u64,
-        p2: u64,
-        p3: u64,
-        p4: u64,
-        p5: u64,
-    ) -> Result<(u64, u64), Error> {
-        EnclaveState::library_entry(&self.enclave, p1, p2, p3, p4, p5)
+    pub fn new<P: AsRef<Path>, L: Load>(
+        enclave_path: P,
+        loader: &mut L,
+    ) -> Result<enclave_runner::Library, Error> {
+        enclave_runner::EnclaveBuilder::new(EnclaveBuilder::new(enclave_path.as_ref()))
+            .build(loader)
     }
 }

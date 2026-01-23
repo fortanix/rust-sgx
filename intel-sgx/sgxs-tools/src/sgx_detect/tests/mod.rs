@@ -11,7 +11,8 @@ use std::process;
 use anyhow::Error;
 use petgraph::visit::EdgeRef;
 
-use enclave_runner_sgx::EnclaveBuilder;
+use enclave_runner::EnclaveBuilder;
+use enclave_runner_sgx::EnclaveBuilder as EnclaveBuilderSgx;
 use report_test::ReportBuilder;
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::loader::Load;
@@ -781,10 +782,10 @@ impl RunEnclaveProdWl {
         let sig = include_bytes!("test_enclave.sig");
         let sig = Sigstruct::try_copy_from(sig).unwrap();
 
-        let mut builder = EnclaveBuilder::new_from_memory(enclave);
+        let mut builder = EnclaveBuilderSgx::new_from_memory(enclave);
         builder.attributes(sig.attributes).sigstruct(sig);
 
-        let lib = builder.build_library(enclave_loader)?;
+        let lib = EnclaveBuilder::<_, enclave_runner::Library>::new(builder).build(enclave_loader)?;
 
         unsafe {
             match lib.call(!0, 0, 0, 0, 0) {

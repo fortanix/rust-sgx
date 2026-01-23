@@ -7,6 +7,7 @@
 //! Rust types.
 
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IoResult};
+use std::ops::{Deref, DerefMut};
 use std::slice;
 
 use fortanix_sgx_abi::*;
@@ -292,25 +293,45 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
     }
 }
 
-pub(super) struct OutputBuffer<'a> {
+// `T` could be more generic, we could take anything that can be turned into
+// `Box<[u8]>`. However, `String`, which we definitely need, doesn't have a
+// direct conversion.
+pub(super) struct OutputBuffer<'a, T: Into<Vec<u8>>> {
     buf: &'a mut ByteBuffer,
-    data: Option<Box<[u8]>>,
+    data: Option<T>,
 }
 
-impl<'a> OutputBuffer<'a> {
+impl<'a, T: Into<Vec<u8>>> OutputBuffer<'a, T> {
     fn new(buf: &'a mut ByteBuffer) -> Self {
         OutputBuffer { buf, data: None }
     }
+}
 
-    pub(super) fn set<T: Into<Box<[u8]>>>(&mut self, value: T) {
-        // NB. this should use the same allocator as usercall alloc/free
-        self.data = Some(value.into());
+impl<'a, T: Into<Vec<u8>> + Default> OutputBuffer<'a, T> {
+    pub(super) fn init_default<'b>(&'b mut self) -> &'b mut T {
+        self.data.get_or_insert_default()
     }
 }
 
-impl<'a> Drop for OutputBuffer<'a> {
+impl<'a, T: Into<Vec<u8>>> Deref for OutputBuffer<'a, T> {
+    type Target = Option<T>;
+
+    fn deref(&self) -> &Option<T> {
+        &self.data
+    }
+}
+
+impl<'a, T: Into<Vec<u8>>> DerefMut for OutputBuffer<'a, T> {
+    fn deref_mut(&mut self) -> &mut Option<T> {
+        &mut self.data
+    }
+}
+
+impl<'a, T: Into<Vec<u8>>> Drop for OutputBuffer<'a, T> {
     fn drop(&mut self) {
         if let Some(buf) = self.data.take() {
+            // NB. this should use the same allocator as usercall alloc/free
+            let buf: Box<[u8]> = buf.into().into();
             self.buf.len = buf.len();
             self.buf.data = Box::into_raw(buf) as _;
         } else {

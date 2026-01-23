@@ -7,34 +7,16 @@
 use std::path::Path;
 
 use anyhow::Error;
-use sgxs::loader::{Load, MappingInfo};
+use enclave_runner::platform::CommandConfiguration;
+use enclave_runner::stream_router::StreamRouter;
+use sgxs::loader::Load;
 
 use crate::loader::{EnclaveBuilder, ErasedTcs};
 use crate::usercalls::EnclaveState;
-use crate::usercalls::UsercallExtension;
 use std::os::raw::c_void;
 
-#[derive(Debug)]
 pub struct Command {
-    main: ErasedTcs,
-    threads: Vec<ErasedTcs>,
-    address: usize,
-    size: usize,
-    usercall_ext: Option<Box<dyn UsercallExtension>>,
-    forward_panics: bool,
-    force_time_usercalls: bool,
-    cmd_args: Vec<Vec<u8>>,
-    num_worker_threads: usize,
-}
-
-impl MappingInfo for Command {
-    fn address(&self) -> *mut c_void {
-        self.address as _
-    }
-
-    fn size(&self) -> usize {
-        self.size
-    }
+    _private: (),
 }
 
 impl Command {
@@ -42,41 +24,33 @@ impl Command {
     /// Panics if the number of TCSs is 0.
     pub(crate) fn internal_new(
         mut tcss: Vec<ErasedTcs>,
-        address: *mut c_void,
-        size: usize,
-        usercall_ext: Option<Box<dyn UsercallExtension>>,
+        _address: *mut c_void,
+        _size: usize,
+        stream_router: Box<dyn StreamRouter>,
         forward_panics: bool,
         force_time_usercalls: bool,
-        cmd_args: Vec<Vec<u8>>,
-        num_worker_threads: usize,
-    ) -> Command {
-        let main = tcss.remove(0);
-        Command {
-            main,
-            threads: tcss,
-            address: address as _,
-            size,
-            usercall_ext,
-            forward_panics,
-            force_time_usercalls,
-            cmd_args,
-            num_worker_threads,
-        }
+        cmd_configuration: CommandConfiguration,
+    ) -> enclave_runner::Command {
+        (Box::new(move || {
+            let main = tcss.remove(0);
+
+            EnclaveState::main_entry(
+                main,
+                tcss,
+                stream_router,
+                forward_panics,
+                force_time_usercalls,
+                cmd_configuration,
+            )
+        }) as Box<dyn FnOnce() -> _>)
+            .into()
     }
 
-    pub fn new<P: AsRef<Path>, L: Load>(enclave_path: P, loader: &mut L) -> Result<Command, Error> {
-        EnclaveBuilder::new(enclave_path.as_ref()).build(loader)
-    }
-
-    pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(
-            self.main,
-            self.threads,
-            self.usercall_ext,
-            self.forward_panics,
-            self.force_time_usercalls,
-            self.cmd_args,
-            self.num_worker_threads,
-        )
+    pub fn new<P: AsRef<Path>, L: Load>(
+        enclave_path: P,
+        loader: &mut L,
+    ) -> Result<enclave_runner::Command, Error> {
+        enclave_runner::EnclaveBuilder::new(EnclaveBuilder::new(enclave_path.as_ref()))
+            .build(loader)
     }
 }

@@ -7,7 +7,7 @@
 use std::arch::x86_64::{self, CpuidResult};
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind, Read, Result as IoResult};
-use std::ops::RangeInclusive;
+use std::marker::PhantomData;
 use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
@@ -18,6 +18,9 @@ use thiserror::Error as ThisError;
 #[cfg(feature = "crypto-openssl")]
 use openssl::{hash::Hasher, pkey::PKey};
 
+use enclave_runner::platform::{
+    CommandConfiguration, EnclaveConfiguration, EnclavePlatform, LibraryConfiguration,
+};
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
@@ -25,7 +28,6 @@ use sgxs::sgxs::PageReader;
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use crate::tcs::DebugBuffer;
-use crate::usercalls::UsercallExtension;
 use crate::{Command, Library};
 
 enum EnclaveSource<'a> {
@@ -59,19 +61,16 @@ impl<'a> Read for EnclaveSource<'a> {
     }
 }
 
-pub struct EnclaveBuilder<'a> {
+pub struct EnclaveBuilder<'a, L> {
     enclave: EnclaveSource<'a>,
     signature: Option<Sigstruct>,
     attributes: Option<Attributes>,
     miscselect: Option<Miscselect>,
-    usercall_ext: Option<Box<dyn UsercallExtension>>,
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, anyhow::Error>>>,
     hash_enclave:
         Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
-    forward_panics: bool,
     force_time_usercalls: bool,
-    cmd_args: Option<Vec<Vec<u8>>>,
-    num_worker_threads: Option<usize>,
+    loader: PhantomData<L>,
 }
 
 #[derive(Debug, ThisError)]
@@ -129,28 +128,25 @@ impl Tcs for ErasedTcs {
     }
 }
 
-impl<'a> EnclaveBuilder<'a> {
-    pub fn new(enclave_path: &'a Path) -> EnclaveBuilder<'a> {
+impl<'a, L> EnclaveBuilder<'a, L> {
+    pub fn new(enclave_path: &'a Path) -> EnclaveBuilder<'a, L> {
         Self::new_with_source(EnclaveSource::Path(enclave_path))
     }
 
-    pub fn new_from_memory(enclave_data: &'a [u8]) -> EnclaveBuilder<'a> {
+    pub fn new_from_memory(enclave_data: &'a [u8]) -> EnclaveBuilder<'a, L> {
         Self::new_with_source(EnclaveSource::Data(enclave_data))
     }
 
-    fn new_with_source(enclave: EnclaveSource<'a>) -> EnclaveBuilder<'a> {
+    fn new_with_source(enclave: EnclaveSource<'a>) -> EnclaveBuilder<'a, L> {
         let mut ret = EnclaveBuilder {
             enclave,
             attributes: None,
             miscselect: None,
             signature: None,
-            usercall_ext: None,
             load_and_sign: None,
             hash_enclave: None,
-            forward_panics: false,
             force_time_usercalls: true, // By default, keep the old behavior of always doing a usercall on an insecure_time call
-            cmd_args: None,
-            num_worker_threads: None,
+            loader: PhantomData,
         };
 
         let _ = ret.coresident_signature();
@@ -321,20 +317,6 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    pub fn usercall_extension<T: Into<Box<dyn UsercallExtension>>>(&mut self, extension: T) {
-        self.usercall_ext = Some(extension.into());
-    }
-
-    /// Whether to panic the runner if any enclave thread panics.
-    /// Defaults to `false`.
-    /// Note: If multiple enclaves are loaded, and an enclave with this set to
-    /// true panics, then all enclaves handled by this runner will exit because
-    /// the runner itself will panic.
-    pub fn forward_panics(&mut self, fp: bool) -> &mut Self {
-        self.forward_panics = fp;
-        self
-    }
-
     /// SGXv2 platforms allow enclaves to use the `rdtsc` instruction. This can speed up
     /// performance significantly as enclave no longer need to call out to userspace to request the
     /// current time. Unfortunately, older enclaves are not compatible with new enclave runners.
@@ -345,58 +327,10 @@ impl<'a> EnclaveBuilder<'a> {
         self
     }
 
-    fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
-        self.cmd_args
-            .get_or_insert_with(|| vec![b"enclave".to_vec()])
-    }
-
-    /// Adds multiple arguments to pass to enclave's `fn main`.
-    /// **NOTE:** This is not an appropriate channel for passing secrets or
-    /// security configurations to the enclave.
-    ///
-    /// **NOTE:** This is only applicable to [`Command`] enclaves.
-    /// Adding command arguments and then calling [`build_library`] will cause
-    /// a panic.
-    ///
-    /// [`Command`]: struct.Command.html
-    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
-    pub fn args<I, S>(&mut self, args: I) -> &mut Self
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<[u8]>,
-    {
-        let args = args.into_iter().map(|a| a.as_ref().to_owned());
-        self.initialized_args_mut().extend(args);
-        self
-    }
-
-    /// Adds an argument to pass to enclave's `fn main`.
-    /// **NOTE:** This is not an appropriate channel for passing secrets or
-    /// security configurations to the enclave.
-    ///
-    /// **NOTE:** This is only applicable to [`Command`] enclaves.
-    /// Adding command arguments and then calling [`build_library`] will cause
-    /// a panic.
-    ///
-    /// [`build_library`]: struct.EnclaveBuilder.html#method.build_library
-    pub fn arg<S: AsRef<[u8]>>(&mut self, arg: S) -> &mut Self {
-        let arg = arg.as_ref().to_owned();
-        self.initialized_args_mut().push(arg);
-        self
-    }
-
-    /// Sets the number of worker threads used to run the enclave.
-    ///
-    /// **NOTE:** This is only applicable to [`Command`] enclaves.
-    /// Setting this and then calling [`build_library`](Self::build_library) will cause a panic.
-    pub fn num_worker_threads(&mut self, num_worker_threads: usize) -> &mut Self {
-        self.num_worker_threads = Some(num_worker_threads);
-        self
-    }
-
     fn load<T: Load>(
         mut self,
-        loader: &mut T,
+        mut loader: T,
+        forward_panics: bool,
     ) -> Result<(Vec<ErasedTcs>, *mut c_void, usize, bool, bool), anyhow::Error> {
         let signature = match self.signature {
             Some(sig) => sig,
@@ -407,7 +341,6 @@ impl<'a> EnclaveBuilder<'a> {
         let attributes = self.attributes.unwrap_or(signature.attributes);
         let miscselect = self.miscselect.unwrap_or(signature.miscselect);
         let mapping = loader.load(&mut self.enclave, &signature, attributes, miscselect)?;
-        let forward_panics = self.forward_panics;
         let force_time_usercalls = self.force_time_usercalls;
         if mapping.tcss.is_empty() {
             unimplemented!()
@@ -420,41 +353,44 @@ impl<'a> EnclaveBuilder<'a> {
             force_time_usercalls,
         ))
     }
+}
 
-    pub fn build<T: Load>(mut self, loader: &mut T) -> Result<Command, anyhow::Error> {
-        if let Some(num_worker_threads) = self.num_worker_threads {
-            const NUM_WORKER_THREADS_RANGE: RangeInclusive<usize> = 1..=65536;
-            anyhow::ensure!(
-                NUM_WORKER_THREADS_RANGE.contains(&num_worker_threads),
-                "`num_worker_threads` must be in range {NUM_WORKER_THREADS_RANGE:?}"
-            );
-        }
-        let num_worker_threads = self.num_worker_threads.unwrap_or_else(num_cpus::get);
+impl<'a, L: Load> EnclavePlatform<enclave_runner::Command> for EnclaveBuilder<'a, L> {
+    type Loader = L;
 
-        self.initialized_args_mut();
-        let args = self.cmd_args.take().unwrap_or_default();
-        let c = self.usercall_ext.take();
-        self.load(loader).map(|(t, a, s, fp, dti)| {
-            Command::internal_new(t, a, s, c, fp, dti, args, num_worker_threads)
-        })
+    fn build(
+        self,
+        loader: L,
+        configuration: EnclaveConfiguration,
+        cmd_configuration: CommandConfiguration,
+    ) -> Result<enclave_runner::Command, anyhow::Error> {
+        self.load(loader, configuration.forward_panics)
+            .map(|(t, a, s, fp, dti)| {
+                Command::internal_new(
+                    t,
+                    a,
+                    s,
+                    configuration.stream_router,
+                    fp,
+                    dti,
+                    cmd_configuration,
+                )
+            })
     }
+}
 
-    /// Panics if you have previously called [`arg`], [`args`], or [`num_worker_threads`].
-    ///
-    /// [`arg`]: struct.EnclaveBuilder.html#method.arg
-    /// [`args`]: struct.EnclaveBuilder.html#method.args
-    /// [`num_worker_threads`]: Self::num_worker_threads()
-    pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, anyhow::Error> {
-        assert!(
-            self.cmd_args.is_none(),
-            "Command arguments do not apply to Library enclaves."
-        );
-        assert!(
-            self.num_worker_threads.is_none(),
-            "`num_worker_threads` cannot be specified for Library enclaves."
-        );
-        let c = self.usercall_ext.take();
-        self.load(loader)
-            .map(|(t, a, s, fp, dti)| Library::internal_new(t, a, s, c, fp, dti))
+impl<'a, L: Load> EnclavePlatform<enclave_runner::Library> for EnclaveBuilder<'a, L> {
+    type Loader = L;
+
+    fn build(
+        self,
+        loader: L,
+        configuration: EnclaveConfiguration,
+        _: LibraryConfiguration,
+    ) -> Result<enclave_runner::Library, anyhow::Error> {
+        self.load(loader, configuration.forward_panics)
+            .map(|(t, a, s, fp, dti)| {
+                Library::internal_new(t, a, s, configuration.stream_router, fp, dti)
+            })
     }
 }

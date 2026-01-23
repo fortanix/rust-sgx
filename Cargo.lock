@@ -1467,6 +1467,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossbeam",
+ "enclave-runner",
  "fnv",
  "fortanix-sgx-abi",
  "futures 0.3.31",
@@ -1475,7 +1476,6 @@ dependencies = [
  "lazy_static",
  "libc",
  "nix 0.13.1",
- "num_cpus",
  "openssl",
  "sgx-isa 0.4.1",
  "sgxs",
@@ -1643,6 +1643,7 @@ dependencies = [
  "aesm-client",
  "anyhow",
  "clap 2.34.0",
+ "enclave-runner",
  "enclave-runner-sgx",
  "libc",
  "nix 0.13.1",
@@ -3743,6 +3744,7 @@ name = "report-test"
 version = "0.5.1"
 dependencies = [
  "anyhow",
+ "enclave-runner",
  "enclave-runner-sgx",
  "sgx-isa 0.4.1",
  "sgxs",
@@ -4340,6 +4342,7 @@ dependencies = [
  "clap 2.34.0",
  "crypto-hash",
  "dcap-ql",
+ "enclave-runner",
  "enclave-runner-sgx",
  "env_logger",
  "fnv",

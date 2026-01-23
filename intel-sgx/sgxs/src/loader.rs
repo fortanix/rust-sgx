@@ -47,3 +47,21 @@ pub trait Load {
         miscselect: Miscselect,
     ) -> Result<Mapping<Self>, anyhow::Error>;
 }
+
+impl<T: Load> Load for &mut T {
+    type MappingInfo = T::MappingInfo;
+    type Tcs = T::Tcs;
+
+    /// Load an enclave.
+    ///
+    /// The enclave will be unloaded once all returned values are dropped.
+    fn load<R: SgxsRead>(
+        &mut self,
+        reader: &mut R,
+        sigstruct: &Sigstruct,
+        attributes: Attributes,
+        miscselect: Miscselect,
+    ) -> Result<Mapping<Self>, anyhow::Error> {
+        T::load(self, reader, sigstruct, attributes, miscselect).map(|Mapping { info, tcss }| Mapping { info, tcss } )
+    }
+}
