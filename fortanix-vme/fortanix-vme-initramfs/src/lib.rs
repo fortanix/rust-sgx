@@ -170,10 +170,10 @@ impl<R: Read> Initramfs<R> {
                 path.to_string(),
             ));
         }
-        if entry.uid() != 0 {
+        if entry.uid() != uid {
             return Err(Error::wrong_uid(entry.uid(), uid));
         }
-        if entry.gid() != 0 {
+        if entry.gid() != gid {
             return Err(Error::wrong_gid(entry.gid(), gid));
         }
         if entry.mode() != mode {
