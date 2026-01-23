@@ -220,7 +220,7 @@ mod tests {
     use super::{Initramfs, fs_tree::FsTree};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
-    use std::io::Cursor;
+    use std::io::{Cursor, Seek};
 
     #[test]
     fn create_and_parse_initramfs() {
@@ -254,14 +254,18 @@ mod tests {
         let path_bin_pairs = [("app", app0), ("init", init0), ("nsm", nsm0)];
 
         // Parse initramfs and verify binaries in it.
+        let mut cursor = Cursor::new(initramfs_blob);
         for (path, expected) in path_bin_pairs {
-            let initramfs = Initramfs::from(Cursor::new(initramfs_blob.clone()));
-            let bin = initramfs.read_entry_by_path(path).unwrap();
+            cursor.rewind().unwrap();
+            let bin = Initramfs::from(&mut cursor)
+                .read_entry_by_path(path)
+                .unwrap();
             assert_eq!(expected, bin, "Binary with path {} is corrupted", path);
         }
 
         let fs_tree = build_fs_tree();
-        let initramfs = Initramfs::from(Cursor::new(initramfs_blob));
+        cursor.rewind().unwrap();
+        let initramfs = Initramfs::from(&mut cursor);
         initramfs.verify(fs_tree).unwrap();
     }
 }

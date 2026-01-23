@@ -29,7 +29,7 @@ const REL_TO_CUR: &str = "./";
 ///     .add_file("etc/config", Cursor::new(b"key=value\n"))
 ///     .build();
 /// ```
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Default)]
 pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
 
 type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
