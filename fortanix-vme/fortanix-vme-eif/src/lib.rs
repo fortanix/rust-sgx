@@ -306,7 +306,7 @@ mod tests {
     use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
     use fortanix_vme_initramfs::Initramfs;
-    use std::io::Cursor;
+    use std::io::{Cursor, Seek};
     use std::ops::Deref;
     use test_resources::HELLO_WORLD;
 
@@ -385,7 +385,6 @@ mod tests {
             .unwrap()
             .into_inner()
             .into_inner();
-
         let mut eif = FtxEif::new(Cursor::new(eif));
         assert_eq!(eif.application().unwrap(), HELLO_WORLD);
     }
@@ -407,6 +406,12 @@ mod tests {
             Cursor::new(INIT),
             Cursor::new(NSM),
         );
-        initramfs.verify(fs_tree).unwrap();
+        let initramfs_blob = initramfs.into_inner().into_inner();
+        let mut cursor = Cursor::new(initramfs_blob);
+        Initramfs::from(&mut cursor).verify(fs_tree).unwrap();
+        cursor.rewind().unwrap();
+        Initramfs::from(&mut cursor)
+            .read_entry_by_path(initramfs::APP_PATH)
+            .unwrap();
     }
 }

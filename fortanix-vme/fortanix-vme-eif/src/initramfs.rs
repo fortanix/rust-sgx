@@ -44,8 +44,6 @@ pub fn build<
     output: U,
 ) -> Result<U, Error> {
     let fs_tree = build_fs_tree(application, init, nsm);
-    let initramfs = Initramfs::<U>::from_fs_tree(fs_tree, output)?;
-    // let builder = InitramfsBuilder::new(fs_tree);
-    // Ok(builder.build(output)?.into_inner())
+    let initramfs = Initramfs::from_fs_tree(fs_tree, output)?;
     Ok(initramfs.into_inner())
 }
