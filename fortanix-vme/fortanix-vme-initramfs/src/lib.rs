@@ -83,18 +83,17 @@ impl<R: Read> From<R> for Initramfs<R> {
     }
 }
 
-impl<R: Read> Initramfs<R> {
-    pub fn from_fs_tree<U: Read + Write>(
-        fs_tree: FsTree,
-        output: U,
-    ) -> Result<Initramfs<U>, Error> {
+impl<R: Read + Write> Initramfs<R> {
+    pub fn from_fs_tree(fs_tree: FsTree, output: R) -> Result<Initramfs<R>, Error> {
         let encoder = GzEncoder::new(output, Compression::default());
         let inputs = fs_tree.into_cpio_input()?;
         let encoder = cpio::write_cpio(inputs.into_iter(), encoder).map_err(Error::WriteError)?;
         let encoder = encoder.finish().map_err(Error::WriteError)?;
         Ok(Initramfs(encoder))
     }
+}
 
+impl<R: Read> Initramfs<R> {
     pub fn verify(self, fs_tree: FsTree) -> Result<(), Error> {
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
