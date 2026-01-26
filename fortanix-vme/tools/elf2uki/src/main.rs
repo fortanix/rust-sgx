@@ -21,6 +21,27 @@ const INIT_BLOB: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/bl
     about = "Assemble UKI files from their constituents",
     long_about = "Receive paths to the different building blocks of a UKI file as input, and output the resulting UKI file"
 )]
+/// Entry point for CLI application.
+///
+/// # Example
+///
+/// Under the following conditions:
+/// * the file `linuxx64.efi.stub` is available on the user's system (e.g. installed through `apt
+/// install system-boot-efi`) under the path specified below,
+/// * the kernel image is readable at `/tmp/kernel`
+/// * a statically compiled application is available at `/tmp/application`
+/// * blob artefacts are set up as specified by the blobs README (TODO: RTE-739)
+///
+/// the following invocation works:
+///
+/// ```sh
+/// elf2uki \
+/// --kernel /tmp/kernel \
+/// --app /tmp/application \
+/// --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
+/// --cmdline "console=ttyS0 earlyprintk=serial" \
+/// --output image-to-test.efi \
+/// ```
 struct Cli {
     #[command(flatten)]
     non_defaulted_args: NonDefaultedArgs,
