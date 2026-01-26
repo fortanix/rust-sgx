@@ -1,22 +1,31 @@
+#![deny(warnings)]
+use aws_nitro_enclaves_image_format::defs::{EifHeader, EifIdentityInfo, EifSectionHeader};
 use aws_nitro_enclaves_image_format::generate_build_info;
-use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader};
 use aws_nitro_enclaves_image_format::utils::EifBuilder;
 use serde_json::json;
 use sha2::{Digest, Sha512};
-use std::io::{self, ErrorKind, Cursor, Read, Seek, Write};
+use std::io::{self, Cursor, ErrorKind, Read, Seek, Write};
 use std::ops::Deref;
 use std::rc::Rc;
 use tempfile::{self, NamedTempFile};
 
-mod initramfs;
 mod error;
+mod initramfs;
 
-pub use error::Error;
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
+pub use error::Error;
 
-use initramfs::{Builder as InitramfsBuilder, Initramfs};
+use fortanix_vme_initramfs::Initramfs;
 
-pub struct Builder<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> {
+/// A builder to create a gzipped cpio archive of an initramfs suitable to create an AWS Nitro
+/// Enclave from.
+pub struct Builder<
+    R: Read + Seek + 'static,
+    S: Read + Seek + 'static,
+    T: Read + Seek + 'static,
+    U: Read + Seek + 'static,
+    V: Read + Seek + 'static,
+> {
     name: String,
     application: R,
     init: S,
@@ -40,10 +49,7 @@ struct EifPartIterator<T: Read> {
 
 impl<T: Read> EifPartIterator<T> {
     fn new(reader: T) -> EifPartIterator<T> {
-        EifPartIterator {
-            reader,
-            part: None,
-        }
+        EifPartIterator { reader, part: None }
     }
 }
 
@@ -65,8 +71,8 @@ impl<T: Read> Iterator for EifPartIterator<T> {
          */
         fn header<T: Read>(reader: &mut T) -> Result<EifHeader, Error> {
             let mut buff = [0; EifHeader::size()];
-            reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
-            EifHeader::from_be_bytes(&mut buff).map_err(|e| Error::EifParseError(e))
+            reader.read_exact(&mut buff).map_err(Error::EifReadError)?;
+            EifHeader::from_be_bytes(&buff).map_err(Error::EifParseError)
         }
 
         fn section_header<T: Read>(reader: &mut T) -> Result<Option<EifSectionHeader>, Error> {
@@ -78,13 +84,16 @@ impl<T: Read> Iterator for EifPartIterator<T> {
                     return Err(Error::EifReadError(e));
                 }
             }
-            let header = EifSectionHeader::from_be_bytes(&mut buff).map_err(|e| Error::EifParseError(e))?;
+            let header = EifSectionHeader::from_be_bytes(&buff).map_err(Error::EifParseError)?;
             Ok(Some(header))
         }
 
-        fn section_content<T: Read>(reader: &mut T, section: &EifSectionHeader) -> Result<Vec<u8>, Error> {
+        fn section_content<T: Read>(
+            reader: &mut T,
+            section: &EifSectionHeader,
+        ) -> Result<Vec<u8>, Error> {
             let mut buff = vec![0u8; section.section_size as usize];
-            reader.read_exact(&mut buff).map_err(|e| Error::EifReadError(e))?;
+            reader.read_exact(&mut buff).map_err(Error::EifReadError)?;
             Ok(buff)
         }
 
@@ -92,14 +101,13 @@ impl<T: Read> Iterator for EifPartIterator<T> {
             None => {
                 let h = header(&mut self.reader).ok()?;
                 self.part = Some(EifPart::Header(Rc::new(h)));
-            },
-            Some(EifPart::Header(_)) |
-                Some(EifPart::SectionData(_)) => {
+            }
+            Some(EifPart::Header(_)) | Some(EifPart::SectionData(_)) => {
                 let s = section_header(&mut self.reader).ok()??;
                 self.part = Some(EifPart::SectionHeader(Rc::new(s)));
             }
             Some(EifPart::SectionHeader(h)) => {
-                let data = section_content(&mut self.reader, &h).ok()?;
+                let data = section_content(&mut self.reader, h).ok()?;
                 self.part = Some(EifPart::SectionData(Rc::new(data)));
             }
         }
@@ -117,7 +125,7 @@ impl<T: Read> Iterator for SectionIterator<T> {
         let data = self.0.next()?;
         match (header, data) {
             (EifPart::SectionHeader(h), EifPart::SectionData(d)) => Some((h, d)),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -128,9 +136,7 @@ pub struct FtxEif<T> {
 
 impl<T> FtxEif<T> {
     pub fn new(eif: T) -> Self {
-        FtxEif {
-            eif
-        }
+        FtxEif { eif }
     }
 
     pub fn into_inner(self) -> T {
@@ -145,21 +151,26 @@ impl<T: Read + Seek> FtxEif<T> {
     /// code should be upstreamed.
     /// https://github.com/aws/aws-nitro-enclaves-image-format/blob/main/src/utils/eif_reader.rs#L85-L209
     fn iter(&mut self) -> Result<EifPartIterator<&mut T>, Error> {
-        self.eif.rewind().map_err(|e| Error::EifReadError(e))?;
+        self.eif.rewind().map_err(Error::EifReadError)?;
         Ok(EifPartIterator::new(&mut self.eif))
     }
 
     fn eif_header_ex(&mut self) -> Result<(Rc<EifHeader>, EifPartIterator<&mut T>), Error> {
         let mut it = self.iter()?;
-        let header = it.next()
+        let header = it
+            .next()
             .map(|h| {
                 if let EifPart::Header(header) = h {
                     Ok(header.clone())
                 } else {
-                    Err(Error::EifParseError(String::from("Malformed eif file: Expected EifHeader")))
+                    Err(Error::EifParseError(String::from(
+                        "Malformed eif file: Expected EifHeader",
+                    )))
                 }
             })
-            .ok_or(Error::EifParseError(String::from("Failed to parse eif header")))??;
+            .ok_or(Error::EifParseError(String::from(
+                "Failed to parse eif header",
+            )))??;
         Ok((header, it))
     }
 
@@ -173,7 +184,8 @@ impl<T: Read + Seek> FtxEif<T> {
     }
 
     pub fn application(&mut self) -> Result<Vec<u8>, Error> {
-        let initramfs = self.sections()?
+        let initramfs = self
+            .sections()?
             .find_map(|(hdr, cnt)| {
                 if hdr.section_type == EifSectionType::EifSectionRamdisk {
                     Some(cnt)
@@ -184,26 +196,44 @@ impl<T: Read + Seek> FtxEif<T> {
             .ok_or(Error::EifParseError(String::from("No ramdisks found")))?;
 
         let initramfs = Initramfs::from(Cursor::new(initramfs.deref()));
-        let mut app = Vec::new();
-        initramfs.application(&mut app)?;
+        let app = initramfs.read_entry_by_path(initramfs::APP_PATH)?;
         Ok(app)
     }
 
     pub fn metadata(&mut self) -> Result<EifIdentityInfo, Error> {
-        let metadata = self.sections()?
-            .find_map(|(header, data)|
-            if header.deref().section_type == EifSectionType::EifSectionMetadata {
-                Some(data)
-            } else {
-                None
+        let metadata = self
+            .sections()?
+            .find_map(|(header, data)| {
+                if header.deref().section_type == EifSectionType::EifSectionMetadata {
+                    Some(data)
+                } else {
+                    None
+                }
             })
-            .ok_or(Error::EifParseError(String::from("No metadata section found in EIF file")))?;
-        serde_json::from_slice(metadata.deref().as_slice()).map_err(|e| Error::MetadataParseError(e))
+            .ok_or(Error::EifParseError(String::from(
+                "No metadata section found in EIF file",
+            )))?;
+        serde_json::from_slice(metadata.deref().as_slice()).map_err(Error::MetadataParseError)
     }
 }
 
-impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'static, U: Read + Seek + 'static, V: Read + Seek + 'static> Builder<R, S, T, U, V> {
-    pub fn new(name: String, application: R, init: S, nsm: T, kernel: U, kernel_config: V, cmdline: &str) -> Self {
+impl<
+        R: Read + Seek + 'static,
+        S: Read + Seek + 'static,
+        T: Read + Seek + 'static,
+        U: Read + Seek + 'static,
+        V: Read + Seek + 'static,
+    > Builder<R, S, T, U, V>
+{
+    pub fn new(
+        name: String,
+        application: R,
+        init: S,
+        nsm: T,
+        kernel: U,
+        kernel_config: V,
+        cmdline: &str,
+    ) -> Self {
         Builder {
             name,
             application,
@@ -216,25 +246,33 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
     }
 
     pub fn build<F: Write + Seek>(self, mut output: F) -> Result<FtxEif<F>, Error> {
-        let Builder { name, application, init, nsm, kernel: mut image, kernel_config: mut image_config, cmdline } = self;
+        let Builder {
+            name,
+            application,
+            init,
+            nsm,
+            kernel: mut image,
+            kernel_config: mut image_config,
+            cmdline,
+        } = self;
 
         // Unfortunately `aws_nitro_enclaves_image_format::EifBuilder` forces us to have data in
         // files.
-        let initramfs = NamedTempFile::new().map_err(|e| Error::InitramfsWriteError(e))?;
-        let initramfs = InitramfsBuilder::new(application, init, nsm)
-            .build(initramfs)?
-            .into_inner();
+        let initramfs = NamedTempFile::new().map_err(Error::EifWriteError)?;
+        let initramfs = initramfs::build(application, init, nsm, initramfs)?;
 
-        let mut kernel = NamedTempFile::new().map_err(|e| Error::KernelWriteError(e))?;
-        io::copy(&mut image, &mut kernel).map_err(|e| Error::KernelWriteError(e))?;
+        let mut kernel = NamedTempFile::new().map_err(Error::KernelWriteError)?;
+        io::copy(&mut image, &mut kernel).map_err(Error::KernelWriteError)?;
 
-        let mut kernel_config = NamedTempFile::new().map_err(|e| Error::KernelConfigWriteError(e))?;
-        io::copy(&mut image_config, &mut kernel_config).map_err(|e| Error::KernelConfigWriteError(e))?;
+        let mut kernel_config = NamedTempFile::new().map_err(Error::KernelConfigWriteError)?;
+        io::copy(&mut image_config, &mut kernel_config).map_err(Error::KernelConfigWriteError)?;
         let kernel_config_path = kernel_config
             .path()
             .as_os_str()
             .to_str()
-            .ok_or(Error::eif_identity_info(String::from("Failed to retrieve path to kernel config")))?
+            .ok_or(Error::eif_identity_info(String::from(
+                "Failed to retrieve path to kernel config",
+            )))?
             .to_string();
 
         // Unfortunately it's unclear if this information is required. Using defaults found in
@@ -242,7 +280,8 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
         let metadata = EifIdentityInfo {
             img_name: name,
             img_version: String::from("0.1"),
-            build_info: generate_build_info!(&kernel_config_path).map_err(|e| Error::eif_identity_info(e))?,
+            build_info: generate_build_info!(&kernel_config_path)
+                .map_err(Error::eif_identity_info)?,
             docker_info: json!(null),
             custom_info: json!(null),
         };
@@ -250,30 +289,24 @@ impl<R: Read + Seek + 'static, S: Read + Seek + 'static, T: Read + Seek + 'stati
         let hasher = Sha512::new();
         let flags = 0;
 
-        let mut eifbuilder = EifBuilder::new(
-            kernel.path(),
-            cmdline,
-            sign_info,
-            hasher,
-            flags,
-            metadata,
-            );
+        let mut eifbuilder =
+            EifBuilder::new(kernel.path(), cmdline, sign_info, hasher, flags, metadata);
         eifbuilder.add_ramdisk(initramfs.path());
-        let mut tmp = NamedTempFile::new().map_err(|e| Error::EifWriteError(e))?;
+        let mut tmp = NamedTempFile::new().map_err(Error::EifWriteError)?;
         eifbuilder.write_to(tmp.as_file_mut());
-        tmp.rewind().map_err(|e| Error::EifWriteError(e))?;
-        io::copy(&mut tmp, &mut output).map_err(|e| Error::EifWriteError(e))?;
+        tmp.rewind().map_err(Error::EifWriteError)?;
+        io::copy(&mut tmp, &mut output).map_err(Error::EifWriteError)?;
         Ok(FtxEif::new(output))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Builder, FtxEif};
-    use super::initramfs::{Builder as InitramfsBuilder};
+    use super::{initramfs, Builder, FtxEif};
     use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
-    use std::io::Cursor;
+    use fortanix_vme_initramfs::Initramfs;
+    use std::io::{Cursor, Seek};
     use std::ops::Deref;
     use test_resources::HELLO_WORLD;
 
@@ -281,11 +314,19 @@ mod tests {
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
-        let eif = Builder::new(name.clone(), Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM), Cursor::new(KERNEL), Cursor::new(KERNEL_CONFIG), CMDLINE)
-            .build(Cursor::new(Vec::new()))
-            .unwrap()
-            .into_inner()
-            .into_inner();
+        let eif = Builder::new(
+            name.clone(),
+            Cursor::new(HELLO_WORLD),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
+            Cursor::new(KERNEL),
+            Cursor::new(KERNEL_CONFIG),
+            CMDLINE,
+        )
+        .build(Cursor::new(Vec::new()))
+        .unwrap()
+        .into_inner()
+        .into_inner();
 
         // Parse eif
         let mut eif_reader = FtxEif::new(Cursor::new(&eif));
@@ -300,23 +341,29 @@ mod tests {
                 EifSectionType::EifSectionKernel => {
                     assert_eq!(KERNEL[..], content[..]);
                     assert_eq!(None, kernel.replace(content));
-                },
+                }
                 EifSectionType::EifSectionCmdline => {
-                    assert_eq!(CMDLINE.trim(), String::from_utf8(content.deref().clone()).unwrap());
+                    assert_eq!(
+                        CMDLINE.trim(),
+                        String::from_utf8(content.deref().clone()).unwrap()
+                    );
                     assert_eq!(None, cmdline.replace(content));
-                },
+                }
                 EifSectionType::EifSectionRamdisk => {
-                    let expected_initramfs = InitramfsBuilder::new(Cursor::new(HELLO_WORLD), Cursor::new(INIT), Cursor::new(NSM))
-                        .build(Cursor::new(Vec::new()))
-                        .unwrap()
-                        .into_inner()
-                        .into_inner();
+                    let expected_initramfs = initramfs::build(
+                        Cursor::new(HELLO_WORLD),
+                        Cursor::new(INIT),
+                        Cursor::new(NSM),
+                        Cursor::new(Vec::new()),
+                    )
+                    .unwrap()
+                    .into_inner();
                     assert_eq!(expected_initramfs, *content);
                     assert_eq!(None, initramfs.replace(content));
-                },
+                }
                 EifSectionType::EifSectionSignature => {
                     assert_eq!(None, sig.replace(content));
-                },
+                }
                 EifSectionType::EifSectionMetadata => {
                     assert_eq!(None, meta.replace(content));
                 }
@@ -324,7 +371,6 @@ mod tests {
         }
         assert_eq!(eif_reader.metadata().unwrap().img_name, name);
     }
-
 
     #[test]
     fn eif_creation_and_extraction() {
@@ -339,8 +385,33 @@ mod tests {
             .unwrap()
             .into_inner()
             .into_inner();
-
         let mut eif = FtxEif::new(Cursor::new(eif));
         assert_eq!(eif.application().unwrap(), HELLO_WORLD);
+    }
+
+    #[test]
+    fn initramfs_verification() {
+        let output = Cursor::new(Vec::new());
+        let initramfs = initramfs::build(
+            Cursor::new(HELLO_WORLD),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
+            output,
+        )
+        .unwrap()
+        .into_inner();
+        let initramfs = Initramfs::from(Cursor::new(initramfs));
+        let fs_tree = initramfs::build_fs_tree(
+            Cursor::new(HELLO_WORLD),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
+        );
+        let initramfs_blob = initramfs.into_inner().into_inner();
+        let mut cursor = Cursor::new(initramfs_blob);
+        Initramfs::from(&mut cursor).verify(fs_tree).unwrap();
+        cursor.rewind().unwrap();
+        Initramfs::from(&mut cursor)
+            .read_entry_by_path(initramfs::APP_PATH)
+            .unwrap();
     }
 }
