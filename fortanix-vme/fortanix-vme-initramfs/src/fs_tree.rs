@@ -29,7 +29,7 @@ const REL_TO_CUR: &str = "./";
 ///     .add_file("etc/config", Cursor::new(b"key=value\n"))
 ///     .build();
 /// ```
-#[derive(Debug, Eq, PartialEq, Default)]
+#[derive(Debug, Default)]
 pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
 
 type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
@@ -37,6 +37,10 @@ type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
 impl FsTree {
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    pub fn eq_metadata(&self, other: &Self) -> bool {
+        self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
     }
 
     pub fn add_directory(mut self, dirname: &str) -> FsTree {
@@ -141,7 +145,7 @@ impl FsTree {
 }
 
 #[derive(Derivative)]
-#[derivative(Debug, PartialEq)]
+#[derivative(Debug)]
 pub enum FsTreeEntry {
     Directory {
         path: PathBuf,
@@ -151,7 +155,6 @@ pub enum FsTreeEntry {
         path: PathBuf,
         mode: u32,
         #[derivative(Debug(format_with = "redact"))]
-        #[derivative(PartialEq = "ignore")]
         content: Box<dyn ReadSeek>,
     },
 }
@@ -159,8 +162,6 @@ pub enum FsTreeEntry {
 fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "...")
 }
-
-impl Eq for FsTreeEntry {}
 
 impl FsTreeEntry {
     pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
@@ -184,6 +185,28 @@ impl FsTreeEntry {
                 let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
                 Ok((builder, content))
             }
+        }
+    }
+
+    /// Compares the metadata of two entries while ignoring the file content.
+    ///
+    /// Returns `true` if both entries are of the same type (both files or both directories)
+    /// and their `path` and `mode` are identical.
+    pub fn eq_metadata(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                FsTreeEntry::Directory { path: p1, mode: m1 },
+                FsTreeEntry::Directory { path: p2, mode: m2 },
+            ) => p1 == p2 && m1 == m2,
+            (
+                FsTreeEntry::File {
+                    path: p1, mode: m1, ..
+                },
+                FsTreeEntry::File {
+                    path: p2, mode: m2, ..
+                },
+            ) => p1 == p2 && m1 == m2,
+            _ => false,
         }
     }
 }
@@ -236,7 +259,7 @@ mod tests {
             make_file("./init", Cursor::new(content.clone())),
             make_file("./nsm.ko", Cursor::new(content.clone())),
         ]);
-        assert_eq!(files, expected);
+        assert!(files.eq_metadata(&expected));
     }
 
     #[test]
@@ -251,7 +274,7 @@ mod tests {
             make_directory("./a/b/c/d/e/f"),
             make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
         ]);
-        assert_eq!(files, expected);
+        assert!(files.eq_metadata(&expected));
     }
 
     #[test]
@@ -266,13 +289,13 @@ mod tests {
             make_directory("./x"),
             make_directory("./x/z"),
         ]);
-        assert_eq!(files, expected);
+        assert!(files.eq_metadata(&expected));
     }
 
     #[test]
     fn test_partial_eq() {
         let entry1 = make_file("/tmp/a.txt", Cursor::new(vec![1, 2, 3, 4]));
         let entry2 = make_file("/tmp/a.txt", Cursor::new(vec![5, 6, 7, 8]));
-        assert_eq!(entry1, entry2);
+        assert!(entry1.eq_metadata(&entry2));
     }
 }
