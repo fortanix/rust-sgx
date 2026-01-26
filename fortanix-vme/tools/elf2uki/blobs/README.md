@@ -1,3 +1,4 @@
+<!-- TODO (RTE-739): clean up setup -->
 # Blobs
 
 These blobs have been vendored from the following locations
@@ -9,7 +10,6 @@ Use the shell script `build_init/update_init.sh` to place the generated `init` a
 ## ukify.py
 Vendored from [here](https://github.com/systemd/systemd/blob/b61aeeb315c2c9216acb2d960cd944b6ab8ef398/src/ukify/ukify.py)
 
-<!-- TODO: verify this and find a cleaner setup -->
 Installation steps
 
 ```shell

@@ -12,6 +12,7 @@ mod initramfs;
 const UKIFY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/blobs/ukify.py");
 const INIT_BLOB: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/blobs/init"));
 
+// TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
 #[derive(Parser, Debug)]
 #[command(name = "Elf2Uki")]
 #[command(version = crate_version!())]
