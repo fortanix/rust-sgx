@@ -6,7 +6,6 @@ use std::cmp;
 use std::str;
 use std::thread::{self, JoinHandle};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
-use std::marker::PhantomData;
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, Mutex, RwLock};
@@ -14,7 +13,8 @@ use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_
 use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
 
 mod platforms;
-pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
+pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
+pub use platforms::amdsev::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 
@@ -299,7 +299,6 @@ impl ClientConnection {
 
 pub struct EnclaveRunner<P: Platform> {
     servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
-    platform: PhantomData<P>,
 }
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
@@ -307,7 +306,6 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     pub fn new() -> Result<EnclaveRunner<P>, IoError> {
         Ok(EnclaveRunner {
             servers: Vec::new(),
-            platform: PhantomData,
         })
     }
 
