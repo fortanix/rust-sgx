@@ -1,16 +1,15 @@
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::path::Path;
 use std::process::Command;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{anyhow, Context as _, Result};
+use blobs::{FALLBACK_KERNEL_BLOB, INIT_BLOB};
 use clap::{crate_authors, crate_version, Args, Parser};
 use tempfile::NamedTempFile;
 
+mod blobs;
 mod initramfs;
-
-const UKIFY_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/blobs/ukify.py");
-const INIT_BLOB: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/blobs/init"));
 
 // TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
 #[derive(Parser, Debug)]
@@ -28,18 +27,16 @@ const INIT_BLOB: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/bl
 /// Under the following conditions:
 /// * the file `linuxx64.efi.stub` is available on the user's system (e.g. installed through `apt
 /// install system-boot-efi`) under the path specified below,
-/// * the kernel image is readable at `/tmp/kernel`
+/// * the user wants to use our vendored kernel image rather than their own
 /// * a statically compiled application is available at `/tmp/application`
-/// * blob artefacts are set up as specified by the blobs README (TODO: RTE-739)
+/// * the `ukify` binary is available in the user's `PATH`
 ///
 /// the following invocation works:
 ///
 /// ```sh
 /// elf2uki \
-/// --kernel /tmp/kernel \
 /// --app /tmp/application \
 /// --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
-/// --cmdline "console=ttyS0 earlyprintk=serial" \
 /// --output image-to-test.efi \
 /// ```
 struct Cli {
@@ -53,22 +50,23 @@ struct Cli {
         value_name = "FILE"
     )]
     output_path: Option<PathBuf>,
+
+    #[arg(
+        long = "kernel",
+        help = "Path to the kernel image file, defaulting to the vendored kernel blob if not provided",
+        value_name = "FILE"
+    )]
+    kernel_image_path: Option<PathBuf>,
 }
 
 struct ValidatedCli {
     non_defaulted_args: NonDefaultedArgs,
     output_path: PathBuf,
+    kernel_image_source: KernelImageSource,
 }
 
 #[derive(Args, Debug)]
 struct NonDefaultedArgs {
-    #[arg(
-        long = "kernel",
-        help = "Path to the kernel image file",
-        value_name = "FILE"
-    )]
-    kernel_image_path: PathBuf,
-
     #[arg(
         long = "app",
         help = "Path to the application elf file",
@@ -81,7 +79,7 @@ struct NonDefaultedArgs {
         help = "Path to the UEFI stub file",
         value_name = "FILE"
     )]
-    // This is a required argument because `ukify` uses '/usr/lib/systemd/boot/efi/linux{opts.efi_arch}.efi.stub' by default, but this is not behavior we want to fall back on
+    // This is a required argument because `ukify` uses '/usr/lib/systemd/boot/efi/linux{opts.efi_arch}.efi.stub' by default, but this is not necessarily the behavior we want to fall back on
     uefi_stub_path: PathBuf,
 
     #[arg(
@@ -89,7 +87,21 @@ struct NonDefaultedArgs {
         help = "String to pass as the kernel command line",
         value_name = "STRING"
     )]
-    kernel_cmdline: Option<PathBuf>,
+    kernel_cmdline: Option<String>,
+}
+
+enum KernelImageSource {
+    FromPath(PathBuf),
+    FromFallBack(NamedTempFile),
+}
+
+impl KernelImageSource {
+    fn path(&self) -> &Path {
+        match self {
+            KernelImageSource::FromPath(path_buf) => &path_buf,
+            KernelImageSource::FromFallBack(named_temp_file) => named_temp_file.path(),
+        }
+    }
 }
 
 pub fn open_file(path: &Path) -> Result<File> {
@@ -99,22 +111,42 @@ pub fn open_file(path: &Path) -> Result<File> {
 impl Cli {
     /// Validate the provided values, filling in defaults where necessary
     fn validate(self) -> Result<ValidatedCli> {
-        let output_path = self
-            .output_path
-            .unwrap_or_else(|| self.non_defaulted_args.kernel_image_path.join(".efi"));
+        let Cli {
+            output_path,
+            non_defaulted_args,
+            kernel_image_path,
+        } = self;
+        let kernel_image_source = match kernel_image_path {
+            Some(path) => KernelImageSource::FromPath(path),
+            None =>
+            // Unfortunately `ukify` receives i"failed to write backup kernel image to file"s input as a file
+            {
+                KernelImageSource::FromFallBack(
+                    NamedTempFile::new()
+                        .and_then(|mut tempfile| {
+                            tempfile.write_all(FALLBACK_KERNEL_BLOB).map(|_| tempfile)
+                        })
+                        .and_then(|mut tempfile| tempfile.flush().map(|_| tempfile))
+                        .context("failed to write backup kernel image to file")?,
+                )
+            }
+        };
 
         // Check susceptible to TOCTOU, but try to error out early and clearly if files
         // cannot be opened
         for path in [
-            &self.non_defaulted_args.kernel_image_path,
-            &self.non_defaulted_args.application_elf_path,
-            &self.non_defaulted_args.uefi_stub_path,
+            kernel_image_source.path(),
+            &non_defaulted_args.application_elf_path,
+            &non_defaulted_args.uefi_stub_path,
         ] {
             let _ = open_file(path)?;
         }
 
+        let output_path = output_path.unwrap_or_else(|| kernel_image_source.path().join(".efi"));
+
         Ok(ValidatedCli {
-            non_defaulted_args: self.non_defaulted_args,
+            non_defaulted_args,
+            kernel_image_source,
             output_path,
         })
     }
@@ -122,11 +154,12 @@ impl Cli {
 
 /// Run the `ukify` tool after validation of the passed-in arguments
 fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
-    let mut command = Command::new(UKIFY_PATH);
+    const UKIFY_EXECUTABLE: &str = "ukify";
+    let mut command = Command::new(UKIFY_EXECUTABLE);
     command
         .arg("build")
         .arg("--linux")
-        .arg(&cli.non_defaulted_args.kernel_image_path)
+        .arg(&cli.kernel_image_source.path())
         .arg("--initrd")
         .arg(initramfs_path)
         .arg("--stub")
@@ -138,11 +171,15 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
         command.arg("--cmdline").arg(cmdline);
     }
 
-    if let Some(cmdline) = &cli.non_defaulted_args.kernel_cmdline {
-        command.arg("--cmdline").arg(cmdline);
-    }
-
-    let output = command.output().context("spawning ukify process failed")?;
+    let output = command.output().map_err(|e| {
+        let error_kind = e.kind();
+        anyhow::Error::new(e).context(match error_kind {
+            std::io::ErrorKind::NotFound => {
+                "`ukify` tool not found in PATH; make it available or install `systemd-ukify`"
+            }
+            _ => "spawning ukify process failed",
+        })
+    })?;
     if !output.status.success() {
         return Err(anyhow!(
             "ukify exited with non-zero status code and stdout : {} \n\n sterr : {}",
