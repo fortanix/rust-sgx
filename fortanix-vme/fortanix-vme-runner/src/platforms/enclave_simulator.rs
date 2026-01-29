@@ -3,14 +3,14 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use super::Platform;
 
-pub struct Simulator;
-pub struct SimulatorArgs {
+pub struct EnclaveSimulator;
+pub struct EnclaveSimulatorArgs {
     enclave_path: PathBuf,
 }
 
-impl SimulatorArgs {
+impl EnclaveSimulatorArgs {
     pub fn new(enclave_path: PathBuf) -> Self {
-        SimulatorArgs {
+        EnclaveSimulatorArgs {
             enclave_path
         }
     }
@@ -30,8 +30,8 @@ impl Drop for RunningSimulator {
     }
 }
 
-impl Platform for Simulator {
-    type RunArgs = SimulatorArgs;
+impl Platform for EnclaveSimulator {
+    type RunArgs = EnclaveSimulatorArgs;
     type EnclaveDescriptor = RunningSimulator;
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, VmeError> {

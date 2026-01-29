@@ -1716,6 +1716,7 @@ dependencies = [
  "rustc-std-workspace-core",
  "serde",
  "serde_cbor",
+ "thiserror",
  "vsock 0.2.4",
 ]
 
