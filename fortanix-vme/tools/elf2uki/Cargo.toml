@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["cargo", "derive"] }
+confidential-vm-blobs = { path = "../confidential-vm-blobs/" }
 env_logger = "0.11.8"
 fortanix-vme-initramfs = { path = "../../fortanix-vme-initramfs" }
 log = "0.4.29"

@@ -14,6 +14,8 @@ members = [
     "fortanix-vme/fortanix-vme-initramfs",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/fortanix-vme-tools",
+    "fortanix-vme/tools/confidential-vm-blobs",
+    "fortanix-vme/tools/elf2uki",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",
@@ -47,7 +49,6 @@ exclude = [
     "examples/usercall-extension/app",
     "examples/usercall-extension/runner",
     "intel-sgx/sgxs-loaders/tests/driver-crawler",
-    "fortanix-vme/tools/elf2uki",
 ]
 resolver = "2"
 
