@@ -4,11 +4,10 @@ use std::process::Command;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{anyhow, Context as _, Result};
-use blobs::{FALLBACK_KERNEL_BLOB, INIT_BLOB};
 use clap::{crate_authors, crate_version, Args, Parser};
+use confidential_vm_blobs::{EFI_BOOT_STUB, INIT, KERNEL};
 use tempfile::NamedTempFile;
 
-mod blobs;
 mod initramfs;
 
 // TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
@@ -17,19 +16,16 @@ mod initramfs;
 /// # Example
 ///
 /// Under the following conditions:
-/// * the file `linuxx64.efi.stub` is available on the user's system (e.g. installed through `apt
-/// install system-boot-efi`) under the path specified below,
-/// * the user wants to use our vendored kernel image rather than their own
+/// * the user wants to use our vendored kernel image and efi boot stub rather than their own
 /// * a statically compiled application is available at `/tmp/application`
 /// * the `ukify` binary is available in the user's `PATH`
 ///
-/// the following invocation works:
+/// the following invocation will create a UKI image at the specified output path:
 ///
 /// ```sh
 /// elf2uki \
 /// --app /tmp/application \
-/// --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
-/// --output image-to-test.efi \
+/// --output image-to-test.efi
 /// ```
 #[derive(Parser, Debug)]
 #[command(name = "Elf2Uki")]
@@ -57,12 +53,20 @@ struct Cli {
         value_name = "FILE"
     )]
     kernel_image_path: Option<PathBuf>,
+
+    #[arg(
+        long = "efi-stub",
+        help = "Path to the EFI boot stub file, defaulting to the vendored boot stub blob if not provided",
+        value_name = "FILE"
+    )]
+    efi_stub_path: Option<PathBuf>,
 }
 
 struct ValidatedCli {
     non_defaulted_args: NonDefaultedArgs,
     output_path: PathBuf,
-    kernel_image_source: KernelImageSource,
+    kernel_image: MaybeVendoredImage,
+    efi_stub_image: MaybeVendoredImage,
 }
 
 #[derive(Args, Debug)]
@@ -75,14 +79,6 @@ struct NonDefaultedArgs {
     application_elf_path: PathBuf,
 
     #[arg(
-        long = "uefi-stub",
-        help = "Path to the UEFI stub file",
-        value_name = "FILE"
-    )]
-    // This is a required argument because `ukify` uses '/usr/lib/systemd/boot/efi/linux{opts.efi_arch}.efi.stub' by default, but this is not necessarily the behavior we want to fall back on
-    uefi_stub_path: PathBuf,
-
-    #[arg(
         long = "cmdline",
         help = "String to pass as the kernel command line",
         value_name = "STRING"
@@ -90,17 +86,34 @@ struct NonDefaultedArgs {
     kernel_cmdline: Option<String>,
 }
 
-enum KernelImageSource {
-    FromPath(PathBuf),
-    FromFallBack(NamedTempFile),
+enum MaybeVendoredImage {
+    External(PathBuf),
+    /// Unfortunately `ukify` receives its input as a file, so we store fallback blobs in temporary named
+    /// files before passing them
+    Vendored(NamedTempFile),
 }
 
-impl KernelImageSource {
+impl MaybeVendoredImage {
     fn path(&self) -> &Path {
         match self {
-            KernelImageSource::FromPath(path_buf) => path_buf,
-            KernelImageSource::FromFallBack(named_temp_file) => named_temp_file.path(),
+            MaybeVendoredImage::External(path_buf) => path_buf,
+            MaybeVendoredImage::Vendored(named_temp_file) => named_temp_file.path(),
         }
+    }
+
+    /// Load a vendored blob to a temp file and create a instance of `Self` from that
+    fn from_vendored(blob: &[u8]) -> Result<Self> {
+        let temp_file = NamedTempFile::new()
+            .and_then(|mut tempfile| tempfile.write_all(blob).map(|_| tempfile))
+            .and_then(|mut tempfile| tempfile.flush().map(|_| tempfile))
+            .context("failed to write backup kernel image to file")?;
+        Ok(MaybeVendoredImage::Vendored(temp_file))
+    }
+}
+
+impl From<PathBuf> for MaybeVendoredImage {
+    fn from(value: PathBuf) -> Self {
+        MaybeVendoredImage::External(value)
     }
 }
 
@@ -115,39 +128,36 @@ impl Cli {
             output_path,
             non_defaulted_args,
             kernel_image_path,
+            efi_stub_path,
         } = self;
-        let kernel_image_source = match kernel_image_path {
-            Some(path) => KernelImageSource::FromPath(path),
-            None =>
-            // Unfortunately `ukify` receives i"failed to write backup kernel image to file"s input as a file
-            {
-                KernelImageSource::FromFallBack(
-                    NamedTempFile::new()
-                        .and_then(|mut tempfile| {
-                            tempfile.write_all(FALLBACK_KERNEL_BLOB).map(|_| tempfile)
-                        })
-                        .and_then(|mut tempfile| tempfile.flush().map(|_| tempfile))
-                        .context("failed to write backup kernel image to file")?,
-                )
-            }
+
+        let kernel_image = match kernel_image_path {
+            Some(path) => MaybeVendoredImage::from(path),
+            None => MaybeVendoredImage::from_vendored(KERNEL)?,
+        };
+
+        let efi_stub_image = match efi_stub_path {
+            Some(path) => MaybeVendoredImage::from(path),
+            None => MaybeVendoredImage::from_vendored(EFI_BOOT_STUB)?,
         };
 
         // Check susceptible to TOCTOU, but try to error out early and clearly if files
         // cannot be opened
         for path in [
-            kernel_image_source.path(),
+            kernel_image.path(),
             &non_defaulted_args.application_elf_path,
-            &non_defaulted_args.uefi_stub_path,
+            efi_stub_image.path(),
         ] {
             let _ = open_file(path)?;
         }
 
-        let output_path = output_path.unwrap_or_else(|| kernel_image_source.path().join(".efi"));
+        let output_path = output_path.unwrap_or_else(|| kernel_image.path().join(".efi"));
 
         Ok(ValidatedCli {
             non_defaulted_args,
-            kernel_image_source,
             output_path,
+            kernel_image,
+            efi_stub_image,
         })
     }
 }
@@ -159,11 +169,11 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
     command
         .arg("build")
         .arg("--linux")
-        .arg(cli.kernel_image_source.path())
+        .arg(cli.kernel_image.path())
         .arg("--initrd")
         .arg(initramfs_path)
         .arg("--stub")
-        .arg(&cli.non_defaulted_args.uefi_stub_path)
+        .arg(&cli.efi_stub_image.path())
         .arg("--output")
         .arg(&cli.output_path);
 
@@ -195,7 +205,7 @@ fn main() -> Result<()> {
     let validated_args = args.validate()?;
 
     let application_elf = open_file(&validated_args.non_defaulted_args.application_elf_path)?;
-    let init = Cursor::new(INIT_BLOB);
+    let init = Cursor::new(INIT);
 
     // Unfortunately `aws_nitro_enclaves_image_format::EifBuilder` forces us to have data in
     // files.
