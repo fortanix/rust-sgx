@@ -4,8 +4,8 @@ use std::process::Command;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{anyhow, Context as _, Result};
-use clap::{crate_authors, crate_version, Args, Parser};
-use confidential_vm_blobs::{EFI_BOOT_STUB, INIT, KERNEL, maybe_vendored::MaybeVendoredImage};
+use clap::{Args, Parser};
+use confidential_vm_blobs::{maybe_vendored::MaybeVendoredImage, EFI_BOOT_STUB, INIT, KERNEL};
 use tempfile::NamedTempFile;
 
 mod initramfs;
@@ -29,8 +29,7 @@ mod initramfs;
 /// ```
 #[derive(Parser, Debug)]
 #[command(name = "Elf2Uki")]
-#[command(version = crate_version!())]
-#[command(author = crate_authors!())]
+#[command(version, author)]
 #[command(
     about = "Assemble UKI files from their constituents",
     long_about = "Receive paths to the different building blocks of a UKI file as input, and output the resulting UKI file"
@@ -85,7 +84,6 @@ struct NonDefaultedArgs {
     )]
     kernel_cmdline: Option<String>,
 }
-
 
 pub fn open_file(path: &Path) -> Result<File> {
     File::open(path).with_context(|| format!("failed to open file at path {}", path.display()))
