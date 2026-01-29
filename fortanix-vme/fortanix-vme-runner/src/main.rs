@@ -1,20 +1,22 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
+use confidential_vm_blobs::maybe_vendored::MaybeVendoredImage;
+use confidential_vm_blobs::{AMD_SEV_OVMF, VANILLA_OVMF};
 use fortanix_vme_abi::SERVER_PORT;
 use fortanix_vme_runner::{
-    read_eif_with_metadata, EnclaveRunner, NitroEnclaves, Platform, ReadEifResult, Simulator,
-    SimulatorArgs,
+    read_eif_with_metadata, AmdSevVm, EnclaveRunner, EnclaveSimulator, EnclaveSimulatorArgs,
+    NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
 };
 use log::info;
-use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroCliArgs;
+use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
 use std::fs::File;
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "Run the given enclave image file", long_about = None)]
 struct Cli {
     #[command(flatten)]
     common_args: CommonArgs,
@@ -33,21 +35,24 @@ struct CommonArgs {
         long,
         help = "Path to the enclave source file - an EIF image in the case of AWS nitro, and a UKI image otherwise"
     )]
-    enclave_file: String,
+    enclave_file: PathBuf,
+
+    // TODO(RTE-745): the `cpu_count` is not currently being used for AMD-SEV
+    #[arg(
+        short,
+        long,
+        help = "The number of (v)CPUs that should be allocated to the enclave (2 by default)",
+        default_value_t = 2
+    )]
+    cpu_count: u32,
 
     #[arg(
         short,
         long,
-        help = "The number of CPUs that should be allocated to the enclave. Cannot be provided when the `--simulate` flag is provided."
+        help = "The amount of memory that should be allcated to the enclave (in MiB)",
+        default_value_t = 512
     )]
-    cpu_count: Option<u32>,
-
-    #[arg(
-        short,
-        long,
-        help = "The amount of memory that should be allcated to the enclave (in MiB). Cannot be provided when the `--simulate` flag is provided."
-    )]
-    memory: Option<usize>,
+    memory: u64,
 
     #[arg(
         short,
@@ -55,16 +60,26 @@ struct CommonArgs {
         help = "Run enclave on simulated version of the target platform"
     )]
     simulate: bool,
+
+    #[arg(last = true)]
+    enclave_args: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
+    AmdSevSnp(AmdSevSnpArgs),
+    // No use-case-specific arguments for AWS for now
     Nitro(NitroArgs),
 }
 
 struct NitroCli {
     common_args: CommonArgs,
     nitro_args: NitroArgs,
+}
+
+struct AmdSevCli {
+    common_args: CommonArgs,
+    amd_sev_snp_args: AmdSevSnpArgs,
 }
 
 #[derive(Args, Debug)]
@@ -77,19 +92,33 @@ struct NitroArgs {
     args: Vec<String>,
 }
 
-impl NitroCli {
-    fn to_nitro_cli_args(&self) -> Result<NitroCliArgs> {
-        let cpu_count = self
-            .common_args
-            .cpu_count
-            .ok_or(anyhow!("missing `cpu_count` argument"))?;
-        let memory_mib = self
-            .common_args
-            .memory
-            .ok_or(anyhow!("missing `memory` argument"))? as u64;
+#[derive(Clone, Debug, Args)]
+struct AmdSevSnpArgs {
+    #[arg(long = "firmware-image", help = "Path to the firmware image file")]
+    firmware_image_path: Option<PathBuf>,
 
-        Ok(NitroCliArgs {
-            eif_path: self.common_args.enclave_file.clone(),
+    #[arg(
+        long,
+        help = "Name for the enclave in the runner",
+        default_value = "FortanixVm"
+    )]
+    enclave_name: String,
+}
+
+impl NitroCli {
+    fn to_nitro_cli_run_args(&self) -> Result<NitroRunArgs> {
+        let cpu_count = self.common_args.cpu_count;
+        let memory_mib = self.common_args.memory;
+        let eif_path = self
+            .common_args
+            .enclave_file
+            .clone()
+            .into_os_string()
+            .into_string()
+            .map_err(|_| anyhow!("non-string EIF path provided"))?;
+
+        Ok(NitroRunArgs {
+            eif_path,
             enclave_cid: None,
             memory_mib,
             cpu_ids: None,
@@ -97,6 +126,27 @@ impl NitroCli {
             cpu_count: Some(cpu_count),
             enclave_name: None,
             attach_console: true,
+        })
+    }
+}
+
+impl AmdSevCli {
+    fn to_vm_run_args(&self) -> Result<VmRunArgs> {
+        let cpu_count = self.common_args.cpu_count;
+        let memory_mib = self.common_args.memory;
+
+        Ok(VmRunArgs {
+            uki_path: self.common_args.enclave_file.clone(),
+            firmware_image: match &self.amd_sev_snp_args.firmware_image_path {
+                Some(path) => MaybeVendoredImage::from(path.clone()),
+                None => MaybeVendoredImage::from_vendored(if self.common_args.simulate {
+                    VANILLA_OVMF
+                } else {
+                    AMD_SEV_OVMF
+                })?,
+            },
+            memory_mib,
+            cpu_count,
         })
     }
 }
@@ -109,6 +159,10 @@ fn main() -> Result<()> {
 
     let common_args = cli.common_args;
     match cli.command {
+        Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevCli {
+            common_args,
+            amd_sev_snp_args,
+        }),
         Commands::Nitro(nitro_args) => {
             if !common_args.simulate && nitro_args.elf {
                 Err(Cli::command().error(
@@ -124,17 +178,34 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
-    let NitroCli {
+fn run_amd_sev_enclave(amd_sev_cli: AmdSevCli) -> Result<()> {
+    let run_args = amd_sev_cli.to_vm_run_args()?;
+    let AmdSevCli {
         common_args,
-        nitro_args,
-    } = &nitro_cli;
+        amd_sev_snp_args,
+    } = amd_sev_cli;
     if common_args.simulate {
+        run_to_completion::<VmSimulator>(
+            run_args,
+            amd_sev_snp_args.enclave_name,
+            common_args.enclave_args,
+        )
+    } else {
+        run_to_completion::<AmdSevVm>(
+            run_args,
+            amd_sev_snp_args.enclave_name,
+            common_args.enclave_args,
+        )
+    }
+}
+
+fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
+    if nitro_cli.common_args.simulate {
         let elf_path: PathBuf;
         let img_name;
 
-        if nitro_args.elf {
-            elf_path = common_args.enclave_file.into();
+        if nitro_cli.nitro_args.elf {
+            elf_path = nitro_cli.common_args.enclave_file;
             img_name = elf_path
                 .file_name()
                 .unwrap_or_default()
@@ -142,7 +213,7 @@ fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
                 .to_string();
         } else {
             let ReadEifResult { mut eif, metadata } =
-                read_eif_with_metadata(&common_args.enclave_file)
+                read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
                     .context("Failed to read EIF file")?;
 
             //TODO also extract env/cmd file and make sure the application is executed with this
@@ -154,27 +225,39 @@ fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
 
             info!("Simulating enclave as {}", elf_path.display(),);
         }
-        let mut runner: EnclaveRunner<Simulator> = create_runner();
-        let args = SimulatorArgs::new(elf_path);
-        runner
-            .run_enclave(args, img_name, nitro_args.args)
-            .context("Failed to run enclave")?;
-        runner.wait();
+
+        let run_args = EnclaveSimulatorArgs::new(elf_path);
+        run_to_completion::<EnclaveSimulator>(
+            run_args,
+            img_name,
+            nitro_cli.common_args.enclave_args,
+        )
     } else {
-        let metadata = read_eif_with_metadata(&common_args.enclave_file)
+        let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
             .context("Failed to read EIF file")?
             .metadata;
-        let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
-        let args = nitro_cli
-            .to_nitro_cli_args()
-
+        let run_args = nitro_cli
+            .to_nitro_cli_run_args()
             .context("Failed to parse arguments")?;
-        runner
-            .run_enclave(args, metadata.img_name, nitro_cli.nitro_args.args)
-            .context("Failed to run enclave")?;
-        runner.wait();
-    };
 
+        run_to_completion::<NitroEnclaves>(
+            run_args,
+            metadata.img_name,
+            nitro_cli.common_args.enclave_args,
+        )
+    }
+}
+
+fn run_to_completion<P: Platform + 'static>(
+    run_args: P::RunArgs,
+    enclave_name: String,
+    enclave_args: Vec<String>,
+) -> Result<(), anyhow::Error> {
+    let mut runner = create_runner::<P>()?;
+    runner
+        .run_enclave(run_args, enclave_name, enclave_args)
+        .context("failed to run enclave")?;
+    runner.wait();
     Ok(())
 }
 
@@ -201,12 +284,17 @@ fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {
     Ok(path)
 }
 
-fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
-    match EnclaveRunner::new() {
-        Ok(runner) => runner,
-        Err(e) if e.kind() == IoErrorKind::AddrInUse => {
-            panic!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e);
+fn create_runner<P: Platform + 'static>() -> Result<EnclaveRunner<P>> {
+    EnclaveRunner::new().map_err(|e| {
+        let error_kind = e.kind();
+        let wrapped_error = anyhow::Error::new(e);
+        if error_kind == IoErrorKind::AddrInUse {
+            wrapped_error.context(format!(
+                "server failed. Do you already have a runner running on vsock port {}?",
+                SERVER_PORT,
+            ))
+        } else {
+            wrapped_error.context("server failed")
         }
-        Err(e) => panic!("Server failed. Error: {:?}", e),
-    }
+    })
 }

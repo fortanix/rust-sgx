@@ -8,6 +8,7 @@ authors = ["Fortanix, Inc."]
 anyhow = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 clap-verbosity-flag = "3.0.3"
+confidential-vm-blobs = { path = "../tools/confidential-vm-blobs/" }
 env_logger = "0.9.0"
 fnv = "1.0.7"
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }

@@ -6,6 +6,7 @@ use serde_json::json;
 use sha2::{Digest, Sha512};
 use std::io::{self, Cursor, ErrorKind, Read, Seek, Write};
 use std::ops::Deref;
+use std::path::Path;
 use std::rc::Rc;
 use tempfile::{self, NamedTempFile};
 
@@ -13,7 +14,7 @@ mod error;
 mod initramfs;
 
 pub mod eif_types {
-    pub use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader};
+    pub use aws_nitro_enclaves_image_format::defs::{EifHeader, EifIdentityInfo, EifSectionHeader};
 }
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
 pub use error::Error;
@@ -308,7 +309,9 @@ pub struct ReadEifResult<T> {
     pub metadata: EifIdentityInfo,
 }
 
-pub fn read_eif_with_metadata(enclave_file_path: &str) -> Result<ReadEifResult<impl Read + Seek>, Error> {
+pub fn read_eif_with_metadata<P: AsRef<Path>>(
+    enclave_file_path: P,
+) -> Result<ReadEifResult<impl Read + Seek>, Error> {
     let f = std::fs::File::open(enclave_file_path).map_err(Error::EifWriteError)?;
     let mut eif = FtxEif::new(io::BufReader::new(f));
     let metadata = eif.metadata()?;
