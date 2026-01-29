@@ -12,14 +12,6 @@ mod blobs;
 mod initramfs;
 
 // TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
-#[derive(Parser, Debug)]
-#[command(name = "Elf2Uki")]
-#[command(version = crate_version!())]
-#[command(author = crate_authors!())]
-#[command(
-    about = "Assemble UKI files from their constituents",
-    long_about = "Receive paths to the different building blocks of a UKI file as input, and output the resulting UKI file"
-)]
 /// Entry point for CLI application.
 ///
 /// # Example
@@ -39,6 +31,14 @@ mod initramfs;
 /// --uefi-stub /usr/lib/systemd/boot/efi/linuxx64.efi.stub \
 /// --output image-to-test.efi \
 /// ```
+#[derive(Parser, Debug)]
+#[command(name = "Elf2Uki")]
+#[command(version = crate_version!())]
+#[command(author = crate_authors!())]
+#[command(
+    about = "Assemble UKI files from their constituents",
+    long_about = "Receive paths to the different building blocks of a UKI file as input, and output the resulting UKI file"
+)]
 struct Cli {
     #[command(flatten)]
     non_defaulted_args: NonDefaultedArgs,
@@ -98,7 +98,7 @@ enum KernelImageSource {
 impl KernelImageSource {
     fn path(&self) -> &Path {
         match self {
-            KernelImageSource::FromPath(path_buf) => &path_buf,
+            KernelImageSource::FromPath(path_buf) => path_buf,
             KernelImageSource::FromFallBack(named_temp_file) => named_temp_file.path(),
         }
     }
@@ -159,7 +159,7 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
     command
         .arg("build")
         .arg("--linux")
-        .arg(&cli.kernel_image_source.path())
+        .arg(cli.kernel_image_source.path())
         .arg("--initrd")
         .arg(initramfs_path)
         .arg("--stub")
