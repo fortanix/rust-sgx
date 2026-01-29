@@ -42,7 +42,7 @@ fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
     let memory_size = format!("{}M", memory_mib);
 
     // TODO (RTE-740): id-block
-    let mut command = Command::new("sudo"); // TODO: look at "sudo" - necessary for `/dev/sev`?
+    let mut command = Command::new("sudo"); // TODO: look at "sudo" - needed for amd + `/dev/sev`?
     command.arg("qemu-system-x86_64");
 
     // General machine setup

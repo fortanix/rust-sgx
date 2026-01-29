@@ -60,21 +60,12 @@ struct CommonArgs {
         help = "Run enclave on simulated version of the target platform"
     )]
     simulate: bool,
-
-    #[arg(last = true)]
-    enclave_args: Vec<String>,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
     AmdSevSnp(AmdSevSnpArgs),
-    // No use-case-specific arguments for AWS for now
-    Nitro(NitroArgs),
-}
-
-struct NitroCli {
-    common_args: CommonArgs,
-    nitro_args: NitroArgs,
+    AwsNitro(AwsNitroArgs),
 }
 
 struct AmdSevCli {
@@ -82,14 +73,9 @@ struct AmdSevCli {
     amd_sev_snp_args: AmdSevSnpArgs,
 }
 
-#[derive(Args, Debug)]
-struct NitroArgs {
-    /// `ENCLAVE_FILE` points to an ELF, not an EIF (only available in simulation mode)
-    #[arg(long)]
-    elf: bool,
-
-    #[arg(last = true)]
-    args: Vec<String>,
+struct AwsNitroCli {
+    common_args: CommonArgs,
+    aws_nitro_args: AwsNitroArgs,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -103,9 +89,22 @@ struct AmdSevSnpArgs {
         default_value = "FortanixVm"
     )]
     enclave_name: String,
+
+    #[arg(last = true)]
+    enclave_args: Vec<String>,
 }
 
-impl NitroCli {
+#[derive(Clone, Debug, Args)]
+struct AwsNitroArgs {
+    /// `ENCLAVE_FILE` points to an ELF, not an EIF (only available in simulation mode)
+    #[arg(long)]
+    elf: bool,
+
+    #[arg(last = true)]
+    enclave_args: Vec<String>,
+}
+
+impl AwsNitroCli {
     fn to_nitro_cli_run_args(&self) -> Result<NitroRunArgs> {
         let cpu_count = self.common_args.cpu_count;
         let memory_mib = self.common_args.memory;
@@ -163,16 +162,16 @@ fn main() -> Result<()> {
             common_args,
             amd_sev_snp_args,
         }),
-        Commands::Nitro(nitro_args) => {
-            if !common_args.simulate && nitro_args.elf {
+        Commands::AwsNitro(aws_nitro_args) => {
+            if !common_args.simulate && aws_nitro_args.elf {
                 Err(Cli::command().error(
                     clap::error::ErrorKind::MissingRequiredArgument,
                     "elf argument can only be passed in simulate mode",
                 ))?
             }
-            run_nitro_enclave(NitroCli {
+            run_nitro_enclave(AwsNitroCli {
                 common_args,
-                nitro_args,
+                aws_nitro_args,
             })
         }
     }
@@ -188,23 +187,23 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevCli) -> Result<()> {
         run_to_completion::<VmSimulator>(
             run_args,
             amd_sev_snp_args.enclave_name,
-            common_args.enclave_args,
+            amd_sev_snp_args.enclave_args,
         )
     } else {
         run_to_completion::<AmdSevVm>(
             run_args,
             amd_sev_snp_args.enclave_name,
-            common_args.enclave_args,
+            amd_sev_snp_args.enclave_args,
         )
     }
 }
 
-fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
+fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
     if nitro_cli.common_args.simulate {
         let elf_path: PathBuf;
         let img_name;
 
-        if nitro_cli.nitro_args.elf {
+        if nitro_cli.aws_nitro_args.elf {
             elf_path = nitro_cli.common_args.enclave_file;
             img_name = elf_path
                 .file_name()
@@ -230,7 +229,7 @@ fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
         run_to_completion::<EnclaveSimulator>(
             run_args,
             img_name,
-            nitro_cli.common_args.enclave_args,
+            nitro_cli.aws_nitro_args.enclave_args,
         )
     } else {
         let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
@@ -243,7 +242,7 @@ fn run_nitro_enclave(nitro_cli: NitroCli) -> Result<()> {
         run_to_completion::<NitroEnclaves>(
             run_args,
             metadata.img_name,
-            nitro_cli.common_args.enclave_args,
+            nitro_cli.aws_nitro_args.enclave_args,
         )
     }
 }
