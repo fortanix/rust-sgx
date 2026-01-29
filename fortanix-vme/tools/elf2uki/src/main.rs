@@ -1,11 +1,11 @@
-use std::io::{Cursor, Write};
+use std::io::Cursor;
 use std::path::Path;
 use std::process::Command;
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{anyhow, Context as _, Result};
 use clap::{crate_authors, crate_version, Args, Parser};
-use confidential_vm_blobs::{EFI_BOOT_STUB, INIT, KERNEL};
+use confidential_vm_blobs::{EFI_BOOT_STUB, INIT, KERNEL, maybe_vendored::MaybeVendoredImage};
 use tempfile::NamedTempFile;
 
 mod initramfs;
@@ -86,36 +86,6 @@ struct NonDefaultedArgs {
     kernel_cmdline: Option<String>,
 }
 
-enum MaybeVendoredImage {
-    External(PathBuf),
-    /// Unfortunately `ukify` receives its input as a file, so we store fallback blobs in temporary named
-    /// files before passing them
-    Vendored(NamedTempFile),
-}
-
-impl MaybeVendoredImage {
-    fn path(&self) -> &Path {
-        match self {
-            MaybeVendoredImage::External(path_buf) => path_buf,
-            MaybeVendoredImage::Vendored(named_temp_file) => named_temp_file.path(),
-        }
-    }
-
-    /// Load a vendored blob to a temp file and create a instance of `Self` from that
-    fn from_vendored(blob: &[u8]) -> Result<Self> {
-        let temp_file = NamedTempFile::new()
-            .and_then(|mut tempfile| tempfile.write_all(blob).map(|_| tempfile))
-            .and_then(|mut tempfile| tempfile.flush().map(|_| tempfile))
-            .context("failed to write backup kernel image to file")?;
-        Ok(MaybeVendoredImage::Vendored(temp_file))
-    }
-}
-
-impl From<PathBuf> for MaybeVendoredImage {
-    fn from(value: PathBuf) -> Self {
-        MaybeVendoredImage::External(value)
-    }
-}
 
 pub fn open_file(path: &Path) -> Result<File> {
     File::open(path).with_context(|| format!("failed to open file at path {}", path.display()))
@@ -207,8 +177,7 @@ fn main() -> Result<()> {
     let application_elf = open_file(&validated_args.non_defaulted_args.application_elf_path)?;
     let init = Cursor::new(INIT);
 
-    // Unfortunately `aws_nitro_enclaves_image_format::EifBuilder` forces us to have data in
-    // files.
+    // Unfortunately `ukify` forces us to have data in files.
     let mut initramfs_file = NamedTempFile::new().context("failed to create initramfs file")?;
     initramfs_file = initramfs::build(application_elf, init, initramfs_file)
         .context("failed to create initramfs")?;

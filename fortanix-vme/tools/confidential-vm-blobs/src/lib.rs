@@ -1,4 +1,5 @@
 // TODO: cannot place in lfs - decide on final versions, store these somewhere and download them
+pub mod maybe_vendored;
 
 pub const INIT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/blobs/init"));
 

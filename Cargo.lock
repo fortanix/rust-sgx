@@ -1006,6 +1006,10 @@ dependencies = [
 [[package]]
 name = "confidential-vm-blobs"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+]
 
 [[package]]
 name = "core-foundation"
