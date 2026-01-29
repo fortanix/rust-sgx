@@ -1,10 +1,12 @@
 use super::VmeError;
 
+pub(crate) mod amdsev;
+
 mod nitro;
 pub use nitro::NitroEnclaves;
 
-mod simulator;
-pub use simulator::{Simulator, SimulatorArgs};
+mod enclave_simulator;
+pub use enclave_simulator::{EnclaveSimulator, EnclaveSimulatorArgs};
 
 pub trait Platform: Send + Sync {
     type RunArgs;
