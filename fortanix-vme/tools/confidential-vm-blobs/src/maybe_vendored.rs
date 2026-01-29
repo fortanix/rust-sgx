@@ -8,6 +8,7 @@ use std::{
 
 use tempfile::NamedTempFile;
 
+#[derive(Debug)]
 pub enum MaybeVendoredImage {
     External(PathBuf),
     /// Unfortunately `ukify` receives its input as a file, so we store fallback blobs in temporary named
