@@ -231,7 +231,6 @@ fn add_runner_common_args(fortanix_vme_runner: &mut Command, common_args: &Commo
     }
 
     if common_args.verbose {
-        fortanix_vme_runner.env("RUST_LOG", "debug");
         fortanix_vme_runner.arg("--verbose");
     }
 }
