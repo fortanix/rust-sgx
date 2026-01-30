@@ -24,32 +24,45 @@ struct CommonArgs {
 
     #[arg(long)]
     verbose: bool,
-
-    #[arg(help = "Path to the x86_64-unknown-linux-fortanixvme ELF binary", value_parser=parse_elf_path)]
-    elf_path: PathBuf,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    AwsNitro(AwsNitroArgs),
+    AmdSevSnp(CargoArgs),
+    AwsNitro(CargoArgs),
+}
+
+struct AmdSevSnpCli {
+    common_args: CommonArgs,
+    amd_sev_snp_args: CargoArgs,
 }
 
 struct AwsNitroCli {
     common_args: CommonArgs,
-    aws_nitro_args: AwsNitroArgs,
+    aws_nitro_args: CargoArgs,
 }
 
+/// Arguments inserted by cargo itself at the end of the invocation
 #[derive(Clone, Debug, Args)]
-struct AwsNitroArgs {
+struct CargoArgs {
+    #[arg(help = "Path to the x86_64-unknown-linux-fortanixvme ELF binary", value_parser=parse_elf_path)]
+    elf_path: PathBuf,
+
     #[arg(trailing_var_arg = true)]
     others: Vec<String>,
 }
 
-impl CommonArgs {
+impl CargoArgs {
     pub fn eif_path(&self) -> PathBuf {
         let mut eif_path = self.elf_path.clone();
         eif_path.set_extension("elf");
         eif_path
+    }
+
+    pub fn uki_path(&self) -> PathBuf {
+        let mut uki_path = self.elf_path.clone();
+        uki_path.set_extension("efi");
+        uki_path
     }
 }
 
@@ -124,6 +137,13 @@ fn main() -> anyhow::Result<()> {
     let fortanix_vme_config = FortanixVmeConfig::get()?;
 
     match cli.command {
+        Commands::AmdSevSnp(amd_sev_snp_args) => {
+            let amd_sev_snp_cli = AmdSevSnpCli {
+                common_args: cli.common_args,
+                amd_sev_snp_args,
+            };
+            cargo_run_sev_snp_vm(amd_sev_snp_cli, fortanix_vme_config)
+        }
         Commands::AwsNitro(aws_nitro_args) => {
             let aws_nitro_cli = AwsNitroCli {
                 common_args: cli.common_args,
@@ -132,6 +152,43 @@ fn main() -> anyhow::Result<()> {
             cargo_run_nitro_enclave(aws_nitro_cli, fortanix_vme_config)
         }
     }
+}
+
+fn cargo_run_sev_snp_vm(
+    amd_sev_snp_cli: AmdSevSnpCli,
+    fortanix_vme_config: FortanixVmeConfig,
+) -> Result<(), anyhow::Error> {
+    let AmdSevSnpCli {
+        common_args,
+        amd_sev_snp_args,
+    } = amd_sev_snp_cli;
+
+    let uki_path = amd_sev_snp_args.uki_path();
+
+    // TODO: we can assume this is installed right?
+    let mut ftxvme_elf2uki = Command::new("ftxvme-elf2uki");
+    ftxvme_elf2uki
+        .arg("--app")
+        .arg(&amd_sev_snp_args.elf_path)
+        .arg("--output-path")
+        .arg(&uki_path)
+        .arg("--cmdline")
+        .arg("console=ttyS0 earlyprintk=serial"); //TODO: should we use this as default?
+    run_command(ftxvme_elf2uki)?;
+
+    let mut fortanix_vme_runner = Command::new("fortanix-vme-runner");
+    fortanix_vme_runner.arg("--enclave-file").arg(&uki_path);
+
+    add_runner_config_args(&mut fortanix_vme_runner, &fortanix_vme_config);
+
+    add_runner_common_args(&mut fortanix_vme_runner, &common_args);
+
+    fortanix_vme_runner.arg("amd-sev-snp");
+    add_other_args(&mut fortanix_vme_runner, amd_sev_snp_args.others);
+
+    run_command(fortanix_vme_runner)?;
+
+    Ok(())
 }
 
 fn cargo_run_nitro_enclave(
@@ -143,12 +200,12 @@ fn cargo_run_nitro_enclave(
         aws_nitro_args,
     } = aws_nitro_cli;
 
-    let eif_path = common_args.eif_path();
+    let eif_path = aws_nitro_args.eif_path();
 
     let mut ftxvme_elf2eif = Command::new("ftxvme-elf2eif");
     ftxvme_elf2eif
         .arg("--elf-path")
-        .arg(&common_args.elf_path)
+        .arg(&aws_nitro_args.elf_path)
         .arg("--output-path")
         .arg(&eif_path);
     run_command(ftxvme_elf2eif)?;
@@ -158,25 +215,17 @@ fn cargo_run_nitro_enclave(
 
     add_runner_config_args(&mut fortanix_vme_runner, &fortanix_vme_config);
 
-    add_runner_common_args::<_, String>(
-        &mut fortanix_vme_runner,
-        &common_args,
-        aws_nitro_args.others,
-    );
+    add_runner_common_args(&mut fortanix_vme_runner, &common_args);
+
+    fortanix_vme_runner.arg("aws-nitro");
+    add_other_args(&mut fortanix_vme_runner, aws_nitro_args.others);
 
     run_command(fortanix_vme_runner)?;
 
     Ok(())
 }
 
-fn add_runner_common_args<I, S>(
-    fortanix_vme_runner: &mut Command,
-    common_args: &CommonArgs,
-    other_args: I,
-) where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
+fn add_runner_common_args(fortanix_vme_runner: &mut Command, common_args: &CommonArgs) {
     if common_args.simulate {
         fortanix_vme_runner.arg("--simulate");
     }
@@ -184,12 +233,6 @@ fn add_runner_common_args<I, S>(
     if common_args.verbose {
         fortanix_vme_runner.env("RUST_LOG", "debug");
         fortanix_vme_runner.arg("--verbose");
-    }
-
-    let mut peek = other_args.into_iter().peekable();
-    if !peek.peek().is_none() {
-        fortanix_vme_runner.arg("--");
-        fortanix_vme_runner.args(peek);
     }
 }
 
@@ -203,6 +246,18 @@ fn add_runner_config_args(
 
     if let Some(memory) = fortanix_vme_config.memory {
         fortanix_vme_runner.args(["--memory", &memory.to_string()]);
+    }
+}
+
+fn add_other_args<I, S>(fortanix_vme_runner: &mut Command, other_args: I)
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let mut peek = other_args.into_iter().peekable();
+    if !peek.peek().is_none() {
+        fortanix_vme_runner.arg("--");
+        fortanix_vme_runner.args(peek);
     }
 }
 

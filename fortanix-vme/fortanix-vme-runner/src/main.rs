@@ -86,15 +86,12 @@ struct AmdSevSnpArgs {
     )]
     firmware_image_path: Option<PathBuf>,
 
-    #[arg(
-        long,
-        help = "Name for the enclave in the runner",
-        default_value = "FortanixVm"
-    )]
-    enclave_name: String,
+    /// Name for the VM in the runner
+    #[arg(long, default_value = "FortanixAmdSevSnpVm")]
+    vm_name: String,
 
     #[arg(last = true)]
-    enclave_args: Vec<String>,
+    vm_args: Vec<String>,
 }
 
 #[derive(Clone, Debug, Args)]
@@ -190,15 +187,11 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
         info!("running in simulation mode without confidential computing protection");
         run_to_completion::<VmSimulator>(
             run_args,
-            amd_sev_snp_args.enclave_name,
-            amd_sev_snp_args.enclave_args,
+            amd_sev_snp_args.vm_name,
+            amd_sev_snp_args.vm_args,
         )
     } else {
-        run_to_completion::<AmdSevVm>(
-            run_args,
-            amd_sev_snp_args.enclave_name,
-            amd_sev_snp_args.enclave_args,
-        )
+        run_to_completion::<AmdSevVm>(run_args, amd_sev_snp_args.vm_name, amd_sev_snp_args.vm_args)
     }
 }
 
