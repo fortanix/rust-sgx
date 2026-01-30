@@ -68,7 +68,7 @@ enum Commands {
     AwsNitro(AwsNitroArgs),
 }
 
-struct AmdSevCli {
+struct AmdSevSnpCli {
     common_args: CommonArgs,
     amd_sev_snp_args: AmdSevSnpArgs,
 }
@@ -80,7 +80,10 @@ struct AwsNitroCli {
 
 #[derive(Clone, Debug, Args)]
 struct AmdSevSnpArgs {
-    #[arg(long = "firmware-image", help = "Path to the firmware image file")]
+    #[arg(
+        long = "firmware-image",
+        help = "Path to the firmware image file, defaulting to the relevant vendored image if not provided"
+    )]
     firmware_image_path: Option<PathBuf>,
 
     #[arg(
@@ -129,7 +132,7 @@ impl AwsNitroCli {
     }
 }
 
-impl AmdSevCli {
+impl AmdSevSnpCli {
     fn to_vm_run_args(&self) -> Result<VmRunArgs> {
         let cpu_count = self.common_args.cpu_count;
         let memory_mib = self.common_args.memory;
@@ -158,7 +161,7 @@ fn main() -> Result<()> {
 
     let common_args = cli.common_args;
     match cli.command {
-        Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevCli {
+        Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevSnpCli {
             common_args,
             amd_sev_snp_args,
         }),
@@ -177,13 +180,14 @@ fn main() -> Result<()> {
     }
 }
 
-fn run_amd_sev_enclave(amd_sev_cli: AmdSevCli) -> Result<()> {
+fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
     let run_args = amd_sev_cli.to_vm_run_args()?;
-    let AmdSevCli {
+    let AmdSevSnpCli {
         common_args,
         amd_sev_snp_args,
     } = amd_sev_cli;
     if common_args.simulate {
+        info!("running in simulation mode without confidential computing protection");
         run_to_completion::<VmSimulator>(
             run_args,
             amd_sev_snp_args.enclave_name,
@@ -222,7 +226,7 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
 
             img_name = metadata.img_name;
 
-            info!("Simulating enclave as {}", elf_path.display(),);
+            info!("simulating enclave as {}", elf_path.display(),);
         }
 
         let run_args = EnclaveSimulatorArgs::new(elf_path);

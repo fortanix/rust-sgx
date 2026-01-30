@@ -1,6 +1,6 @@
 use super::VmeError;
 
-pub(crate) mod amdsev;
+pub(crate) mod amdsevsnp;
 
 mod nitro;
 pub use nitro::NitroEnclaves;

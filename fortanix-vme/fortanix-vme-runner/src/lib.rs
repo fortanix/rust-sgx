@@ -14,7 +14,7 @@ use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream}
 
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
-pub use platforms::amdsev::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
+pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 
