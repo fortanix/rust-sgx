@@ -44,8 +44,10 @@ struct AwsNitroCli {
 
 /// Arguments inserted by cargo itself at the end of the invocation
 #[derive(Clone, Debug, Args)]
+#[command(about = "")]
 struct CargoArgs {
-    #[arg(help = "Path to the x86_64-unknown-linux-fortanixvme ELF binary", value_parser=parse_elf_path)]
+    /// Path to the x86_64-unknown-linux-fortanixvme ELF binary
+    #[arg(value_parser=parse_elf_path)]
     elf_path: PathBuf,
 
     #[arg(trailing_var_arg = true)]

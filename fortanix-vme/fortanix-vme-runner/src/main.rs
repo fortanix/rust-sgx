@@ -30,35 +30,21 @@ struct Cli {
 
 #[derive(Args, Debug)]
 struct CommonArgs {
-    #[arg(
-        short,
-        long,
-        help = "Path to the enclave source file - an EIF image in the case of AWS nitro, and a UKI image otherwise"
-    )]
+    /// Path to the enclave source file - an EIF image in the case of AWS nitro, and a UKI image otherwise
+    #[arg(short, long)]
     enclave_file: PathBuf,
 
     // TODO(RTE-745): the `cpu_count` is not currently being used for AMD-SEV
-    #[arg(
-        short,
-        long,
-        help = "The number of (v)CPUs that should be allocated to the enclave (2 by default)",
-        default_value_t = 2
-    )]
+    /// The number of (v)CPUs that should be allocated to the enclave (2 by default)
+    #[arg(short, long, default_value_t = 2)]
     cpu_count: u32,
 
-    #[arg(
-        short,
-        long,
-        help = "The amount of memory that should be allcated to the enclave (in MiB)",
-        default_value_t = 512
-    )]
+    ///The amount of memory that should be allcated to the enclave (in MiB)
+    #[arg(short, long, default_value_t = 512)]
     memory: u64,
 
-    #[arg(
-        short,
-        long,
-        help = "Run enclave on simulated version of the target platform"
-    )]
+    ///Run enclave on simulated version of the target platform
+    #[arg(short, long)]
     simulate: bool,
 }
 
@@ -80,10 +66,8 @@ struct AwsNitroCli {
 
 #[derive(Clone, Debug, Args)]
 struct AmdSevSnpArgs {
-    #[arg(
-        long = "firmware-image",
-        help = "Path to the firmware image file, defaulting to the relevant vendored image if not provided"
-    )]
+    /// Path to the firmware image file, defaulting to the relevant vendored image if not provided
+    #[arg(long = "firmware-image")]
     firmware_image_path: Option<PathBuf>,
 
     /// Name for the VM in the runner
