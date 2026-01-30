@@ -38,26 +38,18 @@ struct Cli {
     #[command(flatten)]
     non_defaulted_args: NonDefaultedArgs,
 
-    #[arg(
-        short,
-        long = "output",
-        help = "Path where the newly created UKI file will be written. Equal to the kernel image path appended with `.efi` if not specified",
-        value_name = "FILE"
-    )]
+    /// Path where the newly created UKI file will be written.
+    ///
+    /// Equal to the kernel image path appended with `.efi` if not specified
+    #[arg(short, long = "output", value_name = "FILE")]
     output_path: Option<PathBuf>,
 
-    #[arg(
-        long = "kernel",
-        help = "Path to the kernel image file, defaulting to the vendored kernel blob if not provided",
-        value_name = "FILE"
-    )]
+    /// Path to the kernel image file, defaulting to the vendored kernel blob if not provided.
+    #[arg(long = "kernel", value_name = "FILE")]
     kernel_image_path: Option<PathBuf>,
 
-    #[arg(
-        long = "efi-stub",
-        help = "Path to the EFI boot stub file, defaulting to the vendored boot stub blob if not provided",
-        value_name = "FILE"
-    )]
+    /// Path to the EFI boot stub file, defaulting to the vendored boot stub blob if not provided
+    #[arg(long = "efi-stub", value_name = "FILE")]
     efi_stub_path: Option<PathBuf>,
 }
 
@@ -70,18 +62,12 @@ struct ValidatedCli {
 
 #[derive(Args, Debug)]
 struct NonDefaultedArgs {
-    #[arg(
-        long = "app",
-        help = "Path to the application elf file",
-        value_name = "FILE"
-    )]
+    /// Path to the application elf file
+    #[arg(long = "app", value_name = "FILE")]
     application_elf_path: PathBuf,
 
-    #[arg(
-        long = "cmdline",
-        help = "String to pass as the kernel command line",
-        value_name = "STRING"
-    )]
+    /// String to pass as the kernel command line
+    #[arg(long = "cmdline", value_name = "STRING")]
     kernel_cmdline: Option<String>,
 }
 
