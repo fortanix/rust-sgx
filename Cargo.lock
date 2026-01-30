@@ -1280,6 +1280,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "derivative"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
+dependencies = [
+ "proc-macro2 1.0.95",
+ "quote 1.0.41",
+ "syn 1.0.81",
+]
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1664,14 +1675,25 @@ dependencies = [
  "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
  "clap 4.4.18",
- "cpio",
- "flate2",
+ "fortanix-vme-initramfs",
  "hex 0.4.3",
- "hex-literal",
  "serde_json",
  "sha2 0.9.9",
  "tempfile",
  "test_resources",
+ "thiserror",
+]
+
+[[package]]
+name = "fortanix-vme-initramfs"
+version = "0.1.0"
+dependencies = [
+ "cpio",
+ "derivative",
+ "flate2",
+ "hex-literal",
+ "normalize-path",
+ "sha2 0.9.9",
  "thiserror",
 ]
 
@@ -2953,6 +2975,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "normalize-path"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5438dd2b2ff4c6df6e1ce22d825ed2fa93ee2922235cc45186991717f0a892d"
 
 [[package]]
 name = "nsm"

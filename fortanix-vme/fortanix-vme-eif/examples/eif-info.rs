@@ -1,7 +1,7 @@
 use clap::Parser;
 use fortanix_vme_eif::{EifSectionType, FtxEif};
-use std::io::Error as IoError;
 use std::fs::{self, File};
+use std::io::Error as IoError;
 use std::ops::Deref;
 use std::path::PathBuf;
 
@@ -25,12 +25,10 @@ fn store(mut output_path: PathBuf, filename: &str, content: &Vec<u8>) -> Result<
 
 fn main() {
     let cli = Cli::parse();
-    let eif = File::open(cli.enclave_path)
-        .expect("Failed to open enclave");
+    let eif = File::open(cli.enclave_path).expect("Failed to open enclave");
     let mut eif = FtxEif::new(eif);
 
-    let header = eif.eif_header()
-        .expect("Failed to parse eif enclave");
+    let header = eif.eif_header().expect("Failed to parse eif enclave");
 
     println!("[Header]");
     println!("  magic number: 0x{}", hex::encode(header.magic));
@@ -54,30 +52,40 @@ fn main() {
         match sec_header.section_type {
             EifSectionType::EifSectionInvalid => (),
             EifSectionType::EifSectionKernel => {
-                cli.output_path.as_ref().map(|p| store(p.clone(), "bzImage", &content));
-            },
+                cli.output_path
+                    .as_ref()
+                    .map(|p| store(p.clone(), "bzImage", &content));
+            }
             EifSectionType::EifSectionCmdline => {
                 if let Ok(cmd) = String::from_utf8(content.deref().clone()) {
                     println!("  content: \"{}\"", cmd);
                 } else {
                     println!("  content: Failed to parse as an utf8 string");
                 }
-                cli.output_path.as_ref().map(|p| store(p.clone(), "cmdline", &content));
-            },
+                cli.output_path
+                    .as_ref()
+                    .map(|p| store(p.clone(), "cmdline", &content));
+            }
             EifSectionType::EifSectionRamdisk => {
-                cli.output_path.as_ref().map(|p| store(p.clone(), "initramfs.cpio.gz", &content));
-            },
+                cli.output_path
+                    .as_ref()
+                    .map(|p| store(p.clone(), "initramfs.cpio.gz", &content));
+            }
             EifSectionType::EifSectionSignature => {
                 println!("  content: {:x?}", content);
-                cli.output_path.as_ref().map(|p| store(p.clone(), "signature", &content));
-            },
+                cli.output_path
+                    .as_ref()
+                    .map(|p| store(p.clone(), "signature", &content));
+            }
             EifSectionType::EifSectionMetadata => {
                 if let Ok(meta) = String::from_utf8(content.deref().clone()) {
                     println!("  content: \"{}\"", meta);
                 } else {
                     println!("  content: Failed to parse as an utf8 string");
                 }
-                cli.output_path.as_ref().map(|p| store(p.clone(), "metadata", &content));
+                cli.output_path
+                    .as_ref()
+                    .map(|p| store(p.clone(), "metadata", &content));
             }
         }
     }
