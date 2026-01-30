@@ -172,7 +172,7 @@ fn cargo_run_sev_snp_vm(
     ftxvme_elf2uki
         .arg("--app")
         .arg(&amd_sev_snp_args.elf_path)
-        .arg("--output-path")
+        .arg("--output")
         .arg(&uki_path)
         .arg("--cmdline")
         .arg("console=ttyS0 earlyprintk=serial"); //TODO: should we use this as default?
