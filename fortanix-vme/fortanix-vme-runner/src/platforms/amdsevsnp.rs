@@ -31,8 +31,11 @@ enum RunMode {
     VmSimulator,
 }
 
-// TODO: extract some consts
 fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
+    const QEMU_EXECUTABLE: &str = "qemu-system-x86_64";
+    const QEMU_MACHINE: &str = "q35";
+    const AMD_PROCESSOR: &str = "EPYC-v4";
+
     let VmRunArgs {
         uki_path,
         firmware_image,
@@ -42,8 +45,14 @@ fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
     let memory_size = format!("{}M", memory_mib);
 
     // TODO (RTE-740): id-block
-    let mut command = Command::new("sudo"); // TODO: look at "sudo" - needed for amd + `/dev/sev`?
-    command.arg("qemu-system-x86_64");
+    let mut command = match run_mode {
+        RunMode::AmdSevVm => {
+            let mut command = Command::new("sudo");
+            command.arg(QEMU_EXECUTABLE);
+            command
+        }
+        RunMode::VmSimulator => Command::new(QEMU_EXECUTABLE),
+    };
 
     // General machine setup
     // TODO: consider `no-defaults` option for devices
@@ -54,13 +63,13 @@ fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
         .arg("-smp")
         .arg(format!("cpus=1,maxcpus={}", cpu_count)) // TODO(RTE-745): hotplug these
         .arg("-machine")
-        .arg("q35,vmport=off")
+        .arg(format!("{},vmport=off", QEMU_MACHINE))
         .arg("-m")
         .arg(&memory_size);
 
     // CPU
     command.arg("-cpu").arg(match run_mode {
-        RunMode::AmdSevVm => "EPYC-v4",
+        RunMode::AmdSevVm => AMD_PROCESSOR,
         RunMode::VmSimulator => "host",
     });
 
