@@ -3,8 +3,6 @@ use std::{
     process::{Child, Command},
 };
 
-use confidential_vm_blobs::maybe_vendored::MaybeVendoredImage;
-
 use super::Platform;
 
 /// The arguments used by the `run-enclave` command.
@@ -13,7 +11,7 @@ pub struct VmRunArgs {
     /// The path to the VM image file.
     pub uki_path: PathBuf,
     /// The path to the enclave image file.
-    pub firmware_image: MaybeVendoredImage,
+    pub firmware_image_path: PathBuf,
     /// The amount of memory that will be given to the enclave.
     pub memory_mib: u64,
     /// The number of CPUs that the enclave will receive.
@@ -38,7 +36,7 @@ fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
 
     let VmRunArgs {
         uki_path,
-        firmware_image,
+        firmware_image_path,
         memory_mib,
         cpu_count,
     } = vm_run_args;
@@ -82,7 +80,7 @@ fn build_qemu_command(run_mode: RunMode, vm_run_args: VmRunArgs) -> Command {
 
     // Images
     command.arg("-kernel").arg(uki_path);
-    command.arg("-bios").arg(firmware_image.path());
+    command.arg("-bios").arg(firmware_image_path);
 
     if let RunMode::AmdSevVm = run_mode {
         command

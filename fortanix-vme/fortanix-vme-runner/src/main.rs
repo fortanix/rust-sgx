@@ -114,20 +114,13 @@ impl AwsNitroCli {
 }
 
 impl AmdSevSnpCli {
-    fn to_vm_run_args(&self) -> Result<VmRunArgs> {
+    fn to_vm_run_args(&self, firmware_image_path: PathBuf) -> Result<VmRunArgs> {
         let cpu_count = self.common_args.cpu_count;
         let memory_mib = self.common_args.memory;
 
         Ok(VmRunArgs {
             uki_path: self.common_args.enclave_file.clone(),
-            firmware_image: match &self.amd_sev_snp_args.firmware_image_path {
-                Some(path) => MaybeVendoredImage::from(path.clone()),
-                None => MaybeVendoredImage::from_vendored(if self.common_args.simulate {
-                    VANILLA_OVMF
-                } else {
-                    AMD_SEV_OVMF
-                })?,
-            },
+            firmware_image_path,
             memory_mib,
             cpu_count,
         })
@@ -162,7 +155,18 @@ fn main() -> Result<()> {
 }
 
 fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
-    let run_args = amd_sev_cli.to_vm_run_args()?;
+    // NOTE: it's important to not drop this while the VM runs, as it will remove the
+    // temporary file that stores the firmware image
+    let firmware_image = match amd_sev_cli.amd_sev_snp_args.firmware_image_path.clone() {
+        Some(path) => MaybeVendoredImage::from(path),
+        None => MaybeVendoredImage::from_vendored(if amd_sev_cli.common_args.simulate {
+            VANILLA_OVMF
+        } else {
+            AMD_SEV_OVMF
+        })?,
+    };
+    let run_args = amd_sev_cli.to_vm_run_args(firmware_image.path().to_owned())?;
+
     let AmdSevSnpCli {
         common_args,
         amd_sev_snp_args,
