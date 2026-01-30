@@ -94,21 +94,12 @@ struct CargoTomlMetadata {
 /// https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-run-enclave.html#cmd-nitro-run-enclave-options
 /// https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-build-enclave.html#cmd-nitro-build-enclave-options
 struct FortanixVmeConfig {
-    // TODO: unused - remove this? Then we don't need to make `FortanixVmeConfig` generic
-    /// A custom name given to the enclave. If not specified,
-    /// the name of the .eif file is used.
-    enclave_name: Option<String>,
-
     /// Specifies the number of vCPUs to allocate to the enclave.
     cpu_count: Option<u32>,
 
     /// Specifies the amount of memory (in MiB) to allocate to the enclave.
     /// Should be at least 64 MiB.
     memory: Option<u64>,
-
-    // TODO: unused - remove this? Then we don't need to make `FortanixVmeConfig` generic
-    /// This enables debug mode of `nitro-cli run-enclave`, `false` by default.
-    debug_mode: bool,
 }
 
 impl FortanixVmeConfig {
@@ -172,7 +163,7 @@ fn cargo_run_sev_snp_vm(
     ftxvme_elf2uki
         .arg("--app")
         .arg(&amd_sev_snp_args.elf_path)
-        .arg("--output-path")
+        .arg("--output")
         .arg(&uki_path)
         .arg("--cmdline")
         .arg("console=ttyS0 earlyprintk=serial"); //TODO: should we use this as default?
