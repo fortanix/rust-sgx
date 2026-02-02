@@ -146,7 +146,7 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
     })?;
     if !output.status.success() {
         return Err(anyhow!(
-            "ukify exited with non-zero status code and stdout : {} \n\n sterr : {}",
+            "ukify exited with non-zero status code and stdout : {} \n\n stderr : {}",
             String::from_utf8(output.stdout).context("ukify stdout is non-utf8")?,
             String::from_utf8(output.stderr).context("ukify stderr is non-utf8")?,
         ));
