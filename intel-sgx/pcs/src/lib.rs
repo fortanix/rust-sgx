@@ -50,11 +50,13 @@ pub type PceIsvsvn = u16;
 pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
+///Global trait that specify the required interface for typesafe enumeration of platforms.
 pub trait PlatformType : Display + Clone + Send {
     fn new() -> Self;
     fn platform_id() -> &'static str;
 }
 
+///Function to attempt deserialize [PlatformType] instance based on the [PlatformType::platform_id] value.
 pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbInfo<T>>(deserializer: D) -> Result<T, D::Error> {
     let platform_str = String::deserialize(deserializer)?;
     if platform_str == T::platform_id() {
@@ -64,13 +66,14 @@ pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbI
     }
 }
 
+///This module acts as a namespace that provides typesafe enumeration of platforms.
 pub mod platform {
     use std::fmt::{self, Display, Formatter};
     use serde::{Serialize, Deserialize};
 
+    ///Identifier type for Intel SGX platform.
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct SGX;
-
 
     impl Display for SGX {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -88,6 +91,7 @@ pub mod platform {
         }
     }
 
+    ///Identifier type for Intel TDX platform.
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct TDX;
 
@@ -106,7 +110,6 @@ pub mod platform {
             "TDX"
         }
     }
-
 }
 
 quick_error! {
