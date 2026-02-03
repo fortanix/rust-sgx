@@ -15,7 +15,7 @@ extern crate quick_error;
 use std::convert::TryFrom;
 use std::fmt::{self, Display};
 
-use serde::de::{self};
+use serde::de::{self, DeserializeOwned};
 use serde::{Deserialize, Deserializer, Serialize};
 pub use yasna::ASN1Error;
 #[cfg(feature = "verify")]
@@ -51,16 +51,15 @@ pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
 ///Global trait that specify the required interface for typesafe enumeration of platforms.
-pub trait PlatformType : Display + Clone + Send {
-    fn new() -> Self;
+pub trait PlatformType : Display + Clone + Send + Default + DeserializeOwned {
     fn platform_id() -> &'static str;
 }
 
 ///Function to attempt deserialize [PlatformType] instance based on the [PlatformType::platform_id] value.
-pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformTypeForTcbInfo<T>>(deserializer: D) -> Result<T, D::Error> {
+pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformType>(deserializer: D) -> Result<T, D::Error> {
     let platform_str = String::deserialize(deserializer)?;
     if platform_str == T::platform_id() {
-        Ok(T::new())
+        Ok(T::default())
     } else {
         Err(serde::de::Error::custom(format!("Invalid platform id: {platform_str}, expected {}", T::platform_id())))
     }
@@ -82,10 +81,6 @@ pub mod platform {
     }
 
     impl super::PlatformType for SGX {
-        fn new() -> Self {
-            Self {}
-        }
-
         fn platform_id() -> &'static str {
             "SGX"
         }
@@ -102,10 +97,6 @@ pub mod platform {
     }
 
     impl super::PlatformType for TDX {
-        fn new() -> Self {
-            Self {}
-        }
-
         fn platform_id() -> &'static str {
             "TDX"
         }
@@ -228,17 +219,27 @@ impl TryFrom<&str> for DcapArtifactIssuer {
     }
 }
 
-pub trait VerificationType {}
+pub trait VerificationType : Serialize {
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+}
+
+#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct Verified;
 
 impl VerificationType for Verified {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct Unverified;
 
 impl VerificationType for Unverified {}
+
+impl<'de> Deserialize<'de> for Unverified {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de> {
+        Ok(Self{})
+    }
+}
 
 /// Intel specifies raw ECDSA signatures in a different format than mbedtls. Convert ECDSA
 /// signature to RFC5480 ASN.1 representation.

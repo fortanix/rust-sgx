@@ -3,7 +3,7 @@ use crate::{
     Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus,
     Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -17,55 +17,24 @@ use {
 
 /// Implementation of the TcbEvaluationDataNumbers model
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified> {
+    #[allow(unused)]
+    #[serde(deserialize_with = "crate::deserialize_platform_id")]
+    id: T,
     #[allow(unused)]
     version: u16,
     #[allow(unused)]
+    #[serde(with = "crate::iso8601")]
     issue_date: DateTime<Utc>,
     #[allow(unused)]
+    #[serde(with = "crate::iso8601")]
     next_update: DateTime<Utc>,
     #[allow(unused)]
     tcb_eval_numbers: Vec<TcbEvalNumber>,
+    #[serde(skip)]
     type_: PhantomData<V>,
-    platform_: PhantomData<T>,
-}
-
-impl<'de, T: PlatformTypeForTcbInfo<T>> Deserialize<'de> for TcbEvaluationDataNumbers<T, Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbEvaluationDataNumbers<T, Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy<S: PlatformTypeForTcbInfo<S>> {
-            #[allow(unused)]
-            #[serde(deserialize_with = "crate::deserialize_platform_id")]
-            id: S,
-            version: u16,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            tcb_eval_numbers: Vec<TcbEvalNumber>
-        }
-
-        let Dummy::<T> {
-            id: _,
-            version,
-            issue_date,
-            next_update,
-            tcb_eval_numbers,
-        } = Dummy::deserialize(deserializer)?;
-        Ok(TcbEvaluationDataNumbers::<T, Unverified> {
-            version,
-            issue_date,
-            next_update,
-            tcb_eval_numbers,
-            type_: PhantomData,
-            platform_: PhantomData,
-        })
-    }
 }
 
 impl<T: PlatformTypeForTcbInfo<T>, V: VerificationType> TcbEvaluationDataNumbers<T, V> {
@@ -290,6 +259,7 @@ impl<T: PlatformTypeForTcbInfo<T>> RawTcbEvaluationDataNumbers<T> {
         crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let TcbEvaluationDataNumbers::<T, Unverified> {
+            id,
             version,
             issue_date,
             next_update,
@@ -309,12 +279,12 @@ impl<T: PlatformTypeForTcbInfo<T>> RawTcbEvaluationDataNumbers<T> {
         }
 
         Ok(TcbEvaluationDataNumbers::<T, Verified> {
+            id,
             version,
             issue_date,
             next_update,
             tcb_eval_numbers,
             type_: PhantomData,
-            platform_: PhantomData,
         })
     }
 }
