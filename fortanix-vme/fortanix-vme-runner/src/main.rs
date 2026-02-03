@@ -1,11 +1,10 @@
 use clap::Parser;
-use fortanix_vme_eif::FtxEif;
 use fortanix_vme_abi::SERVER_PORT;
-use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs};
+use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs, read_eif_with_metadata, ReadEifResult};
 use nitro_cli::common::commands_parser::{RunEnclavesArgs as NitroArgs};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Write};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
@@ -29,6 +28,10 @@ struct Cli {
     /// Simulate the AWS Nitro Enclave platform
     #[arg(short, long)]
     simulate: bool,
+
+    /// `ENCLAVE_FILE` points to an ELF, not an EIF (only available in simulation mode)
+    #[arg(long, requires("simulate"))]
+    elf: bool,
 
     #[arg(short, long)]
     verbose: bool,
@@ -112,30 +115,38 @@ fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
 
 fn main() {
     let cli = Cli::parse();
-    let eif = File::open(&cli.enclave_file).expect("Failed to open enclave file");
-    let mut eif = FtxEif::new(BufReader::new(eif));
-    let metadata = eif.metadata()
-        .expect("Failed to parse metadata");
 
     if cli.simulate {
         env_logger::init();
 
-        //TODO also extract env/cmd file and make sure the application is executed with this
-        //context
-        let elf = eif.application()
-            .expect("Failed to parse enclave file");
-        let elf_path = create_elf(elf)
-            .expect("Failed to create executable file");
+        let elf_path: PathBuf;
+        let img_name;
 
-        log(&cli, &format!("Simulating enclave as {}", elf_path.display()));
+        if cli.elf {
+            elf_path = cli.enclave_file.into();
+            img_name = elf_path.file_name().unwrap_or_default().display().to_string();
+        } else {
+            let ReadEifResult { mut eif, metadata } = read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file");
+            //TODO also extract env/cmd file and make sure the application is executed with this
+            //context
+            let elf = eif.application()
+                .expect("Failed to parse enclave file");
+            elf_path = create_elf(elf)
+                .expect("Failed to create executable file");
+
+            img_name = metadata.img_name;
+
+            log(&cli, &format!("Simulating enclave as {}", elf_path.display()));
+        }
+
         let mut runner: EnclaveRunner<Simulator> = create_runner();
         let args = SimulatorArgs::new(elf_path);
-        runner.run_enclave(args, metadata.img_name, cli.args).expect("Failed to run enclave");
+        runner.run_enclave(args, img_name, cli.args).expect("Failed to run enclave");
         runner.wait();
     } else {
         let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args, metadata.img_name, cli.args).expect("Failed to run enclave");
+        runner.run_enclave(args, read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name, cli.args).expect("Failed to run enclave");
         runner.wait();
     };
 }
