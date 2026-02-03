@@ -303,6 +303,18 @@ impl<
     }
 }
 
+pub struct ReadEifResult<T> {
+    pub eif: FtxEif<T>,
+    pub metadata: EifIdentityInfo,
+}
+
+pub fn read_eif_with_metadata(enclave_file_path: &str) -> Result<ReadEifResult<impl Read + Seek>, Error> {
+    let f = std::fs::File::open(enclave_file_path).map_err(Error::EifWriteError)?;
+    let mut eif = FtxEif::new(io::BufReader::new(f));
+    let metadata = eif.metadata()?;
+    Ok(ReadEifResult { eif, metadata })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{initramfs, Builder, FtxEif};

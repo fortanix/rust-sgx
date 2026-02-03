@@ -1,11 +1,10 @@
 use clap::Parser;
-use fortanix_vme_eif::{eif_types::EifIdentityInfo, FtxEif};
 use fortanix_vme_abi::SERVER_PORT;
-use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs};
+use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs, read_eif_with_metadata, ReadEifResult};
 use nitro_cli::common::commands_parser::{RunEnclavesArgs as NitroArgs};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{BufReader, Error as IoError, ErrorKind as IoErrorKind, Read, Seek, Write};
+use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
@@ -115,17 +114,6 @@ fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
 }
 
 fn main() {
-    struct ReadEifResult<T> {
-        eif: FtxEif<T>,
-        metadata: EifIdentityInfo,
-    }
-    fn read_eif(enclave_file: &str) -> ReadEifResult<impl Read + Seek> {
-        let f = File::open(enclave_file).expect("Failed to open enclave file");
-        let mut eif = FtxEif::new(BufReader::new(f));
-        let metadata = eif.metadata().expect("Failed to parse metadata");
-        ReadEifResult { eif, metadata }
-    }
-
     let cli = Cli::parse();
 
     if cli.simulate {
@@ -138,7 +126,7 @@ fn main() {
             elf_path = cli.enclave_file.into();
             img_name = elf_path.file_name().unwrap_or_default().display().to_string();
         } else {
-            let ReadEifResult { mut eif, metadata } = read_eif(&cli.enclave_file);
+            let ReadEifResult { mut eif, metadata } = read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file");
             //TODO also extract env/cmd file and make sure the application is executed with this
             //context
             let elf = eif.application()
@@ -158,7 +146,7 @@ fn main() {
     } else {
         let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args, read_eif(&cli.enclave_file).metadata.img_name, cli.args).expect("Failed to run enclave");
+        runner.run_enclave(args, read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name, cli.args).expect("Failed to run enclave");
         runner.wait();
     };
 }

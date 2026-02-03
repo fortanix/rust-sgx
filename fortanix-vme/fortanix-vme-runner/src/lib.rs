@@ -16,6 +16,8 @@ use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream}
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
+pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
+
 const MAX_LOG_MESSAGE_LEN: usize = 80;
 const PROXY_BUFF_SIZE: usize = 4192;
 
