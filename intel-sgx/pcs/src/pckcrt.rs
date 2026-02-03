@@ -9,7 +9,6 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::convert::{TryFrom, TryInto};
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::mem;
 use std::path::PathBuf;
 
@@ -18,6 +17,7 @@ use pkix::pem::{self, PEM_CERTIFICATE};
 use pkix::types::ObjectIdentifier;
 use pkix::x509::GenericCertificate;
 use pkix::FromBer;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use sgx_pkix::oid::{self, SGX_EXTENSION};
 use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERDecodable, BERReader, BERReaderSeq};
@@ -116,7 +116,7 @@ mod platform_specific {
     use serde::{Serialize, Deserialize};
 
     #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-    pub struct SGX;
+    pub struct SGX {}
 
     #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
     pub struct TDX {
@@ -125,146 +125,32 @@ mod platform_specific {
 }
 
 pub trait PlatformTypeForTcbComponent<T: PlatformTypeForTcbComponent<T>> : PartialEq {
-    type PlatformSpecificTcbComponentData : Eq + Serialize + Clone + Default + Debug + PartialEq;
-
-    fn serialize<S>(data: &TcbComponentsV4<T>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer;
-
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<T>, D::Error>
-    where
-        D: Deserializer<'de>;
-
+    type PlatformSpecificTcbComponentData : Debug + Eq + Clone + Default + Serialize + DeserializeOwned;
     fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<T>, Error>;
 }
 
 impl PlatformTypeForTcbComponent<platform::SGX> for platform::SGX {
     type PlatformSpecificTcbComponentData = platform_specific::SGX;
 
-    fn serialize<S>(data: &TcbComponentsV4<platform::SGX>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            sgxtcbcomponents: [TcbComponentEntry; 16],
-            pcesvn: u16,
-        }
-
-        let dummy = Dummy {
-            sgxtcbcomponents: data.sgxtcbcomponents.clone(),
-            pcesvn: data.pcesvn,
-        };
-
-        dummy.serialize(serializer)
-    }
-    
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<platform::SGX>, D::Error>
-    where
-        D: Deserializer<'de> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            sgxtcbcomponents: [TcbComponentEntry; 16],
-            pcesvn: u16,
-        }
-
-        let Dummy {
-            sgxtcbcomponents,
-            pcesvn,
-        } = Dummy::deserialize(deserializer)?;
-
-        Ok(TcbComponentsV4 {
-            sgxtcbcomponents,
-            pcesvn,
-            platform_specific_data: platform_specific::SGX
-        })
-    }
-    
     fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<platform::SGX>, Error> {
         Ok(TcbComponents::<platform::SGX>(c.into()))
     }
-
 }
-
 
 impl PlatformTypeForTcbComponent<platform::TDX> for platform::TDX {
     type PlatformSpecificTcbComponentData = platform_specific::TDX;
 
-    fn serialize<S>(data: &TcbComponentsV4<platform::TDX>, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            sgxtcbcomponents: [TcbComponentEntry; 16],
-            pcesvn: u16,
-            tdxtcbcomponents: [TcbComponentEntry; 16],
-        }
-
-        let dummy = Dummy {
-            sgxtcbcomponents: data.sgxtcbcomponents.clone(),
-            pcesvn: data.pcesvn,
-            tdxtcbcomponents: data.platform_specific_data.tdxtcbcomponents.clone(),
-        };
-
-        dummy.serialize(serializer)
-    }
-    
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbComponentsV4<platform::TDX>, D::Error>
-    where
-        D: Deserializer<'de> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            sgxtcbcomponents: [TcbComponentEntry; 16],
-            pcesvn: u16,
-            tdxtcbcomponents: [TcbComponentEntry; 16],
-        }
-
-        let Dummy {
-            sgxtcbcomponents,
-            pcesvn,
-            tdxtcbcomponents,
-        } = Dummy::deserialize(deserializer)?;
-
-        Ok(TcbComponentsV4 {
-            sgxtcbcomponents,
-            pcesvn,
-            platform_specific_data: platform_specific::TDX { 
-                tdxtcbcomponents 
-            },
-        })
-    }
-    
     fn try_from_v3(_: TcbComponentsV3) -> Result<TcbComponents<platform::TDX>, Error> {
         Err(Error::InvalidTcbInfo("Attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
     }
 }
 
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TcbComponentsV4<T: PlatformTypeForTcbComponent<T>> {
     sgxtcbcomponents: [TcbComponentEntry; 16],
     pcesvn: u16,
+    #[serde(flatten)]
     platform_specific_data: T::PlatformSpecificTcbComponentData,
-}
-
-impl<'de, T: PlatformTypeForTcbComponent<T>> Deserialize<'de> for TcbComponentsV4<T> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbComponentsV4<T>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        T::deserialize(deserializer)
-    }
-}
-
-impl<T: PlatformTypeForTcbComponent<T>> Serialize for TcbComponentsV4<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer {
-        T::serialize(&self, serializer)
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -303,7 +189,7 @@ impl TcbComponents<platform::SGX> {
         TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
-            platform_specific_data: platform_specific::SGX
+            platform_specific_data: platform_specific::SGX {}
         })
     }
 }
@@ -411,14 +297,14 @@ impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform::SGX> {
                 c.sgxtcbcomp16svn.into(),
             ],
             pcesvn: c.pcesvn,
-            platform_specific_data: platform_specific::SGX
+            platform_specific_data: platform_specific::SGX {}
         }
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<TcbComponentsCompatibilitySelector<T>> for TcbComponents<T> {   
+impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<TcbComponentsCompatibilitySelector<T>> for TcbComponents<T> {
     type Error = Error;
-    
+
     fn try_from(c: TcbComponentsCompatibilitySelector<T>) -> Result<Self, Self::Error> {
         match c {
             TcbComponentsCompatibilitySelector::V3(c) => T::try_from_v3(c),
@@ -586,32 +472,11 @@ impl PckCerts {
     }
 }
 
-#[derive(Clone, Serialize, Debug, PartialEq, Eq)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct PckCert<V: VerificationType = Verified> {
     cert: String,
     ca_chain: Vec<String>,
-    #[serde(skip)]
-    type_: PhantomData<V>,
-}
-
-impl<'de> Deserialize<'de> for PckCert<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<PckCert<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Dummy {
-            cert: String,
-            ca_chain: Vec<String>,
-        }
-
-        let Dummy { cert, ca_chain } = Dummy::deserialize(deserializer)?;
-        Ok(PckCert::<Unverified> {
-            cert,
-            ca_chain,
-            type_: PhantomData,
-        })
-    }
+    type_: V,
 }
 
 impl PckCert<Unverified> {
@@ -633,7 +498,7 @@ impl PckCert<Unverified> {
         PckCert {
             cert,
             ca_chain,
-            type_: PhantomData,
+            type_: Unverified
         }
     }
 
@@ -664,7 +529,7 @@ impl PckCert<Unverified> {
         Ok(PckCert {
             cert: self.cert,
             ca_chain: self.ca_chain,
-            type_: PhantomData,
+            type_: Verified,
         })
     }
 

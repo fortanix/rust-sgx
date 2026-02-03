@@ -5,8 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 use pkix::pem::PEM_CRL;
-use serde::{Deserialize, Deserializer, Serialize};
-use std::marker::PhantomData;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[cfg(feature = "verify")]
@@ -23,38 +22,16 @@ use crate::io::WriteOptions;
 use crate::io::{self};
 use crate::{DcapArtifactIssuer, Error, Unverified, VerificationType, Verified};
 
-#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
 pub struct PckCrl<V: VerificationType = Verified> {
     crl: String,
     ca_chain: Vec<String>,
-    #[serde(skip)]
-    type_: PhantomData<V>,
-}
-
-impl<'de> Deserialize<'de> for PckCrl<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<PckCrl<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Dummy {
-            crl: String,
-            ca_chain: Vec<String>,
-        }
-
-        let Dummy { crl, ca_chain } = Dummy::deserialize(deserializer)?;
-        Ok(PckCrl::<Unverified> {
-            crl,
-            ca_chain,
-            type_: PhantomData,
-        })
-    }
+    type_: V,
 }
 
 impl PckCrl<Unverified> {
     pub fn new(crl: String, ca_chain: Vec<String>) -> Result<PckCrl<Unverified>, Error> {
-        let crl = PckCrl { crl, ca_chain, type_: PhantomData };
-
+        let crl = PckCrl { crl, ca_chain, type_: Unverified };
         Ok(crl)
     }
 
@@ -93,7 +70,7 @@ impl PckCrl<Unverified> {
         self.ca()?;
 
         let PckCrl { crl, ca_chain, .. } = self;
-        Ok(PckCrl::<Verified>{ crl, ca_chain, type_: PhantomData})
+        Ok(PckCrl::<Verified>{ crl, ca_chain, type_: Verified})
     }
 
     pub fn read_from_file(input_dir: &str, ca: DcapArtifactIssuer) -> Result<Self, Error> {

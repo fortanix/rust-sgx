@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
@@ -217,7 +217,7 @@ impl<'de> Deserialize<'de> for AdvisoryID {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModule {
     #[serde(deserialize_with = "tdx_mrsigner_deserializer", serialize_with = "tdx_mrsigner_serializer")]
@@ -228,7 +228,13 @@ pub struct TdxModule {
     pub attributes_mask: u64
 }
 
-#[derive(Clone, Debug, Deserialize)]
+impl Default for TdxModule {
+    fn default() -> Self {
+        Self { mrsigner: [0; 48], attributes: Default::default(), attributes_mask: Default::default() }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleIdentity {
     #[serde(deserialize_with = "tdx_mrsigner_deserializer", serialize_with = "tdx_mrsigner_serializer")]
@@ -259,13 +265,13 @@ impl TdxModuleIdentity {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleTcbLevelIsvSvn {
     isvsvn: u64
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleTcbLevel {
     tcb: TdxModuleTcbLevelIsvSvn,
@@ -324,22 +330,19 @@ where
 }
 
 pub trait PlatformTypeForTcbInfo<T: PlatformTypeForTcbInfo<T>> : PlatformType + PlatformTypeForTcbComponent<T> {
-    type PlatformSpecificTcbData;
-
+    type PlatformSpecificTcbData: DeserializeOwned + Default;
     fn extra_extension() -> &'static str;
-
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbData<T, Unverified>, D::Error>
-    where
-        D: Deserializer<'de>;
 }
 
 mod platform_specific {
     use crate::{TdxModule, TdxModuleIdentity};
+    use serde::Deserialize;
 
-    #[derive(Debug)]
-    pub struct SGX;
+    #[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+    pub struct SGX {}
 
-    #[derive(Debug)]
+    #[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+    #[serde(rename_all = "camelCase")]
     pub struct TDX {
         pub(crate) tdx_module: TdxModule,
         pub(crate) tdx_module_identities: Vec<TdxModuleIdentity>,
@@ -349,57 +352,6 @@ mod platform_specific {
 impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
     type PlatformSpecificTcbData = platform_specific::SGX;
 
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbData<platform::SGX, Unverified>, D::Error>
-    where
-        D: Deserializer<'de> {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            #[allow(unused)]
-            #[serde(default)]
-            #[serde(deserialize_with = "crate::deserialize_platform_id")]
-            id: platform::SGX,
-            version: u16,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            fmspc: Fmspc,
-            pce_id: String,
-            tcb_type: u16,
-            tcb_evaluation_data_number: u64,
-            #[serde(rename = "tcbLevels")]
-            tcb_levels: Vec<TcbLevel<platform::SGX>>,
-        }
-
-        let Dummy {
-            id: _,
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tcb_levels,
-        } = Dummy::deserialize(deserializer)?;
-
-        Ok(TcbData {
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tcb_levels,
-            platform_specific_data: platform_specific::SGX,
-            type_: PhantomData,
-            platform_: PhantomData
-        })
-
-    }
-    
     fn extra_extension() -> &'static str {
         ""
     }
@@ -410,91 +362,35 @@ impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
 impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
     type PlatformSpecificTcbData = platform_specific::TDX;
 
-    fn deserialize<'de, D>(deserializer: D) -> Result<TcbData<platform::TDX, Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            #[allow(unused)]
-            #[serde(deserialize_with = "crate::deserialize_platform_id")]
-            id: platform::TDX,
-            version: u16,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            fmspc: Fmspc,
-            pce_id: String,
-            tcb_type: u16,
-            tcb_evaluation_data_number: u64,
-            tdx_module: TdxModule,
-            tdx_module_identities: Vec<TdxModuleIdentity>,
-            tcb_levels: Vec<TcbLevel<platform::TDX>>,
-        }
-
-        let Dummy {
-            id: _,
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tdx_module,
-            tdx_module_identities,
-            tcb_levels,
-        } = Dummy::deserialize(deserializer)?;
-
-        Ok(TcbData {
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tcb_levels,
-            platform_specific_data: platform_specific::TDX {
-                tdx_module,
-                tdx_module_identities
-            },
-            type_: PhantomData,
-            platform_: PhantomData
-        })
-
-    }
-    
     fn extra_extension() -> &'static str {
         ".tdx"
     }
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TcbData<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified> {
+    #[serde(default)]
+    #[serde(deserialize_with = "crate::deserialize_platform_id")]
+    id: T,
     version: u16,
+    #[serde(with = "crate::iso8601")]
     issue_date: DateTime<Utc>,
+    #[serde(with = "crate::iso8601")]
     next_update: DateTime<Utc>,
     fmspc: Fmspc,
     pce_id: String,
     tcb_type: u16,
     tcb_evaluation_data_number: u64,
+    #[serde(rename = "tcbLevels")]
+    #[serde(bound(deserialize = "TcbLevel<T>: Deserialize<'de>"))]
     tcb_levels: Vec<TcbLevel<T>>,
+    #[serde(flatten)]
     platform_specific_data: T::PlatformSpecificTcbData,
-    type_: PhantomData<V>,
+    type_: V,
+    #[serde(skip)]
     platform_: PhantomData<T>
-}
-
-impl<'de, T: PlatformTypeForTcbInfo<T>> Deserialize<'de> for TcbData<T, Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbData<T, Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        <T as PlatformTypeForTcbInfo<T>>::deserialize(deserializer)
-    }
 }
 
 impl<T: PlatformTypeForTcbInfo<T>> TcbData<T, Verified> {
@@ -678,6 +574,7 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let TcbData {
+            id,
             version,
             issue_date,
             next_update,
@@ -702,6 +599,7 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         }
 
         Ok(TcbData::<T, Verified> {
+            id,
             version,
             issue_date,
             next_update,
@@ -711,7 +609,7 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
             tcb_evaluation_data_number,
             platform_specific_data,
             tcb_levels,
-            type_: PhantomData,
+            type_: Verified,
             platform_: PhantomData
         })
     }
@@ -802,7 +700,7 @@ mod tests {
     #[test]
     fn parse_tcbinfo_json() {
         let ca_chain = vec![
-            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(), 
+            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(),
             include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
         ];
 
@@ -813,7 +711,7 @@ mod tests {
 
         // Parse and verify TDX TCB Info
         let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
-        assert!(TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).is_ok());
+        TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).unwrap();
         tdx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
 
         // Passing SGX TCB Info JSON to the TDX type must throw error
