@@ -198,12 +198,12 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
         } else {
             let ReadEifResult { mut eif, metadata } =
                 read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
-                    .context("Failed to read EIF file")?;
+                    .context("failed to read EIF file")?;
 
             //TODO also extract env/cmd file and make sure the application is executed with this
             //context
-            let elf = eif.application().context("Failed to parse enclave file")?;
-            elf_path = create_elf(elf).context("Failed to create executable file")?;
+            let elf = eif.application().context("failed to parse enclave file")?;
+            elf_path = create_elf(elf).context("failed to create executable file")?;
 
             img_name = metadata.img_name;
 
@@ -218,11 +218,11 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
         )
     } else {
         let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
-            .context("Failed to read EIF file")?
+            .context("failed to read EIF file")?
             .metadata;
         let run_args = nitro_cli
             .to_nitro_cli_run_args()
-            .context("Failed to parse arguments")?;
+            .context("failed to parse arguments")?;
 
         run_to_completion::<NitroEnclaves>(
             run_args,
