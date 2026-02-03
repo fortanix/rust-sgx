@@ -14,6 +14,8 @@ members = [
     "fortanix-vme/fortanix-vme-initramfs",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/fortanix-vme-tools",
+    "fortanix-vme/tools/confidential-vm-blobs",
+    "fortanix-vme/tools/elf2uki",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",
@@ -39,6 +41,7 @@ members = [
 ]
 exclude = [
     "examples/backtrace_panic",
+    "examples/elf2uki",
     "examples/mpsc-crypto-mining",
     "examples/tls",
     "examples/unit_tests",
