@@ -12,6 +12,9 @@ use tempfile::{self, NamedTempFile};
 mod error;
 mod initramfs;
 
+pub mod eif_types {
+    pub use aws_nitro_enclaves_image_format::defs::{EifIdentityInfo, EifHeader, EifSectionHeader};
+}
 pub use aws_nitro_enclaves_image_format::defs::EifSectionType;
 pub use error::Error;
 
@@ -298,6 +301,18 @@ impl<
         io::copy(&mut tmp, &mut output).map_err(Error::EifWriteError)?;
         Ok(FtxEif::new(output))
     }
+}
+
+pub struct ReadEifResult<T> {
+    pub eif: FtxEif<T>,
+    pub metadata: EifIdentityInfo,
+}
+
+pub fn read_eif_with_metadata(enclave_file_path: &str) -> Result<ReadEifResult<impl Read + Seek>, Error> {
+    let f = std::fs::File::open(enclave_file_path).map_err(Error::EifWriteError)?;
+    let mut eif = FtxEif::new(io::BufReader::new(f));
+    let metadata = eif.metadata()?;
+    Ok(ReadEifResult { eif, metadata })
 }
 
 #[cfg(test)]
