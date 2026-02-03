@@ -1,3 +1,4 @@
+use std::error::Error as StdError;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -57,7 +58,7 @@ struct CargoArgs {
 impl CargoArgs {
     pub fn eif_path(&self) -> PathBuf {
         let mut eif_path = self.elf_path.clone();
-        eif_path.set_extension("elf");
+        eif_path.set_extension("eif");
         eif_path
     }
 
@@ -147,6 +148,10 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
+const ELF2UKI_TOOL_NAME: &str = "fortanix-vme-elf2uki";
+const ELF2EIF_TOOL_NAME: &str = "ftxvme-elf2eif";
+const RUNNER_TOOL_NAME: &str = "fortanix-vme-runner";
+
 fn cargo_run_sev_snp_vm(
     amd_sev_snp_cli: AmdSevSnpCli,
     fortanix_vme_config: FortanixVmeConfig,
@@ -158,8 +163,7 @@ fn cargo_run_sev_snp_vm(
 
     let uki_path = amd_sev_snp_args.uki_path();
 
-    // TODO: we can assume this is installed right?
-    let mut ftxvme_elf2uki = Command::new("ftxvme-elf2uki");
+    let mut ftxvme_elf2uki = Command::new(ELF2UKI_TOOL_NAME);
     ftxvme_elf2uki
         .arg("--app")
         .arg(&amd_sev_snp_args.elf_path)
@@ -167,9 +171,9 @@ fn cargo_run_sev_snp_vm(
         .arg(&uki_path)
         .arg("--cmdline")
         .arg("console=ttyS0 earlyprintk=serial"); //TODO: should we use this as default?
-    run_command(ftxvme_elf2uki)?;
+    run_command(ftxvme_elf2uki).map_err(|e| e.io_installation_hint(ELF2UKI_TOOL_NAME))?;
 
-    let mut fortanix_vme_runner = Command::new("fortanix-vme-runner");
+    let mut fortanix_vme_runner = Command::new(RUNNER_TOOL_NAME);
     fortanix_vme_runner.arg("--enclave-file").arg(&uki_path);
 
     add_runner_config_args(&mut fortanix_vme_runner, &fortanix_vme_config);
@@ -179,7 +183,7 @@ fn cargo_run_sev_snp_vm(
     fortanix_vme_runner.arg("amd-sev-snp");
     add_other_args(&mut fortanix_vme_runner, amd_sev_snp_args.others);
 
-    run_command(fortanix_vme_runner)?;
+    run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
 
     Ok(())
 }
@@ -195,13 +199,13 @@ fn cargo_run_nitro_enclave(
 
     let eif_path = aws_nitro_args.eif_path();
 
-    let mut ftxvme_elf2eif = Command::new("ftxvme-elf2eif");
+    let mut ftxvme_elf2eif = Command::new(ELF2EIF_TOOL_NAME);
     ftxvme_elf2eif
         .arg("--elf-path")
         .arg(&aws_nitro_args.elf_path)
         .arg("--output-path")
         .arg(&eif_path);
-    run_command(ftxvme_elf2eif)?;
+    run_command(ftxvme_elf2eif).map_err(|e| e.io_installation_hint(ELF2EIF_TOOL_NAME))?;
 
     let mut fortanix_vme_runner = Command::new("fortanix-vme-runner");
     fortanix_vme_runner.arg("--enclave-file").arg(&eif_path);
@@ -217,7 +221,7 @@ fn cargo_run_nitro_enclave(
         .arg(&aws_nitro_args.elf_path);
     add_other_args(&mut fortanix_vme_runner, aws_nitro_args.others);
 
-    run_command(fortanix_vme_runner)?;
+    run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
 
     Ok(())
 }
@@ -270,5 +274,21 @@ fn run_command(mut cmd: Command) -> Result<(), CommandFail> {
         Err(e) => Err(CommandFail::Io(format!("{:?}", cmd), e)),
         Ok(status) if status.success() => Ok(()),
         Ok(status) => Err(CommandFail::Status(format!("{:?}", cmd), status)),
+    }
+}
+
+impl CommandFail {
+    fn io_installation_hint(self, tool_name: &str) -> anyhow::Error {
+        let CommandFail::Io(_, io_error) = &self else {
+            return anyhow::Error::new(self);
+        };
+
+        let error_kind = io_error.kind();
+        match error_kind {
+            std::io::ErrorKind::NotFound => anyhow::Error::new(self).context(format!(
+                "`{tool_name}` not found in PATH; make it available or install it"
+            )),
+            _ => anyhow::Error::new(self),
+        }
     }
 }

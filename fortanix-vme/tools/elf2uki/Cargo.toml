@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "ftxvme-elf2uki"
+name = "fortanix-vme-elf2uki"
 path = "src/main.rs"
 
 [dependencies]
