@@ -91,7 +91,7 @@ pub trait StreamRouter {
         addr: &'future str,
         local_addr: Option<&'future mut String>,
         peer_addr: Option<&'future mut String>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncStream>>> +'future>>;
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncStream>>> + Send +'future>>;
 
     /// Serve a bind call by the enclave. The runner should determine the 
     /// service that the enclave is trying to bind to by looking at `addr`.
@@ -110,5 +110,5 @@ pub trait StreamRouter {
         &'future self,
         addr: &'future str,
         local_addr: Option<&'future mut String>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncListener>>> + 'future>>;
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncListener>>> + Send + 'future>>;
 }
