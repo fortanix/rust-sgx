@@ -14,6 +14,7 @@ use std::path::Path;
 
 use aesm_client::AesmClient;
 use enclave_runner::EnclaveBuilder;
+use enclave_runner_sgx::EnclaveBuilder as EnclaveBuilderSgx;
 use anyhow::Context;
 #[cfg(unix)]
 use libc::{c_int, c_void, siginfo_t};
@@ -96,7 +97,7 @@ fn main() -> Result<(), anyhow::Error> {
         .einittoken_provider(AesmClient::new())
         .build();
 
-    let mut enclave_builder = EnclaveBuilder::new(file.as_ref());
+    let mut enclave_builder = EnclaveBuilderSgx::new(file.as_ref());
 
     match args.value_of_os("signature").map(|v| v.try_into().expect("validated")) {
         Some(Signature::Coresident) => { enclave_builder.coresident_signature().context("While loading coresident signature")?; }
@@ -104,6 +105,8 @@ fn main() -> Result<(), anyhow::Error> {
         Some(Signature::File(path)) => { enclave_builder.signature(path).with_context(|| format!("Failed to load signature file '{}'", path.display()))?; },
         None => (),
     }
+
+    let mut enclave_builder = EnclaveBuilder::new(enclave_builder);
 
     if let Some(enclave_args) = args.values_of("enclave-args") {
         enclave_builder.args(enclave_args);

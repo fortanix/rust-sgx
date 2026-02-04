@@ -1,6 +1,6 @@
 [package]
-name = "enclave-runner"
-version = "0.7.3"
+name = "enclave-runner-sgx"
+version = "0.1.0"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -11,7 +11,7 @@ This crate can be used to load and interface with SGX applications compiled for
 the `x86_64-fortanix-unknown-sgx` target.
 """
 repository = "https://github.com/fortanix/rust-sgx"
-documentation = "https://edp.fortanix.com/docs/api/enclave_runner/"
+documentation = "https://edp.fortanix.com/docs/api/enclave_runner_sgx/"
 homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["os", "hardware-support"]
@@ -25,6 +25,7 @@ fortanix-sgx-abi = { version = "0.6.1", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 insecure-time = { version = "0.2", path = "../insecure-time", features = ["estimate_crystal_clock_freq"] }
 ipc-queue = { version = "0.4.0", path = "../../ipc-queue" }
+enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
 
 # External dependencies
 anyhow = "1.0"                                    # MIT/Apache-2.0
@@ -35,7 +36,6 @@ libc = "0.2.48"                                   # MIT/Apache-2.0
 nix = "0.13.0"                                    # MIT
 openssl = { version = "0.10", optional = true }   # Apache-2.0
 crossbeam = "0.8.4"                               # MIT/Apache-2.0
-num_cpus = "1.10.0"                               # MIT/Apache-2.0
 tokio = { version = "1.35", features = ["full"] } # MIT
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
 
