@@ -15,6 +15,8 @@ use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
+type DefaultLogLevel = WarnLevel;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run the given enclave image file", long_about = None)]
 struct Cli {
@@ -25,7 +27,7 @@ struct Cli {
     command: Commands,
 
     #[command(flatten)]
-    verbose: clap_verbosity_flag::Verbosity<WarnLevel>,
+    verbose: clap_verbosity_flag::Verbosity<DefaultLogLevel>,
 }
 
 #[derive(Args, Debug)]
@@ -35,11 +37,11 @@ struct CommonArgs {
     enclave_file: PathBuf,
 
     // TODO(RTE-745): the `cpu_count` is not currently being used for AMD-SEV
-    /// The number of (v)CPUs that should be allocated to the enclave (2 by default)
+    /// The number of (v)CPUs that should be allocated to the enclave
     #[arg(short, long, default_value_t = 2)]
     cpu_count: u32,
 
-    ///The amount of memory that should be allcated to the enclave (in MiB)
+    ///The amount of memory that should be allocated to the enclave (in MiB)
     #[arg(short, long, default_value_t = 512)]
     memory: u64,
 

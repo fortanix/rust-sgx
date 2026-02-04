@@ -1,4 +1,3 @@
-use std::error::Error as StdError;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
@@ -6,8 +5,12 @@ use std::process::{Command, ExitStatus};
 use anyhow::{anyhow, Context, Result};
 use cargo_toml::Manifest;
 use clap::{Args, Parser, Subcommand};
+use clap_verbosity_flag::{LogLevel, WarnLevel};
+use log::LevelFilter;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+type DefaultLogLevel = WarnLevel;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about = "Run the given ELF as an enclave image", long_about = None)]
@@ -23,8 +26,8 @@ struct CommonArgs {
     #[arg(long)]
     simulate: bool,
 
-    #[arg(long)]
-    verbose: bool,
+    #[command(flatten)]
+    verbose: clap_verbosity_flag::Verbosity<DefaultLogLevel>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -48,7 +51,7 @@ struct AwsNitroCli {
 #[command(about = "")]
 struct CargoArgs {
     /// Path to the x86_64-unknown-linux-fortanixvme ELF binary
-    #[arg(value_parser=parse_elf_path)]
+    #[arg(value_parser = parse_elf_path)]
     elf_path: PathBuf,
 
     #[arg(trailing_var_arg = true)]
@@ -170,7 +173,11 @@ fn cargo_run_sev_snp_vm(
         .arg("--output")
         .arg(&uki_path)
         .arg("--cmdline")
-        .arg("console=ttyS0 earlyprintk=serial"); //TODO: should we use this as default?
+        .arg(format!(
+            "console=ttyS0 earlyprintk=serial loglevel={}",
+            log_level_to_kernel_log_level(common_args.verbose.log_level_filter())
+        )); //TODO: should we use this as default?
+
     run_command(ftxvme_elf2uki).map_err(|e| e.io_installation_hint(ELF2UKI_TOOL_NAME))?;
 
     let mut fortanix_vme_runner = Command::new(RUNNER_TOOL_NAME);
@@ -186,6 +193,20 @@ fn cargo_run_sev_snp_vm(
     run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
 
     Ok(())
+}
+
+/// Rough mapping of the passed-in log-level to regulate logging in the default kernel cmdline
+fn log_level_to_kernel_log_level(level: LevelFilter) -> u8 {
+    const KERN_ERR: u8 = 3;
+    const KERN_WARNING: u8 = 4;
+    const KERN_INFO: u8 = 6;
+    const KERN_DEBUG: u8 = 7;
+    match level {
+        LevelFilter::Off | LevelFilter::Error => KERN_ERR,
+        LevelFilter::Warn => KERN_WARNING,
+        LevelFilter::Info => KERN_INFO,
+        LevelFilter::Debug | LevelFilter::Trace => KERN_DEBUG,
+    }
 }
 
 fn cargo_run_nitro_enclave(
@@ -231,9 +252,26 @@ fn add_runner_common_args(fortanix_vme_runner: &mut Command, common_args: &Commo
         fortanix_vme_runner.arg("--simulate");
     }
 
-    if common_args.verbose {
-        fortanix_vme_runner.arg("--verbose");
+    relay_verbosity_flags(fortanix_vme_runner, common_args);
+}
+
+// Relay `-q` or `-v` arguments to another binary
+fn relay_verbosity_flags(command: &mut Command, common_args: &CommonArgs) {
+    let cli_filter_val = common_args.verbose.log_level_filter() as usize;
+    let default_filter_val = log::LevelFilter::from(DefaultLogLevel::default_filter()) as usize;
+    // Number of times we have received a quiet/verbose flag (capped at min/max log levels)
+    let verbose_diff = cli_filter_val.abs_diff(default_filter_val);
+    if verbose_diff == 0 {
+        return;
     }
+
+    let to_repeat = if cli_filter_val >= default_filter_val {
+        "v"
+    } else {
+        "q"
+    };
+
+    command.arg(format!("-{}", to_repeat.repeat(verbose_diff)));
 }
 
 fn add_runner_config_args(
