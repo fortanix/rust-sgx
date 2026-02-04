@@ -68,6 +68,15 @@ pub enum Addr {
     },
 }
 
+impl Addr {
+    pub fn port(&self) -> u16 {
+        match self {
+            Addr::IPv4 { port, .. } => *port,
+            Addr::IPv6 { port, .. } => *port,
+        }
+    }
+}
+
 #[cfg(any(feature="core", feature="std"))]
 impl From<SocketAddr> for Addr {
     fn from(addr: SocketAddr) -> Addr {
