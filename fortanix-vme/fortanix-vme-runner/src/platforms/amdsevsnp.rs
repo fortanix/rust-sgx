@@ -3,6 +3,8 @@ use std::{
     process::{Child, Command},
 };
 
+use crate::RunnerError;
+
 use super::Platform;
 
 /// The arguments used by the `run-enclave` command.
@@ -99,12 +101,10 @@ impl Platform for AmdSevVm {
 
     type EnclaveDescriptor = RunningVm;
 
-    fn run<I: Into<Self::RunArgs>>(
-        run_args: I,
-    ) -> Result<Self::EnclaveDescriptor, fortanix_vme_abi::Error> {
+    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let child = build_qemu_command(RunMode::AmdSevVm, run_args.into())
             .spawn()
-            .expect("failed to run amd sev VM");
+            .map_err(|e| (e, "failed to spawn amd sev snp vm through qemu"))?;
         Ok(RunningVm(child))
     }
 }
@@ -114,12 +114,10 @@ impl Platform for VmSimulator {
 
     type EnclaveDescriptor = RunningVm;
 
-    fn run<I: Into<Self::RunArgs>>(
-        run_args: I,
-    ) -> Result<Self::EnclaveDescriptor, fortanix_vme_abi::Error> {
+    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let child = build_qemu_command(RunMode::VmSimulator, run_args.into())
             .spawn()
-            .expect("failed to run simulated VM");
+            .map_err(|e| (e, "failed to spawn vm through qemu"))?;
         Ok(RunningVm(child))
     }
 }
