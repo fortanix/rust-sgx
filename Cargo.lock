@@ -1719,13 +1719,17 @@ dependencies = [
  "fnv",
  "fortanix-vme-abi",
  "fortanix-vme-eif",
+ "futures 0.3.31",
  "log 0.4.28",
  "nitro-cli",
  "nix 0.22.2",
  "rand 0.7.3",
  "serde",
  "serde_cbor",
+ "tokio",
+ "tokio-vsock",
  "vsock 0.2.4",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -4809,6 +4813,19 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "tokio-vsock"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b319ef9394889dab2e1b4f0085b45ba11d0c79dc9d1a9d1afc057d009d0f1c7"
+dependencies = [
+ "bytes 1.7.1",
+ "futures 0.3.31",
+ "libc",
+ "tokio",
+ "vsock 0.5.2",
 ]
 
 [[package]]

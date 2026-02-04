@@ -5,15 +5,20 @@ edition = "2018"
 authors = ["Fortanix, Inc."]
 
 [dependencies]
+fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
+fortanix-vme-eif = { path = "../fortanix-vme-eif" }
+
 clap = { version = "4.0", features = ["derive"] }
 env_logger = "0.9.0"
 fnv = "1.0.7"
-fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
-fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 log = "0.4.21"
 nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli.git", rev = "v1.4.2" }
 nix = "0.22.1"
 rand = "0.7.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_cbor = { version = "0.11" }
-vsock = "0.2.4"
+tokio = { version = "1.35", features = ["full"] } # MIT
+vsock = "0.5"
+vsock_0_2_4 = { package = "vsock", version = "0.2.4"}
+tokio-vsock = "0.7"
+futures = "0.3"

@@ -113,7 +113,8 @@ fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
 
     if cli.simulate {
@@ -141,12 +142,12 @@ fn main() {
 
         let mut runner: EnclaveRunner<Simulator> = create_runner();
         let args = SimulatorArgs::new(elf_path);
-        runner.run_enclave(args, img_name, cli.args).expect("Failed to run enclave");
-        runner.wait();
+        runner.run_enclave(args, img_name, cli.args).await.expect("Failed to run enclave");
+        runner.wait().await;
     } else {
         let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args, read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name, cli.args).expect("Failed to run enclave");
-        runner.wait();
+        runner.run_enclave(args, read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name, cli.args).await.expect("Failed to run enclave");
+        runner.wait().await;
     };
 }
