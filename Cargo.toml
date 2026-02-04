@@ -2,6 +2,7 @@
 members = [
     "em-app",
     "em-app/examples/get-certificate",
+    "enclave-runner",
     "examples/mem-alloc-test",
     "examples/mem-correctness-test",
     "fortanix-vme/aws-nitro-enclaves/aws-nitro-blobs",
@@ -22,7 +23,7 @@ members = [
     "intel-sgx/dcap-ql-sys",
     "intel-sgx/dcap-ql",
     "intel-sgx/dcap-retrieve-pckid",
-    "intel-sgx/enclave-runner",
+    "intel-sgx/enclave-runner-sgx",
     "intel-sgx/fortanix-sgx-abi",
     "intel-sgx/fortanix-sgx-tools",
     "intel-sgx/ias",

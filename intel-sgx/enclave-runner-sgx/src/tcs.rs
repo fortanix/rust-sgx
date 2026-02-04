@@ -164,22 +164,39 @@ pub(crate) fn coenter<T: Tcs>(
             if ret == 0 {
                 sgx_result = run.function;
                 match sgx_result.try_into() {
-                    Ok(Enclu::EExit) => { /* normal case */ },
+                    Ok(Enclu::EExit) => { /* normal case */ }
                     Ok(Enclu::EResume) => {
                         if let Some(mut debug_buf) = debug_buf {
-                            let _ = write!(&mut debug_buf[..], "Enclave triggered exception: {:?}\0", run);
+                            let _ = write!(
+                                &mut debug_buf[..],
+                                "Enclave triggered exception: {:?}\0",
+                                run
+                            );
                         } else {
                             eprintln!("Enclave triggered exception, treating as panic: {:?}", run);
                         }
                         return CoResult::Yield(Usercall {
                             tcs: tcs,
-                            parameters: (crate::usercalls::abi::UsercallList::exit as _, true as _, 0, 0, 0),
+                            parameters: (
+                                crate::usercalls::abi::UsercallList::exit as _,
+                                true as _,
+                                0,
+                                0,
+                                0,
+                            ),
                         });
-                    },
-                    _ => panic!("Error entering enclave (VDSO): ret = success, run = {:?}", run),
+                    }
+                    _ => panic!(
+                        "Error entering enclave (VDSO): ret = success, run = {:?}",
+                        run
+                    ),
                 }
             } else {
-                panic!("Error entering enclave (VDSO): ret = {:?}, run = {:?}", std::io::Error::from_raw_os_error(-ret), run);
+                panic!(
+                    "Error entering enclave (VDSO): ret = {:?}, run = {:?}",
+                    std::io::Error::from_raw_os_error(-ret),
+                    run
+                );
             }
         } else {
             asm!("

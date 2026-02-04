@@ -9,12 +9,14 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 extern crate enclave_runner;
+extern crate enclave_runner_sgx;
 extern crate anyhow;
 extern crate sgx_isa;
 extern crate sgxs;
 
 use anyhow::Context;
 use enclave_runner::EnclaveBuilder;
+use enclave_runner_sgx::EnclaveBuilder as EnclaveBuilderSgx;
 use sgx_isa::{PageType, Report, SecinfoFlags, Targetinfo, Attributes, AttributesFlags, Miscselect};
 use sgxs::loader::Load;
 use sgxs::sgxs::{PageChunk, SecinfoTruncated, SgxsWrite};
@@ -59,7 +61,7 @@ impl ReportBuilder {
     }
 
     pub fn build<L: Load>(self, enclave_loader: &mut L) -> Result<Report, anyhow::Error> {
-        let mut builder = EnclaveBuilder::new_from_memory(&self.enclave_bytes);
+        let mut builder = EnclaveBuilderSgx::new_from_memory(&self.enclave_bytes);
 
         if let Some(attributes) = self.attributes {
             builder.attributes(attributes);
@@ -72,8 +74,8 @@ impl ReportBuilder {
         unsafe {
             let mut report = Report::default();
 
-            builder
-                .build_library(enclave_loader)
+            EnclaveBuilder::<_, enclave_runner::Library>::new(builder)
+                .build(enclave_loader)
                 .context("failed to load report enclave")?
                 .call(&mut report as *mut _ as _, 0, 0, 0, 0)
                 .context("failed to call report enclave")?;

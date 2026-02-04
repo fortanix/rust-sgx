@@ -7,15 +7,16 @@
 //! Rust types.
 
 use std::io::{Error as IoError, ErrorKind as IoErrorKind, Result as IoResult};
+use std::ops::{Deref, DerefMut};
 use std::slice;
 
 use fortanix_sgx_abi::*;
 
 use super::abi::{UsercallResult, Usercalls};
 use super::{EnclaveAbort, IOHandlerInput};
-use tokio::io::ReadBuf;
-use futures::FutureExt;
 use futures::future::Future;
+use futures::FutureExt;
+use tokio::io::ReadBuf;
 
 pub(super) struct Handler<'ioinput, 'tcs>(pub &'ioinput mut IOHandlerInput<'tcs>);
 
@@ -36,14 +37,14 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 let ret = match from_raw_parts_mut_nonnull(buf, len) {
                     Ok(buf) => {
                         let mut buf = ReadBuf::new(buf);
-                        self.0.read(fd, &mut buf).await
-                            .map(|_| buf.filled().len())
-                    },
+                        self.0.read(fd, &mut buf).await.map(|_| buf.filled().len())
+                    }
                     Err(e) => Err(e),
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn read_alloc(
@@ -67,7 +68,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 }
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn write(
@@ -85,7 +87,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn flush(
@@ -95,7 +98,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.flush(fd).await.to_sgx_result());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn close(
@@ -105,7 +109,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.close(fd).await);
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn bind_stream(
@@ -124,7 +129,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn accept_stream(
@@ -145,7 +151,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                     .to_sgx_result());
                 return (self, ret);
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn connect_stream(
@@ -171,7 +178,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
                 };
                 return (self, Ok(ret.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn launch_thread(
@@ -180,7 +188,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.launch_thread().to_sgx_result());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn exit(
@@ -190,7 +199,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = self.0.exit(panic);
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn wait(
@@ -206,7 +216,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
 
             let ret = Ok(self.0.wait(event_mask, timeout).await.to_sgx_result());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn send(
@@ -217,16 +228,20 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.send(event_set, tcs).to_sgx_result());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn insecure_time(
         self,
-    ) -> std::pin::Pin<Box<dyn Future<Output = (Self, UsercallResult<(u64, *const InsecureTimeInfo)>)> + 'future>> {
+    ) -> std::pin::Pin<
+        Box<dyn Future<Output = (Self, UsercallResult<(u64, *const InsecureTimeInfo)>)> + 'future>,
+    > {
         async move {
             let ret = Ok(self.0.insecure_time());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn alloc(
@@ -238,7 +253,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.alloc(size, alignment).to_sgx_result());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn free(
@@ -250,7 +266,8 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             let ret = Ok(self.0.free(ptr, size, alignment).unwrap());
             return (self, ret);
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn async_queues(
@@ -262,38 +279,59 @@ impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<
         async move {
             unsafe {
                 let ret = match (usercall_queue.as_mut(), return_queue.as_mut()) {
-                    (Some(usercall_queue), Some(return_queue)) => {
-                        self.0.async_queues(usercall_queue, return_queue, cancel_queue.as_mut()).await.map(Ok)
-                    },
-                    _ => {
-                        Ok(Err(IoErrorKind::InvalidInput.into()))
-                    },
+                    (Some(usercall_queue), Some(return_queue)) => self
+                        .0
+                        .async_queues(usercall_queue, return_queue, cancel_queue.as_mut())
+                        .await
+                        .map(Ok),
+                    _ => Ok(Err(IoErrorKind::InvalidInput.into())),
                 };
                 return (self, ret.map(|v| v.to_sgx_result()));
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 }
 
-pub(super) struct OutputBuffer<'a> {
+// `T` could be more generic, we could take anything that can be turned into
+// `Box<[u8]>`. However, `String`, which we definitely need, doesn't have a
+// direct conversion.
+pub(super) struct OutputBuffer<'a, T: Into<Vec<u8>>> {
     buf: &'a mut ByteBuffer,
-    data: Option<Box<[u8]>>,
+    data: Option<T>,
 }
 
-impl<'a> OutputBuffer<'a> {
+impl<'a, T: Into<Vec<u8>>> OutputBuffer<'a, T> {
     fn new(buf: &'a mut ByteBuffer) -> Self {
         OutputBuffer { buf, data: None }
     }
+}
 
-    pub(super) fn set<T: Into<Box<[u8]>>>(&mut self, value: T) {
-        // NB. this should use the same allocator as usercall alloc/free
-        self.data = Some(value.into());
+impl<'a, T: Into<Vec<u8>> + Default> OutputBuffer<'a, T> {
+    pub(super) fn init_default<'b>(&'b mut self) -> &'b mut T {
+        self.data.get_or_insert_default()
     }
 }
 
-impl<'a> Drop for OutputBuffer<'a> {
+impl<'a, T: Into<Vec<u8>>> Deref for OutputBuffer<'a, T> {
+    type Target = Option<T>;
+
+    fn deref(&self) -> &Option<T> {
+        &self.data
+    }
+}
+
+impl<'a, T: Into<Vec<u8>>> DerefMut for OutputBuffer<'a, T> {
+    fn deref_mut(&mut self) -> &mut Option<T> {
+        &mut self.data
+    }
+}
+
+impl<'a, T: Into<Vec<u8>>> Drop for OutputBuffer<'a, T> {
     fn drop(&mut self) {
         if let Some(buf) = self.data.take() {
+            // NB. this should use the same allocator as usercall alloc/free
+            let buf: Box<[u8]> = buf.into().into();
             self.buf.len = buf.len();
             self.buf.data = Box::into_raw(buf) as _;
         } else {
