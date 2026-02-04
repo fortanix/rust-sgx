@@ -6,7 +6,7 @@ pub const INIT: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/blo
 /// Fallback for the used kernel, specified if the user does not provide one
 pub const KERNEL: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/blobs/vmlinuz-6.14.0-36-generic"
+    "/blobs/bzImage"
 ));
 
 /// Fallback for the AMD OVMF firmware, specified if the user does not provide one
