@@ -308,6 +308,9 @@ pub enum RunnerError {
     // TODO (RTE-770): refine error variants and return proper errors throughout crate
     #[error("io error occurred: {0:?}")]
     Io(Option<Cow<'static, str>>, #[source] io::Error),
+
+    #[error("runtime error occurred: {0}")]
+    Runtime(Cow<'static, str>),
 }
 
 // TODO (RTE-770): more accurate variant selection through `ErrorKind`

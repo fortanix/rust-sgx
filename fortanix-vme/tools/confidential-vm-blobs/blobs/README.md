@@ -17,8 +17,11 @@ To see the diff:
 diff -c10 <(curl https://raw.githubusercontent.com/aws/aws-nitro-enclaves-sdk-bootstrap/f718dea60a9d9bb8b8682fd852ad793912f3c5db/init/init.c) blobs/build_init/init.c
 ```
 
-## vmlinuz-{version}
-Ubuntu kernel, extracted from noble package `linux-image-{version}`.
+## bzImage
+Upstream kernel, configured for the guest VM.
+
+## config.bzImage
+The kernel configuration used to build `bzImage`.
 
 ## OVMF
 Defaults copied from noble installation, taken from `/usr/share/ovmf/OVMF.fd` and `/usr/share/ovmf/OVMF.amdsev.fd` respectively
