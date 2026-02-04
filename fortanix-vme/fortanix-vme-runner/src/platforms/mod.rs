@@ -1,4 +1,4 @@
-use super::VmeError;
+use crate::RunnerError;
 
 pub(crate) mod amdsevsnp;
 
@@ -12,5 +12,5 @@ pub trait Platform: Send + Sync {
     type RunArgs;
     type EnclaveDescriptor: Send + Sync;
 
-    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, VmeError>;
+    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError>;
 }
