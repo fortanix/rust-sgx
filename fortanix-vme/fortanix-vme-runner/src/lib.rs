@@ -309,8 +309,8 @@ pub struct Server<P: Platform> {
 
 pub struct ServerState<P: Platform> {
     forward_panics: bool,
-    enclave: RwLock<EnclaveState<P>>,
-    command_listener: Mutex<VsockListener>,
+    enclave_state: RwLock<EnclaveState<P>>,
+    command_listener: VsockListener,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
     /// every TCP listener socket in the runner, there is a vsock listener socket in the enclave.
     /// When the enclave instructs to accept a new connection, the runner accepts a new TCP
@@ -322,7 +322,7 @@ pub struct ServerState<P: Platform> {
 
 impl<P: Platform + 'static> ServerState<P> {
     async fn handle_request_init(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let state = self.enclave.read().await;
+        let state = self.enclave_state.read().await;
         let args = match &*state {
             EnclaveState::Null => panic!("Not yet running enclave requesting initialization"),
             EnclaveState::Running { args, .. } => args.to_owned(),
@@ -621,8 +621,8 @@ impl<P: Platform + 'static> Server<P> {
             command_listener_local_addr,
             state: Arc::new(ServerState { 
                 forward_panics,
-                enclave: RwLock::new(EnclaveState::Null),
-                command_listener: Mutex::new(command_listener),
+                enclave_state: RwLock::new(EnclaveState::Null),
+                command_listener: command_listener,
                 listeners: RwLock::new(FnvHashMap::default()),
                 connections: Arc::new(RwLock::new(FnvHashMap::default())),
             })
@@ -635,9 +635,8 @@ impl<P: Platform + 'static> Server<P> {
         let state = self.state.clone();
         let handle = tokio::spawn(
             async move {
-                let command_listener = state.command_listener.lock().await;
                 loop {
-                    let accepted = command_listener.accept().await;
+                    let accepted = state.command_listener.accept().await;
                     let state_for_conn = state.clone();
                     let _ = tokio::spawn(async move {
                        let mut conn = match accepted {
@@ -662,7 +661,7 @@ impl<P: Platform + 'static> Server<P> {
 
     /// Starts a new enclave
     pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
-        let mut state = self.state.enclave.write().await;
+        let mut state = self.state.enclave_state.write().await;
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
             EnclaveState::Null => {
