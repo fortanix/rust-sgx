@@ -9,8 +9,7 @@ fn main() {
         let out_dir = std::env::var("OUT_DIR").unwrap();
 
         // FIXME: need to link to fake VDSO due to https://github.com/rust-lang/rust/issues/58713
-        File::create(&Path::new(&out_dir)
-            .join(format!("lib{}.so", LIBNAME)))
+        File::create(&Path::new(&out_dir).join(format!("lib{}.so", LIBNAME)))
             .unwrap()
             .write_all(include_bytes!("fake-vdso/fake-vdso.so"))
             .unwrap();

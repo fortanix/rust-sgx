@@ -69,6 +69,14 @@ impl Command {
     }
 
     pub fn run(self) -> Result<(), Error> {
-        EnclaveState::main_entry(self.main, self.threads, self.usercall_ext, self.forward_panics, self.force_time_usercalls, self.cmd_args, self.num_worker_threads)
+        EnclaveState::main_entry(
+            self.main,
+            self.threads,
+            self.usercall_ext,
+            self.forward_panics,
+            self.force_time_usercalls,
+            self.cmd_args,
+            self.num_worker_threads,
+        )
     }
 }

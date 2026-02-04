@@ -51,7 +51,12 @@ impl Library {
         force_time_usercalls: bool,
     ) -> Library {
         Library {
-            enclave: EnclaveState::library(tcss, usercall_ext, forward_panics, force_time_usercalls),
+            enclave: EnclaveState::library(
+                tcss,
+                usercall_ext,
+                forward_panics,
+                force_time_usercalls,
+            ),
             address,
             size,
         }

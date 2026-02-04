@@ -12,19 +12,16 @@ use std::os::raw::c_void;
 use std::path::Path;
 use std::{arch, str};
 
+use anyhow::{format_err, Context};
 use thiserror::Error as ThisError;
-use anyhow::{Context, format_err};
 
 #[cfg(feature = "crypto-openssl")]
-use openssl::{
-    hash::Hasher,
-    pkey::PKey,
-};
+use openssl::{hash::Hasher, pkey::PKey};
 
 use sgx_isa::{Attributes, AttributesFlags, Miscselect, Sigstruct};
-use sgxs::sgxs::PageReader;
 use sgxs::crypto::{SgxHashOps, SgxRsaOps};
 use sgxs::loader::{Load, MappingInfo, Tcs};
+use sgxs::sgxs::PageReader;
 use sgxs::sigstruct::{self, EnclaveHash, Signer};
 
 use crate::tcs::DebugBuffer;
@@ -69,7 +66,8 @@ pub struct EnclaveBuilder<'a> {
     miscselect: Option<Miscselect>,
     usercall_ext: Option<Box<dyn UsercallExtension>>,
     load_and_sign: Option<Box<dyn FnOnce(Signer) -> Result<Sigstruct, anyhow::Error>>>,
-    hash_enclave: Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
+    hash_enclave:
+        Option<Box<dyn FnOnce(&mut EnclaveSource<'_>) -> Result<EnclaveHash, anyhow::Error>>>,
     forward_panics: bool,
     force_time_usercalls: bool,
     cmd_args: Option<Vec<Vec<u8>>>,
@@ -197,7 +195,11 @@ impl<'a> EnclaveBuilder<'a> {
                     return 0;
                 }
 
-                let CpuidResult { ebx: base, eax: size, .. } = match cpuid(0x0d, bit) {
+                let CpuidResult {
+                    ebx: base,
+                    eax: size,
+                    ..
+                } = match cpuid(0x0d, bit) {
                     None | Some(CpuidResult { ebx: 0, .. }) => return 0,
                     Some(v) => v,
                 };
@@ -229,7 +231,11 @@ impl<'a> EnclaveBuilder<'a> {
         let mut enclave = self.enclave.try_clone().unwrap();
         let hash = match self.hash_enclave.take() {
             Some(f) => f(&mut enclave)?,
-            None => return Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
+            None => {
+                return Err(format_err!(
+                    "either compile with default features or use with_dummy_signature_signer()"
+                ))
+            }
         };
         let mut signer = Signer::new(hash);
 
@@ -247,7 +253,9 @@ impl<'a> EnclaveBuilder<'a> {
 
         match self.load_and_sign.take() {
             Some(f) => f(signer),
-            None => Err(format_err!("either compile with default features or use with_dummy_signature_signer()"))
+            None => Err(format_err!(
+                "either compile with default features or use with_dummy_signature_signer()"
+            )),
         }
     }
 
@@ -277,9 +285,7 @@ impl<'a> EnclaveBuilder<'a> {
             let key = load_key(include_bytes!("dummy.key"));
             signer.sign::<_, H>(key.as_ref()).map_err(|e| e.into())
         }));
-        self.hash_enclave = Some(Box::new(|stream| {
-            EnclaveHash::from_stream::<_, H>(stream)
-        }));
+        self.hash_enclave = Some(Box::new(|stream| EnclaveHash::from_stream::<_, H>(stream)));
     }
 
     pub fn coresident_signature(&mut self) -> IoResult<&mut Self> {
@@ -340,7 +346,8 @@ impl<'a> EnclaveBuilder<'a> {
     }
 
     fn initialized_args_mut(&mut self) -> &mut Vec<Vec<u8>> {
-        self.cmd_args.get_or_insert_with(|| vec![b"enclave".to_vec()])
+        self.cmd_args
+            .get_or_insert_with(|| vec![b"enclave".to_vec()])
     }
 
     /// Adds multiple arguments to pass to enclave's `fn main`.
@@ -427,8 +434,9 @@ impl<'a> EnclaveBuilder<'a> {
         self.initialized_args_mut();
         let args = self.cmd_args.take().unwrap_or_default();
         let c = self.usercall_ext.take();
-        self.load(loader)
-            .map(|(t, a, s, fp, dti)| Command::internal_new(t, a, s, c, fp, dti, args, num_worker_threads))
+        self.load(loader).map(|(t, a, s, fp, dti)| {
+            Command::internal_new(t, a, s, c, fp, dti, args, num_worker_threads)
+        })
     }
 
     /// Panics if you have previously called [`arg`], [`args`], or [`num_worker_threads`].
@@ -437,8 +445,14 @@ impl<'a> EnclaveBuilder<'a> {
     /// [`args`]: struct.EnclaveBuilder.html#method.args
     /// [`num_worker_threads`]: Self::num_worker_threads()
     pub fn build_library<T: Load>(mut self, loader: &mut T) -> Result<Library, anyhow::Error> {
-        assert!(self.cmd_args.is_none(), "Command arguments do not apply to Library enclaves.");
-        assert!(self.num_worker_threads.is_none(), "`num_worker_threads` cannot be specified for Library enclaves.");
+        assert!(
+            self.cmd_args.is_none(),
+            "Command arguments do not apply to Library enclaves."
+        );
+        assert!(
+            self.num_worker_threads.is_none(),
+            "`num_worker_threads` cannot be specified for Library enclaves."
+        );
         let c = self.usercall_ext.take();
         self.load(loader)
             .map(|(t, a, s, fp, dti)| Library::internal_new(t, a, s, c, fp, dti))
