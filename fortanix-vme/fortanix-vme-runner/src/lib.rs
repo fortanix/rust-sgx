@@ -269,7 +269,7 @@ impl ClientConnection {
 }
 
 pub struct EnclaveRunner<P: Platform> {
-    servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
+    servers: Vec<(Server<P>, JoinHandle<()>)>,
 }
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
@@ -282,8 +282,8 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
 
     /// Starts a new enclave
     pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
-        let server = Arc::new(Server::bind(enclave_name, SERVER_PORT)?);
-        let server_thread = server.clone().start_command_server()?;
+        let server = Server::bind(enclave_name, SERVER_PORT)?;
+        let server_thread = server.start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
         self.servers.push((server, server_thread));
         Ok(())
@@ -314,20 +314,20 @@ pub struct Server<P: Platform> {
 }
 
 pub struct ServerState<P: Platform> {
-    enclave: Arc<RwLock<EnclaveState<P>>>,
-    command_listener: Arc<Mutex<VsockListener>>,
+    enclave_state: RwLock<EnclaveState<P>>,
+    command_listener: VsockListener,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
     /// every TCP listener socket in the runner, there is a vsock listener socket in the enclave.
     /// When the enclave instructs to accept a new connection, the runner accepts a new TCP
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
-    listeners: Arc<RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>>,
+    listeners: RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>,
     connections: Arc<RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>>,
 }
 
 impl<P: Platform + 'static> ServerState<P> {
     async fn handle_request_init(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let state = self.enclave.read().await;
+        let state = self.enclave_state.read().await;
         let args = match &*state {
             EnclaveState::Null => panic!("Not yet running enclave requesting initialization"),
             EnclaveState::Running { args, .. } => args.to_owned(),
@@ -621,9 +621,9 @@ impl<P: Platform + 'static> Server<P> {
             name: enclave_name,
             command_listener_local_addr,
             state: Arc::new(ServerState { 
-                enclave: Arc::new(RwLock::new(EnclaveState::Null)),
-                command_listener: Arc::new(Mutex::new(command_listener)),
-                listeners: Arc::new(RwLock::new(FnvHashMap::default())),
+                enclave_state: RwLock::new(EnclaveState::Null),
+                command_listener: command_listener,
+                listeners: RwLock::new(FnvHashMap::default()),
                 connections: Arc::new(RwLock::new(FnvHashMap::default())),
             })
         })
@@ -635,10 +635,9 @@ impl<P: Platform + 'static> Server<P> {
         let state = self.state.clone();
         let handle = tokio::spawn(
             async move {
-                let command_listener = state.command_listener.lock().await;
                 loop {
-                    let accepted = command_listener.accept().await;
-                    let state_for_cpnn = state.clone();
+                    let accepted = state.command_listener.accept().await;
+                    let state_for_conn = state.clone();
                     let _ = tokio::spawn(async move {
                        let mut conn = match accepted {
                             Ok((stream, _addr)) => ClientConnection::new(stream),
@@ -647,7 +646,7 @@ impl<P: Platform + 'static> Server<P> {
                                 return;
                             }
                         };
-                        if let Err(e) = state_for_cpnn.handle_client(&mut conn).await {
+                        if let Err(e) = state_for_conn.handle_client(&mut conn).await {
                             error!("Original error: {:?}", e);
                             if let Err(e) = conn.send(&Response::Failed(e)).await {
                                 error!("Failed to send response to enclave: {:?}", e);
@@ -662,7 +661,7 @@ impl<P: Platform + 'static> Server<P> {
 
     /// Starts a new enclave
     pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
-        let mut state = self.state.enclave.write().await;
+        let mut state = self.state.enclave_state.write().await;
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
             EnclaveState::Null => {
