@@ -3,7 +3,6 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
 use confidential_vm_blobs::maybe_vendored::MaybeVendoredImage;
 use confidential_vm_blobs::{AMD_SEV_OVMF, VANILLA_OVMF};
-use fortanix_vme_abi::SERVER_PORT;
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, EnclaveRunner, EnclaveSimulator, EnclaveSimulatorArgs,
     NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
@@ -11,7 +10,7 @@ use fortanix_vme_runner::{
 use log::info;
 use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
 use std::fs::File;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
+use std::io::{Error as IoError, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
 
@@ -239,12 +238,8 @@ fn run_to_completion<P: Platform + 'static>(
     enclave_name: String,
     enclave_args: Vec<String>,
 ) -> Result<(), anyhow::Error> {
-    let mut runner = create_runner::<P>()?;
-    runner
-        .run_enclave(run_args, enclave_name, enclave_args)
-        .context("failed to run enclave")?;
-    runner.wait();
-    Ok(())
+    EnclaveRunner::<P>::run_to_completion(run_args, enclave_name, enclave_args)
+        .context("failed to run enclave")
 }
 
 fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {
@@ -268,19 +263,4 @@ fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {
     f.write(&elf)?;
     f.sync_all()?;
     Ok(path)
-}
-
-fn create_runner<P: Platform + 'static>() -> Result<EnclaveRunner<P>> {
-    EnclaveRunner::new().map_err(|e| {
-        let error_kind = e.kind();
-        let wrapped_error = anyhow::Error::new(e);
-        if error_kind == IoErrorKind::AddrInUse {
-            wrapped_error.context(format!(
-                "server failed. Do you already have a runner running on vsock port {}?",
-                SERVER_PORT,
-            ))
-        } else {
-            wrapped_error.context("server failed")
-        }
-    })
 }

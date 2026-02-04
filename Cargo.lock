@@ -1746,6 +1746,7 @@ dependencies = [
  "nix 0.22.2",
  "rand 0.7.3",
  "serde_cbor",
+ "thiserror",
  "vsock 0.2.4",
 ]
 
