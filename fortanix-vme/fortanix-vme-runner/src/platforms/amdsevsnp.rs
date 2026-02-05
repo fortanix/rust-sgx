@@ -26,7 +26,7 @@ pub struct VmRunArgs {
     pub cpu_count: u32,
 }
 
-struct VmRuntime {
+struct VsockConfig {
     guest_fd: c_int,
     guest_cid: u64,
 }
@@ -37,7 +37,7 @@ pub struct VmSimulator;
 
 pub struct RunningVm {
     child: Child,
-    runtime: VmRuntime,
+    vsock_config: VsockConfig,
 }
 
 enum RunMode {
@@ -55,11 +55,15 @@ const VHOST_VIRTIO: u8 = 0xAF;
 const VHOST_VSOCK_DEV: &str = "/dev/vhost-vsock";
 nix::ioctl_write_ptr!(set_guest_cid, VHOST_VIRTIO, 0x60, u64);
 
+// Port numbers below 1024 are called privileged ports.
+const CID_START: u64 = 1024;
+
 // This function basically opens vhost-vsock device and
 // tries to allocate a cid number. If allocation succeeds
 // we simply re-use it along with the file descriptor.
-fn get_available_guest_cid_with_fd() -> Result<(c_int, u64), RunnerError> {
-    for mut cid in 3u64..=64 {
+fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
+    let mut cid = CID_START;
+    loop {
         // We're deliberately omitting O_CLOEXEC here as we want
         // the child process inherit the opened file descriptors.
         let fd = open(VHOST_VSOCK_DEV, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
@@ -70,42 +74,40 @@ fn get_available_guest_cid_with_fd() -> Result<(c_int, u64), RunnerError> {
         })?;
         let res = unsafe { set_guest_cid(fd, &mut cid) };
         match res {
-            Ok(_) => return Ok((fd, cid)),
+            Ok(_) => {
+                let vsock_config = VsockConfig {
+                    guest_fd: fd,
+                    guest_cid: cid,
+                };
+                return Ok(vsock_config);
+            }
             Err(err_code) => {
                 let _ = close(fd);
-                if err_code == nix::Error::EADDRINUSE {
-                    continue;
-                }
 
-                return Err(map_nix_error(
-                    format!("Unable to ioctl vhost-vsock device: {}", VHOST_VSOCK_DEV),
-                    err_code,
-                ));
+                // EADDRINUSE means the cid is in-use, we fail on any error
+                // other than EADDRINUSE
+                if err_code != nix::Error::EADDRINUSE {
+                    return Err(map_nix_error(
+                        format!("Unable to ioctl vhost-vsock device: {}", VHOST_VSOCK_DEV),
+                        err_code,
+                    ));
+                }
             }
         }
+
+        cid = cid.checked_add(1).ok_or(RunnerError::NoAvailableCidFound)?;
+        // Vsock cid is u32. Because of ioctl syscall we need to pass u64.
+        // Therefore, we manually check against maximum possible value here.
+        if cid > (u32::MAX as u64) {
+            return Err(RunnerError::NoAvailableCidFound);
+        }
     }
-
-    Err(RunnerError::Runtime(
-        format!(
-            "Unable to find available cid for guest vm (vhost-vsock device: {})",
-            VHOST_VSOCK_DEV
-        )
-        .into(),
-    ))
-}
-
-fn create_runtime_env() -> Result<VmRuntime, RunnerError> {
-    let (guest_fd, guest_cid) = get_available_guest_cid_with_fd()?;
-    Ok(VmRuntime {
-        guest_fd,
-        guest_cid,
-    })
 }
 
 fn build_qemu_command(
     run_mode: RunMode,
     vm_run_args: VmRunArgs,
-    vm_runtime: &VmRuntime,
+    vsock_config: &VsockConfig,
 ) -> Command {
     const QEMU_EXECUTABLE: &str = "qemu-system-x86_64";
     const QEMU_MACHINE: &str = "q35";
@@ -144,7 +146,7 @@ fn build_qemu_command(
         .arg("-device")
         .arg(format!(
             "vhost-vsock-pci,id=vhost-vsock-pci0,vhostfd={},guest-cid={}",
-            vm_runtime.guest_fd, vm_runtime.guest_cid
+            vsock_config.guest_fd, vsock_config.guest_cid
         ));
 
     // CPU
@@ -182,11 +184,14 @@ impl Platform for AmdSevVm {
     type EnclaveDescriptor = RunningVm;
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
-        let runtime = create_runtime_env()?;
-        let child = build_qemu_command(RunMode::AmdSevVm, run_args.into(), &runtime)
+        let vsock_config = get_available_guest_cid_with_fd()?;
+        let child = build_qemu_command(RunMode::AmdSevVm, run_args.into(), &vsock_config)
             .spawn()
             .map_err(|e| (e, "failed to spawn amd sev snp vm through qemu"))?;
-        Ok(RunningVm { child, runtime })
+        Ok(RunningVm {
+            child,
+            vsock_config,
+        })
     }
 }
 
@@ -196,11 +201,14 @@ impl Platform for VmSimulator {
     type EnclaveDescriptor = RunningVm;
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
-        let runtime = create_runtime_env()?;
-        let child = build_qemu_command(RunMode::VmSimulator, run_args.into(), &runtime)
+        let vsock_config = get_available_guest_cid_with_fd()?;
+        let child = build_qemu_command(RunMode::VmSimulator, run_args.into(), &vsock_config)
             .spawn()
             .map_err(|e| (e, "failed to spawn vm through qemu"))?;
-        Ok(RunningVm { child, runtime })
+        Ok(RunningVm {
+            child,
+            vsock_config,
+        })
     }
 }
 
@@ -208,6 +216,6 @@ impl Drop for RunningVm {
     fn drop(&mut self) {
         let _ = self.child.kill();
         // Close the fd opened for the guest vm vsock support
-        let _ = close(self.runtime.guest_fd);
+        let _ = close(self.vsock_config.guest_fd);
     }
 }

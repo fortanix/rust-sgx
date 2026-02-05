@@ -309,8 +309,8 @@ pub enum RunnerError {
     #[error("io error occurred: {0:?}")]
     Io(Option<Cow<'static, str>>, #[source] io::Error),
 
-    #[error("runtime error occurred: {0}")]
-    Runtime(Cow<'static, str>),
+    #[error("no available cid found")]
+    NoAvailableCidFound,
 }
 
 // TODO (RTE-770): more accurate variant selection through `ErrorKind`
