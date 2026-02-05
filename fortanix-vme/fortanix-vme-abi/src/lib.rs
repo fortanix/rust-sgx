@@ -2026,13 +2026,19 @@ impl<'de> Deserialize<'de> for ErrorKind {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[cfg_attr(feature="std", derive(thiserror::Error))]
 pub enum Error {
+    #[cfg_attr(feature="std", error("connection not found"))]
     ConnectionNotFound,
+    #[cfg_attr(feature="std", error("system error {0}"))]
     SystemError(i32),
+    #[cfg_attr(feature="std", error("unknown error"))]
     Unknown,
+    #[cfg_attr(feature="std", error("vsock error"))]
     VsockError,
     /// Command executed on behalf of enclave (e.g., bind, accept, ...) resulted in an error. 
     ///   This error itself should be returned as the result of the command.
+    #[cfg_attr(feature="std", error("enclave command error of kind {0:?}"))]
     Command(ErrorKind),
 }
 

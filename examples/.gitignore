@@ -1,5 +1,6 @@
 **/.cargo/*
 !**/.cargo/config
+!**/.cargo/config.toml
 **/Cargo.lock
 /target
 target/
