@@ -4,7 +4,7 @@ use nix::unistd::close;
 use nix::Error;
 use std::borrow::Cow;
 use std::{
-    os::fd::AsRawFd,
+    ffi::c_int,
     path::PathBuf,
     process::{Child, Command},
 };
@@ -27,7 +27,7 @@ pub struct VmRunArgs {
 }
 
 struct VmRuntime {
-    guest_fd: i32,
+    guest_fd: c_int,
     guest_cid: u64,
 }
 
@@ -58,7 +58,7 @@ nix::ioctl_write_ptr!(set_guest_cid, VHOST_VIRTIO, 0x60, u64);
 // This function basically opens vhost-vsock device and
 // tries to allocate a cid number. If allocation succeeds
 // we simply re-use it along with the file descriptor.
-fn get_available_guest_cid_with_fd() -> Result<(i32, u64), RunnerError> {
+fn get_available_guest_cid_with_fd() -> Result<(c_int, u64), RunnerError> {
     for mut cid in 3u64..=64 {
         unsafe {
             // We're deliberately omitting O_CLOEXEC here as we want
@@ -69,7 +69,7 @@ fn get_available_guest_cid_with_fd() -> Result<(i32, u64), RunnerError> {
                     e,
                 )
             })?;
-            let res = set_guest_cid(fd.as_raw_fd(), &mut cid);
+            let res = set_guest_cid(fd, &mut cid);
             match res {
                 Ok(_) => return Ok((fd, cid)),
                 Err(err_code) => {
@@ -91,7 +91,8 @@ fn get_available_guest_cid_with_fd() -> Result<(i32, u64), RunnerError> {
         format!(
             "Unable to find available cid for guest vm (vhost-vsock device: {})",
             VHOST_VSOCK_DEV
-        ).into(),
+        )
+        .into(),
     ))
 }
 
