@@ -60,29 +60,27 @@ nix::ioctl_write_ptr!(set_guest_cid, VHOST_VIRTIO, 0x60, u64);
 // we simply re-use it along with the file descriptor.
 fn get_available_guest_cid_with_fd() -> Result<(c_int, u64), RunnerError> {
     for mut cid in 3u64..=64 {
-        unsafe {
-            // We're deliberately omitting O_CLOEXEC here as we want
-            // the child process inherit the opened file descriptors.
-            let fd = open(VHOST_VSOCK_DEV, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
-                map_nix_error(
-                    format!("Unable to open vhost-vsock device: {}", VHOST_VSOCK_DEV),
-                    e,
-                )
-            })?;
-            let res = set_guest_cid(fd, &mut cid);
-            match res {
-                Ok(_) => return Ok((fd, cid)),
-                Err(err_code) => {
-                    let _ = close(fd);
-                    if err_code == nix::Error::EADDRINUSE {
-                        continue;
-                    }
-
-                    return Err(map_nix_error(
-                        format!("Unable to ioctl vhost-vsock device: {}", VHOST_VSOCK_DEV),
-                        err_code,
-                    ));
+        // We're deliberately omitting O_CLOEXEC here as we want
+        // the child process inherit the opened file descriptors.
+        let fd = open(VHOST_VSOCK_DEV, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
+            map_nix_error(
+                format!("Unable to open vhost-vsock device: {}", VHOST_VSOCK_DEV),
+                e,
+            )
+        })?;
+        let res = unsafe { set_guest_cid(fd, &mut cid) };
+        match res {
+            Ok(_) => return Ok((fd, cid)),
+            Err(err_code) => {
+                let _ = close(fd);
+                if err_code == nix::Error::EADDRINUSE {
+                    continue;
                 }
+
+                return Err(map_nix_error(
+                    format!("Unable to ioctl vhost-vsock device: {}", VHOST_VSOCK_DEV),
+                    err_code,
+                ));
             }
         }
     }
