@@ -260,7 +260,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9138ac237191fcb830a6c5fb45b93573ee670956bef2b2dd1ee8609daa59a4a"
 dependencies = [
  "libc",
- "log 0.4.29",
+ "log 0.4.28",
  "nix 0.20.2",
  "serde",
  "serde_bytes",
@@ -641,7 +641,7 @@ dependencies = [
  "clang-sys",
  "lazy_static",
  "lazycell",
- "log 0.4.29",
+ "log 0.4.28",
  "peeking_take_while",
  "prettyplease",
  "proc-macro2 1.0.95",
@@ -713,7 +713,7 @@ dependencies = [
  "hyper-named-pipe",
  "hyper-util",
  "hyperlocal-next",
- "log 0.4.29",
+ "log 0.4.28",
  "pin-project-lite",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1004,14 +1004,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "confidential-vm-blobs"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "tempfile",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1228,7 +1220,7 @@ dependencies = [
  "dcap-ql",
  "env_logger",
  "lazy_static",
- "log 0.4.29",
+ "log 0.4.28",
  "report-test",
  "reqwest",
  "rustc-serialize",
@@ -1368,7 +1360,7 @@ dependencies = [
  "clap 2.34.0",
  "elf",
  "env_logger",
- "log 0.4.29",
+ "log 0.4.28",
  "nitro-cli",
 ]
 
@@ -1396,19 +1388,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4841de15dbe0e49b9b62a417589299e3be0d557e0900d36acb87e6dae47197f5"
 dependencies = [
  "byteorder 0.5.3",
-]
-
-[[package]]
-name = "elf2uki"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap 4.4.18",
- "confidential-vm-blobs",
- "env_logger",
- "fortanix-vme-initramfs",
- "log 0.4.29",
- "tempfile",
 ]
 
 [[package]]
@@ -1526,7 +1505,7 @@ dependencies = [
  "clap 4.4.18",
  "flate2",
  "futures 0.3.31",
- "log 0.4.29",
+ "log 0.4.28",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1554,7 +1533,7 @@ checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
 dependencies = [
  "atty",
  "humantime",
- "log 0.4.29",
+ "log 0.4.28",
  "regex",
  "termcolor",
 ]
@@ -1625,7 +1604,7 @@ dependencies = [
  "glob",
  "is-terminal",
  "lazy_static",
- "log 0.4.29",
+ "log 0.4.28",
  "nu-ansi-term",
  "regex",
  "thiserror",
@@ -1740,7 +1719,7 @@ dependencies = [
  "fnv",
  "fortanix-vme-abi",
  "fortanix-vme-eif",
- "log 0.4.29",
+ "log 0.4.28",
  "nitro-cli",
  "nix 0.22.2",
  "rand 0.7.3",
@@ -2222,7 +2201,7 @@ dependencies = [
  "futures-util",
  "http 0.2.12",
  "hyper 0.14.32",
- "log 0.4.29",
+ "log 0.4.28",
  "rustls 0.21.12",
  "rustls-native-certs",
  "tokio",
@@ -2331,7 +2310,7 @@ dependencies = [
  "clap 2.34.0",
  "env_logger",
  "lazy_static",
- "log 0.4.29",
+ "log 0.4.28",
  "mbedtls",
  "percent-encoding 2.3.2",
  "pkix",
@@ -2686,14 +2665,14 @@ version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e19e8d5c34a3e0e2223db8e060f9e8264aeeb5c5fc64a4ee9965c062211c024b"
 dependencies = [
- "log 0.4.29",
+ "log 0.4.28",
 ]
 
 [[package]]
 name = "log"
-version = "0.4.29"
+version = "0.4.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+checksum = "34080505efa8e45a4b816c349525ebe327ceaa8559756f0356cba97ef3bf7432"
 
 [[package]]
 name = "lru-cache"
@@ -2867,7 +2846,7 @@ checksum = "fd7e2f3618557f980e0b17e8856252eee3c97fa12c54dff0ca290fb6266ca4a9"
 dependencies = [
  "lazy_static",
  "libc",
- "log 0.4.29",
+ "log 0.4.28",
  "openssl",
  "openssl-probe",
  "openssl-sys",
@@ -2911,7 +2890,7 @@ dependencies = [
  "inotify",
  "lazy_static",
  "libc",
- "log 0.4.29",
+ "log 0.4.28",
  "nix 0.26.4",
  "openssl",
  "page_size",
@@ -3032,7 +3011,7 @@ version = "0.1.0"
 source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
 dependencies = [
  "libc",
- "log 0.4.29",
+ "log 0.4.28",
  "nix 0.20.2",
  "nsm-io",
  "serde_cbor",
@@ -3043,7 +3022,7 @@ name = "nsm-io"
 version = "0.1.0"
 source = "git+https://github.com/aws/aws-nitro-enclaves-nsm-api#9ddb589875baf345d085a980aa96cf3a4e480ea8"
 dependencies = [
- "log 0.4.29",
+ "log 0.4.28",
  "serde",
  "serde_bytes",
  "serde_cbor",
@@ -3552,7 +3531,7 @@ checksum = "96cb37955261126624a25b5e6bda40ae34cf3989d52a783087ca6091b29b5642"
 dependencies = [
  "anyhow",
  "indexmap 1.9.3",
- "log 0.4.29",
+ "log 0.4.28",
  "protobuf",
  "protobuf-support",
  "tempfile",
@@ -3821,7 +3800,7 @@ dependencies = [
  "hyper-util",
  "ipnet",
  "js-sys",
- "log 0.4.29",
+ "log 0.4.28",
  "mime 0.3.16",
  "native-tls",
  "once_cell",
@@ -3948,7 +3927,7 @@ version = "0.21.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f56a14d1f48b391359b22f731fd4bd7e43c97f3c50eee276f3aa09c94784d3e"
 dependencies = [
- "log 0.4.29",
+ "log 0.4.28",
  "ring",
  "rustls-webpki 0.101.7",
  "sct",
@@ -3960,7 +3939,7 @@ version = "0.22.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bf4ef73721ac7bcd79b2b315da7779d8fc09718c6b3d2d1b2d94850eb8c18432"
 dependencies = [
- "log 0.4.29",
+ "log 0.4.28",
  "ring",
  "rustls-pki-types",
  "rustls-webpki 0.102.8",
@@ -4110,7 +4089,7 @@ dependencies = [
  "bitflags 1.2.1",
  "chrono",
  "hyper 0.10.16",
- "log 0.4.29",
+ "log 0.4.28",
  "rustc-serialize",
  "serde",
  "serde_json",
@@ -4396,7 +4375,7 @@ dependencies = [
  "env_logger",
  "fnv",
  "lazy_static",
- "log 0.4.29",
+ "log 0.4.28",
  "num",
  "openssl",
  "petgraph",
@@ -4774,7 +4753,7 @@ checksum = "57fc868aae093479e3131e3d165c93b1c7474109d13c90ec0dda2a1bbfff0674"
 dependencies = [
  "bytes 0.4.12",
  "futures 0.1.30",
- "log 0.4.29",
+ "log 0.4.28",
 ]
 
 [[package]]
@@ -5165,7 +5144,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ce8a968cb1cd110d136ff8b819a556d6fb6d919363c61534f6860c7eb172ba0"
 dependencies = [
- "log 0.4.29",
+ "log 0.4.28",
  "try-lock",
 ]
 

@@ -49,8 +49,6 @@ jobs:
         # Install dependencies for build & test
         sudo apt-get update -y
         sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
-        # ukify tool for elf2uki
-        sudo apt install systemd-ukify
 
     - name: Setup Rust toolchain
       run: |
@@ -134,6 +132,3 @@ jobs:
 
     - name: snmalloc correntness test
       run: cd ./examples/mem-correctness-test && cargo run
-
-    - name: Run elf2uki example
-      run: ./examples/elf2uki/convert_hello_world.sh
