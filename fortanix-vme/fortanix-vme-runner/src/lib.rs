@@ -3,6 +3,7 @@ use fnv::FnvHashMap;
 use futures::future::join_all;
 use log::debug;
 use log::{error, info, log, warn};
+use nix::libc::VMADDR_PORT_ANY;
 use tokio::net::TcpStream;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -22,9 +23,6 @@ mod platforms;
 pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
-
-// From man vsock(7): VMADDR_PORT_ANY (-1U)
-const VMADDR_PORT_ANY: u32 = u32::MAX;
 
 enum Direction {
     Left,
@@ -613,7 +611,6 @@ impl<P: Platform + 'static> Server<P> {
     fn start_command_server(self: &Self) -> Result<tokio::task::JoinHandle<()>, IoError> {
         info!("Starting enclave runner.");
         info!("Command server listening on vsock cid: {} port: {} ...", self.command_listener_local_addr.cid(), self.command_listener_local_addr.port());
-        // let incoming_stream = .incoming();
         let state = self.state.clone();
         let handle = tokio::spawn(
             async move {
