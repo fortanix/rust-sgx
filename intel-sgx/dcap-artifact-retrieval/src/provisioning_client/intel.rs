@@ -567,6 +567,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for TcbEvaluationDataNumbersApi {
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
+    use assert_matches::assert_matches;
     use std::convert::TryFrom;
     use std::hash::Hash;
     use std::hash::Hasher;
@@ -581,7 +582,7 @@ mod tests {
     use crate::provisioning_client::{
         test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
-    use crate::reqwest_client;
+    use crate::{Error, reqwest_client, StatusCode};
     use std::hash::DefaultHasher;
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
@@ -1088,6 +1089,18 @@ mod tests {
             let qeid_from_service = client.qe_identity(None).unwrap();
 
             assert_eq!(qe_id, qeid_from_service);
+        }
+    }
+
+    #[test]
+    pub fn gone_artifacts() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let intel_builder = IntelProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+            let client = intel_builder.build(reqwest_client());
+            let fmspc = Fmspc::try_from("90806f000000").unwrap();
+            assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 

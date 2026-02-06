@@ -427,6 +427,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
+    use assert_matches::assert_matches;
     use std::convert::TryFrom;
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
@@ -440,8 +441,8 @@ mod tests {
 
     use super::Client;
     use crate::provisioning_client::{
-        test_helpers, DcapArtifactIssuer, PccsProvisioningClientBuilder, PcsVersion,
-        ProvisioningClient,
+        test_helpers, DcapArtifactIssuer, Error, PccsProvisioningClientBuilder, PcsVersion,
+        ProvisioningClient, StatusCode,
     };
     use crate::{reqwest_client_insecure_tls, ReqwestClient};
 
@@ -812,6 +813,16 @@ mod tests {
             let qeid_from_service = client.qe_identity(None).unwrap();
 
             assert_eq!(qe_id, qeid_from_service);
+        }
+    }
+
+    #[test]
+    pub fn gone_artifacts() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let client = make_client(api_version);
+            let fmspc = Fmspc::try_from("90806f000000").unwrap();
+            assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
