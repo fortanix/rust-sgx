@@ -457,21 +457,20 @@ impl<P: Platform + 'static> ServerState<P> {
         }
 
         fn vsock_create_bind(runner_port: u32, runner_cid: u32) -> Result<vsock::VsockStream, VmeError> {
-            use std::os::fd::FromRawFd;
-
             let socket = unsafe {
+                use std::os::fd::{IntoRawFd, FromRawFd};
                 let socket = socket::socket(socket::AddressFamily::Vsock, socket::SockType::Stream, socket::SockFlag::SOCK_CLOEXEC | socket::SockFlag::SOCK_NONBLOCK, None).map_err(nix_to_vme_error)?;
-                vsock::VsockStream::from_raw_fd(socket)
+                vsock::VsockStream::from_raw_fd(socket.into_raw_fd())
             };
 
-            let runner_addr = socket::SockAddr::Vsock(socket::VsockAddr::new(runner_cid, runner_port));
+            let runner_addr = socket::VsockAddr::new(runner_cid, runner_port);
             socket::bind(socket.as_raw_fd(), &runner_addr).map_err(nix_to_vme_error)?;
 
             Ok(socket)
         }
 
         async fn vsock_connect(socket: vsock::VsockStream, enclave_cid: u32, enclave_port: u32) -> Result<VsockStream, VmeError> {
-            let enclave_addr = socket::SockAddr::Vsock(socket::VsockAddr::new(enclave_cid, enclave_port));
+            let enclave_addr = socket::VsockAddr::new(enclave_cid, enclave_port);
             let mut res = socket::connect(socket.as_raw_fd(), &enclave_addr);
             if res == Err(Errno::EINPROGRESS) {
                 res = Ok(())
