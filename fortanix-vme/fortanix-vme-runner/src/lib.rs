@@ -1,31 +1,28 @@
 #![deny(warnings)]
 use fnv::FnvHashMap;
 use futures::future::join_all;
+use log::debug;
 use log::{error, info, log, warn};
+use nix::sys::socket::{AddressFamily, SockFlag, SockType};
 use tokio::net::TcpStream;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::select;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use std::cmp;
 use std::fmt::Debug;
-use std::os::fd::FromRawFd;
+use std::os::fd::AsRawFd;
 use std::str;
 use std::sync::Arc;
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind};
 use tokio::sync::RwLock;
 use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_PORT};
-use tokio_vsock::{self, VsockAddr, VsockListener, VsockStream};
-
+use tokio_vsock::{self, VMADDR_CID_ANY, VMADDR_CID_LOCAL, VsockAddr, VsockListener, VsockStream};
 
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
-
-const MAX_LOG_MESSAGE_LEN: usize = 80;
-const PROXY_BUFF_SIZE: usize = 4192;
 
 enum Direction {
     Left,
@@ -110,23 +107,6 @@ struct Connection {
     remote_name: String,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct ConnLogInfo {
-    local_port: u32,
-    peer_port: u32,
-    protocol: &'static str,
-}
-
-impl ConnLogInfo {
-    fn from_stream<S: StreamConnection>(stream: &S) -> Self {
-        ConnLogInfo {
-            local_port: stream.local_port().unwrap_or_default(),
-            peer_port: stream.peer_port().unwrap_or_default(),
-            protocol: S::protocol(),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct ConnectionInfo {
     /// The local address (as used by the runner)
@@ -134,6 +114,12 @@ struct ConnectionInfo {
     /// The address of the remote party for open connection, None for server sockets
     peer: Addr,
 }
+
+fn log_proxy_conn_info<S: StreamConnection, D: StreamConnection>(level: log::Level, enclave: &S, enclave_name:&str, remote: &D, remote_name:&str) {
+    log!(level, "Proxy started remote : {}, local: {}, peer: {}", remote_name, remote.local().unwrap_or_default(), remote.peer().unwrap_or_default());
+    log!(level, "Proxy started enclave: {}, local: {}, peer: {}", enclave_name, enclave.local().unwrap_or_default(), enclave.peer().unwrap_or_default());
+}
+
 
 impl Connection {
     pub fn new(vsock_stream: VsockStream, tcp_stream: TcpStream, remote_name: String) -> Self {
@@ -151,92 +137,10 @@ impl Connection {
         })
     }
 
-    async fn transfer_data<Src, Dst>(
-        src: &mut Src,
-        src_name: &str,
-        src_info: ConnLogInfo,
-        dst: &mut Dst,
-        dst_name: &str,
-        dst_info: ConnLogInfo,
-    ) -> Result<usize, IoError>
-    where
-        Src: AsyncRead + Unpin,
-        Dst: AsyncWrite + Unpin,
-    {
-        let mut buff = [0; PROXY_BUFF_SIZE];
-        let n = src.read(&mut buff[..]).await?;
-        if n > 0 {
-            ClientConnection::log_communication(
-                log::Level::Debug,
-                "runner",
-                src_info.local_port,
-                src_name,
-                src_info.peer_port,
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                src_info.protocol,
-                Some(MAX_LOG_MESSAGE_LEN));
-            dst.write_all(&buff[0..n]).await?;
-            ClientConnection::log_communication(
-                log::Level::Debug,
-                dst_name,
-                dst_info.peer_port,
-                "runner",
-                dst_info.local_port,
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                dst_info.protocol,
-                Some(MAX_LOG_MESSAGE_LEN));
-        }
-        Ok(n)
-    }
-
-    /// Exchanges messages between the remote server and enclave. Returns on error, or when one of
-    /// the connections terminated
     pub async fn proxy(&mut self) -> Result<(), IoError> {
-        let remote_info = ConnLogInfo::from_stream(&self.tcp_stream);
-        let enclave_info = ConnLogInfo::from_stream(&self.vsock_stream);
-
-        let (mut remote_read, mut remote_write) = tokio::io::split(&mut self.tcp_stream);
-        let (mut enclave_read, mut enclave_write) = tokio::io::split(&mut self.vsock_stream);
-
-        let mut remote_open = true;
-        let mut enclave_open = true;
-
-        while remote_open || enclave_open {
-            select! {
-                // Transfer data from remote to enclave
-                result = Self::transfer_data(
-                    &mut remote_read,
-                    &self.remote_name,
-                    remote_info,
-                    &mut enclave_write,
-                    "enclave",
-                    enclave_info,
-                ), if remote_open => {
-                    let n = result?;
-                    if n == 0 {
-                        enclave_write.shutdown().await?;
-                        remote_open = false;
-                    }
-                }
-                // Transfer data from enclave to remote
-                result = Self::transfer_data(
-                    &mut enclave_read,
-                    "enclave",
-                    enclave_info,
-                    &mut remote_write,
-                    &self.remote_name,
-                    remote_info,
-                ), if enclave_open => {
-                    let n = result?;
-                    if n == 0 {
-                        remote_write.shutdown().await?;
-                        enclave_open = false;
-                    }
-                }
-            }
-        }
+        log_proxy_conn_info(log::Level::Debug, &self.vsock_stream, "enclave", &self.tcp_stream, &self.remote_name);
+        let (remote_len, enclave_len) = tokio::io::copy_bidirectional(&mut self.tcp_stream, &mut self.vsock_stream).await?;
+        debug!("Proxy connection closed, total bytes proxied: remote {}, enclave {}", remote_len, enclave_len);
         Ok(())
     }
 }
@@ -438,7 +342,7 @@ impl<P: Platform + 'static> ServerState<P> {
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
-        let proxy_server = VsockListener::bind(VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, 0))?;
+        let proxy_server = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, gen_rand_port()?))?;
         let proxy_server_port = proxy_server.local_addr()?.port();
 
         // Notify the enclave on which port her proxy is listening on
@@ -484,7 +388,7 @@ impl<P: Platform + 'static> ServerState<P> {
         // Locating the cid of the runner through the `get_local_cid` does give the same result.
         // When PLAT-288 lands, the cid may also here be retrieved through the open runner-enclave
         // connection
-        let runner_cid = vsock::get_local_cid().unwrap_or(vsock::VMADDR_CID_LOCAL);
+        let runner_cid = vsock::get_local_cid().unwrap_or(VMADDR_CID_LOCAL);
         let runner = VsockAddr::new(runner_cid, runner_port);
         let k = ConnectionKey::from_addresses(enclave, runner);
         self.connections
@@ -550,6 +454,7 @@ impl<P: Platform + 'static> ServerState<P> {
         // Locate TCP listener
         let enclave_cid = client_conn.stream.peer_addr()?.cid();
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
+
         let listener = self.listener(&enclave_addr).await
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
 
@@ -559,20 +464,19 @@ impl<P: Platform + 'static> ServerState<P> {
         drop(listener);
 
         // Send enclave info where it should accept new incoming connection
-        let proxy_vsock = vsock_0_2_4::Vsock::new::<vsock_0_2_4::Std>()?;
-        let proxy_vsock_local_addr = proxy_vsock.addr::<vsock_0_2_4::Std>()?;
-        // let runner_addr = vsock.addr::<vsock::Std>()?;
+        let runner_port = gen_rand_port()?;
+        let runner_vsock_sockert = create_vsock_socket(VMADDR_CID_ANY, runner_port).map_err(
+            |errno| VmeError::SystemError(errno as i32)
+        )?;
         client_conn.send(&Response::IncomingConnection{
             local: conn.local_addr()?.into(),
             peer: peer.into(),
-            proxy_port: proxy_vsock_local_addr.port(),
+            proxy_port: runner_port,
         }).await?;
 
         let connect = async || -> Result<(), VmeError> {
             // Connect to enclave at the expected port
-            let old_vsock_lib_stream = proxy_vsock.connect_with_cid_port::<vsock_0_2_4::Std>(enclave_cid, vsock_listener_port)?;
-            let proxy= VsockStream::new(convert_vsock_0_2_4_stream(old_vsock_lib_stream))?;
-            // let proxy = VsockStream::connect(enclave_addr).await?;
+            let proxy = VsockStream::connect_with_socket(runner_vsock_sockert, enclave_addr).await?;
             self.add_connection(proxy, conn, "remote".to_string()).await?;
             Ok(())
         };
@@ -656,16 +560,16 @@ impl<P: Platform + 'static> ServerState<P> {
     }
 }
 
-/// Safety: A vsock stream is a connected stream with valid fd.
-fn convert_vsock_0_2_4_stream(connected: vsock_0_2_4::VsockStream) -> vsock::VsockStream {
-    unsafe {
-        vsock::VsockStream::from_raw_fd(connected.into_raw_fd())
-    }
+fn create_vsock_socket(runner_cid: u32, runner_port: u32) -> Result<i32, nix::Error> {
+    let socket = nix::sys::socket::socket(AddressFamily::Vsock, SockType::Stream, SockFlag::SOCK_CLOEXEC, None)?;
+    let vsock_addr = nix::sys::socket::SockAddr::Vsock(nix::sys::socket::VsockAddr::new(runner_cid, runner_port));
+    nix::sys::socket::bind(socket.as_raw_fd(), &vsock_addr)?;
+    Ok(socket)
 }
 
 impl<P: Platform + 'static> Server<P> {
     fn bind(enclave_name: String, port: u32) -> io::Result<Self> {
-        let command_listener = VsockListener::bind(VsockAddr::new(tokio_vsock::VMADDR_CID_ANY, port))?;
+        let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
         let command_listener_local_addr = command_listener.local_addr()?;
         Ok(Server {
             name: enclave_name,
@@ -728,5 +632,19 @@ impl<P: Platform + 'static> Server<P> {
             }
         }
         Ok(())
+    }
+}
+
+const MAX_PRIVILEGED_PORT: u32 = 1023;
+
+fn gen_rand_port() -> Result<u32, VmeError> {
+    let mut buf = [0u8; 4];
+    // TODO: use anyhow error for final error type in runner
+    getrandom::getrandom(&mut buf).map_err(|_|  VmeError::VsockError)?;
+    let port = u32::from_le_bytes(buf);
+    if port <= MAX_PRIVILEGED_PORT {
+        gen_rand_port()
+    } else {
+        Ok(port)
     }
 }
