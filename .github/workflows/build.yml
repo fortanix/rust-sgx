@@ -39,16 +39,8 @@ jobs:
           echo "PCCS_URL=${{ vars.PCCS_URL }}" >> $GITHUB_ENV
         fi
 
-    - name: Install additional dependencies
-      run: |
-        # install gpg
-        sudo apt-get update -y && sudo apt install -y gpg
-        # Add intel-sgx package repository, key is download from https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key
-        cat intel-sgx-deb.key | gpg --dearmor | sudo tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | sudo tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
-        # Install dependencies for build & test
-        sudo apt-get update -y
-        sudo apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
+    - name: Install build dependencies
+      run: sudo ./install_build_deps.sh
 
     - name: Setup Rust toolchain
       run: |
@@ -60,7 +52,7 @@ jobs:
     - name: Cargo test --all --exclude sgxs-loaders
       run: cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
 
-    - name: cargo test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+    - name: Nightly test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
       run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
     - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
