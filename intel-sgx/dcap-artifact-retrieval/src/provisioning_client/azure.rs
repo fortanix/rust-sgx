@@ -150,6 +150,10 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
                 status_code,
                 "PCS is temporarily unavailable",
             )),
+            StatusCode::Gone => Err(Error::PCSError(
+                status_code,
+                "Collateral is no longer available"
+            )),
             _ => Err(Error::PCSError(
                 status_code.clone(),
                 "Unexpected response from PCS server",
@@ -191,15 +195,17 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
+    use assert_matches::assert_matches;
+    use std::convert::TryFrom;
     use std::path::PathBuf;
     use std::time::Duration;
 
-    use pcs::PckID;
+    use pcs::{Fmspc, PckID};
 
     use crate::provisioning_client::{
         test_helpers, AzureProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
     };
-    use crate::reqwest_client;
+    use crate::{Error, StatusCode, reqwest_client};
 
     const PCKID_TEST_FILE: &str = "./tests/data/azure_icelake_pckid.csv";
 
@@ -262,6 +268,18 @@ mod tests {
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
             assert!(client.qe_identity(None).is_ok());
+        }
+    }
+
+    #[test]
+    pub fn gone_artifacts() {
+        for api_version in [PcsVersion::V3, PcsVersion::V4] {
+            let client = AzureProvisioningClientBuilder::new(api_version)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT)
+                .build(reqwest_client());
+            let fmspc = Fmspc::try_from("90806f000000").unwrap();
+            assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
