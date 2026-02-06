@@ -17,7 +17,6 @@ use super::{EnclaveAbort, IOHandlerInput};
 use futures::future::Future;
 use futures::FutureExt;
 use tokio::io::ReadBuf;
-
 pub(super) struct Handler<'ioinput, 'tcs>(pub &'ioinput mut IOHandlerInput<'tcs>);
 
 impl<'future, 'ioinput: 'future, 'tcs: 'ioinput> Usercalls<'future> for Handler<'ioinput, 'tcs> {
@@ -341,6 +340,7 @@ impl<'a, T: Into<Vec<u8>>> Drop for OutputBuffer<'a, T> {
 }
 
 fn result_from_io_error(err: IoError) -> Result {
+
     let ret = match err.kind() {
         IoErrorKind::PermissionDenied => Error::PermissionDenied,
         IoErrorKind::NotFound => Error::NotFound,
@@ -376,7 +376,10 @@ fn result_from_io_error(err: IoError) -> Result {
         IoErrorKind::ConnectionRefused => Error::ConnectionRefused,
         IoErrorKind::HostUnreachable => Error::HostUnreachable,
         IoErrorKind::StaleNetworkFileHandle => Error::StaleNetworkFileHandle,
+        #[cfg(not(feature = "err-compat"))]
         IoErrorKind::QuotaExceeded => Error::QuotaExceeded,
+        #[cfg(feature = "err-compat")]
+        IoErrorKind::FilesystemQuotaExceeded => Error::QuotaExceeded,
         IoErrorKind::InvalidData => Error::InvalidData,
         IoErrorKind::WriteZero => Error::WriteZero,
         IoErrorKind::UnexpectedEof => Error::UnexpectedEof,

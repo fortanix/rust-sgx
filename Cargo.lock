@@ -1488,6 +1488,7 @@ dependencies = [
  "libc",
  "nix 0.13.1",
  "openssl",
+ "rustc_version",
  "sgx-isa 0.4.1",
  "sgxs",
  "thiserror",
