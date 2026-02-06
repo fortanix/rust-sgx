@@ -23,6 +23,9 @@ pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 
+// From man vsock(7): VMADDR_PORT_ANY (-1U)
+const VMADDR_PORT_ANY: u32 = u32::MAX;
+
 enum Direction {
     Left,
     Right,
@@ -341,7 +344,7 @@ impl<P: Platform + 'static> ServerState<P> {
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
-        let proxy_server = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, gen_rand_port()?))?;
+        let proxy_server = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, VMADDR_PORT_ANY))?;
         let proxy_server_port = proxy_server.local_addr()?.port();
 
         // Notify the enclave on which port her proxy is listening on
@@ -497,9 +500,8 @@ impl<P: Platform + 'static> ServerState<P> {
         drop(listener);
 
         // Send enclave info where it should accept new incoming connection
-        let runner_port = gen_rand_port()?;
-        let runner_cid: u32 = VMADDR_CID_ANY;
-        let runner_vsock_socket = vsock_create_bind(runner_port, runner_cid)?;
+        let runner_vsock_socket = vsock_create_bind(VMADDR_PORT_ANY, VMADDR_CID_ANY)?;
+        let runner_port = runner_vsock_socket.local_addr()?.port();
         client_conn.send(&Response::IncomingConnection{
             local: conn.local_addr()?.into(),
             peer: peer.into(),
@@ -657,19 +659,5 @@ impl<P: Platform + 'static> Server<P> {
             }
         }
         Ok(())
-    }
-}
-
-const MAX_PRIVILEGED_PORT: u32 = 1023;
-
-fn gen_rand_port() -> Result<u32, VmeError> {
-    let mut buf = [0u8; 4];
-    // TODO: use anyhow error for final error type in runner
-    getrandom::getrandom(&mut buf).map_err(|_|  VmeError::VsockError)?;
-    let port = u32::from_le_bytes(buf);
-    if port <= MAX_PRIVILEGED_PORT {
-        gen_rand_port()
-    } else {
-        Ok(port)
     }
 }
