@@ -1719,7 +1719,6 @@ dependencies = [
  "fortanix-vme-abi",
  "fortanix-vme-eif",
  "futures 0.3.31",
- "getrandom 0.2.17",
  "log 0.4.28",
  "nitro-cli",
  "nix 0.31.1",
