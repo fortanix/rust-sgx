@@ -1372,7 +1372,7 @@ dependencies = [
  "aws-nitro-enclaves-image-format",
  "libc",
  "nix 0.26.4",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -1678,7 +1678,6 @@ dependencies = [
  "rustc-std-workspace-core",
  "serde",
  "serde_cbor",
- "vsock 0.2.6",
 ]
 
 [[package]]
@@ -1729,7 +1728,7 @@ dependencies = [
  "serde_cbor",
  "tokio",
  "tokio-vsock",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -2905,7 +2904,7 @@ dependencies = [
  "sha2 0.9.9",
  "signal-hook",
  "vmm-sys-util",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -2939,19 +2938,6 @@ name = "nix"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e06129fb611568ef4e868c14b326274959aa70ff7776e9d55323531c374945"
-dependencies = [
- "bitflags 1.2.1",
- "cc",
- "cfg-if 1.0.0",
- "libc",
- "memoffset 0.6.4",
-]
-
-[[package]]
-name = "nix"
-version = "0.23.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f3790c00a0150112de0f4cd161e3d7fc4b2d8a5542ffc35f099a2562aecb35c"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -4841,7 +4827,7 @@ dependencies = [
  "futures 0.3.31",
  "libc",
  "tokio",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -5150,16 +5136,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vsock"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e32675ee2b3ce5df274c0ab52d19b28789632406277ca26bffee79a8e27dc133"
-dependencies = [
- "libc",
- "nix 0.23.2",
-]
 
 [[package]]
 name = "vsock"
