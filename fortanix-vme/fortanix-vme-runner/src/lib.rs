@@ -3,7 +3,6 @@ use fnv::FnvHashMap;
 use futures::future::join_all;
 use log::debug;
 use log::{error, info, log, warn};
-use nix::sys::socket::{AddressFamily, SockFlag, SockType};
 use tokio::net::TcpStream;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -451,6 +450,41 @@ impl<P: Platform + 'static> ServerState<P> {
     }
 
     async fn handle_request_accept(self: &Self, vsock_listener_port: u32, client_conn: &mut ClientConnection) -> Result<(), VmeError> {
+        use nix::{errno::Errno, sys::socket};
+
+        fn nix_to_vme_error(errno: Errno) -> VmeError {
+            VmeError::SystemError(errno as i32)
+        }
+
+        fn vsock_create_bind(runner_port: u32, runner_cid: u32) -> Result<vsock::VsockStream, VmeError> {
+            use std::os::fd::FromRawFd;
+
+            let socket = unsafe {
+                let socket = socket::socket(socket::AddressFamily::Vsock, socket::SockType::Stream, socket::SockFlag::SOCK_CLOEXEC | socket::SockFlag::SOCK_NONBLOCK, None).map_err(nix_to_vme_error)?;
+                vsock::VsockStream::from_raw_fd(socket)
+            };
+
+            let runner_addr = socket::SockAddr::Vsock(socket::VsockAddr::new(runner_cid, runner_port));
+            socket::bind(socket.as_raw_fd(), &runner_addr).map_err(nix_to_vme_error)?;
+
+            Ok(socket)
+        }
+
+        async fn vsock_connect(socket: vsock::VsockStream, enclave_cid: u32, enclave_port: u32) -> Result<VsockStream, VmeError> {
+            let enclave_addr = socket::SockAddr::Vsock(socket::VsockAddr::new(enclave_cid, enclave_port));
+            let mut res = socket::connect(socket.as_raw_fd(), &enclave_addr);
+            if res == Err(Errno::EINPROGRESS) {
+                res = Ok(())
+            };
+            res.map_err(nix_to_vme_error)?;
+
+            let fd = tokio::io::unix::AsyncFd::new(socket)?;
+            let _ = fd.writable().await?;
+
+            let socket = VsockStream::new(fd.into_inner())?;
+            Ok(socket)
+        }
+
         // Locate TCP listener
         let enclave_cid = client_conn.stream.peer_addr()?.cid();
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
@@ -465,9 +499,8 @@ impl<P: Platform + 'static> ServerState<P> {
 
         // Send enclave info where it should accept new incoming connection
         let runner_port = gen_rand_port()?;
-        let runner_vsock_sockert = create_vsock_socket(VMADDR_CID_ANY, runner_port).map_err(
-            |errno| VmeError::SystemError(errno as i32)
-        )?;
+        let runner_cid: u32 = VMADDR_CID_ANY;
+        let runner_vsock_socket = vsock_create_bind(runner_port, runner_cid)?;
         client_conn.send(&Response::IncomingConnection{
             local: conn.local_addr()?.into(),
             peer: peer.into(),
@@ -476,7 +509,7 @@ impl<P: Platform + 'static> ServerState<P> {
 
         let connect = async || -> Result<(), VmeError> {
             // Connect to enclave at the expected port
-            let proxy = VsockStream::connect_with_socket(runner_vsock_sockert, enclave_addr).await?;
+            let proxy = vsock_connect(runner_vsock_socket, enclave_cid, vsock_listener_port).await?;
             self.add_connection(proxy, conn, "remote".to_string()).await?;
             Ok(())
         };
@@ -558,13 +591,6 @@ impl<P: Platform + 'static> ServerState<P> {
                                                         .or_else(|e| { error!("exit error: {:?}", e); Err(e) }),
         }
     }
-}
-
-fn create_vsock_socket(runner_cid: u32, runner_port: u32) -> Result<i32, nix::Error> {
-    let socket = nix::sys::socket::socket(AddressFamily::Vsock, SockType::Stream, SockFlag::SOCK_CLOEXEC, None)?;
-    let vsock_addr = nix::sys::socket::SockAddr::Vsock(nix::sys::socket::VsockAddr::new(runner_cid, runner_port));
-    nix::sys::socket::bind(socket.as_raw_fd(), &vsock_addr)?;
-    Ok(socket)
 }
 
 impl<P: Platform + 'static> Server<P> {
