@@ -322,8 +322,8 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>, stream_router: SharedStreamRouter, forward_panics: bool) -> Result<(), VmeRunnerError> {
-        let server = Server::<P>::bind(enclave_name, SERVER_PORT, stream_router, forward_panics)?;
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>, forward_panics: bool) -> Result<(), VmeRunnerError> {
+        let server = Server::<P>::bind(enclave_name, SERVER_PORT, self.stream_router.clone(), forward_panics)?;
         let command_server_handle = server.start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
         command_server_handle.await?;
@@ -800,8 +800,7 @@ mod command {
     impl Command {
         pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
             enclave_builder: EnclaveBuilder<P, Args>,
-            // To be done in PR #867
-            stream_router: Box<dyn StreamRouter>,
+            stream_router: Box<dyn StreamRouter + Send + Sync>,
             forward_panics: bool,
             cmd_configuration: CommandConfiguration,
         ) -> enclave_runner::Command {
@@ -811,8 +810,10 @@ mod command {
                     .build()?.
                     block_on(async move {
                         let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
+                        runner.stream_router = stream_router.into();
+
                         let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
-                        runner.run_enclave(runner_args, enclave_name, enclave_args, stream_router, forward_panics).await?;
+                        runner.run_enclave(runner_args, enclave_name, enclave_args, forward_panics).await?;
                         Ok(())
                     })
             }) as Box<dyn FnOnce() -> _>)
