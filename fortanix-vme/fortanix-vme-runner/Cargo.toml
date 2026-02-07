@@ -6,9 +6,11 @@ authors = ["Fortanix, Inc."]
 
 [dependencies]
 # Workspace dependencies
+enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
 fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 # External dependencies
+anyhow = "1.0"
 clap = { version = "4.0", features = ["derive"] }
 env_logger = "0.9.0"
 fnv = "1.0.7"

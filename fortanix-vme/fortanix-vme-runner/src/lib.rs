@@ -1,6 +1,7 @@
 #![deny(warnings)]
+use enclave_runner::platform::{CommandConfiguration, EnclaveConfiguration, EnclavePlatform};
 use fnv::FnvHashMap;
-use futures::future::join_all;
+use futures::future::try_join_all;
 use log::debug;
 use log::{error, info, log, warn};
 use nix::libc::VMADDR_PORT_ANY;
@@ -8,7 +9,7 @@ use tokio::net::TcpStream;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 use std::cmp;
 use std::fmt::Debug;
 use std::os::fd::AsRawFd;
@@ -255,10 +256,10 @@ pub struct EnclaveRunner<P: Platform> {
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
-    pub fn new() -> Result<EnclaveRunner<P>, IoError> {
-        Ok(EnclaveRunner {
+    pub fn new() -> EnclaveRunner<P> {
+        EnclaveRunner {
             servers: Vec::new(),
-        })
+        }
     }
 
     /// Starts a new enclave
@@ -657,5 +658,71 @@ impl<P: Platform + 'static> Server<P> {
             }
         }
         Ok(())
+    }
+}
+
+fn vme_error_to_string(err: VmeError) -> anyhow::Error {
+    anyhow::anyhow!("{err:?}")
+}
+
+pub struct EnclaveBuilder<P: Platform, Args: Into<P::RunArgs>> {
+    runner: EnclaveRunner<P>,
+    runner_args: Args,
+    enclave_name: String,
+}
+
+impl<P: Platform + 'static, Args: Into<P::RunArgs>> EnclaveBuilder<P, Args> {
+    pub fn new(runner_args: Args, enclave_name: String) -> Result<Self, anyhow::Error> {
+        let runner = EnclaveRunner::<P>::new();
+        Ok(Self { runner, runner_args, enclave_name })
+    }
+}
+
+impl<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send> EnclavePlatform<enclave_runner::Command> for EnclaveBuilder<P, Args> {
+    type Loader = ();
+
+    fn build(
+        self,
+        _loader: Self::Loader,
+        configuration: EnclaveConfiguration,
+        mut cmd_configuration: CommandConfiguration
+    ) -> Result<enclave_runner::Command, anyhow::Error>
+    {
+        // cmd_args by default have an b"enclave" in it which is not needed
+        cmd_configuration.cmd_args.clear();
+        Ok(command::Command::internal_new(self, configuration.stream_router, configuration.forward_panics, cmd_configuration))
+    }
+}
+
+mod command {
+    use enclave_runner::stream_router::StreamRouter;
+
+    use super::*;
+
+    pub struct Command {
+        _private: (),
+    }
+
+    impl Command {
+        pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
+            enclave_builder: EnclaveBuilder<P, Args>,
+            _stream_router: Box<dyn StreamRouter>,
+            _forward_panics: bool,
+            cmd_configuration: CommandConfiguration,
+        ) -> enclave_runner::Command {
+            (Box::new(move || -> Result<(), anyhow::Error> {
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()?.
+                    block_on(async move {
+                        let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
+                        let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
+                        runner.run_enclave(runner_args, enclave_name, enclave_args).await.map_err(vme_error_to_string)?;
+                        runner.wait().await?;
+                        Ok(())
+                    })
+            }) as Box<dyn FnOnce() -> _>)
+            .into()
+        }
     }
 }
