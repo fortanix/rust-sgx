@@ -799,7 +799,7 @@ mod command {
     impl Command {
         pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
             enclave_builder: EnclaveBuilder<P, Args>,
-            _stream_router: Box<dyn StreamRouter>,
+            stream_router: Box<dyn StreamRouter + Send + Sync>,
             _forward_panics: bool,
             cmd_configuration: CommandConfiguration,
         ) -> enclave_runner::Command {
@@ -809,6 +809,8 @@ mod command {
                     .build()?.
                     block_on(async move {
                         let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
+                        runner.stream_router = stream_router.into();
+
                         let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
                         runner.run_enclave(runner_args, enclave_name, enclave_args).await?;
                         runner.wait().await?;

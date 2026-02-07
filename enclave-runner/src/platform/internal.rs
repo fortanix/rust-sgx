@@ -18,7 +18,7 @@ pub trait EnclavePlatform<T: EnclaveType> {
 }
 
 pub struct EnclaveConfiguration {
-    pub stream_router: Box<dyn StreamRouter>,
+    pub stream_router: Box<dyn StreamRouter + Send + Sync>,
     pub forward_panics: bool,
 }
 
