@@ -32,7 +32,7 @@ pub struct OsStreamRouter {
 }
 
 impl OsStreamRouter {
-    pub fn new() -> Box<dyn StreamRouter> {
+    pub fn new() -> Box<dyn StreamRouter + Send + Sync> {
         Box::new(OsStreamRouter {
             _private: ()
         })
@@ -62,7 +62,7 @@ impl StreamRouter for OsStreamRouter {
         addr: &'future str,
         local_addr: Option<&'future mut String>,
         peer_addr: Option<&'future mut String>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncStream>>> +'future>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncStream>>> + Send +'future>> {
         (async move {
             let stream = tokio::net::TcpStream::connect(addr).await?;
 
@@ -70,21 +70,21 @@ impl StreamRouter for OsStreamRouter {
             set_opt_from_sockaddr(peer_addr, || stream.peer_addr());
             
             Ok(Box::new(stream) as _)
-        }).boxed_local()
+        }).boxed()
     }
 
     fn bind_stream<'future>(
         &'future self,
         addr: &'future str,
         local_addr: Option<&'future mut String>,
-    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncListener>>> + 'future>> {
+    ) -> std::pin::Pin<Box<dyn Future<Output = IoResult<Box<dyn AsyncListener>>> + Send + 'future>> {
         (async move {
             let socket = tokio::net::TcpListener::bind(addr).await?;
 
             set_opt_from_sockaddr(local_addr, || socket.local_addr());
 
             Ok(Box::new(socket) as _)
-        }).boxed_local()
+        }).boxed()
     }
 }
 
