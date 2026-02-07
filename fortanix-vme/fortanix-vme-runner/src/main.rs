@@ -1,12 +1,14 @@
+use anyhow::Context;
 use clap::Parser;
-use fortanix_vme_abi::SERVER_PORT;
-use fortanix_vme_runner::{EnclaveRunner, NitroEnclaves, Platform, Simulator, SimulatorArgs, read_eif_with_metadata, ReadEifResult};
+use fortanix_vme_runner::{NitroEnclaves, Simulator, SimulatorArgs, read_eif_with_metadata, ReadEifResult};
 use nitro_cli::common::commands_parser::{RunEnclavesArgs as NitroArgs};
 use std::convert::TryFrom;
 use std::fs::File;
-use std::io::{Error as IoError, ErrorKind as IoErrorKind, Write};
+use std::io::{Error as IoError, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
+use fortanix_vme_runner::EnclaveBuilder as EnclaveBuilderVme;
+use enclave_runner::EnclaveBuilder;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -103,18 +105,7 @@ fn log(cli: &Cli, text: &str) {
     }
 }
 
-fn create_runner<P: Platform + 'static>() -> EnclaveRunner<P> {
-    match EnclaveRunner::new() {
-        Ok(runner)                                     => runner,
-        Err(e) if e.kind() == IoErrorKind::AddrInUse   => {
-            panic!("Server failed. Do you already have a runner running on vsock port {}? (Error: {:?})", SERVER_PORT, e);
-        },
-        Err(e)                                         => panic!("Server failed. Error: {:?}", e),
-    }
-}
-
-#[tokio::main]
-async fn main() {
+fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
 
     if cli.simulate {
@@ -127,27 +118,34 @@ async fn main() {
             elf_path = cli.enclave_file.into();
             img_name = elf_path.file_name().unwrap_or_default().display().to_string();
         } else {
-            let ReadEifResult { mut eif, metadata } = read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file");
-            //TODO also extract env/cmd file and make sure the application is executed with this
-            //context
+            let ReadEifResult { mut eif, metadata } = read_eif_with_metadata(&cli.enclave_file).context("Failed to read EIF file")?;
+            // TODO also extract env/cmd file and make sure the application is executed with this
+            // context
             let elf = eif.application()
-                .expect("Failed to parse enclave file");
+                .context("Failed to parse enclave file")?;
             elf_path = create_elf(elf)
-                .expect("Failed to create executable file");
+                .context("Failed to create executable file")?;
 
             img_name = metadata.img_name;
 
             log(&cli, &format!("Simulating enclave as {}", elf_path.display()));
         }
 
-        let mut runner: EnclaveRunner<Simulator> = create_runner();
         let args = SimulatorArgs::new(elf_path);
-        runner.run_enclave(args, img_name, cli.args).await.expect("Failed to run enclave");
-        runner.wait().await;
+        let enclave_runner = EnclaveBuilderVme::<Simulator, _>::new(args, img_name)?;
+        let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
+        enclave_runner.args(cli.args);
+        let enclave = enclave_runner.build(()).context("Failed to build enclave runner")?;
+        enclave.run().context("Failed to run enclave")?;
     } else {
-        let mut runner: EnclaveRunner<NitroEnclaves> = create_runner();
         let args: NitroArgs = TryFrom::try_from(&cli).expect("Failed to parse arguments");
-        runner.run_enclave(args, read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name, cli.args).await.expect("Failed to run enclave");
-        runner.wait().await;
+        let img_name = read_eif_with_metadata(&cli.enclave_file).expect("Failed to read EIF file").metadata.img_name;
+
+        let enclave_runner = EnclaveBuilderVme::<NitroEnclaves, _>::new(args, img_name)?;
+        let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
+        enclave_runner.args(cli.args);
+        let enclave = enclave_runner.build(()).context("Failed to build enclave runner")?;
+        enclave.run().context("Failed to run enclave")?;
     };
+    Ok(())
 }

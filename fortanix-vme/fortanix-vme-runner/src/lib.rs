@@ -1,6 +1,7 @@
 #![deny(warnings)]
+use enclave_runner::platform::{CommandConfiguration, EnclaveConfiguration, EnclavePlatform};
 use fnv::FnvHashMap;
-use futures::future::join_all;
+use futures::future::try_join_all;
 use log::debug;
 use log::{error, info, log, warn};
 use nix::libc::VMADDR_PORT_ANY;
@@ -8,7 +9,7 @@ use tokio::net::TcpStream;
 use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinError, JoinHandle};
 use std::cmp;
 use std::fmt::Debug;
 use std::os::fd::AsRawFd;
@@ -23,6 +24,26 @@ mod platforms;
 pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
+
+#[derive(thiserror::Error, Debug)]
+pub enum VmeRunnerError {
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("Vme ABI error: {0:?}")]
+    VmeAbiError(VmeError),
+    #[error("Failed to join async handler: {0}")]
+    Join(#[from] JoinError),
+    #[error("Connection not found")]
+    ConnectionNotFound,
+    #[error("Nix error: {0}")]
+    Nix(#[from] nix::Error)
+}
+
+impl From<VmeError> for VmeRunnerError {
+    fn from(value: VmeError) -> Self {
+        VmeRunnerError::VmeAbiError(value)
+    }
+}
 
 enum Direction {
     Left,
@@ -187,7 +208,6 @@ impl ClientConnection {
         self.stream
             .peer_addr()
             .map(|addr| addr.port())
-            .map_err(|e| IoError::new(IoErrorKind::InvalidData, e))
     }
 
     fn log_communication(level: log::Level, src: &str, src_port: u32, dst: &str, dst_port: u32, msg: &str, arrow: Direction, prot: &str, max_len: Option<usize>) {
@@ -254,14 +274,14 @@ pub struct EnclaveRunner<P: Platform> {
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
-    pub fn new() -> Result<EnclaveRunner<P>, IoError> {
-        Ok(EnclaveRunner {
+    pub fn new() -> EnclaveRunner<P> {
+        EnclaveRunner {
             servers: Vec::new(),
-        })
+        }
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeError> {
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
         let server = Arc::new(Server::bind(enclave_name, SERVER_PORT)?);
         let server_thread = server.clone().start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
@@ -270,10 +290,11 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     }
 
     /// Blocks the current thread until the command thread exits
-    pub async fn wait(self) {
+    pub async fn wait(self) -> Result<(), VmeRunnerError> {
         let handles: Vec<tokio::task::JoinHandle<()>> =
-        self.servers.into_iter().map(|(_, h)| h).collect();
-        let _ = join_all(handles).await;
+            self.servers.into_iter().map(|(_, h)| h).collect();
+        let _ = try_join_all(handles).await?;
+        Ok(())
     }
 }
 
@@ -338,7 +359,7 @@ impl<P: Platform + 'static> ServerState<P> {
      */
     async fn handle_request_connect(self: &Self, remote_addr: &String, conn: &mut ClientConnection) -> Result<(), VmeError> {
         // Connect to remote server
-        let remote_socket = TcpStream::connect(remote_addr).await.map_err(|e| VmeError::Command(e.kind().into()))?;
+        let remote_socket = TcpStream::connect(remote_addr).await?;
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
@@ -357,7 +378,7 @@ impl<P: Platform + 'static> ServerState<P> {
         // Wait for incoming connection from enclave. Unfortunately, we can't send a second
         // response with an error message back to the enclave when something goes wrong anymore.
         // We'll log the problem instead
-        let accept_connection = async move || -> Result<(), VmeError> {
+        let accept_connection = async move || -> Result<(), VmeRunnerError> {
             let (proxy, _proxy_addr) = proxy_server.accept().await?;
             // Store connection info
             self.add_connection(proxy, remote_socket, remote_name.to_string()).await?;
@@ -593,7 +614,7 @@ impl<P: Platform + 'static> ServerState<P> {
 }
 
 impl<P: Platform + 'static> Server<P> {
-    fn bind(enclave_name: String, port: u32) -> io::Result<Self> {
+    fn bind(enclave_name: String, port: u32) -> Result<Self, VmeRunnerError> {
         let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
         let command_listener_local_addr = command_listener.local_addr()?;
         Ok(Server {
@@ -608,7 +629,7 @@ impl<P: Platform + 'static> Server<P> {
         })
     }
 
-    fn start_command_server(self: &Self) -> Result<tokio::task::JoinHandle<()>, IoError> {
+    fn start_command_server(self: &Self) -> Result<tokio::task::JoinHandle<()>, VmeRunnerError> {
         info!("Starting enclave runner.");
         info!("Command server listening on vsock cid: {} port: {} ...", self.command_listener_local_addr.cid(), self.command_listener_local_addr.port());
         let state = self.state.clone();
@@ -640,7 +661,7 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeError> {
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
         let mut state = self.state.enclave.write().await;
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
@@ -648,7 +669,8 @@ impl<P: Platform + 'static> Server<P> {
                 enclave_args.insert(0, self.name.clone());
                 // Assume Platform::run will do some blocking logic
                 let handle = tokio::task::spawn_blocking(|| P::run(run_args));
-                let enclave = handle.await.expect("Failed to run enclave")?;
+                let ret = handle.await?;
+                let enclave = ret?;
                 *state = EnclaveState::Running {
                     enclave,
                     args: enclave_args,
@@ -656,5 +678,67 @@ impl<P: Platform + 'static> Server<P> {
             }
         }
         Ok(())
+    }
+}
+
+pub struct EnclaveBuilder<P: Platform, Args: Into<P::RunArgs>> {
+    runner: EnclaveRunner<P>,
+    runner_args: Args,
+    enclave_name: String,
+}
+
+impl<P: Platform + 'static, Args: Into<P::RunArgs>> EnclaveBuilder<P, Args> {
+    pub fn new(runner_args: Args, enclave_name: String) -> Result<Self, anyhow::Error> {
+        let runner = EnclaveRunner::<P>::new();
+        Ok(Self { runner, runner_args, enclave_name })
+    }
+}
+
+impl<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send> EnclavePlatform<enclave_runner::Command> for EnclaveBuilder<P, Args> {
+    type Loader = ();
+
+    fn build(
+        self,
+        _loader: Self::Loader,
+        configuration: EnclaveConfiguration,
+        mut cmd_configuration: CommandConfiguration
+    ) -> Result<enclave_runner::Command, anyhow::Error>
+    {
+        // cmd_args by default have an b"enclave" in it which is not needed
+        cmd_configuration.cmd_args.clear();
+        Ok(command::Command::internal_new(self, configuration.stream_router, configuration.forward_panics, cmd_configuration))
+    }
+}
+
+mod command {
+    use enclave_runner::stream_router::StreamRouter;
+
+    use super::*;
+
+    pub struct Command {
+        _private: (),
+    }
+
+    impl Command {
+        pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
+            enclave_builder: EnclaveBuilder<P, Args>,
+            _stream_router: Box<dyn StreamRouter>,
+            _forward_panics: bool,
+            cmd_configuration: CommandConfiguration,
+        ) -> enclave_runner::Command {
+            (Box::new(move || -> Result<(), anyhow::Error> {
+                tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    .build()?.
+                    block_on(async move {
+                        let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
+                        let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
+                        runner.run_enclave(runner_args, enclave_name, enclave_args).await?;
+                        runner.wait().await?;
+                        Ok(())
+                    })
+            }) as Box<dyn FnOnce() -> _>)
+            .into()
+        }
     }
 }
