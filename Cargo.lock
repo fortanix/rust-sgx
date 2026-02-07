@@ -1755,6 +1755,7 @@ dependencies = [
  "rand 0.7.3",
  "serde",
  "serde_cbor",
+ "thiserror",
  "tokio",
  "tokio-vsock",
  "vsock",
