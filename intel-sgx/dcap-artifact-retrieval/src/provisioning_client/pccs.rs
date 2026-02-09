@@ -431,7 +431,7 @@ mod tests {
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
     use std::sync::OnceLock;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use pcs::{
         EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
@@ -473,24 +473,29 @@ mod tests {
         let pckid = PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap();
         let pckid = pckid.first().unwrap();
 
-        let mut prev_pck: Option<pcs::PckCert::<pcs::Unverified>> = None;
-        for _i in 0..1000 {
-            let pck = client
-                .pckcert(
-                    Some(&pckid.enc_ppid),
-                    &pckid.pce_id,
-                    &pckid.cpu_svn,
-                    pckid.pce_isvsvn,
-                    Some(&pckid.qe_id),
-                )
+        let mut prev_pcks: Option<pcs::PckCerts> = None;
+        let mut total_ms: u128 = 0;
+        for i in 0..10 {
+            let start = Instant::now();
+            let pcks = client
+                .pckcerts_with_fallback(&pckid)
                 .unwrap();
 
-            if let Some(ref prev_pck) = prev_pck {
-                assert_eq!(prev_pck.pck_pem(), pck.pck_pem())
+            if let Some(prev_pck) = &prev_pcks {
+                assert_eq!(prev_pck, &pcks)
             }
-            prev_pck.replace(pck);
-            assert!(prev_pck.is_some());
+            prev_pcks.replace(pcks);
+            assert!(prev_pcks.is_some());
+            let elapsed = start.elapsed();
+            total_ms += elapsed.as_millis();
+            println!(
+                "Iterating {} took {:.3} s",
+                i + 1,
+                elapsed.as_secs_f64()
+            );
         }
+        let avg_ms = total_ms as f64 / 10.0;
+        println!("Average per iteration: {:.3} ms ({:.3} s)", avg_ms, avg_ms / 1000.0);
     }
 
 
