@@ -252,7 +252,7 @@ impl WithApiVersion for TcbInfoIn<'_> {
     }
 }
 
-pub trait TcbInfoService<'inp, T: PlatformTypeForTcbInfo<T>>:
+pub trait TcbInfoService<'inp, T: PlatformTypeForTcbInfo>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo<T>>
 {
     fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
@@ -268,7 +268,7 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
     }
 }
 
-pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo<T>>:
+pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo>:
     ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers<T>>
 {
     fn build_input(&self)
@@ -696,7 +696,7 @@ pub trait ProvisioningClient {
 }
 
 
-pub trait ProvisioningClientFuncSelector<T: PlatformTypeForTcbInfo<T>> {
+pub trait ProvisioningClientFuncSelector<T: PlatformTypeForTcbInfo> {
     fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
     fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
 }
