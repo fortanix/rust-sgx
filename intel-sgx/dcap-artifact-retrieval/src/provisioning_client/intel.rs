@@ -369,7 +369,7 @@ impl<T: PlatformType> TcbInfoApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> TcbInfoService<'inp, T>
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T>
     for TcbInfoApi<T>
 {
     fn build_input(
@@ -387,7 +387,7 @@ impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> TcbInfoService<'inp, T
 
 // Implementation of Get TCB Info
 // <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
-impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> ProvisioningServiceApi<'inp>
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
     for TcbInfoApi<T>
 {
     type Input = TcbInfoIn<'inp>;
@@ -540,12 +540,12 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
     }
 }
 
-pub struct TcbEvaluationDataNumbersApi<T: PlatformTypeForTcbInfo<T>> {
+pub struct TcbEvaluationDataNumbersApi<T: PlatformTypeForTcbInfo> {
     base_url: Cow<'static, str>,
     _platform: PhantomData<T>,
 }
 
-impl<T: PlatformTypeForTcbInfo<T>> TcbEvaluationDataNumbersApi<T> {
+impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbersApi<T> {
     pub fn new(base_url: Cow<'static, str>) -> Self {
         TcbEvaluationDataNumbersApi {
             base_url,
@@ -554,7 +554,7 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbEvaluationDataNumbersApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T>
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T>
     for TcbEvaluationDataNumbersApi<T>
 {
     fn build_input(&self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
@@ -564,7 +564,7 @@ impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> TcbEvaluationDataNumbe
 
 /// Implementation of TCB Evaluation Data Numbers endpoint
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
-impl<'inp, T: PlatformTypeForTcbInfo<T> + PlatformApiTag> ProvisioningServiceApi<'inp>
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
     for TcbEvaluationDataNumbersApi<T>
 {
     type Input = TcbEvaluationDataNumbersIn;
@@ -620,7 +620,6 @@ mod tests {
 
     use pcs::platform;
     use pcs::PlatformTypeForTcbInfo;
-    use pcs::TcbInfo;
     use pcs::{
         DcapArtifactIssuer, EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers,
         WriteOptionsBuilder,
@@ -1193,8 +1192,10 @@ mod tests {
         }
     }
 
-    fn tcb_evaluation_data_numbers_test_base<T>()
-        where T: PlatformTypeForTcbInfo<T> + ProvisioningClientFuncSelector<T> + std::fmt::Debug {
+    fn tcb_evaluation_data_numbers_test_base<T: PartialEq>()
+    where
+        T: PlatformTypeForTcbInfo + ProvisioningClientFuncSelector<T> + std::fmt::Debug,
+    {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)

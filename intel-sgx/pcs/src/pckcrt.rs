@@ -3,7 +3,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
+*/
 
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -111,7 +111,7 @@ impl From<u8> for TcbComponentEntry {
     }
 }
 
-mod platform_specific {
+pub mod platform_specific {
     use super::TcbComponentEntry;
     use serde::{Serialize, Deserialize};
 
@@ -124,45 +124,78 @@ mod platform_specific {
     }
 }
 
-pub trait PlatformTypeForTcbComponent<T: PlatformTypeForTcbComponent<T>> : PartialEq {
-    type PlatformSpecificTcbComponentData : Debug + Eq + Clone + Default + Serialize + DeserializeOwned;
-    fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<T>, Error>;
+pub trait PlatformTypeForTcbComponent
+where
+    // This bound ensures that the type-checker understands that `TcbComponents` implements
+    // `TryFrom`, since a normal where-bound would not be propagated
+    Self: ImplyBound<ToBound = TcbComponents<Self::PlatformSpecificTcbComponentData>>,
+    Self: ImplyBound<ToBound: TryFrom<TcbComponentsV3, Error = Error>>,
+{
+    type PlatformSpecificTcbComponentData: Debug
+        + Clone
+        + Serialize
+        + DeserializeOwned;
 }
 
-impl PlatformTypeForTcbComponent<platform::SGX> for platform::SGX {
+impl PlatformTypeForTcbComponent for platform::SGX {
     type PlatformSpecificTcbComponentData = platform_specific::SGX;
-
-    fn try_from_v3(c: TcbComponentsV3) -> Result<TcbComponents<platform::SGX>, Error> {
-        Ok(TcbComponents::<platform::SGX>(c.into()))
-    }
 }
 
-impl PlatformTypeForTcbComponent<platform::TDX> for platform::TDX {
+impl PlatformTypeForTcbComponent for platform::TDX {
     type PlatformSpecificTcbComponentData = platform_specific::TDX;
+}
 
-    fn try_from_v3(_: TcbComponentsV3) -> Result<TcbComponents<platform::TDX>, Error> {
-        Err(Error::InvalidTcbInfo("Attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
+/// Auxiliary trait to propagate bound on
+/// [PlatformTypeForTcbComponent::PlatformSpecificTcbComponentData]
+pub trait ImplyBound where Self: Sized {
+    type ToBound;
+}
+
+impl ImplyBound for platform::SGX {
+    type ToBound = TcbComponents<platform_specific::SGX>;
+}
+
+impl ImplyBound for platform::TDX {
+    type ToBound = TcbComponents<platform_specific::TDX>;
+}
+
+impl TryFrom<TcbComponentsV3> for TcbComponents<platform_specific::SGX> {
+    type Error = Error;
+
+    fn try_from(value: TcbComponentsV3) -> Result<Self, Error> {
+        Ok(TcbComponents::<platform_specific::SGX>(value.into()))
     }
 }
+
+impl TryFrom<TcbComponentsV3> for TcbComponents<platform_specific::TDX> {
+    type Error = Error;
+
+    fn try_from(_value: TcbComponentsV3) -> Result<Self, Error> {
+        Err(Error::InvalidTcbInfo("attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
+    }
+}
+
+
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct TcbComponentsV4<T: PlatformTypeForTcbComponent<T>> {
+pub struct TcbComponentsV4<P> {
     sgxtcbcomponents: [TcbComponentEntry; 16],
     pcesvn: u16,
     #[serde(flatten)]
-    platform_specific_data: T::PlatformSpecificTcbComponentData,
+    platform_specific_data: P,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(untagged)]
-enum TcbComponentsCompatibilitySelector<T: PlatformTypeForTcbComponent<T>> {
+enum TcbComponentsCompatibilitySelector<P> {
     V3(TcbComponentsV3),
-    V4(TcbComponentsV4<T>),
+    V4(TcbComponentsV4<P>),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]
-#[serde(try_from = "TcbComponentsCompatibilitySelector<T>")]
-pub struct TcbComponents<T: PlatformTypeForTcbComponent<T>>(TcbComponentsV4<T>);
+#[serde(try_from = "TcbComponentsCompatibilitySelector<P>")]
+#[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3, Error: std::fmt::Display>, P : Deserialize<'de>"))]
+pub struct TcbComponents<P>(TcbComponentsV4<P>);
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum TcbComponentType {
@@ -184,7 +217,7 @@ impl TryFrom<&str> for TcbComponentType {
     }
 }
 
-impl TcbComponents<platform::SGX> {
+impl TcbComponents<platform_specific::SGX> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
         TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
@@ -194,7 +227,7 @@ impl TcbComponents<platform::SGX> {
     }
 }
 
-impl TcbComponents<platform::TDX> {
+impl TcbComponents<platform_specific::TDX> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16, raw_tdxsvn: [u8; 16]) -> Self {
         TcbComponents (TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
@@ -210,7 +243,7 @@ impl TcbComponents<platform::TDX> {
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> TcbComponents<T> {
+impl<P> TcbComponents<P> {
     fn iter_components<'a>(&'a self) -> impl Iterator<Item = u16> + 'a {
         self.0
             .sgxtcbcomponents
@@ -243,7 +276,7 @@ impl<T: PlatformTypeForTcbComponent<T>> TcbComponents<T> {
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> PartialOrd<TcbComponents<U>> for TcbComponents<T> {
+impl<T, U> PartialOrd<TcbComponents<U>> for TcbComponents<T> {
     /// Compare all 17 components. If all are equal, order as equal. If some
     /// are less and others are greater, ordering is not defined. If some are
     /// less, order as less. If some are greater, order as greater.
@@ -264,7 +297,7 @@ impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> Parti
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> PartialEq<TcbComponents<U>> for TcbComponents<T> {
+impl<T, U> PartialEq<TcbComponents<U>> for TcbComponents<T> {
     fn eq(&self, other: &TcbComponents<U>) -> bool {
         for (a, b) in self.iter_components().zip(other.iter_components()) {
             if a != b {
@@ -275,7 +308,7 @@ impl<T: PlatformTypeForTcbComponent<T>, U: PlatformTypeForTcbComponent<U>> Parti
     }
 }
 
-impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform::SGX> {
+impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform_specific::SGX> {
     fn from(c: TcbComponentsV3) -> Self {
         TcbComponentsV4 {
             sgxtcbcomponents: [
@@ -302,18 +335,21 @@ impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform::SGX> {
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> std::convert::TryFrom<TcbComponentsCompatibilitySelector<T>> for TcbComponents<T> {
-    type Error = Error;
+impl<P> TryFrom<TcbComponentsCompatibilitySelector<P>> for TcbComponents<P>
+where
+    TcbComponents<P>: TryFrom<TcbComponentsV3>,
+{
+    type Error = <TcbComponents<P> as TryFrom<TcbComponentsV3>>::Error;
 
-    fn try_from(c: TcbComponentsCompatibilitySelector<T>) -> Result<Self, Self::Error> {
+    fn try_from(c: TcbComponentsCompatibilitySelector<P>) -> Result<Self, Self::Error> {
         match c {
-            TcbComponentsCompatibilitySelector::V3(c) => T::try_from_v3(c),
-            TcbComponentsCompatibilitySelector::V4(c) => Ok(TcbComponents(c.into())),
+            TcbComponentsCompatibilitySelector::V3(c) => c.try_into(),
+            TcbComponentsCompatibilitySelector::V4(c) => Ok(TcbComponents(c)),
         }
     }
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> std::convert::From<TcbComponentsV4<T>> for TcbComponents<T> {
+impl<T> std::convert::From<TcbComponentsV4<T>> for TcbComponents<T> {
     fn from(tcb_components: TcbComponentsV4<T>) -> Self {
         TcbComponents::<T>(tcb_components)
     }
@@ -358,7 +394,7 @@ impl Serialize for PckCertValue {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PckCertBodyItem {
-    tcb: TcbComponents<platform::SGX>,
+    tcb: TcbComponents<platform_specific::SGX>,
     tcbm: String,
     cert: PckCertValue,
 }
@@ -431,7 +467,7 @@ impl PckCerts {
 
     /// Order all PCKs according to the tcb info
     /// TCB Info is carefully ordered by Intel
-    fn order_pcks<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(&self, tcb_info: &TcbData<T, V>) -> Vec<PckCert<Unverified>> {
+    fn order_pcks<T: PlatformTypeForTcbInfo, V: VerificationType>(&self, tcb_info: &TcbData<T, V>) -> Vec<PckCert<Unverified>> {
         let mut pck_certs = self.as_pck_certs();
 
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
@@ -443,7 +479,7 @@ impl PckCerts {
 
     /// Given the cpusvn, pcesvn and qe_id, searches for the best PCK certificate
     /// Code re-implements <https://github.com/intel/SGXDataCenterAttestationPrimitives/blob/ab8d31d72f842adb4b8a49eb3639f2e9a789d13b/tools/PCKCertSelection/PCKCertSelectionLib/pck_sorter.cpp#L441>
-    pub fn select_pck<T: PlatformTypeForTcbInfo<T>, V: VerificationType>(
+    pub fn select_pck<T: PlatformTypeForTcbInfo, V: VerificationType>(
         &self,
         tcb_info: &TcbData<T, V>,
         cpusvn: &[u8; 16],
@@ -550,7 +586,10 @@ impl PckCert<Unverified> {
 impl PckCert<Verified> {
     /// Selects the highest matching TCB level
     /// see <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v2>
-    pub fn find_tcb_state<V: VerificationType, T: PlatformTypeForTcbInfo<T>>(&self, tcb_data: &TcbData<T, V>) -> Option<TcbLevel<T>> {
+    pub fn find_tcb_state<V: VerificationType, T: PlatformTypeForTcbInfo>(
+        &self,
+        tcb_data: &TcbData<T, V>,
+    ) -> Option<TcbLevel<T::PlatformSpecificTcbComponentData>> {
         let idx = self.find_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
     }
@@ -628,7 +667,7 @@ impl<V: VerificationType> PckCert<V> {
     }
 
     /// Find the index of the highest matching TCB level
-    fn find_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo<T>>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
+    fn find_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
         // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
         //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
         //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
@@ -644,7 +683,7 @@ impl<V: VerificationType> PckCert<V> {
             .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
     }
 
-    fn valid_for_tcb(&self, comps: &TcbComponents<platform::SGX>, pceid: u16) -> Result<(), Error> {
+    fn valid_for_tcb(&self, comps: &TcbComponents<platform_specific::SGX>, pceid: u16) -> Result<(), Error> {
         let sgx_extension = self
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
@@ -659,7 +698,7 @@ impl<V: VerificationType> PckCert<V> {
 
 #[derive(Default, Debug)]
 pub struct PlatformTCB {
-    pub tcb_components: TcbComponents<platform::SGX>,
+    pub tcb_components: TcbComponents<platform_specific::SGX>,
     pub cpusvn: CpuSvn,
 }
 
@@ -1281,7 +1320,7 @@ mod tests {
     #[test]
     fn tcb_level_partial_cmp() {
         let base_tcb = [10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        let base = TcbComponents::<platform::SGX>::from_raw(base_tcb, 40);
+        let base = TcbComponents::<platform_specific::SGX>::from_raw(base_tcb, 40);
         let base = &base;
         let mut other = base.clone();
         assert_eq!(base.partial_cmp(&other), Some(Ordering::Equal));
@@ -1318,7 +1357,7 @@ mod tests {
     #[test]
     fn tcb_components_cpu_svn() {
         let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
-        let comp = TcbComponents::<platform::SGX>::from_raw(raw_cpu_svn, 42);
+        let comp = TcbComponents::<platform_specific::SGX>::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }
 
@@ -1346,7 +1385,7 @@ mod tests {
             .verify(&root_cas, None)
             .unwrap();
         let ext = pck_cert.sgx_extension().unwrap();
-        assert_eq!(ext.tcb.tcb_components, TcbComponents::<platform::SGX>::from_raw(cpusvn, pcesvn));
+        assert_eq!(ext.tcb.tcb_components, TcbComponents::<platform_specific::SGX>::from_raw(cpusvn, pcesvn));
         assert_eq!(ext.tcb.cpusvn, cpusvn);
         assert_eq!(ext.pceid, pceid);
     }
