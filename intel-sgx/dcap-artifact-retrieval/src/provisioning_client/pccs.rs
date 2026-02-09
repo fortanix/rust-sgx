@@ -468,6 +468,33 @@ mod tests {
     }
 
     #[test]
+    pub fn ensure_pck_cached() {
+        let client = make_client(PcsVersion::V4);
+        let pckid = PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap();
+        let pckid = pckid.first().unwrap();
+
+        let mut prev_pck: Option<pcs::PckCert::<pcs::Unverified>> = None;
+        for _i in 0..1000 {
+            let pck = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    Some(&pckid.qe_id),
+                )
+                .unwrap();
+
+            if let Some(ref prev_pck) = prev_pck {
+                assert_eq!(prev_pck.pck_pem(), pck.pck_pem())
+            }
+            prev_pck.replace(pck);
+            assert!(prev_pck.is_some());
+        }
+    }
+
+
+    #[test]
     pub fn pck() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = make_client(api_version);

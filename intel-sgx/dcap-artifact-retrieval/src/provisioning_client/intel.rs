@@ -725,6 +725,34 @@ mod tests {
     }
 
     #[test]
+    pub fn ensure_pck_cached() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        let pckid = PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path()).unwrap();
+        let pckid = pckid.first().unwrap();
+
+        let mut prev_pck: Option<pcs::PckCert::<pcs::Unverified>> = None;
+        for _i in 0..1000 {
+            let pck = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    None,
+                )
+                .unwrap();
+
+            if let Some(ref prev_pck) = prev_pck {
+                assert_eq!(prev_pck.pck_pem(), pck.pck_pem())
+            }
+            prev_pck.replace(pck);
+            assert!(prev_pck.is_some());
+        }
+    }
+
+    #[test]
     pub fn pck_cached() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
