@@ -61,7 +61,7 @@ pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformType>(deser
     if platform_str == T::platform_id() {
         Ok(T::default())
     } else {
-        Err(serde::de::Error::custom(format!("Invalid platform id: {platform_str}, expected {}", T::platform_id())))
+        Err(serde::de::Error::custom(format!("invalid platform id: {platform_str}, expected {}", T::platform_id())))
     }
 }
 

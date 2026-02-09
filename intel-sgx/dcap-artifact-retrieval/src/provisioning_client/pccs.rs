@@ -273,7 +273,7 @@ impl<T: PlatformType> TcbInfoApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo<T>> TcbInfoService<'inp, T> for TcbInfoApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -290,7 +290,7 @@ impl<'inp, T: PlatformTypeForTcbInfo<T>> TcbInfoService<'inp, T> for TcbInfoApi<
 /// Implementation of Get TCB Info API (section 3.3 of [reference]).
 ///
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp, T: PlatformTypeForTcbInfo<T>> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
     type Output = TcbInfo<T>;
 

@@ -3,7 +3,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
+*/
 
 use std::convert::TryFrom;
  use std::convert::TryInto;
@@ -21,8 +21,12 @@ use {
 
 use crate::io::WriteOptions;
 use crate::pckcrt::PlatformTypeForTcbComponent;
-use crate::{PlatformType, pckcrt::{TcbComponentType, TcbComponents}, platform};
+use crate::pckcrt::TryFromTcbComponentsV3;
 use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{
+    pckcrt::{TcbComponentType, TcbComponents},
+    platform, PlatformType,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -116,8 +120,9 @@ impl<'de> Deserialize<'de> for Fmspc {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct TcbLevel<T: PlatformTypeForTcbComponent<T>> {
-    pub(crate) tcb: TcbComponents<T>,
+pub struct TcbLevel<P> {
+    #[serde(bound(deserialize = "P: TryFromTcbComponentsV3, P : Deserialize<'de>"))]
+    pub(crate) tcb: TcbComponents<P>,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
     pub(crate) tcb_status: TcbStatus,
@@ -125,8 +130,8 @@ pub struct TcbLevel<T: PlatformTypeForTcbComponent<T>> {
     advisory_ids: Vec<AdvisoryID>,
 }
 
-impl<T: PlatformTypeForTcbComponent<T>> TcbLevel<T> {
-    pub fn components(&self) -> &TcbComponents<T> {
+impl<P> TcbLevel<P> {
+    pub fn components(&self) -> &TcbComponents<P> {
         &self.tcb
     }
 
@@ -329,12 +334,12 @@ where
     serializer.serialize_str(&attribute)
 }
 
-pub trait PlatformTypeForTcbInfo<T: PlatformTypeForTcbInfo<T>> : PlatformType + PlatformTypeForTcbComponent<T> {
+pub trait PlatformTypeForTcbInfo : PlatformType + PlatformTypeForTcbComponent {
     type PlatformSpecificTcbData: DeserializeOwned + Default;
     fn extra_extension() -> &'static str;
 }
 
-mod platform_specific {
+pub mod platform_specific {
     use crate::{TdxModule, TdxModuleIdentity};
     use serde::Deserialize;
 
@@ -349,7 +354,7 @@ mod platform_specific {
     }
 }
 
-impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
+impl PlatformTypeForTcbInfo for platform::SGX {
     type PlatformSpecificTcbData = platform_specific::SGX;
 
     fn extra_extension() -> &'static str {
@@ -359,7 +364,7 @@ impl PlatformTypeForTcbInfo<platform::SGX> for platform::SGX {
 
 #[allow(dead_code)]
 #[allow(unused)]
-impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
+impl PlatformTypeForTcbInfo for platform::TDX  {
     type PlatformSpecificTcbData = platform_specific::TDX;
 
     fn extra_extension() -> &'static str {
@@ -370,7 +375,7 @@ impl PlatformTypeForTcbInfo<platform::TDX> for platform::TDX  {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TcbData<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified> {
+pub struct TcbData<T: PlatformTypeForTcbInfo, V: VerificationType = Verified> {
     #[serde(default)]
     #[serde(deserialize_with = "crate::deserialize_platform_id")]
     id: T,
@@ -384,8 +389,7 @@ pub struct TcbData<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified>
     tcb_type: u16,
     tcb_evaluation_data_number: u64,
     #[serde(rename = "tcbLevels")]
-    #[serde(bound(deserialize = "TcbLevel<T>: Deserialize<'de>"))]
-    tcb_levels: Vec<TcbLevel<T>>,
+    tcb_levels: Vec<TcbLevel<T::PlatformSpecificTcbComponentData>>,
     #[serde(flatten)]
     platform_specific_data: T::PlatformSpecificTcbData,
     type_: V,
@@ -393,7 +397,7 @@ pub struct TcbData<T: PlatformTypeForTcbInfo<T>, V: VerificationType = Verified>
     platform_: PhantomData<T>
 }
 
-impl<T: PlatformTypeForTcbInfo<T>> TcbData<T, Verified> {
+impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
     pub fn version(&self) -> u16 {
         self.version
     }
@@ -403,7 +407,7 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbData<T, Verified> {
     }
 }
 
-impl<'de, T: PlatformTypeForTcbInfo<T>> TcbData<T, Unverified> {
+impl<'de, T: PlatformTypeForTcbInfo> TcbData<T, Unverified> {
     pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<T, Unverified>, Error> {
         let data: TcbData<T, Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
         if data.version != 2 && data.version != 3 {
@@ -427,24 +431,28 @@ impl<'de, T: PlatformTypeForTcbInfo<T>> TcbData<T, Unverified> {
     }
 }
 
-impl<T: PlatformTypeForTcbInfo<T>, V: VerificationType> TcbData<T, V> {
+impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
     }
 
     // NOTE: don't make this publicly available. We want to prevent people from
     // accessing the TCB levels without checking whether the TcbInfo is valid.
-    pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel<T>> {
+    pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel<T::PlatformSpecificTcbComponentData>> {
         &self.tcb_levels
     }
 
-    pub(crate) fn decompose_raw_cpusvn(&self, raw_cpusvn: &[u8; 16], pce_svn: u16) -> Result<TcbComponents<platform::SGX>, Error> {
+    pub(crate) fn decompose_raw_cpusvn(
+        &self,
+        raw_cpusvn: &[u8; 16],
+        pce_svn: u16,
+    ) -> Result<TcbComponents<crate::pckcrt::platform_specific::SGX>, Error> {
         if self.tcb_type != 0 {
             return Err(Error::UnknownTcbType(self.tcb_type));
         }
 
         // TCB Type 0 simply copies cpu svn
-        Ok(TcbComponents::<platform::SGX>::from_raw(*raw_cpusvn, pce_svn))
+        Ok(TcbComponents::<crate::pckcrt::platform_specific::SGX>::from_raw(*raw_cpusvn, pce_svn))
     }
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
@@ -463,7 +471,7 @@ impl TcbData<platform::TDX, Verified> {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct TcbInfo<T: PlatformTypeForTcbInfo<T>> {
+pub struct TcbInfo<T> {
     raw_tcb_info: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
@@ -471,7 +479,7 @@ pub struct TcbInfo<T: PlatformTypeForTcbInfo<T>> {
     _type: PhantomData<T>
 }
 
-impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
+impl<T> TcbInfo<T> {
     const FILENAME_EXTENSION: &'static str = ".tcb";
 
     pub fn new(raw_tcb_info: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
@@ -497,6 +505,21 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
         Ok(TcbInfo::new(raw_tcb_info.to_string(), signature, ca_chain))
     }
 
+    pub fn raw_tcb_info(&self) -> &String {
+        &self.raw_tcb_info
+    }
+
+    pub fn signature(&self) -> &Vec<u8> {
+        &self.signature
+    }
+
+    pub fn certificate_chain(&self) -> &Vec<String> {
+        &self.ca_chain
+    }
+
+}
+
+impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
     pub fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
         let file_extension = format!("{}{}", T::extra_extension(), Self::FILENAME_EXTENSION);
         io::compose_filename(fmspc, file_extension.as_str(), evaluation_data_number)
@@ -509,26 +532,14 @@ impl<T: PlatformTypeForTcbInfo<T>> TcbInfo<T> {
     }
 
     pub fn read_from_file(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
-        let filename = TcbInfo::<T>::create_filename(&fmspc.to_string(), evaluation_data_number);
-        let info: TcbInfo<T> = io::read_from_file(input_dir, &filename)?;
+        let filename = Self::create_filename(&fmspc.to_string(), evaluation_data_number);
+        let info = io::read_from_file(input_dir, &filename)?;
         Ok(info)
     }
 
     pub fn read_all<'a>(input_dir: &'a str, fmspc: &'a Fmspc) -> impl Iterator<Item = Result<Self, Error>> + 'a {
         io::all_files(input_dir, fmspc.to_string(), Self::FILENAME_EXTENSION)
             .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
-    }
-
-    pub fn raw_tcb_info(&self) -> &String {
-        &self.raw_tcb_info
-    }
-
-    pub fn signature(&self) -> &Vec<u8> {
-        &self.signature
-    }
-
-    pub fn certificate_chain(&self) -> &Vec<String> {
-        &self.ca_chain
     }
 
     #[cfg(feature = "verify")]
