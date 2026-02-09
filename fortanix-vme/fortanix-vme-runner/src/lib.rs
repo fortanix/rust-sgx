@@ -310,15 +310,13 @@ pub struct EnclaveRunner<P: Platform> {
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
-    pub fn new() -> EnclaveRunner<P> {
-        Self::new_with_stream_router(OsStreamRouter::new())
+    pub fn new() -> Self {
+        Self { platform: PhantomData, stream_router: Arc::from(OsStreamRouter::new()) }
     }
 
-    pub fn new_with_stream_router(router: Box<dyn StreamRouter + Send + Sync>) -> EnclaveRunner<P> {
-        EnclaveRunner {
-            platform: PhantomData,
-            stream_router: Arc::from(router),
-        }
+    pub fn with_stream_router(&mut self, router: Box<dyn StreamRouter + Send + Sync>) -> &mut Self {
+        self.stream_router = Arc::from(router);
+        self
     }
 
     /// Starts a new enclave
@@ -699,7 +697,7 @@ impl<P: Platform + 'static> Server<P> {
             state: Arc::new(ServerState { 
                 forward_panics,
                 enclave_state: RwLock::new(EnclaveState::Null),
-                command_listener: command_listener,
+                command_listener,
                 stream_router,
                 listeners: RwLock::new(FnvHashMap::default()),
                 connections: Arc::new(RwLock::new(FnvHashMap::default())),
