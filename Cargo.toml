@@ -15,6 +15,7 @@ members = [
     "fortanix-vme/fortanix-vme-initramfs",
     "fortanix-vme/fortanix-vme-runner",
     "fortanix-vme/fortanix-vme-tools",
+    "fortanix-vme/tools/confidential-vm-blobs",
     "fortanix-vme/vme-pkix",
     "intel-sgx/aesm-client",
     "intel-sgx/async-usercalls",
