@@ -1,7 +1,6 @@
 #![deny(warnings)]
 use enclave_runner::platform::{CommandConfiguration, EnclaveConfiguration, EnclavePlatform};
 use fnv::FnvHashMap;
-use futures::future::try_join_all;
 use log::debug;
 use log::{error, info, log, warn};
 use nix::libc::VMADDR_PORT_ANY;
@@ -12,6 +11,7 @@ use tokio::sync::Mutex;
 use tokio::task::{JoinError, JoinHandle};
 use std::cmp;
 use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::os::fd::AsRawFd;
 use std::str;
 use std::sync::Arc;
@@ -270,32 +270,25 @@ impl ClientConnection {
 }
 
 pub struct EnclaveRunner<P: Platform> {
-    servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
+    // servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
+    platform: PhantomData<P>,
 }
 
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
     pub fn new() -> EnclaveRunner<P> {
         EnclaveRunner {
-            servers: Vec::new(),
+            platform: PhantomData,
         }
     }
 
     /// Starts a new enclave
     pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>, forward_panics: bool) -> Result<(), VmeRunnerError> {
-        let server = Server::bind(enclave_name, SERVER_PORT, forward_panics)?;
-        let server = Arc::new(server);
-        let server_thread = server.clone().start_command_server()?;
+        let server = Server::<P>::bind(enclave_name, SERVER_PORT, forward_panics)?;
+        let command_server_handle = server.start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
-        self.servers.push((server, server_thread));
+        command_server_handle.await?;
         Ok(())
-    }
-
-    /// Blocks the current thread until the command thread exits
-    pub async fn wait(self) {
-        let handles: Vec<_> =
-            self.servers.into_iter().map(|(_, h)| h).collect();
-        let _ = join_all(handles).await;
     }
 }
 
@@ -743,7 +736,6 @@ mod command {
                         let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
                         let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
                         runner.run_enclave(runner_args, enclave_name, enclave_args, forward_panics).await?;
-                        runner.wait().await?;
                         Ok(())
                     })
             }) as Box<dyn FnOnce() -> _>)
