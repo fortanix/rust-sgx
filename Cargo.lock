@@ -1004,6 +1004,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "confidential-vm-blobs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
