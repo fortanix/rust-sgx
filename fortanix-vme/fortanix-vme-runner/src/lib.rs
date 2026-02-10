@@ -159,6 +159,7 @@ impl ConnectionKey {
         Ok(Self::connection_key(enclave_cid, enclave_port, runner_cid, runner_port))
     }
 
+    /// Note: We only use enclave's VsockAddr as hash map key.
     pub fn from_addresses(enclave: VsockAddr, _runner: VsockAddr) -> Self {
         ConnectionKey {
             enclave,
@@ -271,8 +272,8 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
 
     /// Blocks the current thread until the command thread exits
     pub async fn wait(self) {
-        let handles: Vec<tokio::task::JoinHandle<()>> =
-        self.servers.into_iter().map(|(_, h)| h).collect();
+        let handles: Vec<_> =
+            self.servers.into_iter().map(|(_, h)| h).collect();
         let _ = join_all(handles).await;
     }
 }
@@ -293,14 +294,14 @@ pub struct Server<P: Platform> {
 }
 
 pub struct ServerState<P: Platform> {
-    enclave: Arc<RwLock<EnclaveState<P>>>,
-    command_listener: Arc<Mutex<VsockListener>>,
+    enclave: RwLock<EnclaveState<P>>,
+    command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
     /// every TCP listener socket in the runner, there is a vsock listener socket in the enclave.
     /// When the enclave instructs to accept a new connection, the runner accepts a new TCP
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
-    listeners: Arc<RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>>,
+    listeners: RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>,
     connections: Arc<RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>>,
 }
 
@@ -398,12 +399,12 @@ impl<P: Platform + 'static> ServerState<P> {
             .cloned()
     }
 
-    async fn remove_connection(self: &Self, enclave: &VsockAddr) -> Option<ConnectionInfo> {
-        let k = ConnectionKey::from_addresses(enclave.clone(), enclave.clone());
+    async fn remove_connection(self: &Self, enclave_addr: &VsockAddr) -> Option<ConnectionInfo> {
+        let k = ConnectionKey::from_addresses(enclave_addr.clone(), enclave_addr.clone());
         self.connections.write().await.remove(&k)
     }
 
-    async fn add_connection(self: &Self, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<tokio::task::JoinHandle<()>, IoError> {
+    async fn add_connection(self: &Self, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
         let k = ConnectionKey::from_vsock_stream(&runner_enclave)?;
         let mut connection = Connection::new(runner_enclave, runner_remote, remote_name);
         self.connections.write().await.insert(k.clone(), connection.info()?);
@@ -600,9 +601,9 @@ impl<P: Platform + 'static> Server<P> {
             name: enclave_name,
             command_listener_local_addr,
             state: Arc::new(ServerState { 
-                enclave: Arc::new(RwLock::new(EnclaveState::Null)),
-                command_listener: Arc::new(Mutex::new(command_listener)),
-                listeners: Arc::new(RwLock::new(FnvHashMap::default())),
+                enclave: RwLock::new(EnclaveState::Null),
+                command_listener: Mutex::new(command_listener),
+                listeners: RwLock::new(FnvHashMap::default()),
                 connections: Arc::new(RwLock::new(FnvHashMap::default())),
             })
         })
@@ -617,7 +618,7 @@ impl<P: Platform + 'static> Server<P> {
                 let command_listener = state.command_listener.lock().await;
                 loop {
                     let accepted = command_listener.accept().await;
-                    let state_for_cpnn = state.clone();
+                    let state_for_conn = state.clone();
                     let _ = tokio::spawn(async move {
                        let mut conn = match accepted {
                             Ok((stream, _addr)) => ClientConnection::new(stream),
@@ -626,7 +627,7 @@ impl<P: Platform + 'static> Server<P> {
                                 return;
                             }
                         };
-                        if let Err(e) = state_for_cpnn.handle_client(&mut conn).await {
+                        if let Err(e) = state_for_conn.handle_client(&mut conn).await {
                             error!("Original error: {:?}", e);
                             if let Err(e) = conn.send(&Response::Failed(e)).await {
                                 error!("Failed to send response to enclave: {:?}", e);
