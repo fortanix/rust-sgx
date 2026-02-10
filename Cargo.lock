@@ -1010,6 +1010,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "confidential-vm-blobs"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1395,6 +1402,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4841de15dbe0e49b9b62a417589299e3be0d557e0900d36acb87e6dae47197f5"
 dependencies = [
  "byteorder 0.5.3",
+]
+
+[[package]]
+name = "elf2uki"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap 4.4.18",
+ "confidential-vm-blobs",
+ "env_logger",
+ "fortanix-vme-initramfs",
+ "log 0.4.28",
+ "tempfile",
 ]
 
 [[package]]
