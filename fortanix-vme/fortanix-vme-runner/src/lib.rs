@@ -282,8 +282,9 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeRunnerError> {
-        let server = Arc::new(Server::bind(enclave_name, SERVER_PORT)?);
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>, forward_panics: bool) -> Result<(), VmeRunnerError> {
+        let server = Server::bind(enclave_name, SERVER_PORT, forward_panics)?;
+        let server = Arc::new(server);
         let server_thread = server.clone().start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
         self.servers.push((server, server_thread));
@@ -314,6 +315,7 @@ pub struct Server<P: Platform> {
 }
 
 pub struct ServerState<P: Platform> {
+    forward_panics: bool,
     enclave: RwLock<EnclaveState<P>>,
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
@@ -588,7 +590,11 @@ impl<P: Platform + 'static> ServerState<P> {
     }
 
     fn handle_request_exit(self: &Self, exit_code: i32) -> Result<(), VmeError> {
-        std::process::exit(exit_code);
+        if self.forward_panics && exit_code != 0 {
+            panic!("enclave panic with exit code: {}", exit_code);
+        } else {
+            std::process::exit(exit_code);
+        }
     }
 
     async fn handle_client(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
@@ -614,13 +620,14 @@ impl<P: Platform + 'static> ServerState<P> {
 }
 
 impl<P: Platform + 'static> Server<P> {
-    fn bind(enclave_name: String, port: u32) -> Result<Self, VmeRunnerError> {
+    fn bind(enclave_name: String, port: u32, forward_panics: bool) -> Result<Self, VmeRunnerError> {
         let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
         let command_listener_local_addr = command_listener.local_addr()?;
         Ok(Server {
             name: enclave_name,
             command_listener_local_addr,
             state: Arc::new(ServerState { 
+                forward_panics,
                 enclave: RwLock::new(EnclaveState::Null),
                 command_listener: Mutex::new(command_listener),
                 listeners: RwLock::new(FnvHashMap::default()),
@@ -722,8 +729,9 @@ mod command {
     impl Command {
         pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
             enclave_builder: EnclaveBuilder<P, Args>,
+            // To be done in PR #867
             _stream_router: Box<dyn StreamRouter>,
-            _forward_panics: bool,
+            forward_panics: bool,
             cmd_configuration: CommandConfiguration,
         ) -> enclave_runner::Command {
             (Box::new(move || -> Result<(), anyhow::Error> {
@@ -733,7 +741,7 @@ mod command {
                     block_on(async move {
                         let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
                         let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
-                        runner.run_enclave(runner_args, enclave_name, enclave_args).await?;
+                        runner.run_enclave(runner_args, enclave_name, enclave_args, forward_panics).await?;
                         runner.wait().await?;
                         Ok(())
                     })
