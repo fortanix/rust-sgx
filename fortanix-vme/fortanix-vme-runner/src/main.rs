@@ -1,8 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
-use confidential_vm_blobs::maybe_vendored::MaybeVendoredImage;
-use confidential_vm_blobs::{AMD_SEV_OVMF, VANILLA_OVMF};
+use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, EnclaveRunner, EnclaveSimulator, EnclaveSimulatorArgs,
     NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
@@ -71,9 +70,9 @@ struct AmdSevSnpArgs {
     #[arg(long = "firmware-image")]
     firmware_image_path: Option<PathBuf>,
 
-    /// Name for the VM in the runner
+    /// Name for the VM, passed as argv[0] by the runner
     #[arg(long, default_value = "FortanixAmdSevSnpVm")]
-    vm_name: String,
+    executable_name: String,
 
     #[arg(last = true)]
     vm_args: Vec<String>,
@@ -156,17 +155,19 @@ fn main() -> Result<()> {
 }
 
 fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
-    // NOTE: it's important to not drop this while the VM runs, as it will remove the
-    // temporary file that stores the firmware image
-    let firmware_image = match amd_sev_cli.amd_sev_snp_args.firmware_image_path.clone() {
-        Some(path) => MaybeVendoredImage::from(path),
-        None => MaybeVendoredImage::from_vendored(if amd_sev_cli.common_args.simulate {
-            VANILLA_OVMF
-        } else {
-            AMD_SEV_OVMF
-        })?,
-    };
-    let run_args = amd_sev_cli.to_vm_run_args(firmware_image.path().to_owned())?;
+    let firmware_image_path = amd_sev_cli
+        .amd_sev_snp_args
+        .firmware_image_path
+        .clone()
+        .unwrap_or_else(|| {
+            if amd_sev_cli.common_args.simulate {
+                VANILLA_OVMF_PATH
+            } else {
+                AMD_SEV_OVMF_PATH
+            }
+            .into()
+        });
+    let run_args = amd_sev_cli.to_vm_run_args(firmware_image_path)?;
 
     let AmdSevSnpCli {
         common_args,
@@ -176,11 +177,15 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
         info!("running in simulation mode without confidential computing protection");
         run_to_completion::<VmSimulator>(
             run_args,
-            amd_sev_snp_args.vm_name,
+            amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
         )
     } else {
-        run_to_completion::<AmdSevVm>(run_args, amd_sev_snp_args.vm_name, amd_sev_snp_args.vm_args)
+        run_to_completion::<AmdSevVm>(
+            run_args,
+            amd_sev_snp_args.executable_name,
+            amd_sev_snp_args.vm_args,
+        )
     }
 }
 
