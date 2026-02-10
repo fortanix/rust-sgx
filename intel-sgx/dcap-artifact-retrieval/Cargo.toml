@@ -43,7 +43,7 @@ default = ["clap", "reqwest"]
 rustls-tls = ["reqwest?/rustls-tls"]
 
 [dev-dependencies]
-yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+yasna = { version = "0.4", features = ["num-bigint", "bit-vec"] }
 pcs = { version = "0.7", path = "../pcs", features = ["verify"] }
 
 [build-dependencies]

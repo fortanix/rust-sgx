@@ -27,7 +27,7 @@ url = "1"
 uuid = { version = "0.6.3", features = ["v4", "serde"] }
 uuid_sdkms = { package = "uuid", version = "0.8", features = ["v4", "serde"] }
 
-yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
+yasna = { version = "0.4", features = ["num-bigint", "bit-vec"] }
 
 [target.x86_64-fortanix-unknown-sgx.dependencies]
 sgx_pkix = { version = "0.2.0", path = "../intel-sgx/sgx_pkix" }
