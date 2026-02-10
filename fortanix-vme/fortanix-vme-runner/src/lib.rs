@@ -711,8 +711,9 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send> EnclavePlat
         mut cmd_configuration: CommandConfiguration
     ) -> Result<enclave_runner::Command, anyhow::Error>
     {
-        // cmd_args by default have an b"enclave" in it which is not needed
-        cmd_configuration.cmd_args.clear();
+        // By default: cmd_args[0] == "enclave", where `enclave` is process name.
+        // In VME runner we will use inject image name at index 0 as process name, so remove it here.
+        cmd_configuration.cmd_args.remove(0);
         Ok(command::Command::internal_new(self, configuration.stream_router, configuration.forward_panics, cmd_configuration))
     }
 }
