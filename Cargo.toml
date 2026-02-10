@@ -42,6 +42,7 @@ members = [
 ]
 exclude = [
     "examples/backtrace_panic",
+    "examples/elf2uki",
     "examples/mpsc-crypto-mining",
     "examples/tls",
     "examples/unit_tests",
