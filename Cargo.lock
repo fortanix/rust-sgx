@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "insecure-time"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "clap 4.4.18",
  "rand 0.8.5",

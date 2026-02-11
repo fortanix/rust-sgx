@@ -1,6 +1,6 @@
 [package]
 name = "insecure-time"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2021"
@@ -12,6 +12,10 @@ documentation = "https://edp.fortanix.com/docs/api/insecure_time/"
 keywords = ["sgx", "enclave", "time"]
 categories = ["os", "hardware-support"]
 
+[[example]]
+name = "insecure-time"
+required-features = ["std", "clap"]
+
 [dependencies]
 alloc = { version = "1.0.0", optional = true, package = "rustc-std-workspace-alloc" }
 core = { version = "1.0.0", optional = true, package = "rustc-std-workspace-core" }
@@ -21,7 +25,7 @@ clap = { version = "4.4", features = ["derive"], optional = true }
 rand = "0.8"
 
 [features]
-default = ["std", "clap"]
+default = ["std"]
 estimate_crystal_clock_freq = []
 rustc-dep-of-std = ["alloc", "core"]
 std = []

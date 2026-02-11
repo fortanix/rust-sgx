@@ -1,25 +1,20 @@
-#[cfg(all(feature = "std", not(target_env = "sgx")))]
 use {
     insecure_time::{FixedFreqTscBuilder, Ticks, Tsc, TscBuilder, Freq},
     std::time::{Duration, SystemTime},
 };
-#[cfg(all(feature = "std", feature = "clap"))]
 use clap::Parser;
 
-#[cfg(all(feature = "std", not(target_env = "sgx")))]
 fn diff_system_time(t0: SystemTime, t1: SystemTime) -> Duration {
     let diff = if t0 < t1 { t1.duration_since(t0) } else { t0.duration_since(t1) };
     diff.unwrap()
 }
 
-#[cfg(all(feature = "std", feature = "clap"))]
 #[derive(Parser)]
 enum Cli {
     TestFixedFreqDrift,
     EstimateFreq,
 }
 
-#[cfg(all(feature = "std", not(target_env = "sgx")))]
 fn test_fixed_frequency_drift() {
     let freq_reported = Freq::get().expect("Failure, the processor doesn't (fully) report the TSC speed");
 
@@ -42,7 +37,6 @@ fn test_fixed_frequency_drift() {
     }
 }
 
-#[cfg(all(feature = "std", not(target_env = "sgx")))]
 fn estimate_frequency() {
     let t0 = (SystemTime::now(), Ticks::now());
     let reported_freq = Freq::get().expect("Couldn't get reported frequency");
@@ -56,7 +50,6 @@ fn estimate_frequency() {
     }
 }
 
-#[cfg(all(feature = "std", not(target_env = "sgx")))]
 fn main() {
     let cli = Cli::parse();
 
@@ -64,9 +57,4 @@ fn main() {
         Cli::TestFixedFreqDrift => test_fixed_frequency_drift(),
         Cli::EstimateFreq => estimate_frequency(),
     }
-}
-
-#[cfg(not(all(feature = "std", not(target_env = "sgx"))))]
-fn main() {
-    println!("Reading the frequency from the cpu isn't supported in SGX");
 }
