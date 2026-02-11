@@ -22,6 +22,7 @@ use tokio_vsock::{self, VMADDR_CID_ANY, VMADDR_CID_LOCAL, VsockAddr, VsockListen
 
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
+pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 

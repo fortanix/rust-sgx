@@ -1,5 +1,7 @@
 use crate::RunnerError;
 
+pub(crate) mod amdsevsnp;
+
 mod nitro;
 pub use nitro::NitroEnclaves;
 
