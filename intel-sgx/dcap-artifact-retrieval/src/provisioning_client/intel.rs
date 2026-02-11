@@ -1201,39 +1201,13 @@ mod tests {
             let client = intel_builder.build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
-
-    trait TcbEvaluationDataNumberDelegate<T: PlatformTypeForTcbInfo<T>> {
-        fn tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
-        fn tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
-    }
-
-    impl TcbEvaluationDataNumberDelegate<platform::SGX> for platform::SGX {
-        fn tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
-            pc.sgx_tcb_evaluation_data_numbers()
-        }
-
-        fn tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-            pc.sgx_tcbinfo(fmspc, evaluation_data_number)
-        }
-    }
-
-    impl TcbEvaluationDataNumberDelegate<platform::TDX> for platform::TDX {
-        fn tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-            pc.tdx_tcb_evaluation_data_numbers()
-        }
-
-        fn tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
-            pc.tdx_tcbinfo(fmspc, evaluation_data_number)
-        }
-    }
-
 
     fn tcb_evaluation_data_numbers_test_base<T: PartialEq>()
     where
-        T: PlatformTypeForTcbInfo + ProvisioningClientFuncSelector<T> + std::fmt::Debug,
+        T: PlatformTypeForTcbInfo + ProvisioningClientFuncSelector + std::fmt::Debug,
     {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];

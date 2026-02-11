@@ -56,7 +56,7 @@ impl PccsProvisioningClientBuilder {
         let tdx_tcbinfo = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
-        
+
         self.client_builder
             .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
@@ -440,7 +440,7 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        PckID, WriteOptionsBuilder
+        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
     };
 
     use super::Client;
@@ -826,7 +826,7 @@ mod tests {
             let client = make_client(api_version);
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
@@ -835,16 +835,16 @@ mod tests {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let client = make_client(PcsVersion::V4);
-        let eval_numbers = client.tcb_evaluation_data_numbers().unwrap();
+        let eval_numbers = client.sgx_tcb_evaluation_data_numbers().unwrap();
 
         let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
-            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers>(&v))
+            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers<platform::SGX>>(&v))
             .unwrap();
         assert_eq!(eval_numbers, eval_numbers2);
 
         let fmspc = Fmspc::try_from("90806f000000").unwrap();
-        let eval_numbers: TcbEvaluationDataNumbers =
-            eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        let eval_numbers: TcbEvaluationDataNumbers<platform::SGX> =
+            eval_numbers.verify(&root_cas).unwrap();
         for number in eval_numbers.numbers().map(|n| n.number()) {
             // TODO(#811): Since PCCS is cache service and not able to cache the
             // `Gone` response mentioned below from Intel PCS, We need to change
@@ -869,7 +869,7 @@ mod tests {
             assert_eq!(verified_qe_id.tcb_evaluation_data_number(), u64::from(number));
 
             let tcb_info = client
-                    .tcbinfo(&fmspc, Some(number))
+                    .sgx_tcbinfo(&fmspc, Some(number))
                     .unwrap()
                     .verify(&root_cas, 2)
                     .unwrap();
