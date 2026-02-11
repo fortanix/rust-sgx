@@ -16,6 +16,6 @@ categories = ["command-line-utilities"]
 [dependencies]
 clap = "2.34"
 elf = "0.0.10"
-env_logger = "0.9"
+env_logger = "0.11"
 log = "0.4"
 nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli.git", rev = "v1.4.2" }
