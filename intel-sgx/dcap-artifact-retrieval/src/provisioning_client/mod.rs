@@ -564,7 +564,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
                 cache_capacity,
                 cache_shelf_time,
             ),
-            tcbinfotdx_service: CachedService::new(
+            tdx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(Box::new(tdx_tcbinfo_service)),
                     retry_timeout.clone(),
@@ -696,12 +696,12 @@ pub trait ProvisioningClient {
 }
 
 
-pub trait ProvisioningClientFuncSelector<T: PlatformTypeForTcbInfo> {
-    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<T>, Error>;
-    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<T>, Error>;
+pub trait ProvisioningClientFuncSelector: PlatformTypeForTcbInfo {
+    fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
+    fn get_tcbinfo<'pc>(pc: &'pc dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
 }
 
-impl ProvisioningClientFuncSelector<platform::SGX> for platform::SGX {
+impl ProvisioningClientFuncSelector for platform::SGX {
     fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
         pc.sgx_tcb_evaluation_data_numbers()
     }
@@ -711,7 +711,7 @@ impl ProvisioningClientFuncSelector<platform::SGX> for platform::SGX {
     }
 }
 
-impl ProvisioningClientFuncSelector<platform::TDX> for platform::TDX {
+impl ProvisioningClientFuncSelector for platform::TDX {
     fn get_tcb_evaluation_data_numbers<'pc>(pc: &'pc dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         pc.tdx_tcb_evaluation_data_numbers()
     }

@@ -50,7 +50,7 @@ impl AzureProvisioningClientBuilder {
         let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
-         
+
         self.client_builder
             .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
@@ -282,7 +282,7 @@ mod tests {
                 .build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
