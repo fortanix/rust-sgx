@@ -194,7 +194,7 @@ enum TcbComponentsCompatibilitySelector<P> {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]
 #[serde(try_from = "TcbComponentsCompatibilitySelector<P>")]
-#[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3, Error: std::fmt::Display>, P : Deserialize<'de>"))]
+#[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3>, <TcbComponents<P> as TryFrom<TcbComponentsV3>>::Error: std::fmt::Display, P : Deserialize<'de>"))]
 pub struct TcbComponents<P>(TcbComponentsV4<P>);
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
