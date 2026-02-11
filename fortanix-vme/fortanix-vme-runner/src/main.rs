@@ -54,11 +54,13 @@ enum Commands {
     AwsNitro(AwsNitroArgs),
 }
 
+#[derive(Debug)]
 struct AmdSevSnpCli {
     common_args: CommonArgs,
     amd_sev_snp_args: AmdSevSnpArgs,
 }
 
+#[derive(Debug)]
 struct AwsNitroCli {
     common_args: CommonArgs,
     aws_nitro_args: AwsNitroArgs,
@@ -127,34 +129,7 @@ impl AmdSevSnpCli {
     }
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
-    env_logger::Builder::new()
-        .filter_level(cli.verbose.into())
-        .init();
-
-    let common_args = cli.common_args;
-    match cli.command {
-        Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevSnpCli {
-            common_args,
-            amd_sev_snp_args,
-        }),
-        Commands::AwsNitro(aws_nitro_args) => {
-            if !common_args.simulate && aws_nitro_args.elf {
-                Err(Cli::command().error(
-                    clap::error::ErrorKind::MissingRequiredArgument,
-                    "elf argument can only be passed in simulate mode",
-                ))?
-            }
-            run_nitro_enclave(AwsNitroCli {
-                common_args,
-                aws_nitro_args,
-            })
-        }
-    }
-}
-
-fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
+async fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
     let firmware_image_path = amd_sev_cli
         .amd_sev_snp_args
         .firmware_image_path
@@ -179,17 +154,17 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
             run_args,
             amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
-        )
+        ).await
     } else {
         run_to_completion::<AmdSevVm>(
             run_args,
             amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
-        )
+        ).await
     }
 }
 
-fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
+async fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
     if nitro_cli.common_args.simulate {
         let elf_path: PathBuf;
         let img_name;
@@ -221,7 +196,7 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
             run_args,
             img_name,
             nitro_cli.aws_nitro_args.enclave_args,
-        )
+        ).await
     } else {
         let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
             .context("failed to read EIF file")?
@@ -234,17 +209,22 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
             run_args,
             metadata.img_name,
             nitro_cli.aws_nitro_args.enclave_args,
-        )
+        ).await
     }
 }
 
-fn run_to_completion<P: Platform + 'static>(
+async fn run_to_completion<P>(
     run_args: P::RunArgs,
     enclave_name: String,
     enclave_args: Vec<String>,
-) -> Result<(), anyhow::Error> {
-    EnclaveRunner::<P>::run_to_completion(run_args, enclave_name, enclave_args)
-        .context("failed to run enclave")
+) -> Result<(), anyhow::Error>
+where
+    P: Platform + 'static,
+{
+    let mut runner: EnclaveRunner<P> = EnclaveRunner::new();
+    runner.run_enclave(run_args, enclave_name, enclave_args).await.context("failed to run enclave")?;
+    runner.wait().await;
+    Ok(())
 }
 
 fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {
@@ -268,4 +248,32 @@ fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {
     f.write(&elf)?;
     f.sync_all()?;
     Ok(path)
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let cli = Cli::parse();
+    env_logger::Builder::new()
+        .filter_level(cli.verbose.into())
+        .init();
+
+    let common_args = cli.common_args;
+    match cli.command {
+        Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevSnpCli {
+            common_args,
+            amd_sev_snp_args,
+        }).await,
+        Commands::AwsNitro(aws_nitro_args) => {
+            if !common_args.simulate && aws_nitro_args.elf {
+                Err(Cli::command().error(
+                    clap::error::ErrorKind::MissingRequiredArgument,
+                    "elf argument can only be passed in simulate mode",
+                ))?
+            }
+            run_nitro_enclave(AwsNitroCli {
+                common_args,
+                aws_nitro_args,
+            }).await
+        }
+    }
 }

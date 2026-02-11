@@ -1,17 +1,24 @@
 #![deny(warnings)]
 use fnv::FnvHashMap;
-use nix::sys::select::{select, FdSet};
+use futures::future::join_all;
+use log::debug;
 use log::{error, info, log, warn};
+use nix::libc::VMADDR_PORT_ANY;
+use tokio::net::TcpStream;
+use tokio::net::TcpListener;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
 use std::borrow::Cow;
 use std::cmp;
+use std::fmt::Debug;
+use std::os::fd::AsRawFd;
 use std::str;
-use std::thread::{self, JoinHandle};
-use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
-use std::os::unix::io::AsRawFd;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::Arc;
+use std::io::{self, Error as IoError, ErrorKind as IoErrorKind};
+use tokio::sync::RwLock;
 use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_PORT};
-use vsock::{self, SockAddr as VsockAddr, Std, Vsock, VsockListener, VsockStream};
+use tokio_vsock::{self, VMADDR_CID_ANY, VMADDR_CID_LOCAL, VsockAddr, VsockListener, VsockStream};
 
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
@@ -19,15 +26,12 @@ pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 
-const MAX_LOG_MESSAGE_LEN: usize = 80;
-const PROXY_BUFF_SIZE: usize = 4192;
-
 enum Direction {
     Left,
     Right,
 }
 
-pub trait StreamConnection: Read + Write {
+pub trait StreamConnection: AsyncRead + AsyncWrite {
     fn protocol() -> &'static str;
 
     fn local(&self) -> io::Result<String>;
@@ -101,7 +105,7 @@ impl Listener {
 #[derive(Debug)]
 struct Connection {
     tcp_stream: TcpStream,
-    vsock_stream: VsockStream<Std>,
+    vsock_stream: VsockStream,
     remote_name: String,
 }
 
@@ -113,8 +117,14 @@ struct ConnectionInfo {
     peer: Addr,
 }
 
+fn log_proxy_conn_info<S: StreamConnection, D: StreamConnection>(level: log::Level, enclave: &S, enclave_name:&str, remote: &D, remote_name:&str) {
+    log!(level, "Proxy started remote : {}, local: {}, peer: {}", remote_name, remote.local().unwrap_or_default(), remote.peer().unwrap_or_default());
+    log!(level, "Proxy started enclave: {}, local: {}, peer: {}", enclave_name, enclave.local().unwrap_or_default(), enclave.peer().unwrap_or_default());
+}
+
+
 impl Connection {
-    pub fn new(vsock_stream: VsockStream<Std>, tcp_stream: TcpStream, remote_name: String) -> Self {
+    pub fn new(vsock_stream: VsockStream, tcp_stream: TcpStream, remote_name: String) -> Self {
         Connection {
             tcp_stream,
             vsock_stream,
@@ -129,68 +139,10 @@ impl Connection {
         })
     }
 
-    fn transfer_data<S: StreamConnection, D: StreamConnection>(src: &mut S, src_name: &str, dst: &mut D, dst_name: &str) -> Result<usize, IoError> {
-        let mut buff = [0; PROXY_BUFF_SIZE];
-        let n = src.read(&mut buff[..])?;
-        if n > 0 {
-            ClientConnection::log_communication(
-                log::Level::Debug,
-                "runner",
-                src.local_port().unwrap_or_default(),
-                src_name,
-                src.peer_port().unwrap_or_default(),
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                S::protocol(),
-                Some(MAX_LOG_MESSAGE_LEN));
-            dst.write_all(&buff[0..n])?;
-            ClientConnection::log_communication(
-                log::Level::Debug,
-                dst_name,
-                dst.peer_port().unwrap_or_default(),
-                "runner",
-                dst.local_port().unwrap_or_default(),
-                &str::from_utf8(&buff[0..n]).unwrap_or_default(),
-                Direction::Left,
-                D::protocol(),
-                Some(MAX_LOG_MESSAGE_LEN));
-        }
-        Ok(n)
-    }
-
-    /// Exchanges messages between the remote server and enclave. Returns on error, or when one of
-    /// the connections terminated
-    pub fn proxy(&mut self) -> Result<(), IoError> {
-        let remote = &mut self.tcp_stream;
-        let enclave = &mut self.vsock_stream;
-
-        let mut golden_set = FdSet::new();
-        golden_set.insert(remote.as_raw_fd());
-        golden_set.insert(enclave.as_raw_fd());
-
-        while golden_set != FdSet::new() {
-            let mut read_set = golden_set.clone();
-
-            if let Ok(_num) = select(None, Some(&mut read_set), None, None, None) {
-                if read_set.contains(remote.as_raw_fd()) {
-                    // According to the `Read` trait documentation, reading 0 bytes
-                    // indicates that the connection has been shutdown (for writes) correctly. We
-                    //  - reflect this change on the other connection
-                    //  - avoid reading from the socket again
-                    // https://doc.rust-lang.org/std/io/trait.Read.html#tymethod.read
-                    if Self::transfer_data(remote, &self.remote_name, enclave, "enclave")? == 0 {
-                        enclave.shutdown(Shutdown::Write)?;
-                        golden_set.remove(remote.as_raw_fd());
-                    }
-                }
-                if read_set.contains(enclave.as_raw_fd()) {
-                    if Self::transfer_data(enclave, "enclave", remote, &self.remote_name)? == 0 {
-                        remote.shutdown(Shutdown::Write)?;
-                        golden_set.remove(enclave.as_raw_fd());
-                    }
-                }
-            }
-        }
+    pub async fn proxy(&mut self) -> Result<(), IoError> {
+        log_proxy_conn_info(log::Level::Debug, &self.vsock_stream, "enclave", &self.tcp_stream, &self.remote_name);
+        let (remote_len, enclave_len) = tokio::io::copy_bidirectional(&mut self.tcp_stream, &mut self.vsock_stream).await?;
+        debug!("Proxy connection closed, total bytes proxied: remote {}, enclave {}", remote_len, enclave_len);
         Ok(())
     }
 }
@@ -201,7 +153,7 @@ struct ConnectionKey {
 }
 
 impl ConnectionKey {
-    pub fn from_vsock_stream(runner_enclave: &VsockStream<Std>) -> Result<Self, IoError> {
+    pub fn from_vsock_stream(runner_enclave: &VsockStream) -> Result<Self, IoError> {
         let runner_cid = runner_enclave.local_addr()?.cid();
         let runner_port = runner_enclave.local_addr()?.port();
         let enclave_cid = runner_enclave.peer_addr()?.cid();
@@ -209,6 +161,7 @@ impl ConnectionKey {
         Ok(Self::connection_key(enclave_cid, enclave_port, runner_cid, runner_port))
     }
 
+    /// Note: We only use enclave's VsockAddr as hash map key.
     pub fn from_addresses(enclave: VsockAddr, _runner: VsockAddr) -> Self {
         ConnectionKey {
             enclave,
@@ -255,7 +208,7 @@ impl ClientConnection {
         log!(level, "{:>20} {} {:<20}: {:?}", src, arrow, dst, msg);
     }
 
-    pub fn send(&mut self, response: &Response) -> Result<(), IoError> {
+    pub async fn send(&mut self, response: &Response) -> Result<(), IoError> {
         Self::log_communication(
             log::Level::Info,
             "runner",
@@ -268,19 +221,19 @@ impl ClientConnection {
             None);
         let response: Vec<u8> = serde_cbor::ser::to_vec(response)
                                     .map_err(|_| IoError::new(IoErrorKind::InvalidData, "Serialization failed"))?;
-        self.stream.write_all(&response.len().to_le_bytes())?;
-        self.stream.write_all(&response)?;
+        self.stream.write_all(&response.len().to_le_bytes()).await?;
+        self.stream.write_all(&response).await?;
         Ok(())
     }
 
-    pub fn read_request(&mut self) -> Result<Request, IoError> {
+    pub async fn read_request(&mut self) -> Result<Request, IoError> {
         let mut size = [0u8; usize::BITS as usize / 8];
-        self.stream.read_exact(&mut size[..])?;
+        self.stream.read_exact(&mut size[..]).await?;
         let size = usize::from_le_bytes(size);
 
         let mut req = Vec::new();
         req.resize(size, 0);
-        self.stream.read_exact(&mut req)?;
+        self.stream.read_exact(&mut req).await?;
         let req = serde_cbor::from_slice(&req)
             .map_err(|e| IoError::new(IoErrorKind::InvalidInput, e))?;
 
@@ -342,7 +295,7 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(
         &mut self,
         run_args: I,
         enclave_name: String,
@@ -364,29 +317,17 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
                 }
             })?,
         );
-        let server_thread = server.clone().run_command_server()?;
-        server.run_enclave(run_args, enclave_args)?;
+        let server_thread = server.clone().start_command_server()?;
+        server.run_enclave(run_args, enclave_args).await?;
         self.servers.push((server, server_thread));
         Ok(())
     }
 
     /// Blocks the current thread until the command thread exits
-    pub fn wait(self) {
-        self.servers.into_iter().for_each(|(_, thread)| {
-            let _ = thread.join();
-        });
-    }
-
-    /// Create, run, and wait for an enclave, all in one call
-    pub fn run_to_completion(
-        run_args: P::RunArgs,
-        enclave_name: String,
-        enclave_args: Vec<String>,
-    ) -> Result<(), RunnerError> {
-        let mut runner = Self::new();
-        runner.run_enclave(run_args, enclave_name, enclave_args)?;
-        runner.wait();
-        Ok(())
+    pub async fn wait(self) {
+        let handles: Vec<_> =
+            self.servers.into_iter().map(|(_, h)| h).collect();
+        let _ = join_all(handles).await;
     }
 }
 
@@ -401,6 +342,11 @@ enum EnclaveState<P: Platform> {
 
 pub struct Server<P: Platform> {
     name: String,
+    command_listener_local_addr: VsockAddr,
+    state: Arc<ServerState<P>>,
+}
+
+pub struct ServerState<P: Platform> {
     enclave: RwLock<EnclaveState<P>>,
     command_listener: Mutex<VsockListener>,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
@@ -409,12 +355,12 @@ pub struct Server<P: Platform> {
     /// connection. It then locates the ListenerInfo and finds the information it needs to set up a
     /// new vsock connection to the enclave
     listeners: RwLock<FnvHashMap<VsockAddr, Arc<Mutex<Listener>>>>,
-    connections: RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>,
+    connections: Arc<RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>>,
 }
 
-impl<P: Platform + 'static> Server<P> {
-    fn handle_request_init(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let state = self.enclave.read().unwrap();
+impl<P: Platform + 'static> ServerState<P> {
+    async fn handle_request_init(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
+        let state = self.enclave.read().await;
         let args = match &*state {
             EnclaveState::Null => panic!("Not yet running enclave requesting initialization"),
             EnclaveState::Running { args, .. } => args.to_owned(),
@@ -422,7 +368,7 @@ impl<P: Platform + 'static> Server<P> {
         let response = Response::Init {
             args,
         };
-        conn.send(&response)?;
+        conn.send(&response).await?;
         Ok(())
     }
 
@@ -444,13 +390,13 @@ impl<P: Platform + 'static> Server<P> {
      *  [2] remote
      *  [3] proxy
      */
-    fn handle_request_connect(self: Arc<Self>, remote_addr: &String, conn: &mut ClientConnection) -> Result<(), VmeError> {
+    async fn handle_request_connect(self: &Self, remote_addr: &String, conn: &mut ClientConnection) -> Result<(), VmeError> {
         // Connect to remote server
-        let remote_socket = TcpStream::connect(remote_addr).map_err(|e| VmeError::Command(e.kind().into()))?;
+        let remote_socket = TcpStream::connect(remote_addr).await.map_err(|e| VmeError::Command(e.kind().into()))?;
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr);
 
         // Create listening socket that the enclave can connect to
-        let proxy_server = VsockListener::<Std>::bind_with_cid_port(vsock::VMADDR_CID_ANY, 0)?;
+        let proxy_server = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, VMADDR_PORT_ANY))?;
         let proxy_server_port = proxy_server.local_addr()?.port();
 
         // Notify the enclave on which port her proxy is listening on
@@ -460,69 +406,70 @@ impl<P: Platform + 'static> Server<P> {
             peer: remote_socket.peer_addr()?.into(),
         };
 
-        conn.send(&response)?;
+        conn.send(&response).await?;
 
         // Wait for incoming connection from enclave. Unfortunately, we can't send a second
         // response with an error message back to the enclave when something goes wrong anymore.
         // We'll log the problem instead
-        let accept_connection = move || -> Result<(), VmeError> {
-            let (proxy, _proxy_addr) = proxy_server.accept()?;
+        let accept_connection = async move || -> Result<(), VmeError> {
+            let (proxy, _proxy_addr) = proxy_server.accept().await?;
             // Store connection info
-            self.add_connection(proxy, remote_socket, remote_name.to_string())?;
+            self.add_connection(proxy, remote_socket, remote_name.to_string()).await?;
             Ok(())
         };
-        if let Err(e) = accept_connection() {
+        if let Err(e) = accept_connection().await {
             error!("Failed to accept connection from the enclave: {:?}", e);
         }
         Ok(())
     }
 
-    fn add_listener(&self, addr: VsockAddr, info: Listener) {
-        self.listeners.write().unwrap().insert(addr, Arc::new(Mutex::new(info)));
+    async fn add_listener(&self, addr: VsockAddr, info: Listener) {
+        self.listeners.write().await.insert(addr, Arc::new(Mutex::new(info)));
     }
 
-    fn listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
-        self.listeners.read().unwrap().get(&addr).cloned()
+    async fn listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
+        self.listeners.read().await.get(&addr).cloned()
     }
 
-    fn remove_listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
-        self.listeners.write().unwrap().remove(&addr)
+    async fn remove_listener(&self, addr: &VsockAddr) -> Option<Arc<Mutex<Listener>>> {
+        self.listeners.write().await.remove(&addr)
     }
 
-    fn connection_info(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
+    async fn connection_info(&self, enclave: VsockAddr, runner_port: u32) -> Option<ConnectionInfo> {
         // There's an interesting vsock bug. When a new connection is created to the enclave in
         // the `handle_request_accept` function (from `ConnectionKey::from_vsock_stream`), the
         // local cid is different from the cid received when inspecting `enclave: VsockStream`.
         // Locating the cid of the runner through the `get_local_cid` does give the same result.
         // When PLAT-288 lands, the cid may also here be retrieved through the open runner-enclave
         // connection
-        let runner_cid = vsock::get_local_cid().unwrap_or(vsock::VMADDR_CID_LOCAL);
+        let runner_cid = vsock::get_local_cid().unwrap_or(VMADDR_CID_LOCAL);
         let runner = VsockAddr::new(runner_cid, runner_port);
         let k = ConnectionKey::from_addresses(enclave, runner);
         self.connections
             .read()
-            .unwrap()
+            .await
             .get(&k)
             .cloned()
     }
 
-    fn remove_connection(self: Arc<Self>, enclave: &VsockAddr) -> Option<ConnectionInfo> {
-        let k = ConnectionKey::from_addresses(enclave.clone(), enclave.clone());
-        self.connections.write().unwrap().remove(&k)
+    async fn remove_connection(self: &Self, enclave_addr: &VsockAddr) -> Option<ConnectionInfo> {
+        let k = ConnectionKey::from_addresses(enclave_addr.clone(), enclave_addr.clone());
+        self.connections.write().await.remove(&k)
     }
 
-    fn add_connection(self: Arc<Self>, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
+    async fn add_connection(self: &Self, runner_enclave: VsockStream, runner_remote: TcpStream, remote_name: String) -> Result<JoinHandle<()>, IoError> {
         let k = ConnectionKey::from_vsock_stream(&runner_enclave)?;
         let mut connection = Connection::new(runner_enclave, runner_remote, remote_name);
-        self.connections.write().unwrap().insert(k.clone(), connection.info()?);
+        self.connections.write().await.insert(k.clone(), connection.info()?);
 
-        thread::Builder::new().spawn(move || {
-            if let Err(e) = connection.proxy() {
+        let connections = self.connections.clone();
+        let handle = tokio::spawn(async move {
+            if let Err(e) = connection.proxy().await {
                 error!("Connection failed: {}", e);
             }
-            // The connection may have been closed already due to a close message from the enclave.
-            self.connections.write().unwrap().remove(&k);
-        })
+            connections.write().await.remove(&k);
+        });
+        Ok(handle)
     }
 
     /*
@@ -548,75 +495,110 @@ impl<P: Platform + 'static> Server<P> {
      *  runner
      *  `enclave`: The runner-enclave vsock connection
      */
-    fn handle_request_bind(self: Arc<Self>, addr: &String, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
+    async fn handle_request_bind(self: &Self, addr: &String, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
         let cid: u32 = conn.stream.peer_addr()?.cid();
-        let listener = TcpListener::bind(addr).map_err(|e| VmeError::Command(e.kind().into()))?;
+        let listener = TcpListener::bind(addr).await.map_err(|e| VmeError::Command(e.kind().into()))?;
         let local: Addr = listener.local_addr()?.into();
-        self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener));
-        conn.send(&Response::Bound{ local })?;
+        self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener)).await;
+        conn.send(&Response::Bound{ local }).await?;
         Ok(())
     }
 
-    fn handle_request_accept(self: Arc<Self>, vsock_listener_port: u32, client_conn: &mut ClientConnection) -> Result<(), VmeError> {
+    async fn handle_request_accept(self: &Self, vsock_listener_port: u32, client_conn: &mut ClientConnection) -> Result<(), VmeError> {
+        use nix::{errno::Errno, sys::socket};
+
+        fn nix_to_vme_error(errno: Errno) -> VmeError {
+            VmeError::SystemError(errno as i32)
+        }
+
+        fn vsock_create_bind(runner_port: u32, runner_cid: u32) -> Result<vsock::VsockStream, VmeError> {
+            let socket = unsafe {
+                use std::os::fd::{IntoRawFd, FromRawFd};
+                let socket = socket::socket(socket::AddressFamily::Vsock, socket::SockType::Stream, socket::SockFlag::SOCK_CLOEXEC | socket::SockFlag::SOCK_NONBLOCK, None).map_err(nix_to_vme_error)?;
+                vsock::VsockStream::from_raw_fd(socket.into_raw_fd())
+            };
+
+            let runner_addr = socket::VsockAddr::new(runner_cid, runner_port);
+            socket::bind(socket.as_raw_fd(), &runner_addr).map_err(nix_to_vme_error)?;
+
+            Ok(socket)
+        }
+
+        async fn vsock_connect(socket: vsock::VsockStream, enclave_cid: u32, enclave_port: u32) -> Result<VsockStream, VmeError> {
+            let enclave_addr = socket::VsockAddr::new(enclave_cid, enclave_port);
+            let mut res = socket::connect(socket.as_raw_fd(), &enclave_addr);
+            if res == Err(Errno::EINPROGRESS) {
+                res = Ok(())
+            };
+            res.map_err(nix_to_vme_error)?;
+
+            let fd = tokio::io::unix::AsyncFd::new(socket)?;
+            let _ = fd.writable().await?;
+
+            let socket = VsockStream::new(fd.into_inner())?;
+            Ok(socket)
+        }
+
         // Locate TCP listener
         let enclave_cid = client_conn.stream.peer_addr()?.cid();
         let enclave_addr = VsockAddr::new(enclave_cid, vsock_listener_port);
-        let listener = self.listener(&enclave_addr)
+
+        let listener = self.listener(&enclave_addr).await
             .ok_or(IoError::new(IoErrorKind::InvalidInput, "Information about provided file descriptor was not found"))?;
 
         // Accept connection for TCP Listener
-        let listener = listener.lock().unwrap();
-        let (conn, peer) = listener.listener.accept().map_err(|e| VmeError::Command(e.kind().into()))?;
+        let listener = listener.lock().await;
+        let (conn, peer) = listener.listener.accept().await.map_err(|e| VmeError::Command(e.kind().into()))?;
         drop(listener);
 
         // Send enclave info where it should accept new incoming connection
-        let vsock = Vsock::new::<Std>()?;
-        let runner_addr = vsock.addr::<Std>()?;
+        let runner_vsock_socket = vsock_create_bind(VMADDR_PORT_ANY, VMADDR_CID_ANY)?;
+        let runner_port = runner_vsock_socket.local_addr()?.port();
         client_conn.send(&Response::IncomingConnection{
             local: conn.local_addr()?.into(),
             peer: peer.into(),
-            proxy_port: runner_addr.port(),
-        })?;
+            proxy_port: runner_port,
+        }).await?;
 
-        let connect = || -> Result<(), VmeError> {
+        let connect = async || -> Result<(), VmeError> {
             // Connect to enclave at the expected port
-            let proxy = vsock.connect_with_cid_port(enclave_addr.cid(), enclave_addr.port())?;
-            self.add_connection(proxy, conn, "remote".to_string())?;
+            let proxy = vsock_connect(runner_vsock_socket, enclave_cid, vsock_listener_port).await?;
+            self.add_connection(proxy, conn, "remote".to_string()).await?;
             Ok(())
         };
-        if let Err(e) = connect() {
+        if let Err(e) = connect().await {
             error!("Failed to connect to the enclave after it requested an accept: {:?}", e);
         }
         Ok(())
     }
 
-    fn handle_request_close(self: Arc<Self>, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
+    async fn handle_request_close(self: &Self, enclave_port: u32, conn: &mut ClientConnection) -> Result<(), VmeError> {
         let cid: u32 = conn.stream.peer_addr()?.cid();
         let addr = VsockAddr::new(cid, enclave_port);
-        if let Some(listener) = self.remove_listener(&addr) {
+        if let Some(listener) = self.remove_listener(&addr).await {
             // Close `TcpListener`
             drop(listener);
-        } else if let Some(conn) = self.clone().remove_connection(&addr) {
+        } else if let Some(conn) = self.remove_connection(&addr).await {
             // Close TcpStream
             drop(conn);
         } else {
             // Close TcpStream?
             warn!("Can't close the connection as it can't be located.");
         }
-        conn.send(&Response::Closed)?;
+        conn.send(&Response::Closed).await?;
         Ok(())
     }
 
-    fn handle_request_info(self: Arc<Self>, enclave_port: u32, runner_port: Option<u32>, conn: &mut ClientConnection) -> Result<(), VmeError> {
+    async fn handle_request_info(self: &Self, enclave_port: u32, runner_port: Option<u32>, conn: &mut ClientConnection) -> Result<(), VmeError> {
         let enclave_cid = conn.peer_port()?;
         let enclave_addr = VsockAddr::new(enclave_cid, enclave_port);
         if let Some(runner_port) = runner_port {
             // We're looking for a Connection
-            if let Some(ConnectionInfo{ local, peer }) = self.connection_info(enclave_addr, runner_port) {
+            if let Some(ConnectionInfo{ local, peer }) = self.connection_info(enclave_addr, runner_port).await {
                 conn.send(&Response::Info {
                     local,
                     peer: Some(peer),
-                })?;
+                }).await?;
                 Ok(())
             } else {
                 // Connection not found
@@ -624,12 +606,12 @@ impl<P: Platform + 'static> Server<P> {
             }
         } else {
             // We're looking for a Listener
-            if let Some(listener) = self.listener(&enclave_addr) {
-                let listener = listener.lock().unwrap();
+            if let Some(listener) = self.listener(&enclave_addr).await {
+                let listener = listener.lock().await;
                 conn.send(&Response::Info {
                     local: listener.listener.local_addr()?.into(),
                     peer: None,
-                })?;
+                }).await?;
                 Ok(())
             } else {
                 // Listener not found
@@ -638,84 +620,89 @@ impl<P: Platform + 'static> Server<P> {
         }
     }
 
-    fn handle_request_exit(self: Arc<Self>, exit_code: i32) -> Result<(), VmeError> {
+    fn handle_request_exit(self: &Self, exit_code: i32) -> Result<(), VmeError> {
         std::process::exit(exit_code);
     }
 
-    fn handle_client(self: Arc<Self>, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        match conn.read_request().or_else(|e| { error!("read_request error: {:?}", e); Err(e) } )? {
-            Request::Init                        => self.handle_request_init(conn)
+    async fn handle_client(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
+        match conn.read_request().await.or_else(|e| { error!("read_request error: {:?}", e); Err(e) } )? {
+            Request::Init                        => self.handle_request_init(conn).await
                                                         .or_else(|e| { error!("init error: {:?}", e); Err(e) }),
-            Request::Connect{ addr }             => self.handle_request_connect(&addr, conn)
+            Request::Connect{ addr }             => self.handle_request_connect(&addr, conn).await
                                                         .or_else(|e| { error!("connect error: {:?}", e); Err(e) }),
-            Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn)
+            Request::Bind{ addr, enclave_port }  => self.handle_request_bind(&addr, enclave_port, conn).await
                                                         .or_else(|e| { error!("bind error: {:?}", e); Err(e) }),
-            Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn)
+            Request::Accept{ enclave_port }      => self.handle_request_accept(enclave_port, conn).await
                                                         .or_else(|e| { error!("accept error: {:?}", e); Err(e) }),
             Request::Info{
                 enclave_port,
-                runner_port }                    => self.handle_request_info(enclave_port, runner_port, conn)
+                runner_port }                    => self.handle_request_info(enclave_port, runner_port, conn).await
                                                         .or_else(|e| { error!("info error: {:?}", e); Err(e) }),
-            Request::Close{ enclave_port }       => self.handle_request_close(enclave_port, conn)
+            Request::Close{ enclave_port }       => self.handle_request_close(enclave_port, conn).await
                                                         .or_else(|e| { error!("close error: {:?}", e); Err(e) }),
             Request::Exit{ code }                => self.handle_request_exit(code)
                                                         .or_else(|e| { error!("exit error: {:?}", e); Err(e) }),
         }
     }
+}
 
+impl<P: Platform + 'static> Server<P> {
     fn bind(enclave_name: String, port: u32) -> io::Result<Self> {
-        let command_listener = VsockListener::<Std>::bind_with_cid_port(vsock::VMADDR_CID_ANY, port)?;
+        let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
+        let command_listener_local_addr = command_listener.local_addr()?;
         Ok(Server {
             name: enclave_name,
-            enclave: RwLock::new(EnclaveState::Null),
-            command_listener: Mutex::new(command_listener),
-            listeners: RwLock::new(FnvHashMap::default()),
-            connections: RwLock::new(FnvHashMap::default()),
+            command_listener_local_addr,
+            state: Arc::new(ServerState { 
+                enclave: RwLock::new(EnclaveState::Null),
+                command_listener: Mutex::new(command_listener),
+                listeners: RwLock::new(FnvHashMap::default()),
+                connections: Arc::new(RwLock::new(FnvHashMap::default())),
+            })
         })
     }
 
-    fn start_command_server(self: Arc<Self>) -> Result<JoinHandle<()>, IoError> {
-        thread::Builder::new().spawn(move || {
-            let command_listener = self.command_listener.lock().unwrap();
-            for stream in command_listener.incoming() {
-                let server = self.clone();
-                let _ = thread::Builder::new()
-                    .spawn(move || {
-                        let mut conn = match stream {
-                            Ok(stream) => ClientConnection::new(stream),
+    fn start_command_server(self: &Self) -> Result<JoinHandle<()>, IoError> {
+        info!("Starting enclave runner.");
+        info!("Command server listening on vsock cid: {} port: {} ...", self.command_listener_local_addr.cid(), self.command_listener_local_addr.port());
+        let state = self.state.clone();
+        let handle = tokio::spawn(
+            async move {
+                let command_listener = state.command_listener.lock().await;
+                loop {
+                    let accepted = command_listener.accept().await;
+                    let state_for_conn = state.clone();
+                    let _ = tokio::spawn(async move {
+                       let mut conn = match accepted {
+                            Ok((stream, _addr)) => ClientConnection::new(stream),
                             Err(e) => {
                                 error!("Incoming connection failed: {:?}", e);
                                 return;
                             }
                         };
-                        if let Err(e) = server.handle_client(&mut conn) {
+                        if let Err(e) = state_for_conn.handle_client(&mut conn).await {
                             error!("Original error: {:?}", e);
-                            if let Err(e) = conn.send(&Response::Failed(e)) {
+                            if let Err(e) = conn.send(&Response::Failed(e)).await {
                                 error!("Failed to send response to enclave: {:?}", e);
                             }
-                        }
+                        }; 
                     });
+                }
             }
-        })
-    }
-
-    fn run_command_server(self: Arc<Self>) -> Result<JoinHandle<()>, RunnerError> {
-        info!("Starting enclave runner.");
-        let port = self.command_listener.lock().unwrap().local_addr().map_err(IoError::from)?.port();
-        info!("Listening on vsock port {}...", port);
-
-        let handle = self.start_command_server()?;
+        );
         Ok(handle)
     }
 
     /// Starts a new enclave
-    pub fn run_enclave<I: Into<P::RunArgs>>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), RunnerError> {
-        let mut state = self.enclave.write().unwrap();
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), RunnerError> {
+        let mut state = self.state.enclave.write().await;
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),
             EnclaveState::Null => {
                 enclave_args.insert(0, self.name.clone());
-                let enclave = P::run(run_args)?;
+                // Assume Platform::run will do some blocking logic
+                let handle = tokio::task::spawn_blocking(|| P::run(run_args));
+                let enclave = handle.await.expect("Failed to run enclave")?;
                 *state = EnclaveState::Running {
                     enclave,
                     args: enclave_args,

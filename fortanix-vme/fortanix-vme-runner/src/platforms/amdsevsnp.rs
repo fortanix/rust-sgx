@@ -3,6 +3,7 @@ use nix::sys::stat::Mode;
 use nix::unistd::close;
 use nix::Error;
 use std::borrow::Cow;
+use std::os::fd::AsRawFd;
 use std::{
     ffi::c_int,
     path::PathBuf,
@@ -68,15 +69,15 @@ fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
         // the child process inherit the opened file descriptors.
         let fd = open(VHOST_VSOCK_DEV, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
             map_nix_error(
-                format!("Unable to open vhost-vsock device: {}", VHOST_VSOCK_DEV),
+                format!("Unable to open vhost-vsock device: {}. You may need to run `modprobe vhost_vsock` to enable it.", VHOST_VSOCK_DEV),
                 e,
             )
         })?;
-        let res = unsafe { set_guest_cid(fd, &mut cid) };
+        let res = unsafe { set_guest_cid(fd.as_raw_fd(), &mut cid) };
         match res {
             Ok(_) => {
                 let vsock_config = VsockConfig {
-                    guest_fd: fd,
+                    guest_fd: fd.as_raw_fd(),
                     guest_cid: cid,
                 };
                 return Ok(vsock_config);

@@ -563,7 +563,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b62ddb9cb1ec0a098ad4bbf9344d0713fa193ae1a80af55febcff2627b6a00c1"
 dependencies = [
- "getrandom 0.2.10",
+ "getrandom 0.2.17",
  "instant",
  "rand 0.8.5",
 ]
@@ -1396,7 +1396,7 @@ dependencies = [
  "aws-nitro-enclaves-image-format",
  "libc",
  "nix 0.26.4",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -1717,7 +1717,6 @@ dependencies = [
  "serde",
  "serde_cbor",
  "thiserror",
- "vsock 0.2.4",
 ]
 
 [[package]]
@@ -1761,13 +1760,16 @@ dependencies = [
  "fnv",
  "fortanix-vme-abi",
  "fortanix-vme-eif",
+ "futures 0.3.31",
  "log 0.4.28",
  "nitro-cli",
- "nix 0.22.2",
+ "nix 0.31.1",
  "rand 0.7.3",
  "serde_cbor",
  "thiserror",
- "vsock 0.2.4",
+ "tokio",
+ "tokio-vsock",
+ "vsock",
 ]
 
 [[package]]
@@ -1920,8 +1922,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.10"
-source = "git+https://github.com/fortanix/getrandom?branch=fortanixvme-2023-05-07-alpha#acf0484bd9ac2134fc10f0fe24ccd54e1052cb9f"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -2637,8 +2640,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.175"
-source = "git+https://github.com/fortanix/libc.git?branch=fortanixvme-2023-05-07-alpha#7c49dc0a4709ac7702469f80a7bbb855b591eefd"
+version = "0.2.180"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bcc35a38544a891a5f7c865aca548a982ccb3b8650a5b06d0fd33a10283c56fc"
 
 [[package]]
 name = "libloading"
@@ -2943,7 +2947,7 @@ dependencies = [
  "sha2 0.9.9",
  "signal-hook",
  "vmm-sys-util",
- "vsock 0.5.2",
+ "vsock",
 ]
 
 [[package]]
@@ -2975,20 +2979,8 @@ dependencies = [
 [[package]]
 name = "nix"
 version = "0.20.2"
-source = "git+https://github.com/fortanix/nix.git?branch=raoul%2Ffortanixvme_r0.20.2#6803aa84923d024a6106840acf2d12edb78825c0"
-dependencies = [
- "bitflags 1.2.1",
- "cc",
- "cfg-if 1.0.0",
- "libc",
- "memoffset 0.6.4",
-]
-
-[[package]]
-name = "nix"
-version = "0.22.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3bb9a13fa32bc5aeb64150cd3f32d6cf4c748f8f8a417cce5d2eb976a8370ba"
+checksum = "f5e06129fb611568ef4e868c14b326274959aa70ff7776e9d55323531c374945"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -3015,6 +3007,19 @@ name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.5.0",
+ "cfg-if 1.0.0",
+ "cfg_aliases",
+ "libc",
+ "memoffset 0.9.0",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225e7cfe711e0ba79a68baeddb2982723e4235247aefce1482f2f16c27865b66"
 dependencies = [
  "bitflags 2.5.0",
  "cfg-if 1.0.0",
@@ -3709,7 +3714,7 @@ version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
- "getrandom 0.2.10",
+ "getrandom 0.2.17",
 ]
 
 [[package]]
@@ -3754,7 +3759,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
- "getrandom 0.2.10",
+ "getrandom 0.2.17",
  "libredox",
  "thiserror",
 ]
@@ -3878,7 +3883,7 @@ checksum = "a4689e6c2294d81e88dc6261c768b63bc4fcdb852be6d1352498b114f61383b7"
 dependencies = [
  "cc",
  "cfg-if 1.0.0",
- "getrandom 0.2.10",
+ "getrandom 0.2.17",
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
@@ -4856,6 +4861,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-vsock"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b319ef9394889dab2e1b4f0085b45ba11d0c79dc9d1a9d1afc057d009d0f1c7"
+dependencies = [
+ "bytes 1.7.1",
+ "futures 0.3.31",
+ "libc",
+ "tokio",
+ "vsock",
+]
+
+[[package]]
 name = "toml"
 version = "0.8.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5094,7 +5112,7 @@ version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
- "getrandom 0.2.10",
+ "getrandom 0.2.17",
  "serde",
 ]
 
@@ -5161,16 +5179,6 @@ name = "vsimd"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
-
-[[package]]
-name = "vsock"
-version = "0.2.4"
-source = "git+https://github.com/fortanix/vsock-rs.git?branch=fortanixvme-2023-05-07-alpha#df72417cc649465071429824628ee758e9f8f9c1"
-dependencies = [
- "getrandom 0.2.10",
- "libc",
- "nix 0.22.2",
-]
 
 [[package]]
 name = "vsock"
