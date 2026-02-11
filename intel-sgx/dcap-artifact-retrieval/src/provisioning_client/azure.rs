@@ -46,10 +46,13 @@ impl AzureProvisioningClientBuilder {
         let pck_cert = PckCertApi::new(self.api_version.clone());
         let pck_crl = PckCrlApi::new(self.api_version.clone());
         let qeid = QeIdApi::new(self.api_version.clone());
-        let tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let sgx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
 }
 
@@ -245,7 +248,7 @@ mod tests {
                 );
 
                 let fmspc = pck.fmspc().unwrap();
-                assert!(client.tcbinfo(&fmspc, None).is_ok());
+                assert!(client.sgx_tcbinfo(&fmspc, None).is_ok());
             }
         }
     }
@@ -279,7 +282,7 @@ mod tests {
                 .build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
@@ -297,7 +300,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
+                let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
                 let selected = pckcerts.select_pck(
@@ -322,12 +325,12 @@ mod tests {
     }
 
     #[test]
-    pub fn tcb_evaluation_data_numbers() {
+    pub fn sgx_tcb_evaluation_data_numbers() {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let client = AzureProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
-            assert!(client.tcb_evaluation_data_numbers().is_ok());
+            assert!(client.sgx_tcb_evaluation_data_numbers().is_ok());
         }
     }
 }
