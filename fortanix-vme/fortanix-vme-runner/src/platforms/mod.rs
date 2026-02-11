@@ -1,14 +1,14 @@
-use super::VmeError;
+use crate::RunnerError;
 
 mod nitro;
 pub use nitro::NitroEnclaves;
 
-mod simulator;
-pub use simulator::{Simulator, SimulatorArgs};
+mod enclave_simulator;
+pub use enclave_simulator::{EnclaveSimulator, EnclaveSimulatorArgs};
 
 pub trait Platform: Send + Sync {
     type RunArgs;
     type EnclaveDescriptor: Send + Sync;
 
-    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, VmeError>;
+    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError>;
 }

@@ -156,7 +156,7 @@ fn main() -> Result<()> {
     build_uki(&validated_args, initramfs_file.path())?;
 
     println!(
-        "Enclave Image successfully created at path: `{}`",
+        "Confidential VM Image successfully created at path: `{}`",
         validated_args.output_path.display()
     );
     Ok(())
