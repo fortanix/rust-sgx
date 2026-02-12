@@ -3,8 +3,8 @@ use nix::sys::stat::Mode;
 use nix::unistd::close;
 use nix::Error;
 use std::borrow::Cow;
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::{
-    ffi::c_int,
     path::PathBuf,
     process::{Child, Command},
 };
@@ -26,18 +26,19 @@ pub struct VmRunArgs {
     pub cpu_count: u32,
 }
 
-struct VsockConfig {
-    guest_fd: c_int,
-    guest_cid: u64,
-}
-
 pub struct AmdSevVm;
 /// Warning: unprotected VM for use on DEV machines only
 pub struct VmSimulator;
 
 pub struct RunningVm {
     child: Child,
-    vsock_config: VsockConfig,
+    // Field kept so that file descriptor is closed at the right time
+    _vsock_config: VsockConfig,
+}
+
+struct VsockConfig {
+    guest_fd: OwnedFd,
+    guest_cid: u64,
 }
 
 enum RunMode {
@@ -72,7 +73,7 @@ fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
                 e,
             )
         })?;
-        let res = unsafe { set_guest_cid(fd, &mut cid) };
+        let res = unsafe { set_guest_cid(fd.as_raw_fd(), &mut cid) };
         match res {
             Ok(_) => {
                 let vsock_config = VsockConfig {
@@ -146,7 +147,7 @@ fn build_qemu_command(
         .arg("-device")
         .arg(format!(
             "vhost-vsock-pci,id=vhost-vsock-pci0,vhostfd={},guest-cid={}",
-            vsock_config.guest_fd, vsock_config.guest_cid
+            vsock_config.guest_fd.as_raw_fd(), vsock_config.guest_cid
         ));
 
     // CPU
@@ -190,7 +191,7 @@ impl Platform for AmdSevVm {
             .map_err(|e| (e, "failed to spawn amd sev snp vm through qemu"))?;
         Ok(RunningVm {
             child,
-            vsock_config,
+            _vsock_config: vsock_config,
         })
     }
 }
@@ -207,7 +208,7 @@ impl Platform for VmSimulator {
             .map_err(|e| (e, "failed to spawn vm through qemu"))?;
         Ok(RunningVm {
             child,
-            vsock_config,
+            _vsock_config: vsock_config,
         })
     }
 }
@@ -215,7 +216,5 @@ impl Platform for VmSimulator {
 impl Drop for RunningVm {
     fn drop(&mut self) {
         let _ = self.child.kill();
-        // Close the fd opened for the guest vm vsock support
-        let _ = close(self.vsock_config.guest_fd);
     }
 }
