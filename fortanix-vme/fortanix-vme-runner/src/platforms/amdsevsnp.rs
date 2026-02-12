@@ -1,3 +1,4 @@
+use log::{debug, info};
 use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::close;
@@ -73,9 +74,11 @@ fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
                 e,
             )
         })?;
-        let res = unsafe { set_guest_cid(fd.as_raw_fd(), &mut cid) };
+        info!("opened vsock device under fd {}", fd.as_raw_fd());
+        let res = unsafe { set_guest_cid(fd.as_raw_fd(), &cid) };
         match res {
             Ok(_) => {
+                info!("found free cid {} for use by guest VM", cid);
                 let vsock_config = VsockConfig {
                     guest_fd: fd,
                     guest_cid: cid,
@@ -83,6 +86,7 @@ fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
                 return Ok(vsock_config);
             }
             Err(err_code) => {
+                info!("cid {} is already taken; trying the next one", cid);
                 let _ = close(fd);
 
                 // EADDRINUSE means the cid is in-use, we fail on any error
@@ -123,14 +127,7 @@ fn build_qemu_command(
     let memory_size = format!("{}M", memory_mib);
 
     // TODO (RTE-740): id-block
-    let mut command = match run_mode {
-        RunMode::AmdSevVm => {
-            let mut command = Command::new("sudo");
-            command.arg(QEMU_EXECUTABLE);
-            command
-        }
-        RunMode::VmSimulator => Command::new(QEMU_EXECUTABLE),
-    };
+    let mut command = Command::new(QEMU_EXECUTABLE); 
 
     // General machine setup
     // TODO: consider `no-defaults` option for devices
@@ -175,6 +172,8 @@ fn build_qemu_command(
             .arg("-object")
             .arg("sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on");
     }
+    
+    debug!("built qemu command {:?}", command);
 
     command
 }
