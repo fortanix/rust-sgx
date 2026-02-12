@@ -25,6 +25,7 @@ pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorA
 pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
+pub use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 
 enum Direction {
     Left,
@@ -423,13 +424,13 @@ impl<P: Platform + 'static> ServerState<P> {
         // Wait for incoming connection from enclave. Unfortunately, we can't send a second
         // response with an error message back to the enclave when something goes wrong anymore.
         // We'll log the problem instead
-        let accept_connection = async move || -> Result<(), VmeError> {
+        let accept_connection = async move {
             let (proxy, _proxy_addr) = proxy_server.accept().await?;
             // Store connection info
             self.add_connection(proxy, remote_socket, remote_name.to_string()).await?;
-            Ok(())
+            Ok::<(), VmeError>(())
         };
-        if let Err(e) = accept_connection().await {
+        if let Err(e) = accept_connection.await {
             error!("Failed to accept connection from the enclave: {:?}", e);
         }
         Ok(())
@@ -572,13 +573,13 @@ impl<P: Platform + 'static> ServerState<P> {
             proxy_port: runner_port,
         }).await?;
 
-        let connect = async || -> Result<(), VmeError> {
+        let connect = async {
             // Connect to enclave at the expected port
             let proxy = vsock_connect(runner_vsock_socket, enclave_cid, vsock_listener_port).await?;
             self.add_connection(proxy, conn, "remote".to_string()).await?;
-            Ok(())
+            Ok::<(), VmeError>(())
         };
-        if let Err(e) = connect().await {
+        if let Err(e) = connect.await {
             error!("Failed to connect to the enclave after it requested an accept: {:?}", e);
         }
         Ok(())
