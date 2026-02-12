@@ -92,11 +92,10 @@ struct CargoTomlMetadata {
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
-#[rustfmt::skip] // contains long lines because of links and they may wrapped by mistake
 /// This config is mainly intended for args of ftxvme-elf2eif and nitro-cli run-enclave.
 /// See their args documentation for more info about these opts:
-/// https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-run-enclave.html#cmd-nitro-run-enclave-options
-/// https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-build-enclave.html#cmd-nitro-build-enclave-options
+/// <https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-run-enclave.html#cmd-nitro-run-enclave-options>
+/// <https://docs.aws.amazon.com/enclaves/latest/user/cmd-nitro-build-enclave.html#cmd-nitro-build-enclave-options>
 struct FortanixVmeConfig {
     /// Specifies the number of vCPUs to allocate to the enclave.
     cpu_count: Option<u32>,

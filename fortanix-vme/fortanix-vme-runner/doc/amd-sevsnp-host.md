@@ -1,4 +1,4 @@
-Host Configuration for running Amd SEV/SNP VM
+# Host Configuration for running Amd SEV/SNP VM
 =============================================
 
 This document outlines the steps to prepare your host system for running QEMU. This setup ensures that your host kernel supports VSOCK, permissions are handled correctly, and the configuration survives reboots.

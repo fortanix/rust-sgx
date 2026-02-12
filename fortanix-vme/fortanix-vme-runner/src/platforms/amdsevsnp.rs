@@ -116,6 +116,7 @@ fn build_qemu_command(
 ) -> Command {
     const QEMU_EXECUTABLE: &str = "qemu-system-x86_64";
     const QEMU_MACHINE: &str = "q35";
+    // TODO(RTE-789): decide what processor type well use in prod
     const AMD_PROCESSOR: &str = "EPYC-v4";
 
     let VmRunArgs {
@@ -127,7 +128,7 @@ fn build_qemu_command(
     let memory_size = format!("{}M", memory_mib);
 
     // TODO (RTE-740): id-block
-    let mut command = Command::new(QEMU_EXECUTABLE); 
+    let mut command = Command::new(QEMU_EXECUTABLE);
 
     // General machine setup
     // TODO: consider `no-defaults` option for devices
@@ -144,7 +145,8 @@ fn build_qemu_command(
         .arg("-device")
         .arg(format!(
             "vhost-vsock-pci,id=vhost-vsock-pci0,vhostfd={},guest-cid={}",
-            vsock_config.guest_fd.as_raw_fd(), vsock_config.guest_cid
+            vsock_config.guest_fd.as_raw_fd(),
+            vsock_config.guest_cid
         ));
 
     // CPU
@@ -172,7 +174,7 @@ fn build_qemu_command(
             .arg("-object")
             .arg("sev-snp-guest,id=sev0,cbitpos=51,reduced-phys-bits=1,kernel-hashes=on");
     }
-    
+
     debug!("built qemu command {:?}", command);
 
     command
