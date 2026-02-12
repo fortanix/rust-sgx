@@ -4,7 +4,7 @@ use clap_verbosity_flag::WarnLevel;
 use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, EnclaveSimulator, EnclaveSimulatorArgs,
-    NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
+    NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator, EnclaveBuilder as EnclaveBuilderVme
 };
 use log::info;
 use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
@@ -12,7 +12,6 @@ use std::fs::File;
 use std::io::{Error as IoError, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::PathBuf;
-use fortanix_vme_runner::EnclaveBuilder as EnclaveBuilderVme;
 use enclave_runner::EnclaveBuilder;
 
 type DefaultLogLevel = WarnLevel;
@@ -248,8 +247,6 @@ fn run_to_completion<P: Platform + 'static>(
     enclave_name: String,
     enclave_args: Vec<String>,
 ) -> Result<(), anyhow::Error> where <P as Platform>::RunArgs : Send + Sync{
-    // EnclaveRunner::<P>::run_to_completion(run_args, enclave_name, enclave_args).await
-    //     .context("failed to run enclave")
     let enclave_runner = EnclaveBuilderVme::<P, _>::new(run_args, enclave_name)?;
     let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
     enclave_runner.args(enclave_args);

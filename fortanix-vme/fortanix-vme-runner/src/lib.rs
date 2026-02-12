@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::fd::AsRawFd;
 use std::pin::Pin;
 use std::str;
@@ -21,9 +21,7 @@ use std::io::{self, Error as IoError, ErrorKind as IoErrorKind};
 use tokio::sync::RwLock;
 use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_PORT};
 use tokio_vsock::{self, VMADDR_CID_ANY, VMADDR_CID_LOCAL, VsockAddr, VsockListener, VsockStream};
-use enclave_runner::stream_router::{AsyncListener, AsyncStream, OsStreamRouter, StreamRouter};
-
-use fortanix_vme_abi::ErrorKind as VmeErrorKind;
+use enclave_runner::stream_router::{AsyncListener, AsyncStream, StreamRouter};
 
 mod platforms;
 pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
@@ -36,13 +34,13 @@ pub use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 pub enum RunnerError {
     #[error("io error occurred: {0:?}")]
     Io(Option<Cow<'static, str>>, #[source] io::Error),
-    #[error("Vme ABI error: {0:?}")]
+    #[error("vme ABI error: {0:?}")]
     VmeAbiError(VmeError),
-    #[error("Failed to join async handler: {0}")]
+    #[error("failed to join async handler: {0}")]
     Join(#[from] JoinError),
-    #[error("Connection not found")]
+    #[error("connection not found")]
     ConnectionNotFound,
-    #[error("Nix error: {0}")]
+    #[error("nix error: {0}")]
     Nix(#[from] nix::Error),
     #[error("no available cid found")]
     NoAvailableCidFound,
@@ -54,7 +52,27 @@ impl From<VmeError> for RunnerError {
     }
 }
 
-type SharedStreamRouter = Arc<dyn StreamRouter + Send + Sync>;
+// TODO (RTE-770): more accurate variant selection through `ErrorKind`
+impl<I> From<(io::Error, I)> for RunnerError
+where
+    I: Into<Cow<'static, str>>,
+{
+    fn from((e, ctx): (io::Error, I)) -> Self
+    where
+        I: Into<Cow<'static, str>>,
+    {
+        RunnerError::Io(Some(ctx.into()), e)
+    }
+}
+
+// TODO (RTE-770): get rid of this impl once we have multiple IO variants
+impl From<io::Error> for RunnerError {
+    fn from(value: io::Error) -> Self {
+        RunnerError::Io(None, value)
+    }
+}
+
+type BoxedStreamRouter = Box<dyn StreamRouter + Send + Sync>;
 
 enum Direction {
     Left,
@@ -129,7 +147,7 @@ struct ConnLogInfo {
 
 impl Display for ConnLogInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("[{} ({} -> {})]", self.protocol, self.local_port, self.peer_port))
+        write!(f, "[{} ({} -> {})]", self.protocol, self.local_port, self.peer_port)
     }
 }
 
@@ -151,16 +169,13 @@ impl ConnLogInfo {
     }
 }
 
-fn addr_from_string(err_msg_label: &str, addr: &str) -> Result<Addr, VmeError> {
-    if addr.is_empty() || addr == "error" {
-        error!("Missing {} address from stream router", err_msg_label);
-        return Err(VmeError::Command(VmeErrorKind::InvalidData));
-    }
-    let socket: SocketAddr = addr.parse().map_err(|err| {
-        error!("Failed to parse {} address '{}' : {}", err_msg_label, addr, err);
-        VmeError::Command(VmeErrorKind::InvalidInput)
-    })?;
-    Ok(socket.into())
+const UNSPECIFIED_SOCKET_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+// TODO: It's a bug in the current VME protocol that it can't properly represent
+// all possible addresses that a StreamRouter may return. #874 will address
+// this. In the mean time, this function needs to always succeed.
+fn addr_from_string(addr: &str) -> Addr {
+    let socket: SocketAddr = addr.parse().unwrap_or(UNSPECIFIED_SOCKET_ADDR);
+    socket.into()
 }
 
 #[derive(Clone, Debug)]
@@ -307,91 +322,11 @@ impl ClientConnection {
     }
 }
 
-pub struct EnclaveRunner<P: Platform> {
-    platform: PhantomData<P>,
-    stream_router: SharedStreamRouter,
-}
-
-// TODO (RTE-770): more accurate variant selection through `ErrorKind`
-impl<I> From<(io::Error, I)> for RunnerError
-where
-    I: Into<Cow<'static, str>>,
-{
-    fn from((e, ctx): (io::Error, I)) -> Self
-    where
-        I: Into<Cow<'static, str>>,
-    {
-        RunnerError::Io(Some(ctx.into()), e)
-    }
-}
-
-// TODO (RTE-770): get rid of this impl once we have multiple IO variants
-impl From<io::Error> for RunnerError {
-    fn from(value: io::Error) -> Self {
-        RunnerError::Io(None, value)
-    }
-}
-
-impl<P: Platform + 'static> EnclaveRunner<P> {
-    /// Creates a new enclave runner
-    pub fn new() -> Self {
-        Self { platform: PhantomData, stream_router: Arc::from(OsStreamRouter::new()) }
-    }
-
-    pub fn with_stream_router(&mut self, router: Box<dyn StreamRouter + Send + Sync>) -> &mut Self {
-        self.stream_router = Arc::from(router);
-        self
-    }
-
-    /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(
-        &mut self,
-        run_args: I,
-        enclave_name: String,
-        enclave_args: Vec<String>,
-        forward_panics: bool,
-    ) -> Result<(), RunnerError> {
-        let server = Server::<P>::bind(enclave_name, SERVER_PORT, self.stream_router.clone(), forward_panics).map_err::<RunnerError, _>(|e| {
-                if e.kind() == IoErrorKind::AddrInUse {
-                    (
-                        e,
-                        format!(
-                            "server failed. Do you already have a runner running on vsock port {}?",
-                            SERVER_PORT,
-                        ),
-                    )
-                        .into()
-                } else {
-                    (e, "binding server failed").into()
-                }
-        })?;
-        let command_server_handle = server.start_command_server()?;
-        server.run_enclave(run_args, enclave_args).await?;
-        command_server_handle.await?;
-        Ok(())
-    }
-}
-
-#[allow(dead_code)]
-enum EnclaveState<P: Platform> {
-    Null,
-    Running {
-        enclave: P::EnclaveDescriptor,
-        args: Vec<String>,
-    },
-}
-
-pub struct Server<P: Platform> {
-    name: String,
-    command_listener_local_addr: VsockAddr,
-    state: Arc<ServerState<P>>,
-}
-
-pub struct ServerState<P: Platform> {
+pub struct ServerState {
     forward_panics: bool,
-    enclave_state: RwLock<EnclaveState<P>>,
+    enclave_args: Vec<String>,
     command_listener: VsockListener,
-    stream_router: SharedStreamRouter,
+    stream_router: BoxedStreamRouter,
     /// Tracks information about TCP sockets that are currently listening for new connections. For
     /// every TCP listener socket in the runner, there is a vsock listener socket in the enclave.
     /// When the enclave instructs to accept a new connection, the runner accepts a new TCP
@@ -401,15 +336,10 @@ pub struct ServerState<P: Platform> {
     connections: Arc<RwLock<FnvHashMap<ConnectionKey, ConnectionInfo>>>,
 }
 
-impl<P: Platform + 'static> ServerState<P> {
+impl ServerState {
     async fn handle_request_init(self: &Self, conn: &mut ClientConnection) -> Result<(), VmeError> {
-        let state = self.enclave_state.read().await;
-        let args = match &*state {
-            EnclaveState::Null => panic!("Not yet running enclave requesting initialization"),
-            EnclaveState::Running { args, .. } => args.to_owned(),
-        };
         let response = Response::Init {
-            args,
+            args: self.enclave_args.clone(),
         };
         conn.send(&response).await?;
         Ok(())
@@ -441,8 +371,8 @@ impl<P: Platform + 'static> ServerState<P> {
             .connect_stream(remote_addr, Some(&mut local_addr_str), Some(&mut peer_addr_str))
             .await
             .map_err(|e| VmeError::Command(e.kind().into()))?;
-        let local = addr_from_string("local", &local_addr_str)?;
-        let peer = addr_from_string("peer", &peer_addr_str)?;
+        let local = addr_from_string(&local_addr_str);
+        let peer = addr_from_string(&peer_addr_str);
         let remote_name = remote_addr.split_terminator(":").next().unwrap_or(remote_addr).to_owned();
 
         // Create listening socket that the enclave can connect to
@@ -558,7 +488,7 @@ impl<P: Platform + 'static> ServerState<P> {
             .bind_stream(addr, Some(&mut local_addr_str))
             .await
             .map_err(|e| VmeError::Command(e.kind().into()))?;
-        let local = addr_from_string("local", &local_addr_str)?;
+        let local = addr_from_string(&local_addr_str);
         self.add_listener(VsockAddr::new(cid, enclave_port), Listener::new(listener, local.clone())).await;
         conn.send(&Response::Bound{ local }).await?;
         Ok(())
@@ -615,8 +545,8 @@ impl<P: Platform + 'static> ServerState<P> {
             Some(&mut local_addr_str),
             Some(&mut peer_addr_str),
         ).await.map_err(|e| VmeError::Command(e.kind().into()))?;
-        let local = addr_from_string("local", &local_addr_str)?;
-        let peer = addr_from_string("peer", &peer_addr_str)?;
+        let local = addr_from_string(&local_addr_str);
+        let peer = addr_from_string(&peer_addr_str);
         drop(listener);
 
         // Send enclave info where it should accept new incoming connection
@@ -690,7 +620,7 @@ impl<P: Platform + 'static> ServerState<P> {
 
     fn handle_request_exit(self: &Self, exit_code: i32) -> Result<(), VmeError> {
         if self.forward_panics && exit_code != 0 {
-            panic!("enclave panic with exit code: {}", exit_code);
+            panic!("enclave panicked with exit code: {}", exit_code);
         } else {
             std::process::exit(exit_code);
         }
@@ -724,39 +654,59 @@ async fn accept_stream(
     mut peer_addr: Option<&mut String>,
 ) -> io::Result<Box<dyn AsyncStream>> {
     poll_fn(|cx| {
-        let local = local_addr.as_mut().map(|addr| &mut **addr);
-        let peer = peer_addr.as_mut().map(|addr| &mut **addr);
-        listener.as_mut().poll_accept(cx, local, peer)
+        listener.as_mut().poll_accept(cx, local_addr.as_deref_mut(), peer_addr.as_deref_mut())
     }).await
 }
 
-impl<P: Platform + 'static> Server<P> {
-    fn bind(enclave_name: String, port: u32, stream_router: SharedStreamRouter, forward_panics: bool) -> io::Result<Self> {
-        let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, port))?;
-        let command_listener_local_addr = command_listener.local_addr()?;
-        Ok(Server {
-            name: enclave_name,
-            command_listener_local_addr,
-            state: Arc::new(ServerState { 
-                forward_panics,
-                enclave_state: RwLock::new(EnclaveState::Null),
-                command_listener,
-                stream_router,
-                listeners: RwLock::new(FnvHashMap::default()),
-                connections: Arc::new(RwLock::new(FnvHashMap::default())),
-            })
-        })
+/// An type that implements [`enclave_runner::EnclavePlatform<enclave_runner::Command>`]. So user
+/// can use enclave_runner API to create vme enclaves.
+/// 
+/// ```ignore
+/// let run_args = NitroRunArgs { ... };
+/// let enclave_args = vec!["--arg1", "foo"];
+/// let enclave_runner = EnclaveBuilder::<NitroEnclaves, _>::new(run_args, "enclave_name")?;
+/// let mut enclave_runner = enclave_runner::EnclaveBuilder::new(enclave_runner);
+/// enclave_runner.args(enclave_args);
+/// let enclave = enclave_runner.build(()).expect("Failed to build enclave runner");
+/// enclave.run().expect("Failed to run enclave");
+/// ```
+pub struct EnclaveBuilder<P: Platform, Args: Into<P::RunArgs>> {
+    platform: PhantomData<P>,
+    runner_args: Args,
+    enclave_name: String,
+}
+
+impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuilder<P, Args> {
+    pub fn new(runner_args: Args, enclave_name: String) -> Result<Self, anyhow::Error> {
+        Ok(Self { platform: PhantomData, runner_args, enclave_name })
     }
 
-    fn start_command_server(self: &Self) -> Result<JoinHandle<()>, IoError> {
+    pub async fn start_server_and_run_enclave(self, mut enclave_args: Vec<String>, stream_router: BoxedStreamRouter, forward_panics: bool) -> Result<(), RunnerError> {
+        let EnclaveBuilder { runner_args, enclave_name, .. } = self;
+
+        enclave_args.insert(0, enclave_name);
+
+        let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, SERVER_PORT))?;
+        let command_listener_local_addr = command_listener.local_addr()?;
+
+        let state = Arc::new(ServerState {
+            forward_panics,
+            enclave_args,
+            command_listener,
+            stream_router,
+            listeners: RwLock::new(FnvHashMap::default()),
+            connections: Arc::new(RwLock::new(FnvHashMap::default())),
+        });
+
         info!("Starting enclave runner.");
-        info!("Command server listening on vsock cid: {} port: {} ...", self.command_listener_local_addr.cid(), self.command_listener_local_addr.port());
-        let state = self.state.clone();
-        let handle = tokio::spawn(
+        info!("Command server listening on vsock cid: {} port: {} ...", command_listener_local_addr.cid(), command_listener_local_addr.port());
+        // This line is critical to ensure state keeps live otherwise it's moved into the future
+        let command_server_state = state.clone();
+        let command_server_handle = tokio::spawn(
             async move {
                 loop {
-                    let state_for_conn = state.clone();
-                    let accepted = state.command_listener.accept().await;
+                    let state_for_conn = command_server_state.clone();
+                    let accepted = command_server_state.command_listener.accept().await;
                     let _ = tokio::spawn(async move {
                        let mut conn = match accepted {
                             Ok((stream, _addr)) => ClientConnection::new(stream),
@@ -770,44 +720,16 @@ impl<P: Platform + 'static> Server<P> {
                             if let Err(e) = conn.send(&Response::Failed(e)).await {
                                 error!("Failed to send response to enclave: {:?}", e);
                             }
-                        }; 
+                        };
                     });
                 }
             }
         );
-        Ok(handle)
-    }
 
-    /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), RunnerError> {
-        let mut state = self.state.enclave_state.write().await;
-        match *state {
-            EnclaveState::Running { .. } => panic!("Enclave already exists"),
-            EnclaveState::Null => {
-                enclave_args.insert(0, self.name.clone());
-                // Assume Platform::run will do some blocking logic
-                let handle = tokio::task::spawn_blocking(|| P::run(run_args));
-                let enclave = handle.await??;
-                *state = EnclaveState::Running {
-                    enclave,
-                    args: enclave_args,
-                };
-            }
-        }
+        let _enclave_descriptor = tokio::task::spawn_blocking(|| P::run(runner_args)).await??;
+        command_server_handle.await?;
+
         Ok(())
-    }
-}
-
-pub struct EnclaveBuilder<P: Platform, Args: Into<P::RunArgs>> {
-    runner: EnclaveRunner<P>,
-    runner_args: Args,
-    enclave_name: String,
-}
-
-impl<P: Platform + 'static, Args: Into<P::RunArgs>> EnclaveBuilder<P, Args> {
-    pub fn new(runner_args: Args, enclave_name: String) -> Result<Self, anyhow::Error> {
-        let runner = EnclaveRunner::<P>::new();
-        Ok(Self { runner, runner_args, enclave_name })
     }
 }
 
@@ -824,41 +746,31 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send> EnclavePlat
         // By default: cmd_args[0] == "enclave", where `enclave` is process name.
         // In VME runner we will use inject image name at index 0 as process name, so remove it here.
         cmd_configuration.cmd_args.remove(0);
-        Ok(command::Command::internal_new(self, configuration.stream_router, configuration.forward_panics, cmd_configuration))
+        Ok(command::internal_new(self, configuration.stream_router, configuration.forward_panics, cmd_configuration))
     }
 }
 
-/// Module of helper types for implementing [`enclave_runner`] traits.
+/// Module of helper functions for implementing [`enclave_runner`] traits.
 mod command {
     use enclave_runner::stream_router::StreamRouter;
-
     use super::*;
 
-    pub struct Command {
-        _private: (),
-    }
-
-    impl Command {
-        pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
-            enclave_builder: EnclaveBuilder<P, Args>,
-            stream_router: Box<dyn StreamRouter + Send + Sync>,
-            forward_panics: bool,
-            cmd_configuration: CommandConfiguration,
-        ) -> enclave_runner::Command {
-            (Box::new(move || -> Result<(), anyhow::Error> {
-                tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()?.
-                    block_on(async move {
-                        let EnclaveBuilder { mut runner, runner_args, enclave_name } = enclave_builder;
-                        runner.stream_router = stream_router.into();
-
-                        let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
-                        runner.run_enclave(runner_args, enclave_name, enclave_args, forward_panics).await?;
-                        Ok(())
-                    })
-            }) as Box<dyn FnOnce() -> _>)
-            .into()
-        }
+    pub(crate) fn internal_new<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>(
+        enclave_builder: EnclaveBuilder<P, Args>,
+        stream_router: Box<dyn StreamRouter + Send + Sync>,
+        forward_panics: bool,
+        cmd_configuration: CommandConfiguration,
+    ) -> enclave_runner::Command {
+        (Box::new(move || -> Result<(), anyhow::Error> {
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .build()?
+                .block_on(async move {
+                    let enclave_args = cmd_configuration.cmd_args.into_iter().map(|arr| String::from_utf8(arr)).collect::<Result<Vec<_>, _>>()?;
+                    enclave_builder.start_server_and_run_enclave(enclave_args, stream_router, forward_panics).await?;
+                    Ok(())
+                })
+        }) as Box<dyn FnOnce() -> _>)
+        .into()
     }
 }
