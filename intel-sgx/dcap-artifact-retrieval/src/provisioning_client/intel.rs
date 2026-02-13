@@ -355,7 +355,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi<T: PlatformType> {
+pub struct TcbInfoApi<T> {
     api_version: PcsVersion,
     _type: PhantomData<T>,
 }

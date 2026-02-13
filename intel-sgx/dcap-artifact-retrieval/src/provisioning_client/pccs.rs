@@ -257,7 +257,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi<T: PlatformType> {
+pub struct TcbInfoApi<T> {
     base_url: Cow<'static, str>,
     api_version: PcsVersion,
     type_: PhantomData<T>
