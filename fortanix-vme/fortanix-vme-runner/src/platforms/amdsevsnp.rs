@@ -3,6 +3,7 @@ use nix::fcntl::{open, OFlag};
 use nix::sys::stat::Mode;
 use nix::unistd::close;
 use nix::Error;
+use rand::{self, Rng};
 use std::borrow::Cow;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::{
@@ -58,14 +59,16 @@ const VHOST_VSOCK_DEV: &str = "/dev/vhost-vsock";
 nix::ioctl_write_ptr!(set_guest_cid, VHOST_VIRTIO, 0x60, u64);
 
 // Port numbers below 1024 are called privileged ports.
-const CID_START: u64 = 1024;
+const CID_START: u32 = 1024;
 
 // This function basically opens vhost-vsock device and
 // tries to allocate a cid number. If allocation succeeds
 // we simply re-use it along with the file descriptor.
 fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
-    let mut cid = CID_START;
-    loop {
+    let random_start = rand::thread_rng().gen_range(CID_START, u32::MAX);
+    for cid  in (random_start..u32::MAX).chain(CID_START..random_start) {
+        // set_guest_cid expects u64 due to underlying ioctl call.
+        let cid = cid as u64;
         // We're deliberately omitting O_CLOEXEC here as we want
         // the child process inherit the opened file descriptors.
         let fd = open(VHOST_VSOCK_DEV, OFlag::O_RDWR, Mode::empty()).map_err(|e| {
@@ -99,14 +102,9 @@ fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
                 }
             }
         }
-
-        cid = cid.checked_add(1).ok_or(RunnerError::NoAvailableCidFound)?;
-        // Vsock cid is u32. Because of ioctl syscall we need to pass u64.
-        // Therefore, we manually check against maximum possible value here.
-        if cid > (u32::MAX as u64) {
-            return Err(RunnerError::NoAvailableCidFound);
-        }
     }
+
+    Err(RunnerError::NoAvailableCidFound)
 }
 
 fn build_qemu_command(
