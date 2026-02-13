@@ -120,7 +120,7 @@ impl<'de> Deserialize<'de> for Fmspc {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct TcbLevel<P> {
-    #[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3>, <TcbComponents<P> as TryFrom<TcbComponentsV3>>::Error: std::fmt::Display, P : Deserialize<'de>"))]
+    #[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3, Error: std::fmt::Display>, P : Deserialize<'de>"))]
     pub(crate) tcb: TcbComponents<P>,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
