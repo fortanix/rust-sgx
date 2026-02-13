@@ -70,3 +70,9 @@ sudo usermod -aG kvm $USER
 ```
 
 Note: You must log out and log back in (or restart your session) for this change to take effect.
+
+## SEV/SNP Device drivers
+
+SNP support was fully merged into the upstream Linux kernel around version 6.11. The host is expected to have the `/dev/sev` driver available.
+
+To access this driver (in non-simulation mode) either add necessary udev rules for non-root access or use the runner with sudo command.
