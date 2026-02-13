@@ -13,9 +13,9 @@ extern crate yasna;
 extern crate quick_error;
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display};
+use std::fmt::{self};
 
-use serde::de::{self, DeserializeOwned};
+use serde::de::{self};
 use serde::{Deserialize, Deserializer, Serialize};
 pub use yasna::ASN1Error;
 #[cfg(feature = "verify")]
@@ -51,7 +51,7 @@ pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
 ///Global trait that specify the required interface for typesafe enumeration of platforms.
-pub trait PlatformType : Display + Clone + Send + Default + DeserializeOwned {
+pub trait PlatformType : Clone + Default {
     fn platform_id() -> &'static str;
 }
 
@@ -67,18 +67,11 @@ pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformType>(deser
 
 ///This module acts as a namespace that provides typesafe enumeration of platforms.
 pub mod platform {
-    use std::fmt::{self, Display, Formatter};
     use serde::{Serialize, Deserialize};
 
     ///Identifier type for Intel SGX platform.
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct SGX;
-
-    impl Display for SGX {
-        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-            write!(f, "Intel SGX")
-        }
-    }
 
     impl super::PlatformType for SGX {
         fn platform_id() -> &'static str {
@@ -89,12 +82,6 @@ pub mod platform {
     ///Identifier type for Intel TDX platform.
     #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
     pub struct TDX;
-
-    impl Display for TDX {
-        fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-            write!(f, "Intel TDX")
-        }
-    }
 
     impl super::PlatformType for TDX {
         fn platform_id() -> &'static str {

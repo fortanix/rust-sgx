@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::common::PckCertsApiNotSupported;
-use super::intel::{INTEL_BASE_URL, TcbEvaluationDataNumbersApi, PckCrlApi, QeIdApi, TcbInfoApi};
+use super::intel::{PckCrlApi, QeIdApi, TcbEvaluationDataNumbersApi, TcbInfoApi, INTEL_BASE_URL};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PcsVersion, ProvisioningServiceApi,
     StatusCode,
@@ -51,8 +51,17 @@ impl AzureProvisioningClientBuilder {
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
 
-        self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
+        self.client_builder.build(
+            pck_certs,
+            pck_cert,
+            pck_crl,
+            qeid,
+            sgx_tcbinfo,
+            tdx_tcbinfo,
+            sgx_evaluation_data_numbers,
+            tdx_evaluation_data_numbers,
+            fetcher,
+        )
     }
 }
 
@@ -155,7 +164,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
             )),
             StatusCode::Gone => Err(Error::PCSError(
                 status_code,
-                "Collateral is no longer available"
+                "Collateral is no longer available",
             )),
             _ => Err(Error::PCSError(
                 status_code.clone(),
@@ -206,9 +215,10 @@ mod tests {
     use pcs::{Fmspc, PckID};
 
     use crate::provisioning_client::{
-        test_helpers, AzureProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion, ProvisioningClient,
+        test_helpers, AzureProvisioningClientBuilder, DcapArtifactIssuer, PcsVersion,
+        ProvisioningClient,
     };
-    use crate::{Error, StatusCode, reqwest_client};
+    use crate::{reqwest_client, Error, StatusCode};
 
     const PCKID_TEST_FILE: &str = "./tests/data/azure_icelake_pckid.csv";
 
@@ -281,8 +291,14 @@ mod tests {
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
-            assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(
+                client.qe_identity(Some(15)),
+                Err(Error::PCSError(StatusCode::Gone, _))
+            );
+            assert_matches!(
+                client.sgx_tcbinfo(&fmspc, Some(15)),
+                Err(Error::PCSError(StatusCode::Gone, _))
+            );
         }
     }
 
@@ -300,26 +316,29 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
+                let tcb_info = client
+                    .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
+                    .unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
-                let selected = pckcerts.select_pck(
-                    &tcb_data,
-                    &pckid.cpu_svn,
-                    pckid.pce_isvsvn,
-                    pckid.pce_id,
-                ).unwrap();
+                let selected = pckcerts
+                    .select_pck(&tcb_data, &pckid.cpu_svn, pckid.pce_isvsvn, pckid.pce_id)
+                    .unwrap();
 
-                let pck = client.pckcert(
-                    Some(&pckid.enc_ppid),
-                    &pckid.pce_id,
-                    &pckid.cpu_svn,
-                    pckid.pce_isvsvn,
-                    Some(&pckid.qe_id),
-                ).unwrap();
+                let pck = client
+                    .pckcert(
+                        Some(&pckid.enc_ppid),
+                        &pckid.pce_id,
+                        &pckid.cpu_svn,
+                        pckid.pce_isvsvn,
+                        Some(&pckid.qe_id),
+                    )
+                    .unwrap();
 
-                assert_eq!(format!("{:?}", selected.sgx_extension().unwrap()),
-                            format!("{:?}", pck.sgx_extension().unwrap()));
+                assert_eq!(
+                    format!("{:?}", selected.sgx_extension().unwrap()),
+                    format!("{:?}", pck.sgx_extension().unwrap())
+                );
             }
         }
     }

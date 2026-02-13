@@ -33,8 +33,7 @@ pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbInfo, V: VerificationTy
     next_update: DateTime<Utc>,
     #[allow(unused)]
     tcb_eval_numbers: Vec<TcbEvalNumber>,
-    #[serde(skip)]
-    type_: PhantomData<V>,
+    _type: V,
 }
 
 impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbEvaluationDataNumbers<T, V> {
@@ -284,7 +283,7 @@ impl<T: PlatformTypeForTcbInfo> RawTcbEvaluationDataNumbers<T> {
             issue_date,
             next_update,
             tcb_eval_numbers,
-            type_: PhantomData,
+            _type: Verified,
         })
     }
 }
