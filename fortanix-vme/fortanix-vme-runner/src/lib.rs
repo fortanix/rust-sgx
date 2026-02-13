@@ -9,6 +9,7 @@ use tokio::net::TcpListener;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use std::borrow::Cow;
 use std::cmp;
 use std::fmt::Debug;
 use std::os::fd::AsRawFd;
@@ -20,9 +21,11 @@ use fortanix_vme_abi::{self, Addr, Error as VmeError, Response, Request, SERVER_
 use tokio_vsock::{self, VMADDR_CID_ANY, VMADDR_CID_LOCAL, VsockAddr, VsockListener, VsockStream};
 
 mod platforms;
-pub use platforms::{Platform, NitroEnclaves, Simulator, SimulatorArgs};
+pub use platforms::{Platform, NitroEnclaves, EnclaveSimulator, EnclaveSimulatorArgs};
+pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
 
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
+pub use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 
 enum Direction {
     Left,
@@ -253,17 +256,68 @@ pub struct EnclaveRunner<P: Platform> {
     servers: Vec<(Arc<Server<P>>, JoinHandle<()>)>,
 }
 
+
+#[derive(thiserror::Error, Debug)]
+pub enum RunnerError {
+    // TODO (RTE-770): refine error variants and return proper errors throughout crate
+    #[error("io error occurred: {0:?}")]
+    Io(Option<Cow<'static, str>>, #[source] io::Error),
+
+    #[error("no available cid found")]
+    NoAvailableCidFound,
+}
+
+// TODO (RTE-770): more accurate variant selection through `ErrorKind`
+impl<I> From<(io::Error, I)> for RunnerError
+where
+    I: Into<Cow<'static, str>>,
+{
+    fn from((e, ctx): (io::Error, I)) -> Self
+    where
+        I: Into<Cow<'static, str>>,
+    {
+        RunnerError::Io(Some(ctx.into()), e)
+    }
+}
+
+// TODO (RTE-770): get rid of this impl once we have multiple IO variants
+impl From<io::Error> for RunnerError {
+    fn from(value: io::Error) -> Self {
+        RunnerError::Io(None, value)
+    }
+}
+
 impl<P: Platform + 'static> EnclaveRunner<P> {
     /// Creates a new enclave runner
-    pub fn new() -> Result<EnclaveRunner<P>, IoError> {
-        Ok(EnclaveRunner {
+    pub fn new() -> EnclaveRunner<P> {
+        EnclaveRunner {
             servers: Vec::new(),
-        })
+        }
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&mut self, run_args: I, enclave_name: String, enclave_args: Vec<String>) -> Result<(), VmeError> {
-        let server = Arc::new(Server::bind(enclave_name, SERVER_PORT)?);
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(
+        &mut self,
+        run_args: I,
+        enclave_name: String,
+        enclave_args: Vec<String>,
+    ) -> Result<(), RunnerError> {
+        let server = Arc::new(
+            Server::bind(enclave_name, SERVER_PORT).map_err::<RunnerError, _>(|e| {
+                if e.kind() == IoErrorKind::AddrInUse {
+                    (
+                        e,
+                        format!(
+                            "server failed. Do you already have a runner running on vsock port {}?",
+                            SERVER_PORT,
+                        ),
+                    )
+                        .into()
+                } else {
+                    (e, "binding server failed").into()
+                }
+            })?,
+        );
         let server_thread = server.clone().start_command_server()?;
         server.run_enclave(run_args, enclave_args).await?;
         self.servers.push((server, server_thread));
@@ -275,6 +329,18 @@ impl<P: Platform + 'static> EnclaveRunner<P> {
         let handles: Vec<_> =
             self.servers.into_iter().map(|(_, h)| h).collect();
         let _ = join_all(handles).await;
+    }
+
+    /// Create, run, and wait for an enclave, all in one call
+    pub async fn run_to_completion<I: Into<P::RunArgs> + Send + 'static>(
+        run_args: I,
+        enclave_name: String,
+        enclave_args: Vec<String>,
+    ) -> Result<(), RunnerError> {
+        let mut runner = Self::new();
+        runner.run_enclave(run_args, enclave_name, enclave_args).await?;
+        runner.wait().await;
+        Ok(())
     }
 }
 
@@ -358,13 +424,13 @@ impl<P: Platform + 'static> ServerState<P> {
         // Wait for incoming connection from enclave. Unfortunately, we can't send a second
         // response with an error message back to the enclave when something goes wrong anymore.
         // We'll log the problem instead
-        let accept_connection = async move || -> Result<(), VmeError> {
+        let accept_connection = async move {
             let (proxy, _proxy_addr) = proxy_server.accept().await?;
             // Store connection info
             self.add_connection(proxy, remote_socket, remote_name.to_string()).await?;
-            Ok(())
+            Ok::<(), VmeError>(())
         };
-        if let Err(e) = accept_connection().await {
+        if let Err(e) = accept_connection.await {
             error!("Failed to accept connection from the enclave: {:?}", e);
         }
         Ok(())
@@ -507,13 +573,13 @@ impl<P: Platform + 'static> ServerState<P> {
             proxy_port: runner_port,
         }).await?;
 
-        let connect = async || -> Result<(), VmeError> {
+        let connect = async {
             // Connect to enclave at the expected port
             let proxy = vsock_connect(runner_vsock_socket, enclave_cid, vsock_listener_port).await?;
             self.add_connection(proxy, conn, "remote".to_string()).await?;
-            Ok(())
+            Ok::<(), VmeError>(())
         };
-        if let Err(e) = connect().await {
+        if let Err(e) = connect.await {
             error!("Failed to connect to the enclave after it requested an accept: {:?}", e);
         }
         Ok(())
@@ -641,7 +707,7 @@ impl<P: Platform + 'static> Server<P> {
     }
 
     /// Starts a new enclave
-    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), VmeError> {
+    pub async fn run_enclave<I: Into<P::RunArgs> + Send + 'static>(&self, run_args: I, mut enclave_args: Vec<String>) -> Result<(), RunnerError> {
         let mut state = self.state.enclave.write().await;
         match *state {
             EnclaveState::Running { .. } => panic!("Enclave already exists"),

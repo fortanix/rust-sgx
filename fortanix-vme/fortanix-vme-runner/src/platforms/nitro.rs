@@ -1,4 +1,4 @@
-use crate::VmeError;
+use crate::RunnerError;
 use nitro_cli::enclave_proc_comm;
 use nitro_cli::common::{self as nitro_common, logger};
 use nitro_cli::common::commands_parser::{EmptyArgs, RunEnclavesArgs};
@@ -12,7 +12,7 @@ impl Platform for NitroEnclaves {
     type RunArgs = RunEnclavesArgs;
     type EnclaveDescriptor = RunningNitroEnclave;
 
-    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, VmeError> {
+    fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let mut run_args: RunEnclavesArgs = run_args.into();
         let logger = logger::init_logger()
             .expect("Log init failed");
