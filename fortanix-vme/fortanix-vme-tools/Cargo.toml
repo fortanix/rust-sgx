@@ -15,3 +15,6 @@ fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 log = "0.4.21"
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "1.0"
+
+[dev-dependencies]
+tempfile = "3"
