@@ -801,7 +801,7 @@ async fn accept_stream(
     .await
 }
 
-/// An type that implements [`enclave_runner::EnclavePlatform<enclave_runner::Command>`]. So user
+/// An type that implements [`enclave_runner::platform::EnclavePlatform<enclave_runner::Command>`]. So user
 /// can use enclave_runner API to create vme enclaves.
 ///
 /// ```ignore
