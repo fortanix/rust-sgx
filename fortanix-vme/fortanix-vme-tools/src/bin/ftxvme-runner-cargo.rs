@@ -54,7 +54,7 @@ struct CargoArgs {
     #[arg(value_parser = parse_elf_path)]
     elf_path: PathBuf,
 
-    #[arg(trailing_var_arg = true)]
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     others: Vec<String>,
 }
 
@@ -128,28 +128,6 @@ impl FortanixVmeConfig {
     }
 }
 
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    let fortanix_vme_config = FortanixVmeConfig::get()?;
-
-    match cli.command {
-        Commands::AmdSevSnp(amd_sev_snp_args) => {
-            let amd_sev_snp_cli = AmdSevSnpCli {
-                common_args: cli.common_args,
-                amd_sev_snp_args,
-            };
-            cargo_run_sev_snp_vm(amd_sev_snp_cli, fortanix_vme_config)
-        }
-        Commands::AwsNitro(aws_nitro_args) => {
-            let aws_nitro_cli = AwsNitroCli {
-                common_args: cli.common_args,
-                aws_nitro_args,
-            };
-            cargo_run_nitro_enclave(aws_nitro_cli, fortanix_vme_config)
-        }
-    }
-}
-
 const ELF2UKI_TOOL_NAME: &str = "fortanix-vme-elf2uki";
 const ELF2EIF_TOOL_NAME: &str = "ftxvme-elf2eif";
 const RUNNER_TOOL_NAME: &str = "fortanix-vme-runner";
@@ -187,6 +165,10 @@ fn cargo_run_sev_snp_vm(
     add_runner_common_args(&mut fortanix_vme_runner, &common_args);
 
     fortanix_vme_runner.arg("amd-sev-snp");
+    // Use elf path as executable name in the runner
+    fortanix_vme_runner
+        .arg("--executable-name")
+        .arg(&amd_sev_snp_args.elf_path);
     add_other_args(&mut fortanix_vme_runner, amd_sev_snp_args.others);
 
     run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
@@ -235,10 +217,6 @@ fn cargo_run_nitro_enclave(
     add_runner_common_args(&mut fortanix_vme_runner, &common_args);
 
     fortanix_vme_runner.arg("aws-nitro");
-    // Use elf path as executable name in the runner
-    fortanix_vme_runner
-        .arg("--executable_name")
-        .arg(&aws_nitro_args.elf_path);
     add_other_args(&mut fortanix_vme_runner, aws_nitro_args.others);
 
     run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
@@ -326,6 +304,111 @@ impl CommandFail {
                 "`{tool_name}` not found in PATH; make it available or install it"
             )),
             _ => anyhow::Error::new(self),
+        }
+    }
+}
+
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    let fortanix_vme_config = FortanixVmeConfig::get()?;
+
+    match cli.command {
+        Commands::AmdSevSnp(amd_sev_snp_args) => {
+            let amd_sev_snp_cli = AmdSevSnpCli {
+                common_args: cli.common_args,
+                amd_sev_snp_args,
+            };
+            cargo_run_sev_snp_vm(amd_sev_snp_cli, fortanix_vme_config)
+        }
+        Commands::AwsNitro(aws_nitro_args) => {
+            let aws_nitro_cli = AwsNitroCli {
+                common_args: cli.common_args,
+                aws_nitro_args,
+            };
+            cargo_run_nitro_enclave(aws_nitro_cli, fortanix_vme_config)
+        }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::Builder;
+
+    #[test]
+    fn cli_parses_aws_nitro_verbose_simulate_with_trailing_args() {
+        let temp = Builder::new()
+            .tempfile()
+            .expect("create temp elf file");
+        let path = temp.path().to_path_buf();
+
+        let _cli = Cli::try_parse_from([
+            "ftxvme-runner-cargo",
+            "aws-nitro",
+            path.to_str().expect("utf-8 path"),
+            "--format",
+            "json",
+        ])
+        .expect("cli parse");
+
+        let cli = Cli::try_parse_from([
+            "ftxvme-runner-cargo",
+            "--verbose",
+            "--simulate",
+            "aws-nitro",
+            path.to_str().expect("utf-8 path"),
+            "-Z",
+            "unstable-options",
+            "--format",
+            "json",
+        ])
+        .expect("cli parse");
+
+        assert!(cli.common_args.simulate);
+        assert_eq!(
+            cli.common_args.verbose.log_level_filter(),
+            LevelFilter::Info
+        );
+
+        match cli.command {
+            Commands::AwsNitro(args) => {
+                assert_eq!(args.elf_path, path);
+                assert_eq!(
+                    args.others,
+                    vec!["-Z", "unstable-options", "--format", "json"]
+                );
+            }
+            Commands::AmdSevSnp(_) => panic!("expected aws-nitro"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_amd_sev_snp_default_log_level() {
+        let temp = Builder::new()
+            .tempfile()
+            .expect("create temp elf file");
+        let path = temp.path().to_path_buf();
+
+        let cli = Cli::try_parse_from([
+            "ftxvme-runner-cargo",
+            "amd-sev-snp",
+            path.to_str().expect("utf-8 path"),
+        ])
+        .expect("cli parse");
+
+        assert!(!cli.common_args.simulate);
+        assert_eq!(
+            cli.common_args.verbose.log_level_filter(),
+            LevelFilter::Warn
+        );
+
+        match cli.command {
+            Commands::AmdSevSnp(args) => {
+                assert_eq!(args.elf_path, path);
+                assert!(args.others.is_empty());
+            }
+            Commands::AwsNitro(_) => panic!("expected amd-sev-snp"),
         }
     }
 }
