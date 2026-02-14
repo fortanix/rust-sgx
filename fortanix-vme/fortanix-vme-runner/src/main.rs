@@ -2,9 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
 use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
+use enclave_runner::EnclaveBuilder;
 use fortanix_vme_runner::{
-    read_eif_with_metadata, AmdSevVm, EnclaveRunner, EnclaveSimulator, EnclaveSimulatorArgs,
-    NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
+    read_eif_with_metadata, AmdSevVm, EnclaveBuilder as EnclaveBuilderVme, EnclaveSimulator,
+    EnclaveSimulatorArgs, NitroEnclaves, Platform, ReadEifResult, VmRunArgs, VmSimulator,
 };
 use log::info;
 use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
@@ -130,8 +131,7 @@ impl AmdSevSnpCli {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     env_logger::Builder::new()
         .filter_level(cli.verbose.into())
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
         Commands::AmdSevSnp(amd_sev_snp_args) => run_amd_sev_enclave(AmdSevSnpCli {
             common_args,
             amd_sev_snp_args,
-        }).await,
+        }),
         Commands::AwsNitro(aws_nitro_args) => {
             if !common_args.simulate && aws_nitro_args.elf {
                 Err(Cli::command().error(
@@ -153,12 +153,12 @@ async fn main() -> Result<()> {
             run_nitro_enclave(AwsNitroCli {
                 common_args,
                 aws_nitro_args,
-            }).await
+            })
         }
     }
 }
 
-async fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
+fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
     let firmware_image_path = amd_sev_cli
         .amd_sev_snp_args
         .firmware_image_path
@@ -183,17 +183,17 @@ async fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
             run_args,
             amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
-        ).await
+        )
     } else {
         run_to_completion::<AmdSevVm>(
             run_args,
             amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
-        ).await
+        )
     }
 }
 
-async fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
+fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
     if nitro_cli.common_args.simulate {
         let elf_path: PathBuf;
         let img_name;
@@ -225,7 +225,7 @@ async fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
             run_args,
             img_name,
             nitro_cli.aws_nitro_args.enclave_args,
-        ).await
+        )
     } else {
         let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
             .context("failed to read EIF file")?
@@ -238,17 +238,26 @@ async fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
             run_args,
             metadata.img_name,
             nitro_cli.aws_nitro_args.enclave_args,
-        ).await
+        )
     }
 }
 
-async fn run_to_completion<P: Platform + 'static>(
+fn run_to_completion<P: Platform + 'static>(
     run_args: P::RunArgs,
     enclave_name: String,
     enclave_args: Vec<String>,
-) -> Result<(), anyhow::Error> where <P as Platform>::RunArgs : Send + Sync{
-    EnclaveRunner::<P>::run_to_completion(run_args, enclave_name, enclave_args).await
-        .context("failed to run enclave")
+) -> Result<(), anyhow::Error>
+where
+    <P as Platform>::RunArgs: Send + Sync,
+{
+    let enclave_runner = EnclaveBuilderVme::<P, _>::new(run_args, enclave_name)?;
+    let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
+    enclave_runner.args(enclave_args);
+    let enclave = enclave_runner
+        .build(())
+        .context("Failed to build enclave runner")?;
+    enclave.run().context("Failed to run enclave")?;
+    Ok(())
 }
 
 fn create_elf(elf: Vec<u8>) -> Result<PathBuf, IoError> {

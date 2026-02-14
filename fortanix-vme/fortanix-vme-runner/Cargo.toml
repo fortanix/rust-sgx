@@ -7,6 +7,7 @@ authors = ["Fortanix, Inc."]
 [dependencies]
 # Workspace dependencies
 confidential-vm-blobs = { path = "../tools/confidential-vm-blobs/" }
+enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
 fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
 fortanix-vme-eif = { path = "../fortanix-vme-eif" }
 # External dependencies

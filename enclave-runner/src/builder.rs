@@ -12,7 +12,7 @@ use crate::stream_router::{StreamRouter, OsStreamRouter};
 
 pub struct EnclaveBuilder<P: EnclavePlatform<T>, T: EnclaveType> {
     platform: P,
-    stream_router: Option<Box<dyn StreamRouter>>,
+    stream_router: Option<Box<dyn StreamRouter + Send + Sync>>,
     forward_panics: bool,
     type_builder: T::ConfigurationBuilder,
 }
@@ -29,7 +29,7 @@ impl<P: EnclavePlatform<T>, T: EnclaveType> EnclaveBuilder<P, T> {
 
     /// The stream router that this enclave should use when the enclave is
     /// creating any streams. Defaults to [`OsStreamRouter`].
-    pub fn stream_router<R: Into<Box<dyn StreamRouter>>>(&mut self, router: R) -> &mut Self {
+    pub fn stream_router<R: Into<Box<dyn StreamRouter + Send + Sync>>>(&mut self, router: R) -> &mut Self {
         self.stream_router = Some(router.into());
         self
     }

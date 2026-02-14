@@ -66,7 +66,7 @@ const CID_START: u32 = 1024;
 // we simply re-use it along with the file descriptor.
 fn get_available_guest_cid_with_fd() -> Result<VsockConfig, RunnerError> {
     let random_start = rand::thread_rng().gen_range(CID_START, u32::MAX);
-    for cid  in (random_start..u32::MAX).chain(CID_START..random_start) {
+    for cid in (random_start..u32::MAX).chain(CID_START..random_start) {
         // set_guest_cid expects u64 due to underlying ioctl call.
         let cid = cid as u64;
         // We're deliberately omitting O_CLOEXEC here as we want
