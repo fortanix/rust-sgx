@@ -241,27 +241,22 @@ impl Default for TdxModule {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleIdentity {
-    #[serde(deserialize_with = "tdx_mrsigner_deserializer", serialize_with = "tdx_mrsigner_serializer")]
-    mrsigner: [u8; 48],
-    #[serde(deserialize_with = "tdx_attribute_deserializer", serialize_with = "tdx_attribute_serializer")]
-    attributes: u64,
-    #[serde(deserialize_with = "tdx_attribute_deserializer", serialize_with = "tdx_attribute_serializer")]
-    attributes_mask: u64,
+    #[serde(flatten)]
+    tdx_module: TdxModule,
     tcb_levels: Vec<TdxModuleTcbLevel>,
-
 }
 
 impl TdxModuleIdentity {
     pub fn mrsigner(&self) -> &[u8; 48] {
-        &self.mrsigner
+        &self.tdx_module.mrsigner
     }
 
     pub fn attributes(&self) -> u64 {
-        self.attributes
+        self.tdx_module.attributes
     }
 
     pub fn attributes_mask(&self) -> u64 {
-        self.attributes_mask
+        self.tdx_module.attributes_mask
     }
 
     pub fn tcb_levels_iter(&self) -> impl Iterator<Item = &TdxModuleTcbLevel> + '_ {
@@ -338,23 +333,18 @@ pub trait PlatformTypeForTcbInfo : PlatformType + PlatformTypeForTcbComponent {
     fn extra_extension() -> &'static str;
 }
 
-pub mod platform_specific {
-    use crate::{TdxModule, TdxModuleIdentity};
-    use serde::Deserialize;
+#[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+pub struct SGXSpecificTcbData {}
 
-    #[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
-    pub struct SGX {}
-
-    #[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
-    #[serde(rename_all = "camelCase")]
-    pub struct TDX {
-        pub(crate) tdx_module: TdxModule,
-        pub(crate) tdx_module_identities: Vec<TdxModuleIdentity>,
-    }
+#[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TDXSpecificTcbData {
+    pub(crate) tdx_module: TdxModule,
+    pub(crate) tdx_module_identities: Vec<TdxModuleIdentity>,
 }
 
 impl PlatformTypeForTcbInfo for platform::SGX {
-    type PlatformSpecificTcbData = platform_specific::SGX;
+    type PlatformSpecificTcbData = SGXSpecificTcbData;
 
     fn extra_extension() -> &'static str {
         ""
@@ -364,7 +354,7 @@ impl PlatformTypeForTcbInfo for platform::SGX {
 #[allow(dead_code)]
 #[allow(unused)]
 impl PlatformTypeForTcbInfo for platform::TDX  {
-    type PlatformSpecificTcbData = platform_specific::TDX;
+    type PlatformSpecificTcbData = TDXSpecificTcbData;
 
     fn extra_extension() -> &'static str {
         ".tdx"
@@ -392,8 +382,6 @@ pub struct TcbData<T: PlatformTypeForTcbInfo, V: VerificationType = Verified> {
     #[serde(flatten)]
     platform_specific_data: T::PlatformSpecificTcbData,
     type_: V,
-    #[serde(skip)]
-    platform_: PhantomData<T>
 }
 
 impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
@@ -445,13 +433,13 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
         &self,
         raw_cpusvn: &[u8; 16],
         pce_svn: u16,
-    ) -> Result<TcbComponents<crate::pckcrt::platform_specific::SGX>, Error> {
+    ) -> Result<TcbComponents<crate::pckcrt::SGXSpecificTcbComponentData>, Error> {
         if self.tcb_type != 0 {
             return Err(Error::UnknownTcbType(self.tcb_type));
         }
 
         // TCB Type 0 simply copies cpu svn
-        Ok(TcbComponents::<crate::pckcrt::platform_specific::SGX>::from_raw(*raw_cpusvn, pce_svn))
+        Ok(TcbComponents::<crate::pckcrt::SGXSpecificTcbComponentData>::from_raw(*raw_cpusvn, pce_svn))
     }
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
@@ -620,7 +608,6 @@ impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
             platform_specific_data,
             tcb_levels,
             type_: Verified,
-            platform_: PhantomData
         })
     }
 

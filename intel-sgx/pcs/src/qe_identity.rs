@@ -348,7 +348,7 @@ impl QeIdentitySigned {
             mrsigner,
             isvprodid,
             tcb_levels,
-            ..
+            type_: _
         } = serde_json::from_str(&self.raw_enclave_identity).map_err(|e| Error::ParseError(e))?;
 
         if version != 2 {

@@ -111,17 +111,12 @@ impl From<u8> for TcbComponentEntry {
     }
 }
 
-pub mod platform_specific {
-    use super::TcbComponentEntry;
-    use serde::{Serialize, Deserialize};
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+pub struct SGXSpecificTcbComponentData {}
 
-    #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-    pub struct SGX {}
-
-    #[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
-    pub struct TDX {
-        pub(crate) tdxtcbcomponents: [TcbComponentEntry; 16],
-    }
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+pub struct TDXSpecificTcbComponentData {
+    pub(crate) tdxtcbcomponents: [TcbComponentEntry; 16],
 }
 
 pub trait PlatformTypeForTcbComponent
@@ -138,11 +133,11 @@ where
 }
 
 impl PlatformTypeForTcbComponent for platform::SGX {
-    type PlatformSpecificTcbComponentData = platform_specific::SGX;
+    type PlatformSpecificTcbComponentData = SGXSpecificTcbComponentData;
 }
 
 impl PlatformTypeForTcbComponent for platform::TDX {
-    type PlatformSpecificTcbComponentData = platform_specific::TDX;
+    type PlatformSpecificTcbComponentData = TDXSpecificTcbComponentData;
 }
 
 /// Auxiliary trait to propagate bound on
@@ -152,30 +147,28 @@ pub trait ImplyBound where Self: Sized {
 }
 
 impl ImplyBound for platform::SGX {
-    type ToBound = TcbComponents<platform_specific::SGX>;
+    type ToBound = TcbComponents<SGXSpecificTcbComponentData>;
 }
 
 impl ImplyBound for platform::TDX {
-    type ToBound = TcbComponents<platform_specific::TDX>;
+    type ToBound = TcbComponents<TDXSpecificTcbComponentData>;
 }
 
-impl TryFrom<TcbComponentsV3> for TcbComponents<platform_specific::SGX> {
+impl TryFrom<TcbComponentsV3> for TcbComponents<SGXSpecificTcbComponentData> {
     type Error = Error;
 
     fn try_from(value: TcbComponentsV3) -> Result<Self, Error> {
-        Ok(TcbComponents::<platform_specific::SGX>(value.into()))
+        Ok(TcbComponents::<SGXSpecificTcbComponentData>(value.into()))
     }
 }
 
-impl TryFrom<TcbComponentsV3> for TcbComponents<platform_specific::TDX> {
+impl TryFrom<TcbComponentsV3> for TcbComponents<TDXSpecificTcbComponentData> {
     type Error = Error;
 
     fn try_from(_value: TcbComponentsV3) -> Result<Self, Error> {
         Err(Error::InvalidTcbInfo("attempting to convert TcbComponentsV3 into TcbComponentsV4<TDX>".to_string()))
     }
 }
-
-
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct TcbComponentsV4<P> {
@@ -217,22 +210,22 @@ impl TryFrom<&str> for TcbComponentType {
     }
 }
 
-impl TcbComponents<platform_specific::SGX> {
+impl TcbComponents<SGXSpecificTcbComponentData> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
         TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
-            platform_specific_data: platform_specific::SGX {}
+            platform_specific_data: SGXSpecificTcbComponentData {}
         })
     }
 }
 
-impl TcbComponents<platform_specific::TDX> {
+impl TcbComponents<TDXSpecificTcbComponentData> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16, raw_tdxsvn: [u8; 16]) -> Self {
         TcbComponents (TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
-            platform_specific_data: platform_specific::TDX {
+            platform_specific_data: TDXSpecificTcbComponentData {
                 tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into())
             }
         })
@@ -308,7 +301,7 @@ impl<T, U> PartialEq<TcbComponents<U>> for TcbComponents<T> {
     }
 }
 
-impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform_specific::SGX> {
+impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<SGXSpecificTcbComponentData> {
     fn from(c: TcbComponentsV3) -> Self {
         TcbComponentsV4 {
             sgxtcbcomponents: [
@@ -330,7 +323,7 @@ impl std::convert::From<TcbComponentsV3> for TcbComponentsV4<platform_specific::
                 c.sgxtcbcomp16svn.into(),
             ],
             pcesvn: c.pcesvn,
-            platform_specific_data: platform_specific::SGX {}
+            platform_specific_data: SGXSpecificTcbComponentData {}
         }
     }
 }
@@ -394,7 +387,7 @@ impl Serialize for PckCertValue {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Eq, PartialEq)]
 pub struct PckCertBodyItem {
-    tcb: TcbComponents<platform_specific::SGX>,
+    tcb: TcbComponents<SGXSpecificTcbComponentData>,
     tcbm: String,
     cert: PckCertValue,
 }
@@ -683,7 +676,7 @@ impl<V: VerificationType> PckCert<V> {
             .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
     }
 
-    fn valid_for_tcb(&self, comps: &TcbComponents<platform_specific::SGX>, pceid: u16) -> Result<(), Error> {
+    fn valid_for_tcb(&self, comps: &TcbComponents<SGXSpecificTcbComponentData>, pceid: u16) -> Result<(), Error> {
         let sgx_extension = self
             .sgx_extension()
             .map_err(|_| Error::InvalidPck("Failed to parse SGX extension".into()))?;
@@ -698,7 +691,7 @@ impl<V: VerificationType> PckCert<V> {
 
 #[derive(Default, Debug)]
 pub struct PlatformTCB {
-    pub tcb_components: TcbComponents<platform_specific::SGX>,
+    pub tcb_components: TcbComponents<SGXSpecificTcbComponentData>,
     pub cpusvn: CpuSvn,
 }
 
@@ -1320,7 +1313,7 @@ mod tests {
     #[test]
     fn tcb_level_partial_cmp() {
         let base_tcb = [10, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        let base = TcbComponents::<platform_specific::SGX>::from_raw(base_tcb, 40);
+        let base = TcbComponents::<SGXSpecificTcbComponentData>::from_raw(base_tcb, 40);
         let base = &base;
         let mut other = base.clone();
         assert_eq!(base.partial_cmp(&other), Some(Ordering::Equal));
@@ -1357,7 +1350,7 @@ mod tests {
     #[test]
     fn tcb_components_cpu_svn() {
         let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
-        let comp = TcbComponents::<platform_specific::SGX>::from_raw(raw_cpu_svn, 42);
+        let comp = TcbComponents::<SGXSpecificTcbComponentData>::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }
 
@@ -1385,7 +1378,7 @@ mod tests {
             .verify(&root_cas, None)
             .unwrap();
         let ext = pck_cert.sgx_extension().unwrap();
-        assert_eq!(ext.tcb.tcb_components, TcbComponents::<platform_specific::SGX>::from_raw(cpusvn, pcesvn));
+        assert_eq!(ext.tcb.tcb_components, TcbComponents::<SGXSpecificTcbComponentData>::from_raw(cpusvn, pcesvn));
         assert_eq!(ext.tcb.cpusvn, cpusvn);
         assert_eq!(ext.pceid, pceid);
     }

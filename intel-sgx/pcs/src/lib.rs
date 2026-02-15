@@ -206,9 +206,9 @@ impl TryFrom<&str> for DcapArtifactIssuer {
     }
 }
 
-pub trait VerificationType : Serialize {
-
-}
+/// A trait type to define a bound of a type that signifies a Verified or Unverified
+/// instance of a type.
+pub trait VerificationType : Serialize { }
 
 #[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct Verified;
@@ -220,6 +220,9 @@ pub struct Unverified;
 
 impl VerificationType for Unverified {}
 
+/// Our PCS library only allows object deserialization to the `Unverified` type since
+/// the verification has to be invoked explicitly by calling the respective `verify`
+/// function on the designated `Unverified` instance.
 impl<'de> Deserialize<'de> for Unverified {
     fn deserialize<D>(_: D) -> Result<Self, D::Error>
     where
