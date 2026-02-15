@@ -860,12 +860,10 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
             command_listener_local_addr.cid(),
             command_listener_local_addr.port()
         );
-        // This line is critical to ensure state keeps live otherwise it's moved into the future
-        let command_server_state = state.clone();
         let command_server_handle = tokio::spawn(async move {
             loop {
-                let state_for_conn = command_server_state.clone();
-                let accepted = command_server_state.command_listener.accept().await;
+                let state_for_conn = state.clone();
+                let accepted = state_for_conn.command_listener.accept().await;
                 let _ = tokio::spawn(async move {
                     let mut conn = match accepted {
                         Ok((stream, _addr)) => ClientConnection::new(stream),
