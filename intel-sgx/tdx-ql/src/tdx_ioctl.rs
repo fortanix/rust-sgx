@@ -8,7 +8,7 @@
 //! ioctl-based TDX attestation backend.
 
 use crate::{
-    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestErrorCode, TdxReport,
+    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestErrorCode, TdxReportV1,
 };
 
 const TDX_ATTEST_DEV_PATH: &str = "/dev/tdx_guest";
@@ -24,7 +24,7 @@ nix::ioctl_readwrite!(tdx_cmd_get_report, b'T', 1, TdxReportReq);
 /// Request a TDX Report of the calling TD via ioctl on `/dev/tdx_guest`.
 pub fn get_report(
     report_data: [u8; TDX_REPORT_DATA_SIZE],
-) -> Result<TdxReport, TdxAttestErrorCode> {
+) -> Result<TdxReportV1, TdxAttestErrorCode> {
     use std::os::fd::AsRawFd;
     let mut req = TdxReportReq {
         report_data,
@@ -39,7 +39,7 @@ pub fn get_report(
 
     unsafe { tdx_cmd_get_report(file.as_raw_fd(), &mut req) }
         .map_err(|_| TdxAttestErrorCode::ReportFailure)?;
-    Ok(TdxReport::try_copy_from(&req.td_report).expect("validated size"))
+    Ok(TdxReportV1::try_copy_from(&req.td_report).expect("validated size"))
 }
 
 #[repr(C)]

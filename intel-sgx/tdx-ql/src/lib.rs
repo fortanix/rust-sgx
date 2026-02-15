@@ -8,11 +8,13 @@
 #![doc = include_str!("../README.md")]
 
 use sgx_isa::tdx::TdxAttestErrorCode;
-pub use sgx_isa::tdx::{TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TdxReport};
+pub use sgx_isa::tdx::{TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TdxReport, TdxReportV1, TdxReportV2};
 
 pub mod tdx_ioctl;
 
+// TODO: Add TdxReportV2 support
 /// Request a TDX Report of the calling TD.
+/// Currently only support report with version number 0 or 1.
 ///
 /// The caller provides data intended to be cryptographically bound to the
 /// resulting report. This data does not need confidentiality protection.
@@ -25,7 +27,7 @@ pub mod tdx_ioctl;
 /// Propagates the underlying TDX attestation error code.
 pub fn get_tdx_report(
     report_data: [u8; TDX_REPORT_DATA_SIZE],
-) -> Result<TdxReport, TdxAttestErrorCode> {
+) -> Result<TdxReportV1, TdxAttestErrorCode> {
     tdx_ioctl::get_report(report_data)
 }
 

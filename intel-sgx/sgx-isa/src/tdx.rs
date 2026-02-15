@@ -7,6 +7,11 @@
 
 //! Constants and structures related to the Intel TDX.
 
+#[cfg(all(target_env = "sgx", not(feature = "sgxstd")))]
+use crate::arch;
+#[cfg(all(target_env = "sgx", feature = "sgxstd"))]
+use std::os::fortanix_sgx::arch;
+
 use core::fmt::Display;
 
 use crate::{slice, struct_def};
@@ -33,8 +38,9 @@ pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
 struct_def! {
     /// Rust definition of `REPORTTYPE` from `REPORTMACSTRUCT`.
     ///
-    /// Ref: Intel TDX Module ABI Specification, section 4.7.4.
-    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
+    /// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-4.
+    /// Version: 343754-002US, MAY 2021
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
     #[repr(C, align(4))]
     #[derive(Clone, Debug, Default, Eq, PartialEq)]
     pub struct TeeReportType {
@@ -64,8 +70,9 @@ pub const TDX_REPORT_MAC_STRUCT_RESERVED2_BYTES: usize = 32;
 struct_def! {
     /// Rust definition of `REPORTMACSTRUCT` from `TDREPORT_STRUCT`.
     ///
-    /// Ref: Intel TDX Module ABI Specification, section 4.7.3.
-    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
+    /// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-5.
+    /// Version: 343754-002US, MAY 2021
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
     #[repr(C, align(256))]
     #[cfg_attr(
         feature = "large_array_derive",
@@ -107,36 +114,235 @@ pub const TDX_REPORT_SIZE: usize = 1024;
 pub const TEE_TCB_INFO_SIZE: usize = 239;
 pub const TDX_REPORT_RESERVED_SIZE: usize = 17;
 pub const TEE_INFO_SIZE: usize = 512;
+pub const TDINFO_BASE_SIZE: usize = 448;
+pub const TDINFO_EXTENSION_V1_SIZE: usize = 64;
+pub const TDINFO_EXTENSION_V2_SIZE: usize = 320;
+pub const TDINFO_V1_SIZE: usize = TDINFO_BASE_SIZE + TDINFO_EXTENSION_V1_SIZE;
+pub const TDINFO_V2_SIZE: usize = TDINFO_BASE_SIZE + TDINFO_EXTENSION_V2_SIZE;
+pub const TEE_TCB_INFO_VALID_SIZE: usize = 8;
+pub const TEE_TCB_INFO_TEE_TCB_SVN_SIZE: usize = 16;
+pub const TEE_TCB_INFO_MR_SIZE: usize = 48;
+pub const TEE_TCB_INFO_ATTRIBUTES_SIZE: usize = 8;
+pub const TEE_TCB_INFO_RESERVED_SIZE: usize = 111;
+
+struct_def! {
+    /// Rust definition of `TEE_TCB_INFO` from `TDREPORT_STRUCT`.
+    ///
+    /// Ref: Intel® Trust Domain CPU Architectural Extensions, Table 2-3
+    /// Version: 343754-002US, MAY 2021
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
+    #[repr(C)]
+    #[cfg_attr(
+        feature = "large_array_derive",
+        derive(Clone, Debug, Eq, PartialEq)
+    )]
+    pub struct TeeTcbInfo {
+        /// (  0) Indicates TEE_TCB_INFO fields which are valid
+        /// - 1 in the i-th significant bit reflects that the 8 bytes starting at
+        /// offset (8 * i) are valid.
+        /// -  0 in the i-th significant bit reflects that either 8 bytes starting at
+        /// offset (8 * i) is not populated or reserved, and is set to zero.
+        pub valid: [u8; TEE_TCB_INFO_VALID_SIZE],
+        /// (  8) TEE_TCB_SVN array
+        pub tee_tcb_svn: [u8; TEE_TCB_INFO_TEE_TCB_SVN_SIZE],
+        /// ( 24) Measurement of the Intel TDX module
+        pub mrseam: [u8; TEE_TCB_INFO_MR_SIZE],
+        /// ( 72) Measurement of TDX module signer if valid
+        pub mrsigner_seam: [u8; TEE_TCB_INFO_MR_SIZE],
+        /// (120) Additional configuration ATTRIBUTES if valid
+        pub attributes: [u8; TEE_TCB_INFO_ATTRIBUTES_SIZE],
+        /// (128) Reserved, must be zero
+        pub reserved: [u8; TEE_TCB_INFO_RESERVED_SIZE],
+    }
+}
+
+impl TeeTcbInfo {
+    pub const UNPADDED_SIZE: usize = TEE_TCB_INFO_SIZE;
+}
+
+struct_def! {
+    /// Rust definition of `TDINFO_STRUCT` for REPORTTYPE.VERSION 0 or 1.
+    ///
+    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.49.
+    /// Version: Sep 2025, 348551-007US
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
+    #[repr(C, align(512))]
+    #[cfg_attr(
+        feature = "large_array_derive",
+        derive(Clone, Debug, Eq, PartialEq)
+    )]
+    pub struct TdInfoV1 {
+        /// (  0) Base TDINFO fields
+        pub base: [u8; TDINFO_BASE_SIZE],
+        /// (448) Reserved extension for REPORTTYPE.VERSION 0 or 1
+        pub extension: [u8; TDINFO_EXTENSION_V1_SIZE],
+    }
+}
+
+impl TdInfoV1 {
+    pub const UNPADDED_SIZE: usize = TDINFO_V1_SIZE;
+}
+
+struct_def! {
+    /// Rust definition of `TDINFO_STRUCT` for REPORTTYPE.VERSION 2.
+    ///
+    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.49.
+    /// Version: Sep 2025, 348551-007US
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
+    #[repr(C)]
+    #[cfg_attr(
+        feature = "large_array_derive",
+        derive(Clone, Debug, Eq, PartialEq)
+    )]
+    pub struct TdInfoV2 {
+        /// (  0) Base TDINFO fields
+        pub base: [u8; TDINFO_BASE_SIZE],
+        /// (448) Extension for REPORTTYPE.VERSION 2
+        pub extension: [u8; TDINFO_EXTENSION_V2_SIZE],
+    }
+}
+
+impl TdInfoV2 {
+    pub const UNPADDED_SIZE: usize = TDINFO_V2_SIZE;
+}
 
 struct_def! {
     /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
-    /// `TDG.MR.REPORT` is one variant of syscall `TDCALL`.
+    /// Total size of this variant is __1024__ bytes with `report_mac.report_type.version` equals __0 or 1__.
     ///
-    /// Ref: Intel TDX Module ABI Specification, section 4.7.2.
-    /// Link to latest version (Sep 2025): https://cdrdv2.intel.com/v1/dl/getContent/733579
+    /// Note: `TDG.MR.REPORT` is one variant of syscall `TDCALL`.
+    ///
+    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.45.
+    /// Version: Sep 2025, 348551-007US
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
     #[repr(C, align(1024))]
     #[cfg_attr(
         feature = "large_array_derive",
         derive(Clone, Debug, Eq, PartialEq)
     )]
-    pub struct TdxReport {
+    pub struct TdxReportV1 {
         /// (  0) Report mac struct for SGX report type 2
         pub report_mac: TdxReportMac,
         /// (256) Struct contains details about extra TCB elements not found in CPUSVN
-        pub tee_tcb_info: [u8; TEE_TCB_INFO_SIZE],
+        pub tee_tcb_info: TeeTcbInfo,
         /// (495) Reserved, must be zero
         pub reserved: [u8; TDX_REPORT_RESERVED_SIZE],
-        /// (512) Struct contains the TEE Info
-        pub tee_info: [u8; TEE_INFO_SIZE],
+        /// (512) Structure containing the TD’s attestable properties.
+        pub td_info: TdInfoV1,
     }
 }
 
-impl TdxReport {
+impl TdxReportV1 {
     pub const UNPADDED_SIZE: usize = 1024;
 
     #[cfg(target_env = "sgx")]
     pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
         Ok(tdx_arch::everifyreport2(self.report_mac.as_ref())?)
+    }
+}
+
+struct_def! {
+    /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
+    /// Total size of this variant is __1280__ bytes with `report_mac.report_type.version` equals __2__.
+    ///
+    /// Note: `TDG.MR.REPORT` is one variant of syscall `TDCALL`.
+    ///
+    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.45.
+    /// Version: Sep 2025, 348551-007US
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
+    #[repr(C)]
+    #[cfg_attr(
+        feature = "large_array_derive",
+        derive(Clone, Debug, Eq, PartialEq)
+    )]
+    pub struct TdxReportV2 {
+        /// (  0) Report mac struct for SGX report type 2
+        pub report_mac: TdxReportMac,
+        /// (256) Struct contains details about extra TCB elements not found in CPUSVN
+        pub tee_tcb_info: TeeTcbInfo,
+        /// (495) Reserved, must be zero
+        pub reserved: [u8; TDX_REPORT_RESERVED_SIZE],
+        /// (512) Structure containing the TD’s attestable properties.
+        pub td_info: TdInfoV2,
+    }
+}
+
+impl TdxReportV2 {
+    pub const UNPADDED_SIZE: usize = 1280;
+
+    #[cfg(target_env = "sgx")]
+    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
+        Ok(tdx_arch::everifyreport2(self.report_mac.as_ref())?)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TdxReport {
+    V1(TdxReportV1),
+    V2(TdxReportV2),
+}
+
+impl AsRef<[u8]> for TdxReport {
+    fn as_ref(&self) -> &[u8] {
+        match self {
+            TdxReport::V1(tdx_report_v1) => tdx_report_v1.as_ref(),
+            TdxReport::V2(tdx_report_v2) => tdx_report_v2.as_ref(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TdxError {
+    /// Given bytes is not supported, currently only 1024 and 1280 is supported.
+    UnsupportedSize,
+    /// The report's `report_mac.report_type.version` number is inconsistent with its size.
+    InconsistentReportVersion,
+    /// TDX attestation error
+    ErrorCode(TdxAttestErrorCode),
+}
+
+impl Display for TdxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TdxError::UnsupportedSize => f.write_str("Unsupported size of bytes for a TDX report"),
+            TdxError::InconsistentReportVersion => {
+                f.write_str("TDX report size does not match its version number")
+            }
+            TdxError::ErrorCode(err) => write!(f, "TdxAttestErrorCode: {}", err),
+        }
+    }
+}
+
+#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
+impl std::error::Error for TdxError {}
+
+impl TdxReport {
+    pub fn try_copy_from(src: &[u8]) -> Result<Self, TdxError> {
+        match src.len() {
+            TdxReportV1::UNPADDED_SIZE => {
+                let report = TdxReportV1::try_copy_from(src).expect("verified");
+                match report.report_mac.report_type.version {
+                    0 | 1 => Ok(Self::V1(report)),
+                    _ => Err(TdxError::InconsistentReportVersion),
+                }
+            }
+            TdxReportV2::UNPADDED_SIZE => {
+                let report = TdxReportV2::try_copy_from(src).expect("verified");
+                match report.report_mac.report_type.version {
+                    2 => Ok(Self::V2(report)),
+                    _ => Err(TdxError::InconsistentReportVersion),
+                }
+            }
+            _ => Err(TdxError::UnsupportedSize),
+        }
+    }
+
+    #[cfg(target_env = "sgx")]
+    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
+        match self {
+            TdxReport::V1(tdx_report_v1) => tdx_report_v1.verify(),
+            TdxReport::V2(tdx_report_v2) => tdx_report_v2.verify(),
+        }
     }
 }
 
@@ -203,9 +409,10 @@ impl Display for TdxAttestErrorCode {
 #[cfg(not(feature = "large_array_derive"))]
 mod debug_impl {
     use super::*;
+    use core::fmt::{Debug, Formatter, Result};
 
-    impl ::core::fmt::Debug for TdxReportMac {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    impl Debug for TdxReportMac {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
             f.debug_struct("TdxReportMac")
                 .field("report_type", &self.report_type)
                 .field("reserved1", &self.reserved1)
@@ -219,13 +426,55 @@ mod debug_impl {
         }
     }
 
-    impl ::core::fmt::Debug for TdxReport {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    impl Debug for TdxReportV1 {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
             f.debug_struct("TdxReport")
                 .field("report_mac", &self.report_mac)
                 .field("tee_tcb_info", &self.tee_tcb_info)
                 .field("reserved", &self.reserved)
-                .field("tee_info", &self.tee_info)
+                .field("tee_info", &self.td_info)
+                .finish()
+        }
+    }
+
+    impl Debug for TdxReportV2 {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+            f.debug_struct("TdxReport")
+                .field("report_mac", &self.report_mac)
+                .field("tee_tcb_info", &self.tee_tcb_info)
+                .field("reserved", &self.reserved)
+                .field("tee_info", &self.td_info)
+                .finish()
+        }
+    }
+
+    impl Debug for TeeTcbInfo {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+            f.debug_struct("TeeTcbInfo")
+                .field("valid", &self.valid)
+                .field("tee_tcb_svn", &self.tee_tcb_svn)
+                .field("mrseam", &self.mrseam)
+                .field("mrsigner_seam", &self.mrsigner_seam)
+                .field("attributes", &self.attributes)
+                .field("reserved", &self.reserved)
+                .finish()
+        }
+    }
+
+    impl Debug for TdInfoV1 {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+            f.debug_struct("TdInfoV1")
+                .field("base", &self.base)
+                .field("extension", &self.extension)
+                .finish()
+        }
+    }
+
+    impl Debug for TdInfoV2 {
+        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+            f.debug_struct("TdInfoV1")
+                .field("base", &self.base)
+                .field("extension", &self.extension)
                 .finish()
         }
     }
