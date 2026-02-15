@@ -37,6 +37,7 @@ members = [
     "intel-sgx/sgxs-loaders",
     "intel-sgx/sgxs-tools",
     "intel-sgx/sgxs",
+    "intel-sgx/tdx-ql",
     "ipc-queue",
     "rs-libc",
 ]

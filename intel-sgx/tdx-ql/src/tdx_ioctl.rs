@@ -1,0 +1,91 @@
+/* Copyright (c) Fortanix, Inc.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+***/
+
+//! ioctl-based TDX attestation backend.
+
+use nix::errno::Errno;
+
+use crate::{
+    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestErrorCode,
+    TdxReportV1,
+};
+
+const TDX_ATTEST_DEV_PATH: &str = "/dev/tdx_guest";
+
+#[repr(C)]
+struct TdxReportReq {
+    report_data: [u8; TDX_REPORT_DATA_SIZE],
+    td_report: [u8; TDX_REPORT_SIZE],
+}
+
+nix::ioctl_readwrite!(tdx_cmd_get_report, b'T', 1, TdxReportReq);
+
+/// Request a TDX Report of calling TD via ioctl on `/dev/tdx_guest`.
+/// This function only able to provide a report with version number 0.
+///
+/// Note: Linux kernel currently only support version 0, see <https://docs.kernel.org/virt/coco/tdx-guest.html>
+pub fn get_report(
+    report_data: [u8; TDX_REPORT_DATA_SIZE],
+) -> Result<TdxReportV1, TdxAttestErrorCode> {
+    use std::os::fd::AsRawFd;
+    let mut req = TdxReportReq {
+        report_data,
+        td_report: [0u8; TDX_REPORT_SIZE],
+    };
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(TDX_ATTEST_DEV_PATH)
+        .map_err(|_| TdxAttestErrorCode::DeviceFailure)?;
+
+    unsafe { tdx_cmd_get_report(file.as_raw_fd(), &mut req) }
+        .map_err(|_| TdxAttestErrorCode::ReportFailure)?;
+    Ok(TdxReportV1::try_copy_from(&req.td_report).expect("validated size"))
+}
+
+#[repr(C)]
+struct TdxExtendRtmrReq {
+    data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
+    index: u8,
+}
+
+nix::ioctl_write_ptr!(tdx_cmd_extend_rtmr, b'T', 3, TdxExtendRtmrReq);
+
+/// Extend one of the TDX runtime measurement registers (RTMRs) via ioctl on `/dev/tdx_guest`.
+pub fn extend_rtmr(
+    rtmr_index: u64,
+    extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
+) -> Result<(), TdxAttestErrorCode> {
+    let rtmr_index = match rtmr_index {
+        2..=3 => rtmr_index as u8,
+        _ => return Err(TdxAttestErrorCode::InvalidRtmrIndex),
+    };
+
+    use std::os::fd::AsRawFd;
+    let mut req = TdxExtendRtmrReq {
+        data: extend_data,
+        index: rtmr_index,
+    };
+
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(TDX_ATTEST_DEV_PATH)
+        .map_err(|_| TdxAttestErrorCode::DeviceFailure)?;
+
+    unsafe { tdx_cmd_extend_rtmr(file.as_raw_fd(), &mut req) }.map_err(|errno| match errno {
+        Errno::EINVAL => TdxAttestErrorCode::InvalidRtmrIndex,
+        Errno::ENXIO => TdxAttestErrorCode::DeviceFailure,
+        Errno::EBUSY => TdxAttestErrorCode::Busy,
+        Errno::ENOTTY => TdxAttestErrorCode::NotSupported,
+        Errno::ENOMEM => TdxAttestErrorCode::OutOfMemory,
+        _ => TdxAttestErrorCode::ExtendFailure,
+    })?;
+
+    Ok(())
+}
