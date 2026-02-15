@@ -13,27 +13,48 @@ use serde::de::DeserializeOwned;
 
 use crate::Error;
 
-/// Write given object in json to given filename under given dir (override existing file).
-pub fn write_to_file<T: serde::ser::Serialize>(obj: &T, dir: &str, filename: &str) -> Result<(), Error> {
-    let path = Path::new(dir);
-    let path = path.join(filename);
-    write_to_path(&path, obj)
+///Additional parameters to be passed to the IO write related function.
+pub struct WriteOptions {
+    no_overwrite: bool,
 }
 
-/// Write given object in json to given filename under given dir if file is not exist.
-///
-/// - Returns `Ok(None)` if file already exist.
-/// - Returns `Ok(Some(filename))` if succeed to write to new file.
-pub fn write_to_file_if_not_exist<T: serde::ser::Serialize>(
-    obj: &T,
-    dir: &str,
-    filename: &str,
-) -> Result<Option<PathBuf>, Error> {
+///Builds [WriteOptions] instance
+pub struct WriteOptionsBuilder {
+    no_overwrite: bool,
+}
+
+impl WriteOptionsBuilder {
+    /// Instantiate a new [WriteOptionsBuilder] instance.
+    pub fn new() -> Self {
+        Self {
+            no_overwrite: false
+        }
+    }
+
+    ///Prevent the write operation to overwrite existing file.
+    pub fn disallow_overwrite(mut self) -> Self {
+        self.no_overwrite = true;
+        self
+    }
+
+    ///Instantiate the WriteOptions instance based on the current state of the builder.
+    pub fn build(self) -> WriteOptions {
+        WriteOptions {
+            no_overwrite : self.no_overwrite,
+        }
+    }
+}
+
+/// Write the serializable object `obj` into JSON on a given path `dir`/`filename`. See [WriteOptionsBuilder]
+/// to specify the parameters for file writing operations.
+pub fn write_to_file<T: serde::ser::Serialize>(obj: &T, dir: &str, filename: &str, options: WriteOptions) -> Result<Option<PathBuf>, Error> {
     let path = Path::new(dir);
     let path = path.join(filename);
-    if path.exists() {
-        return Ok(None);
+
+    if options.no_overwrite && path.exists() {
+        return Ok(None)
     }
+
     write_to_path(&path, obj)?;
     Ok(Some(path))
 }
@@ -45,6 +66,7 @@ fn write_to_path<T: serde::ser::Serialize>(path: &PathBuf, obj: &T) -> Result<()
         .map_err(|e| Error::IoError(e))
 }
 
+///Function to read a deserializable object from JSON file from a given path `dir`/`filename`.
 pub fn read_from_file<T: DeserializeOwned>(dir: &str, filename: impl AsRef<Path>) -> Result<T, Error> {
     let path = Path::new(dir);
     let path = path.join(filename);
@@ -102,7 +124,7 @@ mod tests {
     #[test]
     fn test_all_files() {
         use std::{collections::HashSet, ffi::OsString};
-        
+
         let a: HashSet<_> = Result::unwrap(super::all_files("./tests/data/read-dir-test", "prefix", ".ext").map(|i| i.map(|entry| entry.file_name()) ).collect());
         let b: HashSet<_> = <_>::into_iter(["prefix-1.ext", "prefix-2.ext", "prefix-3.ext", "prefix.ext"]).map(|i| OsString::from(i)).collect();
         assert_eq!(a, b);

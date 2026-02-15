@@ -11,11 +11,11 @@
 //! <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
 
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, QeId, QeIdentitySigned, TcbInfo,
-    Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
@@ -51,11 +51,14 @@ impl PccsProvisioningClientBuilder {
         let pck_certs = PckCertsApiNotSupported;
         let pck_cert = PckCertApi::new(self.base_url.clone(), self.api_version);
         let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
-        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version);
-        let tcbinfo = TcbInfoApi::new(self.base_url.clone(), self.api_version);
-        let evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version.clone());
+        let sgx_tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
+        let tdx_tcbinfo = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
+        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, tcbinfo, evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
 }
 
@@ -254,21 +257,23 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi {
+pub struct TcbInfoApi<T> {
     base_url: Cow<'static, str>,
     api_version: PcsVersion,
+    type_: PhantomData<T>
 }
 
-impl TcbInfoApi {
+impl<T: PlatformType> TcbInfoApi<T> {
     pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
         TcbInfoApi {
             base_url,
             api_version,
+            type_: PhantomData
         }
     }
 }
 
-impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -285,9 +290,9 @@ impl<'inp> TcbInfoService<'inp> for TcbInfoApi {
 /// Implementation of Get TCB Info API (section 3.3 of [reference]).
 ///
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for TcbInfoApi {
+impl<'inp, T: PlatformTypeForTcbInfo> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo;
+    type Output = TcbInfo<T>;
 
     fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
@@ -435,8 +440,7 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        EnclaveIdentity, Fmspc, PckID, Platform, RawTcbEvaluationDataNumbers,
-        TcbEvaluationDataNumbers,
+        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
     };
 
     use super::Client;
@@ -590,7 +594,7 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
+                let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
                 let tcb_data = tcb_info.data().unwrap();
 
                 let selected = pckcerts
@@ -627,8 +631,8 @@ mod tests {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
 
                 assert!(client
-                    .tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| { Ok(tcb.store(OUTPUT_TEST_DIR).unwrap()) })
+                    .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
+                    .and_then(|tcb| { Ok(tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
         }
@@ -648,7 +652,7 @@ mod tests {
             let fmspc = pckcerts.fmspc().unwrap();
 
             let evaluation_data_numbers = client
-                .tcb_evaluation_data_numbers()
+                .sgx_tcb_evaluation_data_numbers()
                 .unwrap()
                 .evaluation_data_numbers()
                 .unwrap();
@@ -663,7 +667,7 @@ mod tests {
                 if number.number() < 18 {
                     continue;
                 }
-                let tcb = match client.tcbinfo(&fmspc, Some(number.number())) {
+                let tcb = match client.sgx_tcbinfo(&fmspc, Some(number.number())) {
                     Ok(tcb) => tcb,
                     // API query with update="standard" will return QE Identity with TCB Evaluation Data Number M.
                     // A 410 Gone response is returned when the inputted TCB Evaluation Data Number is < M,
@@ -671,7 +675,7 @@ mod tests {
                     Err(super::Error::PCSError(status_code, _)) if status_code == super::StatusCode::Gone => continue,
                     res @Err(_) => res.unwrap(),
                 };
-                tcb.store(OUTPUT_TEST_DIR).unwrap();
+                tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap();
             }
         }
     }
@@ -687,18 +691,18 @@ mod tests {
             {
                 let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
-                let tcb_info = client.tcbinfo(&fmspc, None).unwrap();
+                let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
-                    let mut cache = client.tcbinfo_service.cache.lock().unwrap();
+                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
 
                     assert!(cache.len() > 0);
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
                         let input = client
-                            .tcbinfo_service
+                            .sgx_tcbinfo_service
                             .pcs_service()
                             .build_input(&fmspc, None);
                         input.hash(&mut hasher);
@@ -713,7 +717,7 @@ mod tests {
                 }
 
                 // Second service call should return value from cache
-                let tcb_info_from_service = client.tcbinfo(&fmspc, None).unwrap();
+                let tcb_info_from_service = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 assert_eq!(tcb_info, tcb_info_from_service);
             }
@@ -726,11 +730,11 @@ mod tests {
             let client = make_client(api_version);
             assert!(client
                 .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
-                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()))
                 .is_ok());
             assert!(client
                 .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
-                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR).unwrap()))
+                .and_then(|crl| Ok(crl.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()))
                 .is_ok());
         }
     }
@@ -779,7 +783,7 @@ mod tests {
             let client = make_client(api_version);
             let qe_id = client.qe_identity(None);
             assert!(qe_id.is_ok());
-            assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR).is_ok());
+            assert!(qe_id.unwrap().write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).is_ok());
         }
     }
 
@@ -822,7 +826,7 @@ mod tests {
             let client = make_client(api_version);
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
         }
     }
 
@@ -831,16 +835,16 @@ mod tests {
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         let client = make_client(PcsVersion::V4);
-        let eval_numbers = client.tcb_evaluation_data_numbers().unwrap();
+        let eval_numbers = client.sgx_tcb_evaluation_data_numbers().unwrap();
 
         let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
-            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers>(&v))
+            .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers<platform::SGX>>(&v))
             .unwrap();
         assert_eq!(eval_numbers, eval_numbers2);
 
         let fmspc = Fmspc::try_from("90806f000000").unwrap();
-        let eval_numbers: TcbEvaluationDataNumbers =
-            eval_numbers.verify(&root_cas, Platform::SGX).unwrap();
+        let eval_numbers: TcbEvaluationDataNumbers<platform::SGX> =
+            eval_numbers.verify(&root_cas).unwrap();
         for number in eval_numbers.numbers().map(|n| n.number()) {
             // TODO(#811): Since PCCS is cache service and not able to cache the
             // `Gone` response mentioned below from Intel PCS, We need to change
@@ -865,9 +869,9 @@ mod tests {
             assert_eq!(verified_qe_id.tcb_evaluation_data_number(), u64::from(number));
 
             let tcb_info = client
-                    .tcbinfo(&fmspc, Some(number))
+                    .sgx_tcbinfo(&fmspc, Some(number))
                     .unwrap()
-                    .verify(&root_cas, Platform::SGX, 2)
+                    .verify(&root_cas, 2)
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
