@@ -7,6 +7,8 @@
 
 //! ioctl-based TDX attestation backend.
 
+use nix::errno::Errno;
+
 use crate::{
     TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, TdxAttestErrorCode,
     TdxReportV1,
@@ -77,7 +79,11 @@ pub fn extend_rtmr(
         .map_err(|_| TdxAttestErrorCode::DeviceFailure)?;
 
     unsafe { tdx_cmd_extend_rtmr(file.as_raw_fd(), &mut req) }.map_err(|errno| match errno {
-        nix::errno::Errno::EINVAL => TdxAttestErrorCode::InvalidRtmrIndex,
+        Errno::EINVAL => TdxAttestErrorCode::InvalidRtmrIndex,
+        Errno::ENXIO => TdxAttestErrorCode::DeviceFailure,
+        Errno::EBUSY => TdxAttestErrorCode::Busy,
+        Errno::ENOTTY => TdxAttestErrorCode::NotSupported,
+        Errno::ENOMEM => TdxAttestErrorCode::OutOfMemory,
         _ => TdxAttestErrorCode::ExtendFailure,
     })?;
 
