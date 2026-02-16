@@ -1,6 +1,9 @@
 use chrono::{DateTime, Duration, Utc};
-use crate::{io, Error, Fmspc, Platform, pckcrt::TcbComponents, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus, Unverified, VerificationType, Verified};
-use serde::{Deserialize, Deserializer, Serialize};
+use crate::{
+    Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus,
+    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents
+};
+use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -13,74 +16,42 @@ use {
 };
 
 /// Implementation of the TcbEvaluationDataNumbers model
-/// <https://api.portal.grustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
-#[derive(Clone, Debug)]
-pub struct TcbEvaluationDataNumbers<V: VerificationType = Verified> {
+/// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcbEvaluationDataNumbers<T: PlatformTypeForTcbInfo, V: VerificationType = Verified> {
     #[allow(unused)]
-    id: Platform,
+    #[serde(deserialize_with = "crate::deserialize_platform_id")]
+    id: T,
     #[allow(unused)]
     version: u16,
     #[allow(unused)]
+    #[serde(with = "crate::iso8601")]
     issue_date: DateTime<Utc>,
     #[allow(unused)]
+    #[serde(with = "crate::iso8601")]
     next_update: DateTime<Utc>,
     #[allow(unused)]
     tcb_eval_numbers: Vec<TcbEvalNumber>,
-    type_: PhantomData<V>,
+    _type: V,
 }
 
-impl<'de> Deserialize<'de> for TcbEvaluationDataNumbers<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbEvaluationDataNumbers<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            #[serde(default = "crate::sgx_platform")]
-            id: Platform,
-            version: u16,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            tcb_eval_numbers: Vec<TcbEvalNumber>
-        }
-
-        let Dummy {
-            id,
-            version,
-            issue_date,
-            next_update,
-            tcb_eval_numbers,
-        } = Dummy::deserialize(deserializer)?;
-        Ok(TcbEvaluationDataNumbers {
-            id,
-            version,
-            issue_date,
-            next_update,
-            tcb_eval_numbers,
-            type_: PhantomData,
-        })
-    }
-}
-
-impl<V: VerificationType> TcbEvaluationDataNumbers<V> {
+impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbEvaluationDataNumbers<T, V> {
     pub fn numbers(&self) -> Iter<'_, TcbEvalNumber> {
         self.tcb_eval_numbers.iter()
     }
 }
 
-impl TcbEvaluationDataNumbers<Unverified> {
+impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbers<T, Unverified> {
     /// Given a particular TCB level, select the best available TCB eval number.
     /// That is the one that gives the most favorable TCB status, and the higher
     /// one if there's a tie.
-    pub fn select_best(input_dir: &str, fmspc: &Fmspc, tcb_components: &TcbComponents, qesvn: u16) -> Result<TcbEvalNumber, Error> {
-        let evalnums = RawTcbEvaluationDataNumbers::read_from_file(input_dir)?.evaluation_data_numbers()?;
+    pub fn select_best(input_dir: &str, fmspc: &Fmspc, tcb_components: &TcbComponents<T::PlatformSpecificTcbComponentData>, qesvn: u16) -> Result<TcbEvalNumber, Error> {
+        let evalnums = RawTcbEvaluationDataNumbers::<T>::read_from_file(input_dir)?.evaluation_data_numbers()?;
         let mut tcb_levels: std::collections::HashMap<_, _> = evalnums.numbers().map(|num| (num.number as u64, (num, None, None))).collect();
 
-        for tcbinfo in TcbInfo::read_all(input_dir, fmspc) {
-            let tcb_data = TcbData::parse(tcbinfo?.raw_tcb_info())?;
+        for tcbinfo in TcbInfo::<T>::read_all(input_dir, fmspc) {
+            let tcb_data: TcbData<T, Unverified> = TcbData::parse(tcbinfo?.raw_tcb_info())?;
             if let Some(level) = tcb_data.tcb_levels()
                 .iter()
                 .find(|level| level.tcb <= *tcb_components)
@@ -175,25 +146,29 @@ impl TcbEvalNumber {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct RawTcbEvaluationDataNumbers {
+pub struct RawTcbEvaluationDataNumbers<T> {
     raw_tcb_evaluation_data_numbers: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    #[serde(skip)]
+    platform_: PhantomData<T>,
 }
 
-impl RawTcbEvaluationDataNumbers {
-    const DEFAULT_FILENAME: &'static str = "tcb_evaluation_data_numbers.numbers";
+impl<T: PlatformTypeForTcbInfo> RawTcbEvaluationDataNumbers<T> {
+    const DEFAULT_FILENAME: &'static str = "tcb_evaluation_data_numbers";
+    const FILENAME_EXTENSION: &'static str = ".numbers";
 
     pub fn new(raw_tcb_evaluation_data_numbers: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
         RawTcbEvaluationDataNumbers {
             raw_tcb_evaluation_data_numbers,
             signature,
             ca_chain,
+            platform_: PhantomData,
         }
     }
 
     pub fn filename() -> String {
-        Self::DEFAULT_FILENAME.into()
+        format!("{}{}{}", Self::DEFAULT_FILENAME, T::extra_extension(), Self::FILENAME_EXTENSION)
     }
 
     pub fn parse(body: &String, ca_chain: Vec<String>) -> Result<Self, Error> {
@@ -223,34 +198,31 @@ impl RawTcbEvaluationDataNumbers {
         &self.ca_chain
     }
 
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
-        io::write_to_file(&self, output_dir, Self::DEFAULT_FILENAME)?;
-        Ok(Self::DEFAULT_FILENAME.to_string())
-    }
-
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        io::write_to_file_if_not_exist(&self, output_dir, Self::DEFAULT_FILENAME)
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+        let filename = Self::filename();
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn read_from_file(input_dir: &str) -> Result<Self, Error> {
-        let identity: Self = io::read_from_file(input_dir, Self::DEFAULT_FILENAME)?;
-        Ok(identity)
+        let filename = Self::filename();
+        let numbers: Self = io::read_from_file(input_dir, &filename)?;
+        Ok(numbers)
     }
 
     /// Returns the TCB evaluation data numbers present. Warning: These values should not
     /// be trusted as there is no guarantee the RawTcbEvaluationDataNumbers is valid. If this
     /// result must be trustworthy, you need to call `verify`
-    pub fn evaluation_data_numbers(&self) -> Result<TcbEvaluationDataNumbers<Unverified>, Error> {
+    pub fn evaluation_data_numbers(&self) -> Result<TcbEvaluationDataNumbers<T, Unverified>, Error> {
         serde_json::from_str(&self.raw_tcb_evaluation_data_numbers).map_err(|e| Error::ParseError(e))
     }
 
     #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform) -> Result<TcbEvaluationDataNumbers, Error> {
-        self.verify_ex(trusted_root_certs, platform, &Utc::now())
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B]) -> Result<TcbEvaluationDataNumbers<T>, Error> {
+        self.verify_ex(trusted_root_certs, &Utc::now())
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, now: &DateTime<Utc>) -> Result<TcbEvaluationDataNumbers, Error> {
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], now: &DateTime<Utc>) -> Result<TcbEvaluationDataNumbers<T>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -285,7 +257,7 @@ impl RawTcbEvaluationDataNumbers {
 
         crate::check_root_ca(trusted_root_certs, &root_list)?;
 
-        let TcbEvaluationDataNumbers::<Unverified> {
+        let TcbEvaluationDataNumbers::<T, Unverified> {
             id,
             version,
             issue_date,
@@ -298,10 +270,6 @@ impl RawTcbEvaluationDataNumbers {
             return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers version 1 expected, got {version}")));
         }
 
-        if id != platform {
-            return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid for {id}, expected one for {platform}")));
-        }
-
         if *now < issue_date {
             return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid from {issue_date}")));
         }
@@ -309,13 +277,13 @@ impl RawTcbEvaluationDataNumbers {
             return Err(Error::InvalidTcbEvaluationDataNumbers(format!("TCB Evaluation Data Numbers only valid upto {next_update}")));
         }
 
-        Ok(TcbEvaluationDataNumbers::<Verified> {
+        Ok(TcbEvaluationDataNumbers::<T, Verified> {
             id,
             version,
             issue_date,
             next_update,
             tcb_eval_numbers,
-            type_: PhantomData,
+            _type: Verified,
         })
     }
 }
@@ -338,7 +306,7 @@ impl TcbPolicy {
         *tcb_eval.tcb_recovery_event_date() + self.grace_period <= *now
     }
 
-    fn minimum_tcb_evaluation_data_number_ex<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
+    fn minimum_tcb_evaluation_data_number_ex<T: PlatformTypeForTcbInfo, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>, now: &DateTime<Utc>) -> Option<TcbEvalNumber> {
         // We need the highest TCB Eval Data Number that needs to be enforced
         tcb_eval.numbers()
             .filter(|number| self.needs_to_be_enforced(number, now))
@@ -346,7 +314,7 @@ impl TcbPolicy {
             .cloned()
     }
 
-    pub fn minimum_tcb_evaluation_data_number<V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<V>) -> Option<TcbEvalNumber> {
+    pub fn minimum_tcb_evaluation_data_number<T: PlatformTypeForTcbInfo, V: VerificationType>(&self, tcb_eval: &TcbEvaluationDataNumbers<T, V>) -> Option<TcbEvalNumber> {
         self.minimum_tcb_evaluation_data_number_ex(tcb_eval, &Utc::now())
     }
 }
@@ -356,35 +324,33 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     use {
         super::TcbEvaluationDataNumbers,
-        crate::{Error, Unverified}
+        crate::{Error, Unverified, platform}
     };
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber};
-    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
-    use crate::Platform;
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use chrono::{Duration, TimeZone, Utc};
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
-    fn parse_tcb_evaluation_data_numbers() {
-        let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
+    fn parse_sgx_tcb_evaluation_data_numbers() {
+        let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
+        numbers.verify_ex(&root_certificates, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
     }
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn parse_tcb_evaluation_data_numbers_incorrect_signature() {
-        let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
+        let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert").to_owned();
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, Platform::SGX, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
+        numbers.verify_ex(&root_certificates, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
 
         let mut corrupted = numbers.clone();
         corrupted.signature[10] = 0x66;
-        if let Err(Error::UntrustworthyTcbEvaluationDataNumber(_s)) = corrupted.verify(&root_certificates, Platform::SGX) {
+        if let Err(Error::UntrustworthyTcbEvaluationDataNumber(_s)) = corrupted.verify(&root_certificates) {
             ();
         } else {
             assert!(false);
@@ -416,8 +382,8 @@ mod tests {
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     #[test]
     fn minimum_tcb_evaluation_data_number() {
-        let numbers = RawTcbEvaluationDataNumbers::read_from_file("./tests/data").unwrap();
-        let numbers: TcbEvaluationDataNumbers<Unverified> = serde_json::from_str(numbers.raw_tcb_evaluation_data_numbers()).unwrap();
+        let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
+        let numbers: TcbEvaluationDataNumbers<platform::SGX, Unverified> = serde_json::from_str(numbers.raw_tcb_evaluation_data_numbers()).unwrap();
 
         let april_8_2025 = Utc.with_ymd_and_hms(2025, 4, 8, 0, 0, 0).unwrap();
         let march_12_2024 = Utc.with_ymd_and_hms(2024, 3, 12, 0, 0, 0).unwrap();
@@ -447,31 +413,31 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     #[test]
     fn select_best() {
-        use crate::pckcrt::TcbComponents;
-        fn select(tcb_components: &TcbComponents, qesvn: u16) -> Result<u16, Error> {
+        use crate::pckcrt::{TcbComponents, SGXSpecificTcbComponentData};
+        fn select(tcb_components: &TcbComponents<SGXSpecificTcbComponentData>, qesvn: u16) -> Result<u16, Error> {
             use std::convert::TryInto;
-            TcbEvaluationDataNumbers::<Unverified>::select_best("./tests/data/eval-num-select-best", &"00606a000000".try_into().unwrap(), tcb_components, qesvn)
+            TcbEvaluationDataNumbers::<platform::SGX, Unverified>::select_best("./tests/data/eval-num-select-best", &"00606a000000".try_into().unwrap(), tcb_components, qesvn)
                 .map(|num| num.number)
         }
         // platform and QE are nonsensical: just choose highest
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 0).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([0; 16], 0), 0).unwrap(), 19);
         // platform is nonsensical: choose eval nums based on QE up-to-date
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 8).unwrap(), 19);
-        assert_eq!(select(&TcbComponents::from_raw([0; 16], 0), 6).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([0; 16], 0), 8).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([0; 16], 0), 6).unwrap(), 8);
         // QE is nonsensical: choose eval nums based on platform up-to-date
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 19);
-        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 18);
-        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 17);
-        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 14);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 0).unwrap(), 14);
         // platform and QE are fully up to date: choose highest
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 19);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 19);
         // QE is up to date: choose up-to-date eval nums based on platform
-        assert_eq!(select(&TcbComponents::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 18);
-        assert_eq!(select(&TcbComponents::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 17);
-        assert_eq!(select(&TcbComponents::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([15, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 18);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([14, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 17);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([7, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 8).unwrap(), 8);
         // platform is up to date: choose up-to-date eval nums based on QE
-        assert_eq!(select(&TcbComponents::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 6).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([16, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 6).unwrap(), 8);
         // neither platform and QE are up to date: choose highest eval nums where they were both up to date
-        assert_eq!(select(&TcbComponents::from_raw([4, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 5).unwrap(), 8);
+        assert_eq!(select(&TcbComponents::<SGXSpecificTcbComponentData>::from_raw([4, 16, 3, 3, 255, 255, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 13), 5).unwrap(), 8);
     }
 }

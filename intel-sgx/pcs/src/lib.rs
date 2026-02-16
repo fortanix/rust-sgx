@@ -13,7 +13,7 @@ extern crate yasna;
 extern crate quick_error;
 
 use std::convert::TryFrom;
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self};
 
 use serde::de::{self};
 use serde::{Deserialize, Deserializer, Serialize};
@@ -28,10 +28,11 @@ use {
 };
 
 pub use crate::pckcrl::PckCrl;
-pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponent};
+pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponentType};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel};
+pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
+pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 
 mod io;
 mod iso8601;
@@ -49,25 +50,45 @@ pub type PceIsvsvn = u16;
 pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub enum Platform {
-    SGX,
-    TDX,
+///Global trait that specify the required interface for typesafe enumeration of platforms.
+pub trait PlatformType : Clone + Default {
+    fn platform_id() -> &'static str;
 }
 
-impl Display for Platform {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Platform::SGX => write!(f, "SGX"),
-            Platform::TDX => write!(f, "TDX"),
-        }
+///Function to attempt deserialize [PlatformType] instance based on the [PlatformType::platform_id] value.
+pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformType>(deserializer: D) -> Result<T, D::Error> {
+    let platform_str = String::deserialize(deserializer)?;
+    if platform_str == T::platform_id() {
+        Ok(T::default())
+    } else {
+        Err(serde::de::Error::custom(format!("invalid platform id: {platform_str}, expected {}", T::platform_id())))
     }
 }
 
-fn sgx_platform() -> Platform {
-    Platform::SGX
-}
+///This module acts as a namespace that provides typesafe enumeration of platforms.
+pub mod platform {
+    use serde::{Serialize, Deserialize};
 
+    ///Identifier type for Intel SGX platform.
+    #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
+    pub struct SGX;
+
+    impl super::PlatformType for SGX {
+        fn platform_id() -> &'static str {
+            "SGX"
+        }
+    }
+
+    ///Identifier type for Intel TDX platform.
+    #[derive(Serialize, Deserialize, Clone, Default, Eq, PartialEq, Debug)]
+    pub struct TDX;
+
+    impl super::PlatformType for TDX {
+        fn platform_id() -> &'static str {
+            "TDX"
+        }
+    }
+}
 
 quick_error! {
     #[derive(Debug)]
@@ -185,17 +206,30 @@ impl TryFrom<&str> for DcapArtifactIssuer {
     }
 }
 
-pub trait VerificationType {}
+/// A trait type to define a bound of a type that signifies a Verified or Unverified
+/// instance of a type.
+pub trait VerificationType : Serialize { }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct Verified;
 
 impl VerificationType for Verified {}
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
 pub struct Unverified;
 
 impl VerificationType for Unverified {}
+
+/// Our PCS library only allows object deserialization to the `Unverified` type since
+/// the verification has to be invoked explicitly by calling the respective `verify`
+/// function on the designated `Unverified` instance.
+impl<'de> Deserialize<'de> for Unverified {
+    fn deserialize<D>(_: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de> {
+        Ok(Self{})
+    }
+}
 
 /// Intel specifies raw ECDSA signatures in a different format than mbedtls. Convert ECDSA
 /// signature to RFC5480 ASN.1 representation.

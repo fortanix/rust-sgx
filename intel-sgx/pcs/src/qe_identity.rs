@@ -7,7 +7,6 @@
 
 use std::convert::{TryFrom, TryInto};
 use std::fmt::{self, Display, Formatter};
-use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
@@ -21,7 +20,7 @@ use {
 };
 
 use crate::io::{self};
-use crate::{Error, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{Error, TcbStatus, Unverified, VerificationType, Verified, WriteOptions};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum EnclaveIdentity {
@@ -93,7 +92,7 @@ impl TcbLevel {
     }
 }
 
-#[derive(Clone, Serialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct QeIdentity<V: VerificationType = Verified> {
     version: u16,
@@ -119,74 +118,7 @@ pub struct QeIdentity<V: VerificationType = Verified> {
     mrsigner: [u8; 32],
     isvprodid: u16,
     tcb_levels: Vec<TcbLevel>,
-    #[serde(skip)]
-    type_: PhantomData<V>,
-}
-
-impl<'de> Deserialize<'de> for QeIdentity<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<QeIdentity<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            version: u16,
-            #[serde(with = "enclave_identity")]
-            id: EnclaveIdentity,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            tcb_evaluation_data_number: u64,
-            #[serde(deserialize_with = "miscselect_deserializer", serialize_with = "miscselect_serializer")]
-            miscselect: Miscselect,
-            #[serde(
-                deserialize_with = "miscselect_mask_deserializer",
-                serialize_with = "miscselect_mask_serializer"
-            )]
-            miscselect_mask: u32,
-            #[serde(deserialize_with = "attributes_deserializer", serialize_with = "attributes_serializer")]
-            attributes: Attributes,
-            #[serde(deserialize_with = "attributes_deserializer", serialize_with = "attributes_serializer")]
-            attributes_mask: Attributes,
-            #[serde(deserialize_with = "mrsigner_deserializer", serialize_with = "mrsigner_serializer")]
-            mrsigner: [u8; 32],
-            isvprodid: u16,
-            tcb_levels: Vec<TcbLevel>,
-        }
-
-        let Dummy {
-            version,
-            id,
-            issue_date,
-            next_update,
-            tcb_evaluation_data_number,
-            miscselect,
-            miscselect_mask,
-            attributes,
-            attributes_mask,
-            mrsigner,
-            isvprodid,
-            tcb_levels,
-        } = Dummy::deserialize(deserializer)?;
-
-        Ok(QeIdentity::<Unverified> {
-            version,
-            id,
-            issue_date,
-            next_update,
-            tcb_evaluation_data_number,
-            miscselect,
-            miscselect_mask,
-            attributes,
-            attributes_mask,
-            mrsigner,
-            isvprodid,
-            tcb_levels,
-            type_: PhantomData,
-        })
-    }
+    type_: V,
 }
 
 impl QeIdentity {
@@ -340,17 +272,10 @@ impl QeIdentitySigned {
         io::compose_filename(Self::FILENAME_PREFIX, Self::FILENAME_EXTENSION, evaluation_data_number)
     }
 
-    pub fn write_to_file(&self, output_dir: &str) -> Result<String, Error> {
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
         let id = QeIdentity::<Unverified>::try_from(self)?;
         let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn write_to_file_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let id = QeIdentity::<Unverified>::try_from(self)?;
-        let filename = Self::create_filename(Some(id.tcb_evaluation_data_number));
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
+        io::write_to_file(&self, output_dir, &filename, option)
     }
 
     pub fn read_from_file(input_dir: &str, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
@@ -423,7 +348,7 @@ impl QeIdentitySigned {
             mrsigner,
             isvprodid,
             tcb_levels,
-            type_: PhantomData,
+            type_: _
         } = serde_json::from_str(&self.raw_enclave_identity).map_err(|e| Error::ParseError(e))?;
 
         if version != 2 {
@@ -456,7 +381,7 @@ impl QeIdentitySigned {
             mrsigner,
             isvprodid,
             tcb_levels,
-            type_: PhantomData,
+            type_: Verified,
         })
     }
 }

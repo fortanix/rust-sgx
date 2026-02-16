@@ -3,14 +3,15 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
+*/
 
 use std::convert::TryFrom;
+ use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de, Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
@@ -18,8 +19,13 @@ use {
     pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
 };
 
-use crate::pckcrt::{TcbComponent, TcbComponents};
-use crate::{io, CpuSvn, Error, PceIsvsvn, Platform, TcbStatus, Unverified, VerificationType, Verified};
+use crate::io::WriteOptions;
+use crate::pckcrt::{PlatformTypeForTcbComponent, TcbComponentsV3};
+use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{
+    pckcrt::{TcbComponentType, TcbComponents},
+    platform, PlatformType,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Fmspc([u8; 6]);
@@ -113,8 +119,9 @@ impl<'de> Deserialize<'de> for Fmspc {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
-pub struct TcbLevel {
-    pub(crate) tcb: TcbComponents,
+pub struct TcbLevel<P> {
+    #[serde(bound(deserialize = "TcbComponents<P>: TryFrom<TcbComponentsV3, Error: std::fmt::Display>, P : Deserialize<'de>"))]
+    pub(crate) tcb: TcbComponents<P>,
     #[serde(with = "crate::iso8601")]
     tcb_date: DateTime<Utc>,
     pub(crate) tcb_status: TcbStatus,
@@ -122,8 +129,8 @@ pub struct TcbLevel {
     advisory_ids: Vec<AdvisoryID>,
 }
 
-impl TcbLevel {
-    pub fn components(&self) -> &TcbComponents {
+impl<P> TcbLevel<P> {
+    pub fn components(&self) -> &TcbComponents<P> {
         &self.tcb
     }
 
@@ -214,71 +221,170 @@ impl<'de> Deserialize<'de> for AdvisoryID {
     }
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TdxModule {
+    #[serde(deserialize_with = "tdx_mrsigner_deserializer", serialize_with = "tdx_mrsigner_serializer")]
+    pub mrsigner: [u8; 48],
+    #[serde(deserialize_with = "tdx_attribute_deserializer", serialize_with = "tdx_attribute_serializer")]
+    pub attributes: u64,
+    #[serde(deserialize_with = "tdx_attribute_deserializer", serialize_with = "tdx_attribute_serializer")]
+    pub attributes_mask: u64
+}
+
+impl Default for TdxModule {
+    fn default() -> Self {
+        Self { mrsigner: [0; 48], attributes: Default::default(), attributes_mask: Default::default() }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TdxModuleIdentity {
+    #[serde(flatten)]
+    tdx_module: TdxModule,
+    tcb_levels: Vec<TdxModuleTcbLevel>,
+}
+
+impl TdxModuleIdentity {
+    pub fn mrsigner(&self) -> &[u8; 48] {
+        &self.tdx_module.mrsigner
+    }
+
+    pub fn attributes(&self) -> u64 {
+        self.tdx_module.attributes
+    }
+
+    pub fn attributes_mask(&self) -> u64 {
+        self.tdx_module.attributes_mask
+    }
+
+    pub fn tcb_levels_iter(&self) -> impl Iterator<Item = &TdxModuleTcbLevel> + '_ {
+        self.tcb_levels.iter()
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TdxModuleTcbLevelIsvSvn {
+    isvsvn: u64
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TdxModuleTcbLevel {
+    tcb: TdxModuleTcbLevelIsvSvn,
+    #[serde(with = "crate::iso8601")]
+    tcb_date: DateTime<Utc>,
+    tcb_status: TcbStatus,
+    #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
+    advisory_ids: Vec<AdvisoryID>
+}
+
+impl TdxModuleTcbLevel {
+    pub fn tcb(&self) -> u64 {
+        self.tcb.isvsvn
+    }
+
+    pub fn tcb_date(&self) -> DateTime<Utc> {
+        self.tcb_date
+    }
+
+    pub fn tcb_status(&self) -> TcbStatus {
+        self.tcb_status
+    }
+
+    pub fn advisory_ids_iter(&self) -> impl Iterator<Item = &AdvisoryID> + '_ {
+        self.advisory_ids.iter()
+    }
+}
+
+fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 48], D::Error> {
+    let mrsigner = String::deserialize(deserializer)?;
+    let mrsigner = base16::decode(&mrsigner).map_err(de::Error::custom)?;
+    mrsigner.as_slice().try_into().map_err(de::Error::custom)
+}
+
+#[allow(unused)]
+fn tdx_mrsigner_serializer<S>(mrsigner: &[u8; 48], serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    let mrsigner = base16::encode_upper(mrsigner);
+    serializer.serialize_str(&mrsigner)
+}
+
+fn tdx_attribute_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    let attribute = String::deserialize(deserializer)?;
+    u64::from_str_radix(&attribute, 16).map_err(de::Error::custom)
+}
+
+#[allow(unused)]
+fn tdx_attribute_serializer<S>(attribute: u64, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    let attribute = format!("{attribute:16x}");
+    serializer.serialize_str(&attribute)
+}
+
+pub trait PlatformTypeForTcbInfo : PlatformType + PlatformTypeForTcbComponent {
+    type PlatformSpecificTcbData: DeserializeOwned + Default;
+    fn extra_extension() -> &'static str;
+}
+
+#[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+pub struct SGXSpecificTcbData {}
+
+#[derive(Deserialize, Default, Clone, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TDXSpecificTcbData {
+    pub(crate) tdx_module: TdxModule,
+    pub(crate) tdx_module_identities: Vec<TdxModuleIdentity>,
+}
+
+impl PlatformTypeForTcbInfo for platform::SGX {
+    type PlatformSpecificTcbData = SGXSpecificTcbData;
+
+    fn extra_extension() -> &'static str {
+        ""
+    }
+}
+
 #[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub struct TcbData<V: VerificationType = Verified> {
-    id: Platform,
+#[allow(unused)]
+impl PlatformTypeForTcbInfo for platform::TDX  {
+    type PlatformSpecificTcbData = TDXSpecificTcbData;
+
+    fn extra_extension() -> &'static str {
+        ".tdx"
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TcbData<T: PlatformTypeForTcbInfo, V: VerificationType = Verified> {
+    #[serde(default)]
+    #[serde(deserialize_with = "crate::deserialize_platform_id")]
+    id: T,
     version: u16,
+    #[serde(with = "crate::iso8601")]
     issue_date: DateTime<Utc>,
+    #[serde(with = "crate::iso8601")]
     next_update: DateTime<Utc>,
     fmspc: Fmspc,
     pce_id: String,
     tcb_type: u16,
     tcb_evaluation_data_number: u64,
-    tcb_levels: Vec<TcbLevel>,
-    type_: PhantomData<V>,
+    #[serde(rename = "tcbLevels")]
+    tcb_levels: Vec<TcbLevel<T::PlatformSpecificTcbComponentData>>,
+    #[serde(flatten)]
+    platform_specific_data: T::PlatformSpecificTcbData,
+    type_: V,
 }
 
-impl<'de> Deserialize<'de> for TcbData<Unverified> {
-    fn deserialize<D>(deserializer: D) -> Result<TcbData<Unverified>, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Dummy {
-            #[serde(default = "crate::sgx_platform")]
-            id: Platform,
-            version: u16,
-            #[serde(with = "crate::iso8601")]
-            issue_date: DateTime<Utc>,
-            #[serde(with = "crate::iso8601")]
-            next_update: DateTime<Utc>,
-            fmspc: Fmspc,
-            pce_id: String,
-            tcb_type: u16,
-            tcb_evaluation_data_number: u64,
-            #[serde(rename = "tcbLevels")]
-            tcb_levels: Vec<TcbLevel>,
-        }
-
-        let Dummy {
-            id,
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tcb_levels,
-        } = Dummy::deserialize(deserializer)?;
-        Ok(TcbData {
-            id,
-            version,
-            issue_date,
-            next_update,
-            fmspc,
-            pce_id,
-            tcb_type,
-            tcb_evaluation_data_number,
-            tcb_levels,
-            type_: PhantomData,
-        })
-    }
-}
-
-impl TcbData<Verified> {
+impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
     pub fn version(&self) -> u16 {
         self.version
     }
@@ -288,9 +394,9 @@ impl TcbData<Verified> {
     }
 }
 
-impl TcbData<Unverified> {
-    pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<Unverified>, Error> {
-        let data: TcbData<Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
+impl<'de, T: PlatformTypeForTcbInfo> TcbData<T, Unverified> {
+    pub(crate) fn parse(raw_tcb_data: &String) -> Result<TcbData<T, Unverified>, Error> {
+        let data: TcbData<T, Unverified> = serde_json::from_str(&raw_tcb_data).map_err(|e| Error::ParseError(e))?;
         if data.version != 2 && data.version != 3 {
             return Err(Error::UnknownTcbInfoVersion(data.version));
         }
@@ -303,34 +409,37 @@ impl TcbData<Unverified> {
     }
 
     /// Returns the index of the TCB component
-    pub fn tcb_component_index(&self, comp: TcbComponent) -> Option<usize> {
+    pub fn tcb_component_index(&self, comp: TcbComponentType) -> Option<usize> {
         if let Some(c) = self.tcb_levels.first() {
             c.components().tcb_component_index(comp)
         } else {
             None
         }
     }
-
 }
 
-impl<V: VerificationType> TcbData<V> {
+impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     pub fn tcb_evaluation_data_number(&self) -> u64 {
         self.tcb_evaluation_data_number
     }
 
     // NOTE: don't make this publicly available. We want to prevent people from
     // accessing the TCB levels without checking whether the TcbInfo is valid.
-    pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel> {
+    pub(crate) fn tcb_levels(&self) -> &Vec<TcbLevel<T::PlatformSpecificTcbComponentData>> {
         &self.tcb_levels
     }
 
-    pub(crate) fn decompose_raw_cpusvn(&self, raw_cpusvn: &[u8; 16], pce_svn: u16) -> Result<TcbComponents, Error> {
+    pub(crate) fn decompose_raw_cpusvn(
+        &self,
+        raw_cpusvn: &[u8; 16],
+        pce_svn: u16,
+    ) -> Result<TcbComponents<crate::pckcrt::SGXSpecificTcbComponentData>, Error> {
         if self.tcb_type != 0 {
             return Err(Error::UnknownTcbType(self.tcb_type));
         }
 
         // TCB Type 0 simply copies cpu svn
-        Ok(TcbComponents::from_raw(*raw_cpusvn, pce_svn))
+        Ok(TcbComponents::<crate::pckcrt::SGXSpecificTcbComponentData>::from_raw(*raw_cpusvn, pce_svn))
     }
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
@@ -338,14 +447,26 @@ impl<V: VerificationType> TcbData<V> {
     }
 }
 
+impl TcbData<platform::TDX, Verified> {
+    pub fn tdx_module(&self) -> &TdxModule {
+        &self.platform_specific_data.tdx_module
+    }
+
+    pub fn iter_tdx_module_identities(&self) -> impl Iterator<Item = &TdxModuleIdentity> + '_ {
+        self.platform_specific_data.tdx_module_identities.iter()
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct TcbInfo {
+pub struct TcbInfo<T> {
     raw_tcb_info: String,
     signature: Vec<u8>,
     ca_chain: Vec<String>,
+    #[serde(skip)]
+    _type: PhantomData<T>
 }
 
-impl TcbInfo {
+impl<T> TcbInfo<T> {
     const FILENAME_EXTENSION: &'static str = ".tcb";
 
     pub fn new(raw_tcb_info: String, signature: Vec<u8>, ca_chain: Vec<String>) -> Self {
@@ -353,6 +474,7 @@ impl TcbInfo {
             raw_tcb_info,
             signature,
             ca_chain,
+            _type: PhantomData
         }
     }
 
@@ -370,34 +492,6 @@ impl TcbInfo {
         Ok(TcbInfo::new(raw_tcb_info.to_string(), signature, ca_chain))
     }
 
-    pub fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
-        io::compose_filename(fmspc, Self::FILENAME_EXTENSION, evaluation_data_number)
-    }
-
-    pub fn store(&self, output_dir: &str) -> Result<String, Error> {
-        let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
-        io::write_to_file(&self, output_dir, &filename)?;
-        Ok(filename)
-    }
-
-    pub fn store_if_not_exist(&self, output_dir: &str) -> Result<Option<PathBuf>, Error> {
-        let data = TcbData::<Unverified>::parse(&self.raw_tcb_info)?;
-        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
-        io::write_to_file_if_not_exist(&self, output_dir, &filename)
-    }
-
-    pub fn restore(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
-        let filename = TcbInfo::create_filename(&fmspc.to_string(), evaluation_data_number);
-        let info: TcbInfo = io::read_from_file(input_dir, &filename)?;
-        Ok(info)
-    }
-
-    pub fn read_all<'a>(input_dir: &'a str, fmspc: &'a Fmspc) -> impl Iterator<Item = Result<Self, Error>> + 'a {
-        io::all_files(input_dir, fmspc.to_string(), Self::FILENAME_EXTENSION)
-            .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
-    }
-
     pub fn raw_tcb_info(&self) -> &String {
         &self.raw_tcb_info
     }
@@ -410,14 +504,39 @@ impl TcbInfo {
         &self.ca_chain
     }
 
-    #[cfg(feature = "verify")]
-    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16) -> Result<TcbData<Verified>, Error> {
-        let now = Utc::now();
-        self.verify_ex(trusted_root_certs, platform, min_version, &now)
+}
+
+impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
+    pub fn create_filename(fmspc: &str, evaluation_data_number: Option<u64>) -> String {
+        let file_extension = format!("{}{}", T::extra_extension(), Self::FILENAME_EXTENSION);
+        io::compose_filename(fmspc, file_extension.as_str(), evaluation_data_number)
+    }
+
+    pub fn write_to_file(&self, output_dir: &str, option: WriteOptions) -> Result<Option<PathBuf>, Error> {
+        let data = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
+        let filename = Self::create_filename(&data.fmspc.to_string(), Some(data.tcb_evaluation_data_number));
+        io::write_to_file(&self, output_dir, &filename, option)
+    }
+
+    pub fn read_from_file(input_dir: &str, fmspc: &Fmspc, evaluation_data_number: Option<u64>) -> Result<Self, Error> {
+        let filename = Self::create_filename(&fmspc.to_string(), evaluation_data_number);
+        let info = io::read_from_file(input_dir, &filename)?;
+        Ok(info)
+    }
+
+    pub fn read_all<'a>(input_dir: &'a str, fmspc: &'a Fmspc) -> impl Iterator<Item = Result<Self, Error>> + 'a {
+        io::all_files(input_dir, fmspc.to_string(), Self::FILENAME_EXTENSION)
+            .map(move |i| i.and_then(|entry| io::read_from_file(input_dir, entry.file_name())) )
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], platform: Platform, min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<Verified>, Error> {
+    pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16) -> Result<TcbData<T, Verified>, Error> {
+        let now = Utc::now();
+        self.verify_ex(trusted_root_certs, min_version, &now)
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<T, Verified>, Error> {
         // Check cert chain
         let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
@@ -461,13 +580,10 @@ impl TcbInfo {
             pce_id,
             tcb_type,
             tcb_evaluation_data_number,
+            platform_specific_data,
             tcb_levels,
             ..
-        } = TcbData::parse(&self.raw_tcb_info)?;
-
-        if id != platform {
-            return Err(Error::InvalidTcbInfo(format!("TCB Info belongs to the {id} platform, expected one for the {platform} platform")))
-        }
+        } = TcbData::<T, Unverified>::parse(&self.raw_tcb_info)?;
 
         if min_version > version {
             return Err(Error::UntrustedTcbInfoVersion(version, min_version))
@@ -480,7 +596,7 @@ impl TcbInfo {
             return Err(Error::InvalidTcbInfo(format!("TCB Info expired on {}", next_update)))
         }
 
-        Ok(TcbData::<Verified> {
+        Ok(TcbData::<T, Verified> {
             id,
             version,
             issue_date,
@@ -489,13 +605,14 @@ impl TcbInfo {
             pce_id,
             tcb_type,
             tcb_evaluation_data_number,
+            platform_specific_data,
             tcb_levels,
-            type_: PhantomData,
+            type_: Verified,
         })
     }
 
-    pub fn data(&self) -> Result<TcbData<Unverified>, Error> {
-        TcbData::parse(&self.raw_tcb_info)
+    pub fn data(&self) -> Result<TcbData<T, Unverified>, Error> {
+        TcbData::<T, Unverified>::parse(&self.raw_tcb_info)
     }
 }
 
@@ -506,57 +623,55 @@ mod tests {
     use {
         chrono::{Utc, TimeZone},
         crate::Error,
-        crate::tcb_info::{Fmspc, Platform, TcbInfo},
+        crate::tcb_info::{Fmspc, TcbInfo},
+        crate::platform,
         tempdir::TempDir,
     };
-    use std::convert::TryFrom;
+    use {crate::{TcbData, Unverified}, std::convert::TryFrom};
     use super::AdvisoryID;
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info() {
+        use crate::WriteOptionsBuilder;
+
         let info =
-            TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
+            TcbInfo::<platform::SGX>::read_from_file("./tests/data/", &Fmspc::try_from("00906ea10000").expect("static fmspc"), None).expect("validated");
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        match info.verify(&root_certificates, Platform::SGX, 2) {
+        match info.verify(&root_certificates, 2) {
             Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info expired on 2020-06-17 17:49:24 UTC")),
             e => assert!(false, "wrong result: {:?}", e),
         }
         let juni_5_2020 = Utc.with_ymd_and_hms(2020, 6, 5, 12, 0, 0).unwrap();
-        assert!(info.verify_ex(&root_certificates, Platform::SGX, 2, &juni_5_2020).is_ok());
-
-        match info.verify(&root_certificates, Platform::TDX, 2) {
-            Err(Error::InvalidTcbInfo(msg)) => assert_eq!(msg, String::from("TCB Info belongs to the SGX platform, expected one for the TDX platform")),
-            e => assert!(false, "wrong result: {:?}", e),
-        }
+        assert!(info.verify_ex(&root_certificates, 2, &juni_5_2020).is_ok());
 
         // Test serialization/deserialization
         let temp_dir = TempDir::new("tempdir").unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
-        info.store(&path).unwrap();
-        let info2 = TcbInfo::restore(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
+        info.write_to_file(&path, WriteOptionsBuilder::new().build()).unwrap();
+        let info2 = TcbInfo::read_from_file(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
         assert_eq!(info, info2);
     }
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_corrupt_tcb_info() {
-        let tcb_info = TcbInfo::restore("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::read_from_file("./tests/data/corrupted", &Fmspc::try_from("00906ea10000").unwrap(), None).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        assert!(tcb_info.verify(&root_certificates, Platform::SGX, 2).is_err());
+        assert!(tcb_info.verify(&root_certificates, 2).is_err());
     }
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
     fn read_tcb_info_v3() {
-        let tcb_info = TcbInfo::restore("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
+        let tcb_info = TcbInfo::<platform::SGX>::read_from_file("./tests/data/", &Fmspc::try_from("00906ed50000").unwrap(), Some(19)).unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         let june_5_2025 = Utc.with_ymd_and_hms(2025, 6, 5, 12, 0, 0).unwrap();
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 3, &june_5_2025).is_ok());
-        assert!(tcb_info.verify_ex(&root_certificates, Platform::SGX, 4, &june_5_2025).is_err());
+        assert!(tcb_info.verify_ex(&root_certificates, 3, &june_5_2025).is_ok());
+        assert!(tcb_info.verify_ex(&root_certificates, 4, &june_5_2025).is_err());
     }
 
     #[test]
@@ -577,5 +692,36 @@ mod tests {
         assert_eq!(AdvisoryID::Documentation(123).to_string(), "INTEL-DOC-00123");
         assert_eq!(AdvisoryID::Documentation(1).to_string(), "INTEL-DOC-00001");
         assert_eq!(AdvisoryID::Documentation(99999).to_string(), "INTEL-DOC-99999");
+    }
+
+    #[test]
+    fn parse_tcbinfo_json() {
+        let ca_chain = vec![
+            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(),
+            include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
+        ];
+
+        let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_certificates = [&root_certificate[..]];
+
+        let januari_30_2026 = Utc.with_ymd_and_hms(2026, 1, 30, 12, 0, 0).unwrap();
+
+        // Parse and verify TDX TCB Info
+        let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
+        TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).unwrap();
+        tdx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+
+        // Passing SGX TCB Info JSON to the TDX type must throw error
+        let sgx_tcbinfo_in_tdx_type = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), vec![]).unwrap();
+        assert!(TcbData::<platform::TDX, Unverified>::parse(sgx_tcbinfo_in_tdx_type.raw_tcb_info()).is_err());
+
+        // Parse and verify SGX TCB Info
+        let sgx_tcbinfo = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), ca_chain.clone()).unwrap();
+        assert!(TcbData::<platform::SGX, Unverified>::parse(sgx_tcbinfo.raw_tcb_info()).is_ok());
+        sgx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+
+        // Passing TDX TCB Info JSON to the SGX type must throw error
+        let tgx_tcbinfo_in_sdx_type = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), vec![]).unwrap();
+        assert!(TcbData::<platform::SGX, Unverified>::parse(tgx_tcbinfo_in_sdx_type.raw_tcb_info()).is_err());
     }
 }
