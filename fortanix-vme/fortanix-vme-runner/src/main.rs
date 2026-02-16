@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
-use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
+use confidential_vm_blobs::{check_dependency, AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 use enclave_runner::EnclaveBuilder;
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, EnclaveBuilder as EnclaveBuilderVme, EnclaveSimulator,
@@ -12,7 +12,7 @@ use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
 use std::fs::File;
 use std::io::{Error as IoError, Write};
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 type DefaultLogLevel = WarnLevel;
 
@@ -118,7 +118,20 @@ impl AwsNitroCli {
 }
 
 impl AmdSevSnpCli {
-    fn to_vm_run_args(&self, firmware_image_path: PathBuf) -> Result<VmRunArgs> {
+    fn to_vm_run_args(&self) -> Result<VmRunArgs> {
+        let firmware_image_path = self.amd_sev_snp_args.firmware_image_path.as_ref();
+
+        let firmware_image_path = match firmware_image_path {
+            Some(path) => path,
+            None => Path::new(if self.common_args.simulate {
+                VANILLA_OVMF_PATH
+            } else {
+                const OVMF_PACKAGE_NAME: &str = "ovmf";
+                check_dependency(OVMF_PACKAGE_NAME)?;
+                AMD_SEV_OVMF_PATH
+            }),
+        }
+        .to_owned();
         let cpu_count = self.common_args.cpu_count;
         let memory_mib = self.common_args.memory;
 
@@ -159,19 +172,7 @@ fn main() -> Result<()> {
 }
 
 fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
-    let firmware_image_path = amd_sev_cli
-        .amd_sev_snp_args
-        .firmware_image_path
-        .clone()
-        .unwrap_or_else(|| {
-            if amd_sev_cli.common_args.simulate {
-                VANILLA_OVMF_PATH
-            } else {
-                AMD_SEV_OVMF_PATH
-            }
-            .into()
-        });
-    let run_args = amd_sev_cli.to_vm_run_args(firmware_image_path)?;
+    let run_args = amd_sev_cli.to_vm_run_args()?;
 
     let AmdSevSnpCli {
         common_args,
