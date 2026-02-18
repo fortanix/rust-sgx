@@ -24,7 +24,10 @@ use tokio::task::{JoinError, JoinHandle};
 use tokio_vsock::{self, VsockAddr, VsockListener, VsockStream, VMADDR_CID_ANY, VMADDR_CID_LOCAL};
 
 mod platforms;
-pub use platforms::amdsevsnp::{AmdSevVm, RunningVm, VmRunArgs, VmSimulator};
+pub use platforms::amdsevsnp::{
+    AmdSevVm, AmdSevVmRunArgs, CommonVmRunArgs, IdBlockArgs, RunningVm, SimulatorVmRunArgs,
+    VmSimulator,
+};
 pub use platforms::{EnclaveSimulator, EnclaveSimulatorArgs, NitroEnclaves, Platform};
 
 pub use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};

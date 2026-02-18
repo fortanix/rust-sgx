@@ -9,7 +9,6 @@ use tempfile::NamedTempFile;
 
 mod initramfs;
 
-// TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
 /// Entry point for CLI application.
 ///
 /// # Example
