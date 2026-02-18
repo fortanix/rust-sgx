@@ -28,7 +28,7 @@ use {
 };
 
 pub use crate::pckcrl::PckCrl;
-pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponentType};
+pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponentType, PlatformTypeForTcbComponent};
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
 pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
@@ -51,7 +51,7 @@ pub type QeId = [u8; 16];
 pub use crate::pckid::PckID;
 
 ///Global trait that specify the required interface for typesafe enumeration of platforms.
-pub trait PlatformType : Clone + Default {
+pub trait PlatformType : Clone + Default + Send {
     fn platform_id() -> &'static str;
 }
 
