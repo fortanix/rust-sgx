@@ -164,6 +164,10 @@ fn build_qemu_command(
     command.arg("-kernel").arg(uki_path);
     command.arg("-bios").arg(firmware_image_path);
 
+    command
+        .arg("-append")
+        .arg("console=ttyS0");
+
     if let RunMode::AmdSevVm = run_mode {
         command
             .arg("-machine")
