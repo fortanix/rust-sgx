@@ -16,7 +16,7 @@ use core::fmt::Display;
 
 use crate::{slice, struct_def};
 
-/// SHA384
+/// SHA384 hash size in bytes
 pub const TEE_HASH_384_SIZE: usize = 48;
 /// Message SHA 256 HASH Code - 32 bytes
 pub const TEE_MAC_SIZE: usize = 32;
@@ -34,6 +34,9 @@ pub const TEE_REPORT2_SUBTYPE: usize = 0x0;
 pub const TEE_REPORT2_VERSION: usize = 0x0;
 /// VERSION for Report Type2 which mr_servicetd is used
 pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
+
+/// SHA384 hash
+pub type Sha384Hash = [u8; TEE_HASH_384_SIZE];
 
 struct_def! {
     /// Rust definition of `REPORTTYPE` from `REPORTMACSTRUCT`.
@@ -86,9 +89,9 @@ struct_def! {
         /// ( 16) Security Version of the CPU
         pub cpu_svn: [u8; TEE_CPU_SVN_SIZE],
         /// ( 32) SHA384 of TEE_TCB_INFO for TEEs
-        pub tee_tcb_info_hash: [u8; TEE_HASH_384_SIZE],
+        pub tee_tcb_info_hash: Sha384Hash,
         /// ( 80) SHA384 of TEE_INFO
-        pub tee_info_hash: [u8; TEE_HASH_384_SIZE],
+        pub tee_info_hash: Sha384Hash,
         /// (128) Data provided by the user
         pub report_data: [u8; TDX_REPORT_DATA_SIZE],
         /// (192) Reserved, must be zero
@@ -116,9 +119,7 @@ pub const TDX_REPORT_RESERVED_SIZE: usize = 17;
 pub const TEE_INFO_SIZE: usize = 512;
 pub const TDINFO_BASE_SIZE: usize = 448;
 pub const TDINFO_EXTENSION_V1_SIZE: usize = 64;
-pub const TDINFO_EXTENSION_V2_SIZE: usize = 320;
 pub const TDINFO_V1_SIZE: usize = TDINFO_BASE_SIZE + TDINFO_EXTENSION_V1_SIZE;
-pub const TDINFO_V2_SIZE: usize = TDINFO_BASE_SIZE + TDINFO_EXTENSION_V2_SIZE;
 pub const TEE_TCB_INFO_VALID_SIZE: usize = 8;
 pub const TEE_TCB_INFO_TEE_TCB_SVN_SIZE: usize = 16;
 pub const TEE_TCB_INFO_MR_SIZE: usize = 48;
@@ -161,6 +162,44 @@ impl TeeTcbInfo {
 }
 
 struct_def! {
+    /// Rust definition of `TDINFO_BASE` used by `TDINFO_STRUCT`.
+    ///
+    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.50.
+    /// Version: Sep 2025, 348551-007US
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
+    #[repr(C)]
+    #[cfg_attr(
+        feature = "large_array_derive",
+        derive(Clone, Debug, Eq, PartialEq)
+    )]
+    pub struct TdInfoBase {
+        /// (  0) TD’s ATTRIBUTES
+        pub attributes: [u8; 8],
+        /// (  8) TD’s XFAM
+        pub xfam: [u8; 8],
+        /// ( 16) Measurement of the initial contents of the TD: SHA384 hash
+        pub mr_td: Sha384Hash,
+        /// ( 64) Software-defined ID for non-owner-defined configuration of the
+        /// guest TD – e.g., run-time or OS configuration
+        pub mr_config_id: Sha384Hash,
+        /// (112) Software-defined ID for the guest TD’s owner
+        pub mr_owner: Sha384Hash,
+        /// (160) Software-defined ID for owner-defined configuration of the
+        /// guest TD – e.g., specific to the workload rather than the run-time
+        /// or OS
+        pub mr_owner_config: Sha384Hash,
+        /// (208) Array of 4 run-time extendable measurement registers
+        pub rtmr: [Sha384Hash; 4],
+        /// (400) Reserved extension for REPORTTYPE.VERSION 0 or 1
+        pub servtd_hash: Sha384Hash,
+    }
+}
+
+impl TdInfoBase {
+    pub const UNPADDED_SIZE: usize = TDINFO_BASE_SIZE;
+}
+
+struct_def! {
     /// Rust definition of `TDINFO_STRUCT` for REPORTTYPE.VERSION 0 or 1.
     ///
     /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.49.
@@ -173,7 +212,7 @@ struct_def! {
     )]
     pub struct TdInfoV1 {
         /// (  0) Base TDINFO fields
-        pub base: [u8; TDINFO_BASE_SIZE],
+        pub base: TdInfoBase,
         /// (448) Reserved extension for REPORTTYPE.VERSION 0 or 1
         pub extension: [u8; TDINFO_EXTENSION_V1_SIZE],
     }
@@ -183,28 +222,7 @@ impl TdInfoV1 {
     pub const UNPADDED_SIZE: usize = TDINFO_V1_SIZE;
 }
 
-struct_def! {
-    /// Rust definition of `TDINFO_STRUCT` for REPORTTYPE.VERSION 2.
-    ///
-    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.49.
-    /// Version: Sep 2025, 348551-007US
-    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
-    #[repr(C)]
-    #[cfg_attr(
-        feature = "large_array_derive",
-        derive(Clone, Debug, Eq, PartialEq)
-    )]
-    pub struct TdInfoV2 {
-        /// (  0) Base TDINFO fields
-        pub base: [u8; TDINFO_BASE_SIZE],
-        /// (448) Extension for REPORTTYPE.VERSION 2
-        pub extension: [u8; TDINFO_EXTENSION_V2_SIZE],
-    }
-}
-
-impl TdInfoV2 {
-    pub const UNPADDED_SIZE: usize = TDINFO_V2_SIZE;
-}
+// TODO(RTE-805): Add support for TDINFO_STRUCT with size 768 bytes
 
 struct_def! {
     /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
@@ -236,79 +254,45 @@ impl TdxReportV1 {
     pub const UNPADDED_SIZE: usize = 1024;
 
     #[cfg(target_env = "sgx")]
-    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
-        Ok(tdx_arch::everifyreport2(self.report_mac.as_ref())?)
-    }
-}
-
-struct_def! {
-    /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
-    /// Total size of this variant is __1280__ bytes with `report_mac.report_type.version` equals __2__.
-    ///
-    /// Note: `TDG.MR.REPORT` is one variant of syscall `TDCALL`.
-    ///
-    /// Ref: Intel TDX Module Application Binary Interface (ABI) Reference, table 3.45.
-    /// Version: Sep 2025, 348551-007US
-    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733579>
-    #[repr(C)]
-    #[cfg_attr(
-        feature = "large_array_derive",
-        derive(Clone, Debug, Eq, PartialEq)
-    )]
-    pub struct TdxReportV2 {
-        /// (  0) Report mac struct for SGX report type 2
-        pub report_mac: TdxReportMac,
-        /// (256) Struct contains details about extra TCB elements not found in CPUSVN
-        pub tee_tcb_info: TeeTcbInfo,
-        /// (495) Reserved, must be zero
-        pub reserved: [u8; TDX_REPORT_RESERVED_SIZE],
-        /// (512) Structure containing the TD’s attestable properties.
-        pub td_info: TdInfoV2,
-    }
-}
-
-impl TdxReportV2 {
-    pub const UNPADDED_SIZE: usize = 1280;
-
-    #[cfg(target_env = "sgx")]
-    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
-        Ok(tdx_arch::everifyreport2(self.report_mac.as_ref())?)
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum TdxReport {
-    V1(TdxReportV1),
-    V2(TdxReportV2),
-}
-
-impl AsRef<[u8]> for TdxReport {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            TdxReport::V1(tdx_report_v1) => tdx_report_v1.as_ref(),
-            TdxReport::V2(tdx_report_v2) => tdx_report_v2.as_ref(),
-        }
+    pub fn verify(&self) -> Result<(), TdxError> {
+        tdx_arch::everifyreport2(self.report_mac.as_ref())
+            .map_err(TdxError::from_everifyreport2_return_code)
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TdxError {
-    /// Given bytes is not supported, currently only 1024 and 1280 is supported.
-    UnsupportedSize,
-    /// The report's `report_mac.report_type.version` number is inconsistent with its size.
-    InconsistentReportVersion,
-    /// TDX attestation error
-    ErrorCode(TdxAttestErrorCode),
+    Success,
+    BadAddress,
+    Busy,
+    DeviceFailure,
+    ExtendFailure,
+    Interrupted,
+    InvalidCpuSvn,
+    InvalidParameter,
+    InvalidReportMacStruct,
+    InvalidRtmrIndex,
+    NotSupported,
+    OutOfMemory,
+    QuoteFailure,
+    ReportFailure,
+    TdcallFailure,
+    UnsupportedAttKeyId,
+    VsockFailure,
+    WrongDevice,
+    Unexpected(u32),
 }
 
-impl Display for TdxError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            TdxError::UnsupportedSize => f.write_str("Unsupported size of bytes for a TDX report"),
-            TdxError::InconsistentReportVersion => {
-                f.write_str("TDX report size does not match its version number")
-            }
-            TdxError::ErrorCode(err) => write!(f, "TdxAttestErrorCode: {}", err),
+impl TdxError {
+    #[cfg(target_env = "sgx")]
+    fn from_everifyreport2_return_code(code: u32) -> TdxError {
+        match code {
+            0 => TdxError::Success,
+            // This leaf operation is not supported on this CPU
+            0b00001 => TdxError::NotSupported,
+            0b01110 => TdxError::InvalidReportMacStruct,
+            0b10000 => TdxError::InvalidCpuSvn,
+            other => TdxError::Unexpected(other),
         }
     }
 }
@@ -316,92 +300,28 @@ impl Display for TdxError {
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
 impl std::error::Error for TdxError {}
 
-impl TdxReport {
-    pub fn try_copy_from(src: &[u8]) -> Result<Self, TdxError> {
-        match src.len() {
-            TdxReportV1::UNPADDED_SIZE => {
-                let report = TdxReportV1::try_copy_from(src).expect("verified");
-                match report.report_mac.report_type.version {
-                    0 | 1 => Ok(Self::V1(report)),
-                    _ => Err(TdxError::InconsistentReportVersion),
-                }
-            }
-            TdxReportV2::UNPADDED_SIZE => {
-                let report = TdxReportV2::try_copy_from(src).expect("verified");
-                match report.report_mac.report_type.version {
-                    2 => Ok(Self::V2(report)),
-                    _ => Err(TdxError::InconsistentReportVersion),
-                }
-            }
-            _ => Err(TdxError::UnsupportedSize),
-        }
-    }
-
-    #[cfg(target_env = "sgx")]
-    pub fn verify(&self) -> Result<(), TdxAttestErrorCode> {
-        match self {
-            TdxReport::V1(tdx_report_v1) => tdx_report_v1.verify(),
-            TdxReport::V2(tdx_report_v2) => tdx_report_v2.verify(),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TdxAttestErrorCode {
-    Success,
-    Unexpected(u32),
-    InvalidParameter,
-    OutOfMemory,
-    VsockFailure,
-    ReportFailure,
-    ExtendFailure,
-    NotSupported,
-    QuoteFailure,
-    Busy,
-    DeviceFailure,
-    InvalidRtmrIndex,
-    UnsupportedAttKeyId,
-}
-
-#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
-impl std::error::Error for TdxAttestErrorCode {}
-
-impl From<u32> for TdxAttestErrorCode {
-    fn from(v: u32) -> Self {
-        match v {
-            0x0000 => Self::Success,
-            0x0002 => Self::InvalidParameter,
-            0x0003 => Self::OutOfMemory,
-            0x0004 => Self::VsockFailure,
-            0x0005 => Self::ReportFailure,
-            0x0006 => Self::ExtendFailure,
-            0x0007 => Self::NotSupported,
-            0x0008 => Self::QuoteFailure,
-            0x0009 => Self::Busy,
-            0x000a => Self::DeviceFailure,
-            0x000b => Self::InvalidRtmrIndex,
-            0x000c => Self::UnsupportedAttKeyId,
-            num => Self::Unexpected(num),
-        }
-    }
-}
-
-impl Display for TdxAttestErrorCode {
+impl Display for TdxError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            TdxAttestErrorCode::Success => f.write_str("Success"),
-            TdxAttestErrorCode::Unexpected(num) => f.write_fmt(format_args!("Unexoected error code: {}", num)),
-            TdxAttestErrorCode::InvalidParameter => f.write_str("The parameter is incorrect"),
-            TdxAttestErrorCode::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
-            TdxAttestErrorCode::VsockFailure => f.write_str("vsock related failure"),
-            TdxAttestErrorCode::ReportFailure => f.write_str("Failed to get the TD Report"),
-            TdxAttestErrorCode::ExtendFailure => f.write_str("Failed to extend rtmr"),
-            TdxAttestErrorCode::NotSupported => f.write_str("Request feature is not supported"),
-            TdxAttestErrorCode::QuoteFailure => f.write_str("Failed to get the TD Quote"),
-            TdxAttestErrorCode::Busy => f.write_str("The device driver return busy"),
-            TdxAttestErrorCode::DeviceFailure => f.write_str("Failed to acess tdx attest device"),
-            TdxAttestErrorCode::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
-            TdxAttestErrorCode::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
+            TdxError::Success => f.write_str("Success"),
+            TdxError::BadAddress => f.write_str("Bad address"),
+            TdxError::Busy => f.write_str("The device driver return busy"),
+            TdxError::DeviceFailure => f.write_str("Failed to acess tdx attest device"),
+            TdxError::ExtendFailure => f.write_str("Failed to extend rtmr"),
+            TdxError::Interrupted => f.write_str("Usercall is interrupted"),
+            TdxError::InvalidCpuSvn => f.write_str("Failed to verify TD report: invalid Cpu Svn"),
+            TdxError::InvalidParameter => f.write_str("The parameter is incorrect"),
+            TdxError::InvalidReportMacStruct => f.write_str("Failed to verify TD report: invalid TdxReportMac"),
+            TdxError::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
+            TdxError::NotSupported => f.write_str("Request feature is not supported"),
+            TdxError::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
+            TdxError::QuoteFailure => f.write_str("Failed to get the TD Quote"),
+            TdxError::ReportFailure => f.write_str("Failed to get the TD Report"),
+            TdxError::TdcallFailure => f.write_str("TD call failed"),
+            TdxError::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
+            TdxError::VsockFailure => f.write_str("vsock related failure"),
+            TdxError::WrongDevice => f.write_str("Unsupported device"),
+            TdxError::Unexpected(num) => f.write_fmt(format_args!("Unexpected errno: {}", num)),
         }
     }
 }
@@ -437,17 +357,6 @@ mod debug_impl {
         }
     }
 
-    impl Debug for TdxReportV2 {
-        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-            f.debug_struct("TdxReport")
-                .field("report_mac", &self.report_mac)
-                .field("tee_tcb_info", &self.tee_tcb_info)
-                .field("reserved", &self.reserved)
-                .field("tee_info", &self.td_info)
-                .finish()
-        }
-    }
-
     impl Debug for TeeTcbInfo {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result {
             f.debug_struct("TeeTcbInfo")
@@ -470,11 +379,17 @@ mod debug_impl {
         }
     }
 
-    impl Debug for TdInfoV2 {
+    impl Debug for TdInfoBase {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-            f.debug_struct("TdInfoV1")
-                .field("base", &self.base)
-                .field("extension", &self.extension)
+            f.debug_struct("TdInfoBase")
+                .field("attributes", &self.attributes)
+                .field("xfam", &self.xfam)
+                .field("mr_td", &self.mr_td)
+                .field("mr_config_id", &self.mr_config_id)
+                .field("mr_owner", &self.mr_owner)
+                .field("mr_owner_config", &self.mr_owner_config)
+                .field("rtmr", &self.rtmr)
+                .field("servtd_hash", &self.servtd_hash)
                 .finish()
         }
     }

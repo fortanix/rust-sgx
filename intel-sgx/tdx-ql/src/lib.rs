@@ -7,8 +7,9 @@
 
 #![doc = include_str!("../README.md")]
 
-use sgx_isa::tdx::TdxAttestErrorCode;
-pub use sgx_isa::tdx::{TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TdxReport, TdxReportV1, TdxReportV2};
+use nix::errno::Errno;
+use sgx_isa::tdx::TdxError;
+pub use sgx_isa::tdx::{TdxReportV1, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE};
 
 pub mod tdx_ioctl;
 
@@ -25,9 +26,7 @@ pub mod tdx_ioctl;
 ///
 /// # Errors
 /// Propagates the underlying TDX attestation error code.
-pub fn get_tdx_report(
-    report_data: [u8; TDX_REPORT_DATA_SIZE],
-) -> Result<TdxReportV1, TdxAttestErrorCode> {
+pub fn get_tdx_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReportV1, TdxError> {
     tdx_ioctl::get_report(report_data)
 }
 
@@ -55,8 +54,27 @@ pub const TDX_RTMR_EXTEND_DATA_SIZE: usize = 48;
 pub fn extend_tdx_rtmr(
     rtmr_index: u64,
     extend_data: [u8; TDX_RTMR_EXTEND_DATA_SIZE],
-) -> Result<(), TdxAttestErrorCode> {
+) -> Result<(), TdxError> {
     tdx_ioctl::extend_rtmr(rtmr_index, extend_data)
+}
+
+// Following mapping is based on Intel upstream code:
+// https://github.com/intel-staging/tdx/blob/tdx-guest-v6.10-1/drivers/virt/coco/tdx-guest/tdx-guest.c
+/// Map errno returned from ioctl when interact with kernel's TDX guest module.
+pub fn errno_to_tdx_err(errno: Errno) -> TdxError {
+    match errno {
+        Errno::ENOMEM => TdxError::OutOfMemory,
+        Errno::EFAULT => TdxError::BadAddress,
+        Errno::EINTR => TdxError::Interrupted,
+        Errno::EINVAL => TdxError::InvalidParameter,
+        Errno::EIO => TdxError::TdcallFailure,
+        Errno::EPERM => TdxError::InvalidRtmrIndex,
+        Errno::EBUSY => TdxError::Busy,
+        Errno::ENOTTY => TdxError::NotSupported,
+        Errno::ENODEV => TdxError::WrongDevice,
+
+        err => TdxError::Unexpected(err as u32),
+    }
 }
 
 #[cfg(test)]
@@ -69,7 +87,7 @@ mod tests {
         let result = get_tdx_report([0; TDX_REPORT_DATA_SIZE]);
         match result {
             Ok(_) => panic!("expecting error"),
-            Err(err) => assert_eq!(err, TdxAttestErrorCode::DeviceFailure),
+            Err(err) => assert_eq!(err, TdxError::DeviceFailure),
         }
     }
 
@@ -78,7 +96,7 @@ mod tests {
         let mut extend_data = [0u8; TDX_RTMR_EXTEND_DATA_SIZE];
         extend_data[0] = 123;
         let err = extend_tdx_rtmr(2, extend_data).expect_err("expecting err");
-        assert_eq!(err, TdxAttestErrorCode::DeviceFailure);
+        assert_eq!(err, TdxError::DeviceFailure);
     }
 
     #[test]
@@ -87,6 +105,6 @@ mod tests {
         extend_data[0] = 123;
 
         let err = extend_tdx_rtmr(77, extend_data).expect_err("expecting err");
-        assert_eq!(err, TdxAttestErrorCode::InvalidRtmrIndex);
+        assert_eq!(err, TdxError::InvalidRtmrIndex);
     }
 }
