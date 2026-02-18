@@ -40,15 +40,15 @@ struct CommonArgs {
 
     // TODO(RTE-745): the `cpu_count` is not currently being used for AMD-SEV
     /// The number of (v)CPUs that should be allocated to the enclave
-    #[arg(short, long, default_value_t = DEFAULT_CPU_COUNT)]
+    #[arg(short, long, default_value_t = DEFAULT_CPU_COUNT, global=true)]
     cpu_count: u32,
 
     ///The amount of memory that should be allocated to the enclave (in MiB)
-    #[arg(short, long, default_value_t = DEFAULT_MEMORY_SIZE_MIB)]
+    #[arg(short, long, default_value_t = DEFAULT_MEMORY_SIZE_MIB, global=true)]
     memory: u64,
 
     ///Run enclave on simulated version of the target platform
-    #[arg(short, long)]
+    #[arg(short, long, global = true)]
     simulate: bool,
 }
 
