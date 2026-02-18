@@ -43,7 +43,8 @@ fn main() {
         build.file(path);
     }
 
-    let name = if env::var("TARGET").unwrap() == "x86_64-fortanix-unknown-sgx" {
+    let target =  env::var("TARGET").unwrap();
+    let name = if target == "x86_64-fortanix-unknown-sgx" || target == "x86_64-unknown-linux-fortanixvme" {
         "libc.a"
     } else {
         "librsc.a"
