@@ -132,7 +132,7 @@ checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
 
 [[package]]
 name = "async-usercalls"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "crossbeam-channel",
  "fnv",
@@ -2575,7 +2575,7 @@ dependencies = [
 
 [[package]]
 name = "ipc-queue"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "fortanix-sgx-abi",
  "futures 0.3.31",
