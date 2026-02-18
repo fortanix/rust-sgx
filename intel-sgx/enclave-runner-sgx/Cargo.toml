@@ -20,7 +20,7 @@ exclude = ["fake-vdso/.gitignore", "fake-vdso/Makefile", "fake-vdso/main.S"]
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.8.0", path = "../sgxs" }
+sgxs = { version = "0.8.1", path = "../sgxs" }
 fortanix-sgx-abi = { version = "0.7.0", path = "../fortanix-sgx-abi" }
 sgx-isa = { version = "0.4.0", path = "../sgx-isa" }
 insecure-time = { version = "0.2", path = "../insecure-time", features = ["estimate_crystal_clock_freq"] }
