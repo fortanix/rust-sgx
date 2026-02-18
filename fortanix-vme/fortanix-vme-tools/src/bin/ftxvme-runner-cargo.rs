@@ -151,9 +151,9 @@ fn cargo_run_sev_snp_vm(
         .arg(&uki_path)
         .arg("--cmdline")
         .arg(format!(
-            "console=ttyS0 earlyprintk=serial loglevel={}",
+            "console=ttyS0 earlyprintk=serial loglevel={}", // TODO(RTE-804): first two args unnecessary under new ABI
             log_level_to_kernel_log_level(common_args.verbose.log_level_filter())
-        )); //TODO: should we use this as default?
+        ));
 
     run_command(ftxvme_elf2uki).map_err(|e| e.io_installation_hint(ELF2UKI_TOOL_NAME))?;
 

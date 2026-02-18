@@ -56,8 +56,12 @@ struct ArgsWithoutValidation {
     application_elf_path: PathBuf,
 
     /// String to pass as the kernel command line
-    #[arg(long = "cmdline", value_name = "STRING")]
-    kernel_cmdline: Option<String>,
+    #[arg(
+        long = "cmdline",
+        value_name = "STRING",
+        default_value = "console=ttyS0 earlyprintk=serial" // TODO(RTE-804): unnecessary under new ABI
+    )]
+    kernel_cmdline: String,
 
     /// Path to the kernel image file
     #[arg(long = "kernel", value_name = "FILE", default_value=KERNEL_PATH)]
@@ -125,9 +129,9 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
         .arg("--output")
         .arg(&cli.output_path);
 
-    if let Some(cmdline) = &cli.args_without_validation.kernel_cmdline {
-        command.arg("--cmdline").arg(cmdline);
-    }
+    command
+        .arg("--cmdline")
+        .arg(&cli.args_without_validation.kernel_cmdline);
 
     let output = command.output().context("spawning ukify process failed")?;
     if !output.status.success() {
