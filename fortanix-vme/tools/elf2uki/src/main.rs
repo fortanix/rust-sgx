@@ -4,7 +4,9 @@ use std::{fs::File, path::PathBuf};
 
 use anyhow::{anyhow, Context as _, Ok, Result};
 use clap::{Args, Parser};
-use confidential_vm_blobs::{EFI_BOOT_STUB_PATH, INIT_PATH, KERNEL_PATH};
+use confidential_vm_blobs::{
+    CONFIDENTIAL_VM_BLOBS_PACKAGE, EFI_BOOT_STUB_PATH, INIT_PATH, KERNEL_PATH,
+};
 use tempfile::NamedTempFile;
 
 mod initramfs;
@@ -77,7 +79,10 @@ pub fn open_file<P: AsRef<Path>>(path: P) -> Result<File> {
 }
 
 fn append_to_file_name(mut path_buf: PathBuf, append: &str) -> Result<PathBuf> {
-    let mut extended_name = path_buf.file_name().ok_or_else(|| anyhow!("path {path_buf:?} unexpectedly has no file name"))?.to_owned();
+    let mut extended_name = path_buf
+        .file_name()
+        .ok_or_else(|| anyhow!("path {path_buf:?} unexpectedly has no file name"))?
+        .to_owned();
     extended_name.push(append);
     path_buf.set_file_name(extended_name);
     Ok(path_buf)
@@ -144,7 +149,7 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    confidential_vm_blobs::check_confidential_vm_blobs_dependencies()?;
+    check_elf2uki_dependencies()?;
     let args = Cli::parse();
     let validated_args = args.validate()?;
 
@@ -162,5 +167,18 @@ fn main() -> Result<()> {
         "Confidential VM Image successfully created at path: `{}`",
         validated_args.output_path.display()
     );
+    Ok(())
+}
+
+/// Check installation of dependencies, returning an error if required
+/// dependencies are not installed
+///
+/// Strictly speaking, we do not require the dependencies to be present if the user does not use
+/// any fallback values, but we do so anyway for simplicity.
+pub fn check_elf2uki_dependencies() -> anyhow::Result<()> {
+    const ELF2UKI_DEPENDENCIES: [&str; 2] = [CONFIDENTIAL_VM_BLOBS_PACKAGE, "systemd-ukify"];
+    for name in ELF2UKI_DEPENDENCIES {
+        confidential_vm_blobs::check_dependency(name)?
+    }
     Ok(())
 }

@@ -23,19 +23,8 @@ pub const VANILLA_OVMF_PATH: &str = "/usr/share/ovmf/OVMF.fd";
 /// Blob for the efi boot stub
 pub const EFI_BOOT_STUB_PATH: &str = confidential_blob_path!("linuxx64.efi.stub");
 
-const DEPENDENCIES_TO_CHECK: [&str; 2] = ["fortanix-confidential-vm-blobs", "systemd-ukify"];
-
-/// Check installation of confidential-vm-blobs dependencies, returning an error if required
-/// dependencies are not installed
-///
-/// Strictly speaking, we do not require the dependencies to be present if the user does not use
-/// any fallback values, but we do so anyway for simplicity.
-pub fn check_confidential_vm_blobs_dependencies() -> anyhow::Result<()> {
-    for name in DEPENDENCIES_TO_CHECK {
-        check_dependency(name)?
-    }
-    Ok(())
-}
+pub const CONFIDENTIAL_VM_BLOBS_PACKAGE: &str = "fortanix-confidential-vm-blobs";
+pub const OVMF_PACKAGE: &str = "ovmf";
 
 pub fn check_dependency(name: &str) -> anyhow::Result<()> {
     let dpkg_cmd = Command::new("dpkg")

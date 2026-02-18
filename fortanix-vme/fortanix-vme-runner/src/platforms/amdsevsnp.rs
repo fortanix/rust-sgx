@@ -204,7 +204,7 @@ fn build_qemu_command_common<V: UseCaseQemuArgs>(
     let mut command = Command::new(QEMU_EXECUTABLE);
 
     // General machine setup
-    // TODO: consider `no-defaults` option for devices
+    // TODO: consider `-nodefaults` option for devices
     command
         .arg("-enable-kvm")
         .arg("-nographic")

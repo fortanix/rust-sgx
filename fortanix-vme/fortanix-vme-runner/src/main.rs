@@ -2,7 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use b64_ct::{ToBase64, STANDARD};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
-use confidential_vm_blobs::{check_dependency, AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
+use confidential_vm_blobs::{
+    check_dependency, AMD_SEV_OVMF_PATH, CONFIDENTIAL_VM_BLOBS_PACKAGE, OVMF_PACKAGE,
+    VANILLA_OVMF_PATH,
+};
 use enclave_runner::EnclaveBuilder;
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, AmdSevVmRunArgs, CommonVmRunArgs,
@@ -146,10 +149,15 @@ impl AmdSevSnpCli {
         let firmware_image_path = match firmware_image_path {
             Some(path) => path,
             None => Path::new(if self.common_args.simulate {
+                check_dependency(OVMF_PACKAGE)?;
                 VANILLA_OVMF_PATH
+            } else if self.amd_sev_snp_args.id_block_args.is_some() {
+                Err(Cli::command().error(
+                    clap::error::ErrorKind::ArgumentConflict,
+                    "must explicitly specify firmware image path when using signed enclaves",
+                ))?
             } else {
-                const OVMF_PACKAGE_NAME: &str = "ovmf";
-                check_dependency(OVMF_PACKAGE_NAME)?;
+                check_dependency(CONFIDENTIAL_VM_BLOBS_PACKAGE)?;
                 AMD_SEV_OVMF_PATH
             }),
         }
