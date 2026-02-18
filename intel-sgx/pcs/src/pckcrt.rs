@@ -23,18 +23,21 @@ use sgx_pkix::oid::{self, SGX_EXTENSION};
 use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERDecodable, BERReader, BERReaderSeq};
 #[cfg(feature = "verify")]
 use {
+    super::{DcapArtifactIssuer, PckCrl},
     mbedtls::alloc::{Box as MbedtlsBox, List as MbedtlsList},
     mbedtls::ecp::EcPoint,
-    mbedtls::x509::certificate::Certificate,
     mbedtls::error::{codes, Error as ErrMbed},
+    mbedtls::x509::certificate::Certificate,
     std::ffi::CString,
     std::ops::Deref,
-    super::{DcapArtifactIssuer, PckCrl},
 };
 
 use crate::io::{self, WriteOptions};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
-use crate::{CpuSvn, Error, PlatformTypeForTcbInfo, Unverified, VerificationType, Verified, platform};
+use crate::{
+    platform, CpuSvn, Error, PlatformTypeForTcbInfo, Unverified, VerificationType,
+    Verified,
+};
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
 ///
@@ -215,24 +218,98 @@ impl TcbComponents<SGXSpecificTcbComponentData> {
         TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
-            platform_specific_data: SGXSpecificTcbComponentData {}
+            platform_specific_data: SGXSpecificTcbComponentData {},
         })
+    }
+}
+
+#[derive(Clone)]
+pub struct TeeTcbSvn([u8; 16]);
+
+impl From<[u8; 16]> for TeeTcbSvn {
+    fn from(value: [u8; 16]) -> Self {
+        TeeTcbSvn(value)
     }
 }
 
 impl TcbComponents<TDXSpecificTcbComponentData> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16, raw_tdxsvn: [u8; 16]) -> Self {
-        TcbComponents (TcbComponentsV4 {
+        TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
             platform_specific_data: TDXSpecificTcbComponentData {
-                tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into())
-            }
+                tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into()),
+            },
         })
     }
 
     pub fn tdx_tcb_components(&self) -> &[TcbComponentEntry; 16] {
         &self.0.platform_specific_data.tdxtcbcomponents
+    }
+
+    pub fn tee_tcb_svn(&self) -> TeeTcbSvn {
+        let mut out = TeeTcbSvn([0u8; 16]);
+        for (i, c) in self
+            .0
+            .platform_specific_data
+            .tdxtcbcomponents
+            .iter()
+            .enumerate()
+        {
+            out.0[i] = c.svn;
+        }
+        out
+    }
+}
+
+impl PartialOrd<TeeTcbSvn> for TeeTcbSvn {
+    fn partial_cmp(&self, other: &TeeTcbSvn) -> Option<Ordering> {
+        // Reference:
+        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+        //
+        // Compare SVNs in TEE TCB SVN array retrieved from TD Report in Quote
+        // (from index 0 to 15 if TEE TCB SVN at index 1 is set to 0, or from index 2 to 15 otherwise) with
+        // the corresponding values of SVNs in tdxtcbcomponents array of TCB Level.
+        let mut prev: Option<Ordering> = None;
+
+        let skip_idx = if self.0[1] != 0 {
+            2
+        } else {
+            0
+        };
+
+        for (a, b) in self
+            .0
+            .iter()
+            .zip(other.0.iter())
+            .skip(skip_idx)
+        {
+            match (a.cmp(&b), prev) {
+                (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
+                (Ordering::Greater, Some(Ordering::Less))
+                | (Ordering::Less, Some(Ordering::Greater)) => return None,
+                (Ordering::Equal, Some(Ordering::Less))
+                | (Ordering::Equal, Some(Ordering::Greater))
+                | (Ordering::Less, Some(Ordering::Less))
+                | (Ordering::Greater, Some(Ordering::Greater)) => (),
+            }
+        }
+        prev
+    }
+}
+
+impl PartialEq<TeeTcbSvn> for TeeTcbSvn {
+    fn eq(&self, other: &TeeTcbSvn) -> bool {
+        // Following the `PartialCmp` implementation, we ignore the first and second
+        // element if the second element is non-zero, as the second element indicates
+        // TdxModule identity that is evaluated separately
+        let skip_idx = if other.0[1] != 0 || self.0[1] != 0 { 2 } else { 0 };
+        for (a, b) in self.0.iter().zip(other.0.iter()).skip(skip_idx) {
+            if a != b {
+                return false;
+            }
+        }
+        true
     }
 }
 

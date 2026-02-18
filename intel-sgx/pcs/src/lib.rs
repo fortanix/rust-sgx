@@ -20,19 +20,27 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub use yasna::ASN1Error;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::Error as MbedError,
     mbedtls::alloc::{Box as MbedtlsBox, List as MbedtlsList},
     mbedtls::x509::certificate::Certificate,
+    mbedtls::Error as MbedError,
     std::ffi::CString,
     std::ops::Deref,
 };
 
-pub use crate::pckcrl::PckCrl;
-pub use crate::pckcrt::{PckCert, PckCerts, SGXPCKCertificateExtension, SGXType, TcbComponentType};
-pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
-pub use crate::tcb_info::{AdvisoryID, Fmspc, TcbInfo, TcbData, TcbLevel, TdxModule, TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, PlatformTypeForTcbInfo};
-pub use crate::tcb_evaluation_data_numbers::{RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy};
 pub use crate::io::{WriteOptions, WriteOptionsBuilder};
+pub use crate::pckcrl::PckCrl;
+pub use crate::pckcrt::{
+    PckCert, PckCerts, PlatformTypeForTcbComponent, SGXPCKCertificateExtension, SGXType,
+    TcbComponentType, TeeTcbSvn,
+};
+pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
+pub use crate::tcb_evaluation_data_numbers::{
+    RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy,
+};
+pub use crate::tcb_info::{
+    AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevel, TdxModule,
+    TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn,
+};
 
 mod io;
 mod iso8601;
@@ -40,8 +48,8 @@ mod pckcrl;
 mod pckcrt;
 mod pckid;
 mod qe_identity;
-mod tcb_info;
 mod tcb_evaluation_data_numbers;
+mod tcb_info;
 
 pub type CpuSvn = [u8; 16];
 pub type EncPpid = Vec<u8>;

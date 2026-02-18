@@ -6,17 +6,23 @@
 */
 
 use std::convert::TryFrom;
- use std::convert::TryInto;
+use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
+use serde::{de, de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
-    pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
+    mbedtls::alloc::List as MbedtlsList,
+    mbedtls::error::{codes, Error as ErrMbed},
+    mbedtls::x509::certificate::Certificate,
+    pkix::oid,
+    pkix::pem::PEM_CERTIFICATE,
+    pkix::x509::GenericCertificate,
+    pkix::FromBer,
+    std::ops::Deref,
 };
 
 use crate::io::WriteOptions;
@@ -241,6 +247,11 @@ impl Default for TdxModule {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleIdentity {
+    #[serde(
+        deserialize_with = "tdx_id_deserializer",
+        serialize_with = "tdx_id_serializer"
+    )]
+    id: u8,
     #[serde(flatten)]
     tdx_module: TdxModule,
     tcb_levels: Vec<TdxModuleTcbLevel>,
@@ -262,12 +273,18 @@ impl TdxModuleIdentity {
     pub fn tcb_levels_iter(&self) -> impl Iterator<Item = &TdxModuleTcbLevel> + '_ {
         self.tcb_levels.iter()
     }
+
+    /// Function to find best TDX TCB level for this TDX Module
+    pub fn find_best_tcb_level(&self, level: u64) -> Option<&TdxModuleTcbLevel> {
+        let idx = self.tcb_levels.iter().position(|tcb| tcb.tcb() <= level)?;
+        Some(&self.tcb_levels[idx])
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleTcbLevelIsvSvn {
-    isvsvn: u64
+    isvsvn: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -278,7 +295,7 @@ pub struct TdxModuleTcbLevel {
     tcb_date: DateTime<Utc>,
     tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
-    advisory_ids: Vec<AdvisoryID>
+    advisory_ids: Vec<AdvisoryID>,
 }
 
 impl TdxModuleTcbLevel {
@@ -299,14 +316,41 @@ impl TdxModuleTcbLevel {
     }
 }
 
-fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 48], D::Error> {
+fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    let id_str = String::deserialize(deserializer)?;
+    let split = id_str
+        .split('_')
+        .skip(1)
+        .next()
+        .ok_or(serde::de::Error::custom(format!(
+            "Failed to parse TDX ID. Found: {id_str}"
+        )))?;
+    split
+        .parse::<u8>()
+        .map_err(|_| serde::de::Error::custom(format!("Failed to parse TDX ID. Found: {id_str}")))
+}
+
+#[allow(unused)]
+fn tdx_id_serializer<S>(id: u8, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.serialize_str(format!("TDX_{id:02}").as_str())
+}
+
+fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<[u8; 48], D::Error> {
     let mrsigner = String::deserialize(deserializer)?;
     let mrsigner = base16::decode(&mrsigner).map_err(de::Error::custom)?;
     mrsigner.as_slice().try_into().map_err(de::Error::custom)
 }
 
 #[allow(unused)]
-fn tdx_mrsigner_serializer<S>(mrsigner: &[u8; 48], serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+fn tdx_mrsigner_serializer<S>(
+    mrsigner: &[u8; 48],
+    serializer: S,
+) -> ::std::result::Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
@@ -454,6 +498,13 @@ impl TcbData<platform::TDX, Verified> {
 
     pub fn iter_tdx_module_identities(&self) -> impl Iterator<Item = &TdxModuleIdentity> + '_ {
         self.platform_specific_data.tdx_module_identities.iter()
+    }
+
+    pub fn find_tdx_module_identity(&self, id: u8) -> Option<&TdxModuleIdentity> {
+        self.platform_specific_data
+            .tdx_module_identities
+            .iter()
+            .find(|x| x.id == id)
     }
 }
 
