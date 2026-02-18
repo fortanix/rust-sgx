@@ -23,7 +23,7 @@ struct Cli {
 
 #[derive(Debug, Args)]
 struct CommonArgs {
-    #[arg(long)]
+    #[arg(long, global = true)]
     simulate: bool,
 
     #[command(flatten)]
