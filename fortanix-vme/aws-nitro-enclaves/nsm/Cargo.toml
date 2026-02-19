@@ -8,6 +8,6 @@ edition = "2021"
 
 [dependencies]
 nitro-attestation-verify = { path = "../nitro-attestation-verify" }
-nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api" }
-nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api" }
+nsm-driver = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", rev = "9ddb589875baf345d085a980aa96cf3a4e480ea8" }
+nsm-io = { git = "https://github.com/aws/aws-nitro-enclaves-nsm-api", rev = "9ddb589875baf345d085a980aa96cf3a4e480ea8" }
 serde_bytes = "0.11"
