@@ -165,7 +165,8 @@ mod tests {
         let crl = PckCrl::read_from_file("./tests/data/", DcapArtifactIssuer::PCKProcessorCA).unwrap();
 
         let serialized_bytes = serde_json::ser::to_vec(&crl).unwrap();
-        let _: PckCrl<crate::Unverified> = serde_json::de::from_slice(&serialized_bytes[..]).unwrap();
+        let crt_deserialized: PckCrl<crate::Unverified> = serde_json::de::from_slice(&serialized_bytes[..]).unwrap();
+        assert_eq!(crt_deserialized, crl);
     }
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
