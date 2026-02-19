@@ -1,6 +1,6 @@
 [package]
 name = "pcs"
-version = "0.8.1"
+version = "0.8.2"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -21,12 +21,12 @@ categories = ["os", "hardware-support"]
 [dependencies]
 chrono = { version = "0.4.42", features = ["now"] }
 dcap-ql = { version = "0.4.0", path = "../dcap-ql", default-features = false }
-sgx-isa = { version = "0.4.1", path = "../sgx-isa", default-features = true }
+sgx-isa = { version = ">=0.4.0, <0.6.0", path = "../sgx-isa", default-features = true }
 pkix = "0.2.0"
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 rustc-serialize = "0.3"
 serde = { version = "1.0.7", features = ["derive"] }
-sgx_pkix = "0.2"
+sgx_pkix = { version = ">=0.2.0, <0.4.0", path = "../sgx_pkix" }
 serde_json = { version = "1.0", features = ["raw_value"] }
 percent-encoding = "2.3.2"
 base16 = "0.2"

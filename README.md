@@ -38,6 +38,10 @@ please ensure the **tag name** used for the new release following format:
 `{crate name}` is used, but `{version number}` is still required for keeping
 a good tag name.
 
+### Updating the version dependency across multiple crates
+
+We use relaxed dependency version requirements across the crates in this repository. As a result, we should avoid increasing the minimum required version of a dependency unless it is truly necessary, especially for minor updates (e.g., 0.4.0 -> 0.5.0). If one crate requires a newer major or minor version, other crates that depend on it but are not affected by the changes should continue to support the older version instead of unnecessarily raising their own dependency requirements. We can do this by using proper version range (e.g., `sgx-isa = >=0.4.0, <0.6.0`).
+
 # Contributing
 
 We gratefully accept contributions from the community.
