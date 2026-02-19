@@ -56,7 +56,7 @@ echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://d
 info "Updating package lists..."
 $SUDO apt-get update -y
 
-info "Installing build dependencies: protobuf-compiler, libsgx-dcap-ql-dev, clang-18..."
-$SUDO apt-get install -y protobuf-compiler libsgx-dcap-ql-dev clang-18
+info "Installing build dependencies: faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib"
+$SUDO apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
 
 info "All dependencies installed successfully."

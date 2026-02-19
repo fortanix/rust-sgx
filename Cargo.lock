@@ -293,7 +293,7 @@ dependencies = [
  "percent-encoding 2.3.2",
  "pin-project-lite",
  "tracing",
- "uuid 1.18.1",
+ "uuid 1.19.0",
 ]
 
 [[package]]
@@ -657,6 +657,26 @@ dependencies = [
  "shlex",
  "syn 2.0.115",
  "which",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.70.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f49d8fed880d473ea71efb9bf597651e77201bdd4893efe54c9e5d65ae04ce6f"
+dependencies = [
+ "bitflags 2.5.0",
+ "cexpr",
+ "clang-sys",
+ "itertools",
+ "log 0.4.28",
+ "prettyplease",
+ "proc-macro2 1.0.95",
+ "quote 1.0.41",
+ "regex",
+ "rustc-hash",
+ "shlex",
+ "syn 2.0.115",
 ]
 
 [[package]]
@@ -2607,6 +2627,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2776,7 +2805,7 @@ version = "2.28.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "225db657202fc57aea23750995667c399a9250238268bff9ab15053b2ccaad8c"
 dependencies = [
- "bindgen",
+ "bindgen 0.65.1",
  "cc",
  "cfg-if 1.0.0",
  "cmake",
@@ -2914,7 +2943,7 @@ dependencies = [
  "chrono",
  "lazy_static",
  "mbedtls",
- "num-bigint 0.4.3",
+ "num-bigint 0.4.4",
  "pkix",
  "serde",
  "serde_bytes",
@@ -2928,7 +2957,7 @@ version = "1.4.2"
 source = "git+https://github.com/aws/aws-nitro-enclaves-cli.git?rev=v1.4.2#6e8512e4d9e1ba82e0e5c4c9d9d0b3987724f217"
 dependencies = [
  "aws-nitro-enclaves-image-format",
- "bindgen",
+ "bindgen 0.70.1",
  "chrono",
  "ciborium",
  "clap 4.4.18",
@@ -3110,9 +3139,9 @@ dependencies = [
 
 [[package]]
 name = "num-bigint"
-version = "0.4.3"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f93ab6289c7b344a8a9f60f88d80aa20032336fe78da341afc91c8a2341fc75f"
+checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
 dependencies = [
  "autocfg",
  "num-integer",
@@ -4631,6 +4660,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tdx-ql"
+version = "0.1.0"
+dependencies = [
+ "clap 4.4.18",
+ "nix 0.30.1",
+ "sgx-isa 0.4.1",
+]
+
+[[package]]
 name = "tempdir"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5107,9 +5145,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.18.1"
+version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f87b8aa10b915a06587d0dec516c282ff295b475d94abf425d62b57710070a2"
+checksum = "e2e054861b4bd027cd373e18e8d8d8e6548085000e41290d95ce0c373a654b4a"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -5605,7 +5643,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e262a29d0e61ccf2b6190d7050d4b237535fc76ce4c1210d9caa316f71dffa75"
 dependencies = [
- "num-bigint 0.4.3",
+ "num-bigint 0.4.4",
 ]
 
 [[package]]
