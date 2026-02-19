@@ -505,7 +505,8 @@ impl PckCerts {
 pub struct PckCert<V: VerificationType = Verified> {
     cert: String,
     ca_chain: Vec<String>,
-    type_: V,
+    #[serde(skip_serializing)]
+    _type: V,
 }
 
 impl PckCert<Unverified> {
@@ -527,7 +528,7 @@ impl PckCert<Unverified> {
         PckCert {
             cert,
             ca_chain,
-            type_: Unverified
+            _type: Unverified
         }
     }
 
@@ -558,7 +559,7 @@ impl PckCert<Unverified> {
         Ok(PckCert {
             cert: self.cert,
             ca_chain: self.ca_chain,
-            type_: Verified,
+            _type: Verified,
         })
     }
 

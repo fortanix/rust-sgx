@@ -118,7 +118,8 @@ pub struct QeIdentity<V: VerificationType = Verified> {
     mrsigner: [u8; 32],
     isvprodid: u16,
     tcb_levels: Vec<TcbLevel>,
-    type_: V,
+    #[serde(skip_serializing)]
+    _type: V,
 }
 
 impl QeIdentity {
@@ -348,7 +349,7 @@ impl QeIdentitySigned {
             mrsigner,
             isvprodid,
             tcb_levels,
-            type_: _
+            _type: _
         } = serde_json::from_str(&self.raw_enclave_identity).map_err(|e| Error::ParseError(e))?;
 
         if version != 2 {
@@ -381,7 +382,7 @@ impl QeIdentitySigned {
             mrsigner,
             isvprodid,
             tcb_levels,
-            type_: Verified,
+            _type: Verified,
         })
     }
 }
