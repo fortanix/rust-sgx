@@ -25,7 +25,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aesm-client"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -34,7 +34,7 @@ dependencies = [
  "protobuf",
  "protobuf-codegen",
  "report-test",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "sgxs-loaders",
  "thiserror",
@@ -1272,7 +1272,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "byteorder 1.3.4",
@@ -1286,7 +1286,7 @@ dependencies = [
  "report-test",
  "serde",
  "serde_json",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "sgxs-loaders",
  "yasna 0.3.2",
@@ -1294,22 +1294,22 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql-sys"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "num-derive",
  "num-traits",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
 ]
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "aesm-client",
  "anyhow",
  "dcap-ql",
  "report-test",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs-loaders",
 ]
 
@@ -1449,7 +1449,7 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "b64-ct",
@@ -1464,8 +1464,8 @@ dependencies = [
  "serde_bytes",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
- "sgx-isa 0.4.1",
- "sgx_pkix 0.2.2",
+ "sgx-isa 0.5.0",
+ "sgx_pkix 0.2.3",
  "url 1.7.2",
  "uuid 0.6.5",
  "uuid 0.8.2",
@@ -1546,7 +1546,7 @@ dependencies = [
  "nix 0.13.1",
  "openssl",
  "rustc_version",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "thiserror",
  "tokio",
@@ -1720,7 +1720,7 @@ dependencies = [
  "os_str_bytes 7.1.1",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "sgxs-loaders",
  "thiserror",
@@ -2389,8 +2389,8 @@ dependencies = [
  "serde-bytes-repr",
  "serde_bytes",
  "serde_json",
- "sgx-isa 0.4.1",
- "sgx_pkix 0.2.2",
+ "sgx-isa 0.5.0",
+ "sgx_pkix 0.2.3",
  "sgxs",
  "sgxs-loaders",
  "tokio",
@@ -3393,7 +3393,7 @@ dependencies = [
 
 [[package]]
 name = "pcs"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "b64-ct",
@@ -3410,8 +3410,8 @@ dependencies = [
  "rustc-serialize",
  "serde",
  "serde_json",
- "sgx-isa 0.4.1",
- "sgx_pkix 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sgx-isa 0.5.0",
+ "sgx_pkix 0.2.2",
  "tempdir",
  "yasna 0.3.2",
 ]
@@ -3836,12 +3836,12 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "anyhow",
  "enclave-runner",
  "enclave-runner-sgx",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
 ]
 
@@ -4355,15 +4355,6 @@ dependencies = [
 [[package]]
 name = "sgx-isa"
 version = "0.4.1"
-dependencies = [
- "bitflags 1.2.1",
- "mbedtls",
- "serde",
-]
-
-[[package]]
-name = "sgx-isa"
-version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0746ac51caf664e67fdb6643b27f0e29d4b9e1cea0b374644ab28bfa2b83fc9"
 dependencies = [
@@ -4371,14 +4362,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "sgx_pkix"
-version = "0.2.2"
+name = "sgx-isa"
+version = "0.5.0"
 dependencies = [
- "byteorder 1.3.4",
- "lazy_static",
- "pkix",
- "quick-error",
- "sgx-isa 0.4.1",
+ "bitflags 1.2.1",
+ "mbedtls",
+ "serde",
 ]
 
 [[package]]
@@ -4391,7 +4380,18 @@ dependencies = [
  "lazy_static",
  "pkix",
  "quick-error",
- "sgx-isa 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sgx-isa 0.4.1",
+]
+
+[[package]]
+name = "sgx_pkix"
+version = "0.2.3"
+dependencies = [
+ "byteorder 1.3.4",
+ "lazy_static",
+ "pkix",
+ "quick-error",
+ "sgx-isa 0.5.0",
 ]
 
 [[package]]
@@ -4404,7 +4404,7 @@ dependencies = [
  "foreign-types",
  "openssl",
  "openssl-sys",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sha2 0.10.9",
  "thiserror",
  "time 0.3.41",
@@ -4412,7 +4412,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -4420,7 +4420,7 @@ dependencies = [
  "libloading 0.5.2",
  "nix 0.15.0",
  "report-test",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "thiserror",
  "winapi",
@@ -4455,7 +4455,7 @@ dependencies = [
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
@@ -4665,7 +4665,7 @@ version = "0.1.0"
 dependencies = [
  "clap 4.4.18",
  "nix 0.30.1",
- "sgx-isa 0.4.1",
+ "sgx-isa 0.5.0",
 ]
 
 [[package]]
