@@ -208,14 +208,14 @@ impl TryFrom<&str> for DcapArtifactIssuer {
 
 /// A trait type to define a bound of a type that signifies a Verified or Unverified
 /// instance of a type.
-pub trait VerificationType : Serialize { }
+pub trait VerificationType { }
 
-#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Verified;
 
 impl VerificationType for Verified {}
 
-#[derive(Clone, Serialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Unverified;
 
 impl VerificationType for Unverified {}

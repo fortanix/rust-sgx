@@ -26,12 +26,13 @@ use crate::{DcapArtifactIssuer, Error, Unverified, VerificationType, Verified};
 pub struct PckCrl<V: VerificationType = Verified> {
     crl: String,
     ca_chain: Vec<String>,
-    type_: V,
+    #[serde(skip_serializing)]
+    _type: V,
 }
 
 impl PckCrl<Unverified> {
     pub fn new(crl: String, ca_chain: Vec<String>) -> Result<PckCrl<Unverified>, Error> {
-        let crl = PckCrl { crl, ca_chain, type_: Unverified };
+        let crl = PckCrl { crl, ca_chain, _type: Unverified };
         Ok(crl)
     }
 
@@ -70,7 +71,7 @@ impl PckCrl<Unverified> {
         self.ca()?;
 
         let PckCrl { crl, ca_chain, .. } = self;
-        Ok(PckCrl::<Verified>{ crl, ca_chain, type_: Verified})
+        Ok(PckCrl::<Verified>{ crl, ca_chain, _type: Verified})
     }
 
     pub fn read_from_file(input_dir: &str, ca: DcapArtifactIssuer) -> Result<Self, Error> {
@@ -156,6 +157,15 @@ mod tests {
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
         crl.verify(&root_cas).unwrap();
+    }
+
+    #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
+    #[test]
+    fn serialize_deserialize_pck_crl() {
+        let crl = PckCrl::read_from_file("./tests/data/", DcapArtifactIssuer::PCKProcessorCA).unwrap();
+
+        let serialized_bytes = serde_json::ser::to_vec(&crl).unwrap();
+        let _: PckCrl<crate::Unverified> = serde_json::de::from_slice(&serialized_bytes[..]).unwrap();
     }
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
