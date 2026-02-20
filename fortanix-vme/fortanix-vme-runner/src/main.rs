@@ -2,10 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use b64_ct::{ToBase64, STANDARD};
 use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_verbosity_flag::WarnLevel;
-use confidential_vm_blobs::{
-    check_dependency, AMD_SEV_OVMF_PATH, CONFIDENTIAL_VM_BLOBS_PACKAGE, OVMF_PACKAGE,
-    VANILLA_OVMF_PATH,
-};
+use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 use enclave_runner::EnclaveBuilder;
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, AmdSevVmRunArgs, CommonVmRunArgs,
@@ -149,7 +146,7 @@ impl AmdSevSnpCli {
         let firmware_image_path = match firmware_image_path {
             Some(path) => path,
             None => Path::new(if self.common_args.simulate {
-                check_dependency(OVMF_PACKAGE)?;
+                check_file_open(VANILLA_OVMF_PATH)?;
                 VANILLA_OVMF_PATH
             } else if self.amd_sev_snp_args.id_block_args.is_some() {
                 Err(Cli::command().error(
@@ -157,7 +154,7 @@ impl AmdSevSnpCli {
                     "must explicitly specify firmware image path when using signed enclaves",
                 ))?
             } else {
-                check_dependency(CONFIDENTIAL_VM_BLOBS_PACKAGE)?;
+                check_file_open(AMD_SEV_OVMF_PATH)?;
                 AMD_SEV_OVMF_PATH
             }),
         }
@@ -172,6 +169,13 @@ impl AmdSevSnpCli {
             cpu_count,
         })
     }
+}
+
+pub fn check_file_open<P: AsRef<Path>>(path: P) -> Result<()> {
+    let path = path.as_ref();
+    let _ =
+        File::open(path).with_context(|| format!("cannot open file at path {}", path.display()));
+    Ok(())
 }
 
 impl TryFrom<IdBlockCliArgs> for IdBlockArgs {
