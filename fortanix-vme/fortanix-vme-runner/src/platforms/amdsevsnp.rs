@@ -123,7 +123,8 @@ impl UseCaseQemuArgs for AmdSevVmRunArgs {
 
 // TODO(RTE-789): decide what processor type well use in prod
 const AMD_PROCESSOR: &str = "EPYC-v4";
-// TODO: proper policy
+// TODO(RTE-789): proper policy
+/// See the `Guest Policy` section of the AMD SEV SNP ABI specification for a detailed explanation
 const DEFAULT_POLICY: u64 = 0x20000;
 
 fn map_nix_error<I: Into<Cow<'static, str>>>(msg: I, err: Error) -> RunnerError {
@@ -204,7 +205,7 @@ fn build_qemu_command_common<V: UseCaseQemuArgs>(
     let mut command = Command::new(QEMU_EXECUTABLE);
 
     // General machine setup
-    // TODO: consider `-nodefaults` option for devices
+    // TODO(RTE-810): consider `-nodefaults` option for devices
     command
         .arg("-enable-kvm")
         .arg("-nographic")
