@@ -28,6 +28,6 @@ sev = { version = "7.1.0", features = [
     "openssl",
 ] } # Unfortunately, we need the `openssl` feature - https://github.com/virtee/sev/issues/387
 thiserror = "1.0"
-tokio = { version = "1.35", features = ["full"] } # MIT
+tokio = { version = "1.49", features = ["full"] } # MIT
 tokio-vsock = { version = "0.7.2" }
 vsock = "0.5"
