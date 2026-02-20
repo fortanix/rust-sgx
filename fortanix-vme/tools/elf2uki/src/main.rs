@@ -9,7 +9,6 @@ use tempfile::NamedTempFile;
 
 mod initramfs;
 
-// TODO (RTE-740): deal with measurement/ID block/author key as part of CLI
 /// Entry point for CLI application.
 ///
 /// # Example
@@ -78,7 +77,10 @@ pub fn open_file<P: AsRef<Path>>(path: P) -> Result<File> {
 }
 
 fn append_to_file_name(mut path_buf: PathBuf, append: &str) -> Result<PathBuf> {
-    let mut extended_name = path_buf.file_name().ok_or_else(|| anyhow!("path {path_buf:?} unexpectedly has no file name"))?.to_owned();
+    let mut extended_name = path_buf
+        .file_name()
+        .ok_or_else(|| anyhow!("path {path_buf:?} unexpectedly has no file name"))?
+        .to_owned();
     extended_name.push(append);
     path_buf.set_file_name(extended_name);
     Ok(path_buf)
@@ -145,7 +147,6 @@ fn build_uki(cli: &ValidatedCli, initramfs_path: &Path) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    confidential_vm_blobs::check_confidential_vm_blobs_dependencies()?;
     let args = Cli::parse();
     let validated_args = args.validate()?;
 
