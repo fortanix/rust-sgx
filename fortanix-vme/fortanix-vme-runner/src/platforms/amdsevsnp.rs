@@ -69,7 +69,7 @@ struct VsockConfig {
 }
 
 trait UseCaseQemuArgs {
-    const PROCESSOR_NAME: &str;
+    const CPU_MODEL: &str;
 
     fn common_vm_run_args(&self) -> Cow<'_, CommonVmRunArgs>;
 
@@ -77,7 +77,7 @@ trait UseCaseQemuArgs {
 }
 
 impl UseCaseQemuArgs for SimulatorVmRunArgs {
-    const PROCESSOR_NAME: &str = "host";
+    const CPU_MODEL: &str = "host";
 
     fn common_vm_run_args(&self) -> Cow<'_, CommonVmRunArgs> {
         Cow::Borrowed(&self.common_vm_run_args)
@@ -87,7 +87,7 @@ impl UseCaseQemuArgs for SimulatorVmRunArgs {
 }
 
 impl UseCaseQemuArgs for AmdSevVmRunArgs {
-    const PROCESSOR_NAME: &str = AMD_PROCESSOR;
+    const CPU_MODEL: &str = QEMU_AMD_PROCESSOR_SIGNATURE;
 
     fn common_vm_run_args(&self) -> Cow<'_, CommonVmRunArgs> {
         Cow::Borrowed(&self.common_vm_run_args)
@@ -121,9 +121,9 @@ impl UseCaseQemuArgs for AmdSevVmRunArgs {
     }
 }
 
-// TODO(RTE-789): decide what processor type well use in prod
-const AMD_PROCESSOR: &str = "EPYC-v4";
-// TODO(RTE-789): proper policy
+// TODO(RTE-789): decide what processor *model*s we will support
+// `0-0-0` is the Fortanix VME standard FMS - Generic virtualized processor for SNP
+const QEMU_AMD_PROCESSOR_SIGNATURE: &str = "EPYC-v4,stepping=0,model=0,family=0";
 /// See the `Guest Policy` section of the AMD SEV SNP ABI specification for a detailed explanation
 const DEFAULT_POLICY: u64 = 0x20000;
 
@@ -224,9 +224,7 @@ fn build_qemu_command_common<V: UseCaseQemuArgs>(
         ));
 
     // CPU
-    command
-        .arg("-cpu")
-        .arg(<V as UseCaseQemuArgs>::PROCESSOR_NAME);
+    command.arg("-cpu").arg(<V as UseCaseQemuArgs>::CPU_MODEL);
 
     // Memory
     command.arg("-machine").arg("memory-backend=ram1");
