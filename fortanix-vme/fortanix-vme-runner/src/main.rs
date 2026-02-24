@@ -197,7 +197,7 @@ impl TryFrom<IdBlockCliArgs> for IdBlockArgs {
         // for whether `AUTHOR_KEY_EN` needs to be set
         let author_pub_key = id_auth_parsed.author_pub_key;
         // Workaround because `SevEcdsaPubKey` does not implement PartialEq
-        let author_key_enabled = author_pub_key.to_bytes()?.iter().all(|byte| byte == &0);
+        let author_key_enabled = !author_pub_key.to_bytes()?.iter().all(|byte| byte == &0);
         info!(
             "automatically detected that an author key is {}",
             if author_key_enabled {
