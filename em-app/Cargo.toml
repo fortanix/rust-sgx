@@ -13,7 +13,7 @@ keywords = [ "sgx" ]
 b64-ct = "0.1.3"
 em-client = { version = "4.0.0", default-features = false, features = ["client"] }
 em-node-agent-client = "1.0.0"
-hyper = { version = "0.10", default-features = false }
+hyper = { version = "1.7", default-features = false }
 mbedtls = { version = ">=0.12.0, <0.14.0", default-features = false, features = ["rdrand", "std", "ssl"] }
 pkix = ">=0.1.2, <0.3.0"
 
