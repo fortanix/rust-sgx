@@ -43,6 +43,8 @@ pub enum RunnerError {
     Join(#[from] JoinError),
     #[error("connection not found")]
     ConnectionNotFound,
+    #[error("nitro-cli error: {0:?}")]
+    NitroCli(nitro_cli::common::NitroCliFailure),
     #[error("nix error: {0}")]
     Nix(#[from] nix::Error),
     #[error("no available cid found")]

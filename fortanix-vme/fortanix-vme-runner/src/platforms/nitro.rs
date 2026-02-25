@@ -1,5 +1,6 @@
 use super::Platform;
 use crate::RunnerError;
+use log::warn;
 use nitro_cli::common::commands_parser::{EmptyArgs, RunEnclavesArgs};
 use nitro_cli::common::json_output::{EnclaveRunInfo, EnclaveTerminateInfo};
 use nitro_cli::common::{self as nitro_common, logger};
@@ -15,12 +16,15 @@ impl Platform for NitroEnclaves {
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let mut run_args: RunEnclavesArgs = run_args.into();
         let logger = logger::init_logger().expect("Log init failed");
-        let mut comm = enclave_proc_comm::enclave_proc_spawn(&logger).unwrap();
+        let mut comm =
+            enclave_proc_comm::enclave_proc_spawn(&logger).map_err(RunnerError::NitroCli)?;
 
         if run_args.enclave_name.is_none() {
-            let names = nitro_cli::get_all_enclave_names().unwrap();
-            run_args.enclave_name =
-                Some(nitro_cli::new_enclave_name(run_args.clone(), names).unwrap());
+            let names = nitro_cli::get_all_enclave_names().map_err(RunnerError::NitroCli)?;
+            run_args.enclave_name = Some(
+                nitro_cli::new_enclave_name(run_args.clone(), names)
+                    .map_err(RunnerError::NitroCli)?,
+            );
         }
 
         nitro_common::enclave_proc_command_send_single(
@@ -28,7 +32,7 @@ impl Platform for NitroEnclaves {
             Some(&run_args),
             &mut comm,
         )
-        .unwrap();
+        .map_err(RunnerError::NitroCli)?;
 
         // Returns a Vec of `(obj: EnclaveRunInfo, status_code)` for every item in `[comm]`. We need to
         // use this because `enclave_proc_handle_output` is private.
@@ -63,18 +67,18 @@ impl Platform for NitroEnclaves {
 
 impl Drop for RunningNitroEnclave {
     fn drop(&mut self) {
-        fn terminate(enclave: &mut EnclaveRunInfo) -> Result<(), ()> {
+        fn terminate(enclave: &mut EnclaveRunInfo) -> Result<(), RunnerError> {
             let mut replies = vec![];
             let mut comm =
                 nitro_cli::enclave_proc_comm::enclave_proc_connect_to_single(&enclave.enclave_id)
-                    .unwrap();
+                    .map_err(RunnerError::NitroCli)?;
 
             nitro_common::enclave_proc_command_send_single::<EmptyArgs>(
                 nitro_common::EnclaveProcessCommandType::Terminate,
                 None,
                 &mut comm,
             )
-            .unwrap();
+            .map_err(RunnerError::NitroCli)?;
 
             replies.push(comm);
             nitro_cli::enclave_proc_comm::enclave_process_handle_all_replies::<EnclaveTerminateInfo>(
@@ -82,9 +86,11 @@ impl Drop for RunningNitroEnclave {
                 0,
                 false,
                 vec![0],
-            ).unwrap();
+            ).map_err(RunnerError::NitroCli)?;
             Ok(())
         }
-        let _ = terminate(&mut self.0);
+        if let Err(err) = terminate(&mut self.0) {
+            warn!("Error occurred terminating nitro enclave: {:?}", err);
+        }
     }
 }
