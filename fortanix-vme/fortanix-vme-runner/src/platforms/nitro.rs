@@ -17,8 +17,8 @@ impl Platform for NitroEnclaves {
         let logger = logger::init_logger().expect("Log init failed");
         let mut comm = enclave_proc_comm::enclave_proc_spawn(&logger).unwrap();
 
-        let names = nitro_cli::get_all_enclave_names().unwrap();
         if run_args.enclave_name.is_none() {
+            let names = nitro_cli::get_all_enclave_names().unwrap();
             run_args.enclave_name =
                 Some(nitro_cli::new_enclave_name(run_args.clone(), names).unwrap());
         }

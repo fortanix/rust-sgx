@@ -79,10 +79,6 @@ struct AmdSevSnpArgs {
     #[arg(long = "firmware-image")]
     firmware_image_path: Option<PathBuf>,
 
-    /// Name for the VM, passed as argv[0] by the runner
-    #[arg(long, default_value = "FortanixAmdSevSnpVm")]
-    executable_name: String,
-
     #[command(flatten)]
     id_block_args: Option<IdBlockCliArgs>,
 
@@ -109,6 +105,11 @@ struct AwsNitroArgs {
     #[arg(long)]
     elf: bool,
 
+    /// Name of the enclave to be passed to nitro-cli. Omitting this argument leads
+    /// nitro-cli to assign one.
+    #[arg(long)]
+    enclave_name: Option<String>,
+
     /// Arguments to pass to enclave's `fn main` (excluding argv[0])
     #[arg(last = true)]
     enclave_args: Vec<String>,
@@ -126,6 +127,8 @@ impl AwsNitroCli {
             .into_string()
             .map_err(|_| anyhow!("non-string EIF path provided"))?;
 
+        let enclave_name = self.aws_nitro_args.enclave_name.clone();
+
         Ok(NitroRunArgs {
             eif_path,
             enclave_cid: None,
@@ -133,7 +136,7 @@ impl AwsNitroCli {
             cpu_ids: None,
             debug_mode: false,
             cpu_count: Some(cpu_count),
-            enclave_name: None,
+            enclave_name,
             attach_console: true,
         })
     }
@@ -261,7 +264,6 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
         info!("running in simulation mode without confidential computing protection");
         run_to_completion::<VmSimulator>(
             SimulatorVmRunArgs { common_vm_run_args },
-            amd_sev_snp_args.executable_name,
             amd_sev_snp_args.vm_args,
         )
     } else {
@@ -272,28 +274,18 @@ fn run_amd_sev_enclave(amd_sev_cli: AmdSevSnpCli) -> Result<()> {
                 .map(|args| args.try_into())
                 .transpose()?,
         };
-        run_to_completion::<AmdSevVm>(
-            run_args,
-            amd_sev_snp_args.executable_name,
-            amd_sev_snp_args.vm_args,
-        )
+        run_to_completion::<AmdSevVm>(run_args, amd_sev_snp_args.vm_args)
     }
 }
 
 fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
     if nitro_cli.common_args.simulate {
         let elf_path: PathBuf;
-        let img_name;
 
         if nitro_cli.aws_nitro_args.elf {
             elf_path = nitro_cli.common_args.enclave_file;
-            img_name = elf_path
-                .file_name()
-                .unwrap_or_default()
-                .display()
-                .to_string();
         } else {
-            let ReadEifResult { mut eif, metadata } =
+            let ReadEifResult { mut eif, .. } =
                 read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
                     .context("failed to read EIF file")?;
 
@@ -302,42 +294,28 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
             let elf = eif.application().context("failed to parse enclave file")?;
             elf_path = create_elf(elf).context("failed to create executable file")?;
 
-            img_name = metadata.img_name;
-
             info!("simulating enclave as {}", elf_path.display(),);
         }
 
         let run_args = EnclaveSimulatorArgs::new(elf_path);
-        run_to_completion::<EnclaveSimulator>(
-            run_args,
-            img_name,
-            nitro_cli.aws_nitro_args.enclave_args,
-        )
+        run_to_completion::<EnclaveSimulator>(run_args, nitro_cli.aws_nitro_args.enclave_args)
     } else {
-        let metadata = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
-            .context("failed to read EIF file")?
-            .metadata;
         let run_args = nitro_cli
             .to_nitro_cli_run_args()
             .context("failed to parse arguments")?;
 
-        run_to_completion::<NitroEnclaves>(
-            run_args,
-            metadata.img_name,
-            nitro_cli.aws_nitro_args.enclave_args,
-        )
+        run_to_completion::<NitroEnclaves>(run_args, nitro_cli.aws_nitro_args.enclave_args)
     }
 }
 
 fn run_to_completion<P: Platform + 'static>(
     run_args: P::RunArgs,
-    enclave_name: String,
     enclave_args: Vec<String>,
 ) -> Result<(), anyhow::Error>
 where
     <P as Platform>::RunArgs: Send + Sync,
 {
-    let enclave_runner = EnclaveBuilderVme::<P, _>::new(run_args, enclave_name)?;
+    let enclave_runner = EnclaveBuilderVme::<P, _>::new(run_args)?;
     let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
     enclave_runner.args(enclave_args);
     let enclave = enclave_runner
