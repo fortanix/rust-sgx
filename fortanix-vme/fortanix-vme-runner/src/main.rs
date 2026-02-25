@@ -7,7 +7,7 @@ use enclave_runner::EnclaveBuilder;
 use fortanix_vme_runner::{
     read_eif_with_metadata, AmdSevVm, AmdSevVmRunArgs, CommonVmRunArgs,
     EnclaveBuilder as EnclaveBuilderVme, EnclaveSimulator, EnclaveSimulatorArgs, IdBlockArgs,
-    NitroEnclaves, Platform, ReadEifResult, SimulatorVmRunArgs, VmSimulator,
+    NitroEnclaves, Platform, SimulatorVmRunArgs, VmSimulator,
 };
 use log::info;
 use nitro_cli::common::commands_parser::RunEnclavesArgs as NitroRunArgs;
@@ -106,7 +106,8 @@ struct AwsNitroArgs {
     elf: bool,
 
     /// Name of the enclave to be passed to nitro-cli. Omitting this argument leads
-    /// nitro-cli to assign one.
+    /// nitro-cli to assign one. Enclave name is not visible from the enclave itself.
+    /// It's only visible to enclave host tools such as nitro-cli.
     #[arg(long)]
     enclave_name: Option<String>,
 
@@ -285,13 +286,15 @@ fn run_nitro_enclave(nitro_cli: AwsNitroCli) -> Result<()> {
         if nitro_cli.aws_nitro_args.elf {
             elf_path = nitro_cli.common_args.enclave_file;
         } else {
-            let ReadEifResult { mut eif, .. } =
-                read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
-                    .context("failed to read EIF file")?;
+            let mut eif_info = read_eif_with_metadata(&nitro_cli.common_args.enclave_file)
+                .context("failed to read EIF file")?;
 
             //TODO also extract env/cmd file and make sure the application is executed with this
             //context
-            let elf = eif.application().context("failed to parse enclave file")?;
+            let elf = eif_info
+                .eif
+                .application()
+                .context("failed to parse enclave file")?;
             elf_path = create_elf(elf).context("failed to create executable file")?;
 
             info!("simulating enclave as {}", elf_path.display(),);

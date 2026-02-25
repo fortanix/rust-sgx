@@ -804,7 +804,7 @@ async fn accept_stream(
     .await
 }
 
-/// An type that implements [`enclave_runner::platform::EnclavePlatform<enclave_runner::Command>`]. So user
+/// A type that implements [`enclave_runner::platform::EnclavePlatform<enclave_runner::Command>`]. So user
 /// can use enclave_runner API to create vme enclaves.
 ///
 /// ```ignore
@@ -835,8 +835,6 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
         stream_router: BoxedStreamRouter,
         forward_panics: bool,
     ) -> Result<(), RunnerError> {
-        let EnclaveBuilder { runner_args, .. } = self;
-
         let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, SERVER_PORT))?;
         let command_listener_local_addr = command_listener.local_addr()?;
 
@@ -877,7 +875,8 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
             }
         });
 
-        let _enclave_descriptor = tokio::task::spawn_blocking(|| P::run(runner_args)).await??;
+        let _enclave_descriptor =
+            tokio::task::spawn_blocking(|| P::run(self.runner_args)).await??;
         command_server_handle.await?;
 
         Ok(())
