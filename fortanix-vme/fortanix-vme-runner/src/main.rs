@@ -315,10 +315,10 @@ fn run_to_completion<P: Platform + 'static>(
 where
     <P as Platform>::RunArgs: Send + Sync,
 {
-    let enclave_runner = EnclaveBuilderVme::<P, _>::new(run_args)?;
-    let mut enclave_runner = EnclaveBuilder::new(enclave_runner);
-    enclave_runner.args(enclave_args);
-    let enclave = enclave_runner
+    let enclave_builder = EnclaveBuilderVme::<P, _>::new(run_args)?;
+    let mut enclave_builder = EnclaveBuilder::new(enclave_builder);
+    enclave_builder.args(enclave_args);
+    let enclave = enclave_builder
         .build(())
         .context("failed to build enclave runner")?;
     enclave.run().context("failed to run enclave")?;
