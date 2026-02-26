@@ -2,3 +2,6 @@
 name = "confidential-vm-blobs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = "Paths to the artifacts required to build VME enclave image."

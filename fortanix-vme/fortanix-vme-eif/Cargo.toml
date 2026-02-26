@@ -2,8 +2,9 @@
 name = "fortanix-vme-eif"
 version = "0.1.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = "Eif image builder for VME enclaves."
 
 [dependencies]
 aws-nitro-enclaves-image-format = "0.5"
