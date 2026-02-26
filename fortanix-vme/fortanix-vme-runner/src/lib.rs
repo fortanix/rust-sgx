@@ -6,6 +6,7 @@ use fortanix_vme_abi::{self, Addr, Error as VmeError, Request, Response, SERVER_
 use futures::future::poll_fn;
 use log::debug;
 use log::{error, info, log, warn};
+use nitro_cli::common::NitroCliFailure;
 use nix::libc::VMADDR_PORT_ANY;
 use std::borrow::Cow;
 use std::cmp;
@@ -44,7 +45,7 @@ pub enum RunnerError {
     #[error("connection not found")]
     ConnectionNotFound,
     #[error("nitro-cli error: {0:?}")]
-    NitroCli(nitro_cli::common::NitroCliFailure),
+    NitroCli(NitroCliFailure),
     #[error("nix error: {0}")]
     Nix(#[from] nix::Error),
     #[error("no available cid found")]
@@ -54,6 +55,12 @@ pub enum RunnerError {
 impl From<VmeError> for RunnerError {
     fn from(value: VmeError) -> Self {
         RunnerError::VmeAbiError(value)
+    }
+}
+
+impl From<NitroCliFailure> for RunnerError {
+    fn from(value: NitroCliFailure) -> Self {
+        RunnerError::NitroCli(value)
     }
 }
 
