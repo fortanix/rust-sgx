@@ -6,10 +6,10 @@ authors = ["Fortanix, Inc."]
 
 [dependencies]
 # Workspace dependencies
-confidential-vm-blobs = { path = "../tools/confidential-vm-blobs/" }
+confidential-vm-blobs = { version = "0.1", path = "../tools/confidential-vm-blobs/" }
 enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
-fortanix-vme-abi = { path = "../fortanix-vme-abi", features = ["std"] }
-fortanix-vme-eif = { path = "../fortanix-vme-eif" }
+fortanix-vme-abi = { version = "0.1", path = "../fortanix-vme-abi", features = ["std"] }
+fortanix-vme-eif = { version = "0.1", path = "../fortanix-vme-eif" }
 # External dependencies
 anyhow = "1.0"
 b64-ct = "0.1.3"

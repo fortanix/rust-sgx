@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 aws-nitro-enclaves-image-format = "0.5"
-fortanix-vme-initramfs = { path = "../fortanix-vme-initramfs" }
+fortanix-vme-initramfs = { version = "0.1", path = "../fortanix-vme-initramfs" }
 serde_json = "1.0"
 sha2 = "0.9"
 tempfile = "3"
