@@ -82,3 +82,48 @@ impl<P: EnclavePlatform<Command>> EnclaveBuilder<P, Command> where {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use test_case::test_case;
+
+    struct TestEnclaveBuilder(Vec<String>);
+
+    impl EnclavePlatform<Command> for TestEnclaveBuilder {
+        type Loader = ();
+
+        fn build(
+            self,
+            _loader: Self::Loader,
+            _configuration: EnclaveConfiguration,
+            cmd_configuration: CommandConfiguration,
+        ) -> Result<Command, anyhow::Error> {
+            let f = Box::new(move || {
+                let enclave_args = cmd_configuration
+                    .cmd_args
+                    .into_iter()
+                    .map(|arr| String::from_utf8(arr))
+                    .collect::<Result<Vec<_>, _>>()?;
+                assert_eq!(
+                    self.0, enclave_args,
+                    "{:?} differs from expected: {:?}",
+                    enclave_args, self.0
+                );
+                Ok(())
+            }) as Box<dyn FnOnce() -> _>;
+            Ok(f.into())
+        }
+    }
+
+    #[test_case(vec![]; "empty")]
+    #[test_case(vec!["--arg1".to_owned(), "--arg2".to_owned()]; "with args")]
+    fn test_enclave_args(args: Vec<String>) {
+        let mut expected = vec!["enclave".to_owned()];
+        expected.extend_from_slice(&args[..]);
+        let enclave_builder = TestEnclaveBuilder(expected);
+        let mut enclave_builder = EnclaveBuilder::new(enclave_builder);
+        enclave_builder.args(args);
+        enclave_builder.build(()).unwrap().run().unwrap();
+    }
+}

@@ -21,3 +21,6 @@ num_cpus = "1.10.0"                               # MIT/Apache-2.0
 tokio = { version = "1.35", features = ["full"] } # MIT
 pin-project-lite = "0.2.16"                       # MIT/Apache-2.0
 futures = { version = "0.3", features = ["compat", "io-compat"] } # MIT/Apache-2.0
+
+[dev-dependencies]
+test-case = "3"

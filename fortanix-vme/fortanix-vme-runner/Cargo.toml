@@ -31,6 +31,3 @@ thiserror = "1.0"
 tokio = { version = "1.35", features = ["full"] } # MIT
 tokio-vsock = { version = "0.7.2" }
 vsock = "0.5"
-
-[dev-dependencies]
-test-case = "3"
