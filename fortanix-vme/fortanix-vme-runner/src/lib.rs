@@ -6,6 +6,7 @@ use fortanix_vme_abi::{self, Addr, Error as VmeError, Request, Response, SERVER_
 use futures::future::poll_fn;
 use log::debug;
 use log::{error, info, log, warn};
+use nitro_cli::common::NitroCliFailure;
 use nix::libc::VMADDR_PORT_ANY;
 use std::borrow::Cow;
 use std::cmp;
@@ -43,6 +44,8 @@ pub enum RunnerError {
     Join(#[from] JoinError),
     #[error("connection not found")]
     ConnectionNotFound,
+    #[error("nitro-cli error: {0:?}")]
+    NitroCli(NitroCliFailure),
     #[error("nix error: {0}")]
     Nix(#[from] nix::Error),
     #[error("no available cid found")]
@@ -52,6 +55,12 @@ pub enum RunnerError {
 impl From<VmeError> for RunnerError {
     fn from(value: VmeError) -> Self {
         RunnerError::VmeAbiError(value)
+    }
+}
+
+impl From<NitroCliFailure> for RunnerError {
+    fn from(value: NitroCliFailure) -> Self {
+        RunnerError::NitroCli(value)
     }
 }
 
@@ -804,47 +813,37 @@ async fn accept_stream(
     .await
 }
 
-/// An type that implements [`enclave_runner::platform::EnclavePlatform<enclave_runner::Command>`]. So user
+/// A type that implements [`enclave_runner::platform::EnclavePlatform<enclave_runner::Command>`]. So user
 /// can use enclave_runner API to create vme enclaves.
 ///
 /// ```ignore
 /// let run_args = NitroRunArgs { ... };
 /// let enclave_args = vec!["--arg1", "foo"];
-/// let enclave_runner = EnclaveBuilder::<NitroEnclaves, _>::new(run_args, "enclave_name")?;
-/// let mut enclave_runner = enclave_runner::EnclaveBuilder::new(enclave_runner);
-/// enclave_runner.args(enclave_args);
-/// let enclave = enclave_runner.build(()).expect("Failed to build enclave runner");
+/// let enclave_builder = EnclaveBuilder::<NitroEnclaves, _>::new(run_args)?;
+/// let mut enclave_builder = enclave_runner::EnclaveBuilder::new(enclave_builder);
+/// enclave_builder.args(enclave_args);
+/// let enclave = enclave_builder.build(()).expect("Failed to build enclave");
 /// enclave.run().expect("Failed to run enclave");
 /// ```
 pub struct EnclaveBuilder<P: Platform, Args: Into<P::RunArgs>> {
     platform: PhantomData<P>,
     runner_args: Args,
-    enclave_name: String,
 }
 
 impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuilder<P, Args> {
-    pub fn new(runner_args: Args, enclave_name: String) -> Result<Self, anyhow::Error> {
+    pub fn new(runner_args: Args) -> Result<Self, anyhow::Error> {
         Ok(Self {
             platform: PhantomData,
             runner_args,
-            enclave_name,
         })
     }
 
     pub async fn start_server_and_run_enclave(
         self,
-        mut enclave_args: Vec<String>,
+        enclave_args: Vec<String>,
         stream_router: BoxedStreamRouter,
         forward_panics: bool,
     ) -> Result<(), RunnerError> {
-        let EnclaveBuilder {
-            runner_args,
-            enclave_name,
-            ..
-        } = self;
-
-        enclave_args.insert(0, enclave_name);
-
         let command_listener = VsockListener::bind(VsockAddr::new(VMADDR_CID_ANY, SERVER_PORT))?;
         let command_listener_local_addr = command_listener.local_addr()?;
 
@@ -885,7 +884,8 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
             }
         });
 
-        let _enclave_descriptor = tokio::task::spawn_blocking(|| P::run(runner_args)).await??;
+        let _enclave_descriptor =
+            tokio::task::spawn_blocking(|| P::run(self.runner_args)).await??;
         command_server_handle.await?;
 
         Ok(())
@@ -901,11 +901,8 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + 'static + Send>
         self,
         _loader: Self::Loader,
         configuration: EnclaveConfiguration,
-        mut cmd_configuration: CommandConfiguration,
+        cmd_configuration: CommandConfiguration,
     ) -> Result<enclave_runner::Command, anyhow::Error> {
-        // By default: cmd_args[0] == "enclave", where `enclave` is process name.
-        // In VME runner we will use inject image name at index 0 as process name, so remove it here.
-        cmd_configuration.cmd_args.remove(0);
         Ok(command::internal_new(
             self,
             configuration.stream_router,

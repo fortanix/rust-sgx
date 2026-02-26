@@ -165,10 +165,6 @@ fn cargo_run_sev_snp_vm(
     add_runner_common_args(&mut fortanix_vme_runner, &common_args);
 
     fortanix_vme_runner.arg("amd-sev-snp");
-    // Use elf path as executable name in the runner
-    fortanix_vme_runner
-        .arg("--executable-name")
-        .arg(&amd_sev_snp_args.elf_path);
     add_other_args(&mut fortanix_vme_runner, amd_sev_snp_args.others);
 
     run_command(fortanix_vme_runner).map_err(|e| e.io_installation_hint(RUNNER_TOOL_NAME))?;
