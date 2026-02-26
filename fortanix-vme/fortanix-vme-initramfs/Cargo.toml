@@ -2,6 +2,9 @@
 name = "fortanix-vme-initramfs"
 version = "0.1.0"
 edition = "2021"
+authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = "Initramfs file builder for VME enclaves."
 
 [dependencies]
 cpio = "0.2"

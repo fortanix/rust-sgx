@@ -3,20 +3,25 @@ name = "fortanix-vme-runner"
 version = "0.1.0"
 edition = "2018"
 authors = ["Fortanix, Inc."]
+license = "MPL-2.0"
+description = """
+High-level abstractions for running VME enclaves.
+
+This crate can be used to load and interface with VME applications compiled for
+the `x86_64-unknown-linux-fortanixvme` target.
+"""
 
 [dependencies]
-# Workspace dependencies
-confidential-vm-blobs = { version = "0.1", path = "../tools/confidential-vm-blobs/" }
-enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
-fortanix-vme-abi = { version = "0.1", path = "../fortanix-vme-abi", features = ["std"] }
-fortanix-vme-eif = { version = "0.1", path = "../fortanix-vme-eif" }
-# External dependencies
 anyhow = "1.0"
 b64-ct = "0.1.3"
 clap = { version = "4.0", features = ["derive"] }
 clap-verbosity-flag = "3.0.3"
+confidential-vm-blobs = { version = "0.1", path = "../tools/confidential-vm-blobs/" }
+enclave-runner = { version = "0.8.0", path = "../../enclave-runner" }
 env_logger = "0.9.0"
 fnv = "1.0.7"
+fortanix-vme-abi = { version = "0.1", path = "../fortanix-vme-abi", features = ["std"] }
+fortanix-vme-eif = { version = "0.1", path = "../fortanix-vme-eif" }
 futures = "0.3"
 log = "0.4.21"
 nitro-cli = { git = "https://github.com/aws/aws-nitro-enclaves-cli.git", rev = "v1.4.2" }
