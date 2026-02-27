@@ -1569,12 +1569,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-runner"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2639e88dff5eeb65adff4ffafd9295e0f67d3efde4c37f15143ee2d2f16eac54"
+dependencies = [
+ "anyhow",
+ "futures 0.3.31",
+ "lazy_static",
+ "num_cpus",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "enclave-runner-sgx"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossbeam",
- "enclave-runner",
+ "enclave-runner 0.8.0",
  "fnv",
  "fortanix-sgx-abi",
  "futures 0.3.31",
@@ -1751,7 +1765,7 @@ dependencies = [
  "aesm-client",
  "anyhow",
  "clap 2.34.0",
- "enclave-runner",
+ "enclave-runner 0.8.0",
  "enclave-runner-sgx",
  "libc",
  "nix 0.13.1",
@@ -1816,7 +1830,7 @@ dependencies = [
  "clap 4.4.18",
  "clap-verbosity-flag",
  "confidential-vm-blobs",
- "enclave-runner",
+ "enclave-runner 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger",
  "fnv",
  "fortanix-vme-abi",
@@ -3916,7 +3930,7 @@ name = "report-test"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "enclave-runner",
+ "enclave-runner 0.8.0",
  "enclave-runner-sgx",
  "sgx-isa 0.4.1",
  "sgxs",
@@ -4535,7 +4549,7 @@ dependencies = [
  "clap 2.34.0",
  "crypto-hash",
  "dcap-ql",
- "enclave-runner",
+ "enclave-runner 0.8.0",
  "enclave-runner-sgx",
  "env_logger",
  "fnv",
