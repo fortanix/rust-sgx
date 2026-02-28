@@ -1445,8 +1445,52 @@ mod tests {
     }
 
     #[test]
+    fn tdx_tcb_level_partial_cmp() {
+        let base_tcb = [10, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let base = TDXSpecificTcbComponentData::from_raw(base_tcb);
+        let base = &base;
+        let other = base.clone();
+        assert_eq!(base.partial_cmp(&other), Some(Ordering::Equal));
+
+        let test_func = |(test_idx, &(other_arr, expected_comparison))| {
+            let other = TDXSpecificTcbComponentData::from_raw(other_arr);
+            assert_eq!(base.partial_cmp(&other), expected_comparison, "Test idx: {}", test_idx);
+        };
+
+        let test_data = [
+            // Case 1: Other has TeeTcbSvn[1] == 0
+            // Equal
+            (base_tcb, Some(Ordering::Equal)),
+            // Other has one element that is higher
+            ([10, 0, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
+            ([20, 0, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
+            // Other has element that is lower
+            ([0, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
+            ([10, 0, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
+            // Other has element that is both lower and higher, which should be undefined
+            ([0, 0, 20, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None),
+
+            // Case 2: other has TeeTcbSvn[1] != 0
+            // Equal
+            ([5, 1, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Equal)),
+            // Other has one element that is higher
+            ([5, 1, 30, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
+            ([5, 1, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
+            // Other has element that is lower
+            ([30, 1, 10, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
+            ([30, 1, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
+            // Other has element that is both lower and higher, which should be undefined
+            ([30, 1, 10, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None),
+        ];
+
+        test_data.iter().enumerate().for_each(test_func);
+    }
+
+    #[test]
     fn tcb_components_cpu_svn() {
-        let raw_cpu_svn = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
+        let raw_cpu_svn = [
+            10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
+        ];
         let comp = TcbComponents::<SGXSpecificTcbComponentData>::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }

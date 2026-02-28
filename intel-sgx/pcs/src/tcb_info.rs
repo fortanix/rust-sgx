@@ -615,7 +615,6 @@ impl<T> TcbInfo<T> {
     pub fn certificate_chain(&self) -> &Vec<String> {
         &self.ca_chain
     }
-
 }
 
 impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
@@ -739,7 +738,7 @@ mod tests {
         crate::platform,
         tempdir::TempDir,
     };
-    use {crate::{TcbData, Unverified}, std::convert::TryFrom};
+    use {crate::{PlatformTypeForTcbInfo, TcbComponents, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, std::convert::TryFrom};
     use super::AdvisoryID;
 
     #[test]
@@ -806,6 +805,8 @@ mod tests {
         assert_eq!(AdvisoryID::Documentation(99999).to_string(), "INTEL-DOC-99999");
     }
 
+
+
     #[test]
     fn parse_tcbinfo_json() {
         let ca_chain = vec![
@@ -816,12 +817,12 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
 
-        let januari_30_2026 = Utc.with_ymd_and_hms(2026, 1, 30, 12, 0, 0).unwrap();
+        let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 1, 12, 0, 0).unwrap();
 
         // Parse and verify TDX TCB Info
         let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
         TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).unwrap();
-        tdx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+        tdx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
 
         // Passing SGX TCB Info JSON to the TDX type must throw error
         let sgx_tcbinfo_in_tdx_type = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), vec![]).unwrap();
@@ -830,10 +831,156 @@ mod tests {
         // Parse and verify SGX TCB Info
         let sgx_tcbinfo = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), ca_chain.clone()).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(sgx_tcbinfo.raw_tcb_info()).is_ok());
-        sgx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+        sgx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
 
         // Passing TDX TCB Info JSON to the SGX type must throw error
         let tgx_tcbinfo_in_sdx_type = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), vec![]).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(tgx_tcbinfo_in_sdx_type.raw_tcb_info()).is_err());
     }
+
+    fn load_tcb_info<T: PlatformTypeForTcbInfo>(json: &String) -> TcbData<T> {
+        let ca_chain = vec![
+            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(),
+            include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
+        ];
+
+        let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_certificates = [&root_certificate[..]];
+
+        let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 10, 12, 0, 0).unwrap();
+
+        // Parse and verify TDX TCB Info
+        let tcbinfo = TcbInfo::<T>::parse(&json, ca_chain.clone()).unwrap();
+        TcbData::<T, Unverified>::parse(tcbinfo.raw_tcb_info()).unwrap();
+        tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap()
+    }
+
+    #[test]
+    fn find_tcb_level() {
+        let sgx_tcb_info: TcbData<platform::SGX> = load_tcb_info(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string());
+        let tdx_tcb_info: TcbData<platform::TDX> = load_tcb_info(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string());
+
+        // This should retrieve the UpToDate level
+        let tcb_level = TcbComponents::<platform::SGX>::from_raw([6, 6, 10, 10, 5, 255, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 14);
+        let matching_level = sgx_tcb_info.find_tcb_level(&tcb_level).unwrap();
+        assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
+
+        let matching_level = tdx_tcb_info.find_tcb_level(&tcb_level).unwrap();
+        assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
+    }
+
+    #[test]
+    fn evaluate_tdx_module_tcb() {
+        // This test case is retrieved from an actual testing machine that we own
+        let tdx_tcb_info: TcbData<platform::TDX> =
+            load_tcb_info(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string());
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [6, 6, 10, 10, 5, 255, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
+            14,
+            [5, 3, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevelWithModule(level, module) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::UpToDate);
+            assert_eq!(module.tcb_status, TcbStatus::UpToDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // This test case is pure "theoretical" from a known TDX FMSPC that has
+        // some variation in the TDX TCB
+        let tdx_tcb_info: TcbData<platform::TDX> =
+            load_tcb_info(&include_str!("../tests/data/tcb-json/tcb-tdx-2.json").to_string());
+
+        // Up to date
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [5, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevel(level) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::UpToDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // Out of date from the machine SGX SVN
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [2, 2, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [5, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevel(level) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::OutOfDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // Out of date from the machine TDX SVN
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [5, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevel(level) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::OutOfDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // Both main TCB and TDX module TCB are up to date
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [6, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevelWithModule(level, module) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::UpToDate);
+            assert_eq!(module.tcb_status, TcbStatus::UpToDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // TCB up to date with with out of date TDX Module
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [5, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevelWithModule(level, module) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::UpToDate);
+            assert_eq!(module.tcb_status, TcbStatus::OutOfDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // TCB out of date (in the TDX component) with with up to date TDX Module
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0],
+            11,
+            [6, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level).unwrap();
+        if let TdxTcbLevel::TcbLevelWithModule(level, module) = matching_level {
+            assert_eq!(level.tcb_status, TcbStatus::OutOfDate);
+            assert_eq!(module.tcb_status, TcbStatus::UpToDate);
+        } else {
+            assert!(false, "Invalid TDX TCB Level");
+        }
+
+        // TCB level that is lower in the TCB info from SGX, and should return None
+        let tcb_level = TcbComponents::<platform::TDX>::from_raw(
+            [1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            1,
+            [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        );
+        let matching_level = tdx_tcb_info.find_tdx_tcb_level(&tcb_level);
+        assert!(matching_level.is_none());
+    }
+
 }
