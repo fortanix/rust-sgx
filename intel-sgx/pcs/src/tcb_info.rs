@@ -436,6 +436,14 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
+
+    pub fn find_tcb_level<TT>(
+        &self,
+        tcb_level: &TcbComponents<TT>,
+    ) -> Option<&TcbLevel<T::PlatformSpecificTcbComponentData>> {
+        let idx = self.find_tcb_level_idx(tcb_level)?;
+        Some(&self.tcb_levels[idx])
+    }
 }
 
 impl<'de, T: PlatformTypeForTcbInfo> TcbData<T, Unverified> {
@@ -487,7 +495,23 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     }
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
-        self.tcb_levels.iter().map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
+        self.tcb_levels
+            .iter()
+            .map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
+    }
+
+    pub(crate) fn find_tcb_level_idx<TT>(&self, tcb_level: &TcbComponents<TT>) -> Option<usize> {
+        // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
+        //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
+        //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
+        //      in TCB Level, go to 3.b, otherwise move to the next item on TCB Levels list.
+        //   2. Compare PCESVN value retrieved from the SGX PCK certificate with the corresponding value in the TCB Level. If it is
+        //      greater or equal to the value in TCB Level, read status assigned to this TCB level. Otherwise, move to the next item
+        //      on TCB Levels list.
+        // If no TCB level matches your SGX PCK Certificate, your TCB Level is not supported.
+        self.tcb_levels()
+            .iter()
+            .position(|tcb| *tcb.components() <= *tcb_level)
     }
 }
 

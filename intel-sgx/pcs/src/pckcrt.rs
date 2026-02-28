@@ -114,12 +114,79 @@ impl From<u8> for TcbComponentEntry {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq, PartialOrd)]
 pub struct SGXSpecificTcbComponentData {}
 
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]
 pub struct TDXSpecificTcbComponentData {
     pub(crate) tdxtcbcomponents: [TcbComponentEntry; 16],
+}
+
+impl PartialOrd for TDXSpecificTcbComponentData {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        // Reference:
+        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+        //
+        // Compare SVNs in TEE TCB SVN array retrieved from TD Report in Quote
+        // (from index 0 to 15 if TEE TCB SVN at index 1 is set to 0, or from index 2 to 15 otherwise) with
+        // the corresponding values of SVNs in tdxtcbcomponents array of TCB Level.
+        let mut prev: Option<Ordering> = None;
+
+        let skip_idx = if self.tdxtcbcomponents[1].svn != 0 || other.tdxtcbcomponents[1].svn != 0 {
+            2
+        } else {
+            0
+        };
+
+        for (a, b) in self.tdxtcbcomponents
+            .iter()
+            .zip(other.tdxtcbcomponents.iter())
+            .skip(skip_idx)
+        {
+            match (a.svn.cmp(&b.svn), prev) {
+                (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
+                (Ordering::Greater, Some(Ordering::Less))
+                | (Ordering::Less, Some(Ordering::Greater)) => return None,
+                (Ordering::Equal, Some(Ordering::Less))
+                | (Ordering::Equal, Some(Ordering::Greater))
+                | (Ordering::Less, Some(Ordering::Less))
+                | (Ordering::Greater, Some(Ordering::Greater)) => (),
+            }
+        }
+        prev
+    }
+}
+
+impl PartialEq for TDXSpecificTcbComponentData {
+    fn eq(&self, other: &Self) -> bool {
+        // Following the `PartialCmp` implementation, we ignore the first and second
+        // element if the second element is non-zero, as the second element indicates
+        // TdxModule identity that is evaluated separately
+        let skip_idx = if other.tdxtcbcomponents[1].svn != 0 || self.tdxtcbcomponents[1].svn != 0 {
+            2
+        } else {
+            0
+        };
+        for (a, b) in self
+            .tdxtcbcomponents
+            .iter()
+            .zip(other.tdxtcbcomponents.iter())
+            .skip(skip_idx)
+        {
+            if a != b {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+impl TDXSpecificTcbComponentData {
+    pub fn from_raw(raw_tdxsvn: [u8; 16]) -> Self {
+        TDXSpecificTcbComponentData {
+            tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into()),
+        }
+    }
 }
 
 pub trait PlatformTypeForTcbComponent
@@ -223,12 +290,17 @@ impl TcbComponents<SGXSpecificTcbComponentData> {
     }
 }
 
-#[derive(Clone)]
-pub struct TeeTcbSvn([u8; 16]);
-
-impl From<[u8; 16]> for TeeTcbSvn {
-    fn from(value: [u8; 16]) -> Self {
-        TeeTcbSvn(value)
+///Helper `impl` to simplify creating new `TcbComponent` for `platform::SGX`'s `PlatformType`
+impl TcbComponents<platform::SGX> {
+    pub fn from_raw(
+        raw_cpusvn: [u8; 16],
+        pcesvn: u16,
+    ) -> TcbComponents<
+        <platform::SGX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+    > {
+        TcbComponents::<
+            <platform::SGX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+        >::from_raw(raw_cpusvn, pcesvn)
     }
 }
 
@@ -237,79 +309,27 @@ impl TcbComponents<TDXSpecificTcbComponentData> {
         TcbComponents(TcbComponentsV4 {
             sgxtcbcomponents: raw_cpusvn.map(|svn| svn.into()),
             pcesvn,
-            platform_specific_data: TDXSpecificTcbComponentData {
-                tdxtcbcomponents: raw_tdxsvn.map(|tdxsvn| tdxsvn.into()),
-            },
+            platform_specific_data: TDXSpecificTcbComponentData::from_raw(raw_tdxsvn),
         })
     }
 
     pub fn tdx_tcb_components(&self) -> &[TcbComponentEntry; 16] {
         &self.0.platform_specific_data.tdxtcbcomponents
     }
-
-    pub fn tee_tcb_svn(&self) -> TeeTcbSvn {
-        let mut out = TeeTcbSvn([0u8; 16]);
-        for (i, c) in self
-            .0
-            .platform_specific_data
-            .tdxtcbcomponents
-            .iter()
-            .enumerate()
-        {
-            out.0[i] = c.svn;
-        }
-        out
-    }
 }
 
-impl PartialOrd<TeeTcbSvn> for TeeTcbSvn {
-    fn partial_cmp(&self, other: &TeeTcbSvn) -> Option<Ordering> {
-        // Reference:
-        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
-        //
-        // Compare SVNs in TEE TCB SVN array retrieved from TD Report in Quote
-        // (from index 0 to 15 if TEE TCB SVN at index 1 is set to 0, or from index 2 to 15 otherwise) with
-        // the corresponding values of SVNs in tdxtcbcomponents array of TCB Level.
-        let mut prev: Option<Ordering> = None;
-
-        let skip_idx = if self.0[1] != 0 {
-            2
-        } else {
-            0
-        };
-
-        for (a, b) in self
-            .0
-            .iter()
-            .zip(other.0.iter())
-            .skip(skip_idx)
-        {
-            match (a.cmp(&b), prev) {
-                (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
-                (Ordering::Greater, Some(Ordering::Less))
-                | (Ordering::Less, Some(Ordering::Greater)) => return None,
-                (Ordering::Equal, Some(Ordering::Less))
-                | (Ordering::Equal, Some(Ordering::Greater))
-                | (Ordering::Less, Some(Ordering::Less))
-                | (Ordering::Greater, Some(Ordering::Greater)) => (),
-            }
-        }
-        prev
-    }
-}
-
-impl PartialEq<TeeTcbSvn> for TeeTcbSvn {
-    fn eq(&self, other: &TeeTcbSvn) -> bool {
-        // Following the `PartialCmp` implementation, we ignore the first and second
-        // element if the second element is non-zero, as the second element indicates
-        // TdxModule identity that is evaluated separately
-        let skip_idx = if other.0[1] != 0 || self.0[1] != 0 { 2 } else { 0 };
-        for (a, b) in self.0.iter().zip(other.0.iter()).skip(skip_idx) {
-            if a != b {
-                return false;
-            }
-        }
-        true
+///Helper `impl` to simplify creating new `TcbComponent` for `platform::TDX`'s `PlatformType`
+impl TcbComponents<platform::TDX> {
+    pub fn from_raw(
+        raw_cpusvn: [u8; 16],
+        pcesvn: u16,
+        raw_tdxsvn: [u8; 16],
+    ) -> TcbComponents<
+        <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+    > {
+        TcbComponents::<
+            <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+        >::from_raw(raw_cpusvn, pcesvn, raw_tdxsvn)
     }
 }
 
@@ -739,19 +759,8 @@ impl<V: VerificationType> PckCert<V> {
 
     /// Find the index of the highest matching TCB level
     fn find_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
-        // Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
-        //   1. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
-        //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
-        //      in TCB Level, go to 3.b, otherwise move to the next item on TCB Levels list.
-        //   2. Compare PCESVN value retrieved from the SGX PCK certificate with the corresponding value in the TCB Level. If it is
-        //      greater or equal to the value in TCB Level, read status assigned to this TCB level. Otherwise, move to the next item
-        //      on TCB Levels list.
-        // If no TCB level matches your SGX PCK Certificate, your TCB Level is not supported.
         let pck_tcb_level = self.platform_tcb().ok()?;
-        tcb_info
-            .tcb_levels()
-            .iter()
-            .position(|tcb| *tcb.components() <= pck_tcb_level.tcb_components)
+        tcb_info.find_tcb_level_idx(&pck_tcb_level.tcb_components)
     }
 
     fn valid_for_tcb(&self, comps: &TcbComponents<SGXSpecificTcbComponentData>, pceid: u16) -> Result<(), Error> {

@@ -30,8 +30,8 @@ use {
 pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{
-    PckCert, PckCerts, PlatformTypeForTcbComponent, SGXPCKCertificateExtension, SGXType,
-    TcbComponentType, TeeTcbSvn,
+    PckCert, PckCerts, PlatformTCB, PlatformTypeForTcbComponent, SGXPCKCertificateExtension,
+    SGXType, TcbComponentType, TcbComponents
 };
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_evaluation_data_numbers::{
