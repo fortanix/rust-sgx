@@ -39,7 +39,7 @@ pub use crate::tcb_evaluation_data_numbers::{
 };
 pub use crate::tcb_info::{
     AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevel, TdxModule,
-    TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn,
+    TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, TdxTcbLevel
 };
 
 mod io;

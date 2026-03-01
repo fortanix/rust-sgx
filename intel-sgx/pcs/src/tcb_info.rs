@@ -437,6 +437,8 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
         &self.fmspc
     }
 
+    /// Function to find matching TCB level, but disregarding the platform-specific
+    /// TCB components, and only compares the SGX TCB components.
     pub fn find_tcb_level<TT>(
         &self,
         tcb_level: &TcbComponents<TT>,
@@ -515,6 +517,11 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     }
 }
 
+pub enum TdxTcbLevel<'a> {
+    TcbLevel(&'a TcbLevel<<platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData>),
+    TcbLevelWithModule(&'a TcbLevel<<platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData>, &'a TdxModuleTcbLevel),
+}
+
 impl TcbData<platform::TDX, Verified> {
     pub fn tdx_module(&self) -> &TdxModule {
         &self.platform_specific_data.tdx_module
@@ -529,6 +536,36 @@ impl TcbData<platform::TDX, Verified> {
             .tdx_module_identities
             .iter()
             .find(|x| x.id == id)
+    }
+
+    fn find_tdx_tcb_level_idx(
+        &self,
+        tcb_level: &TcbComponents<
+            <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+        >,
+    ) -> Option<usize> {
+        self.tcb_levels().iter().position(|tcb| {
+            *tcb.components() <= *tcb_level
+                && *tcb.components().tdx_tcb_components() <= *tcb_level.tdx_tcb_components()
+        })
+    }
+
+    /// Function to find matching TCB level with TDX TCB comparison function
+    pub fn find_tdx_tcb_level<'a>(
+        &'a self,
+        tcb_level: &TcbComponents<<platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData>,
+    ) -> Option<TdxTcbLevel<'a>> {
+        let idx = self.find_tdx_tcb_level_idx(tcb_level)?;
+        let matching_tcb_level = &self.tcb_levels[idx];
+
+        if tcb_level.tdx_tcb_components().tdx_module_id() == 0 {
+            Some(TdxTcbLevel::TcbLevel(matching_tcb_level))
+        } else {
+            // If tdxtcbcomponent[1] != 0, we have to iterate TDX modules
+            let tdx_module = self.find_tdx_module_identity(tcb_level.tdx_tcb_components().tdx_module_id())?;
+            let tdx_module_tcb_level = tdx_module.find_best_tcb_level(tcb_level.tdx_tcb_components().tdx_module_svn().into())?;
+            Some(TdxTcbLevel::TcbLevelWithModule(matching_tcb_level, tdx_module_tcb_level))
+        }
     }
 }
 

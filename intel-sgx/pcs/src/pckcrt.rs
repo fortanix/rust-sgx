@@ -122,6 +122,16 @@ pub struct TDXSpecificTcbComponentData {
     pub(crate) tdxtcbcomponents: [TcbComponentEntry; 16],
 }
 
+impl TDXSpecificTcbComponentData {
+    pub fn tdx_module_id(&self) -> u8 {
+        self.tdxtcbcomponents[1].svn
+    }
+
+    pub fn tdx_module_svn(&self) -> u8 {
+        self.tdxtcbcomponents[0].svn
+    }
+}
+
 impl PartialOrd for TDXSpecificTcbComponentData {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         // Reference:
@@ -313,8 +323,8 @@ impl TcbComponents<TDXSpecificTcbComponentData> {
         })
     }
 
-    pub fn tdx_tcb_components(&self) -> &[TcbComponentEntry; 16] {
-        &self.0.platform_specific_data.tdxtcbcomponents
+    pub fn tdx_tcb_components(&self) -> &TDXSpecificTcbComponentData {
+        &self.0.platform_specific_data
     }
 }
 
