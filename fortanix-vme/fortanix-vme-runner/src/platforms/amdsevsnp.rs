@@ -6,11 +6,10 @@ use nix::Error;
 use rand::{self, Rng};
 use std::borrow::{Borrow, Cow};
 use std::os::fd::{AsRawFd, OwnedFd};
-use std::{
-    path::PathBuf,
-    process::{Child, Command},
-};
+use std::{path::PathBuf, process::Command};
+use tokio::process::{Child, Command as TokioCommand};
 
+use crate::platforms::EnclaveRuntime;
 use crate::RunnerError;
 
 use super::Platform;
@@ -61,6 +60,17 @@ pub struct RunningVm {
     child: Child,
     // Field kept so that file descriptor is closed at the right time
     _vsock_config: VsockConfig,
+}
+
+impl EnclaveRuntime for RunningVm {
+    async fn wait(&mut self) -> Result<(), RunnerError> {
+        let status = self.child.wait().await?;
+        if !status.success() {
+            return Err(RunnerError::PlatformCommandError(status));
+        }
+
+        Ok(())
+    }
 }
 
 struct VsockConfig {
@@ -251,7 +261,13 @@ impl Platform for AmdSevVm {
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let vsock_config = get_available_guest_cid_with_fd()?;
-        let child = build_qemu_command_common(run_args.into(), &vsock_config)
+        let mut command: TokioCommand =
+            build_qemu_command_common(run_args.into(), &vsock_config).into();
+        // We're relying on tokio's runtime to stop or reap dead children
+        // by specifying `kill_on_drop(true)` which would take place when
+        // EnclaveDescriptor is dropped.
+        let child = command
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| (e, "failed to spawn amd sev snp vm through qemu"))?;
         Ok(RunningVm {
@@ -268,18 +284,18 @@ impl Platform for VmSimulator {
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let vsock_config = get_available_guest_cid_with_fd()?;
-        let child = build_qemu_command_common(run_args.into(), &vsock_config)
+        let mut command: TokioCommand =
+            build_qemu_command_common(run_args.into(), &vsock_config).into();
+        // We're relying on tokio's runtime to stop or reap dead children
+        // by specifying `kill_on_drop(true)` which would take place when
+        // EnclaveDescriptor is dropped.
+        let child = command
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| (e, "failed to spawn vm through qemu"))?;
         Ok(RunningVm {
             child,
             _vsock_config: vsock_config,
         })
-    }
-}
-
-impl Drop for RunningVm {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
     }
 }
