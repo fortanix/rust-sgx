@@ -2,6 +2,7 @@ use super::Platform;
 use crate::platforms::EnclaveRuntime;
 use crate::RunnerError;
 use std::path::PathBuf;
+use std::process::ExitStatus;
 use tokio::process::{Child, Command};
 
 pub struct EnclaveSimulator;
@@ -24,13 +25,8 @@ impl RunningSimulator {
 }
 
 impl EnclaveRuntime for RunningSimulator {
-    async fn wait(&mut self) -> Result<(), RunnerError> {
-        let status = self.0.wait().await?;
-        if !status.success() {
-            return Err(RunnerError::PlatformCommandError(status));
-        }
-
-        Ok(())
+    async fn wait(&mut self) -> Result<ExitStatus, RunnerError> {
+        self.0.wait().await.map_err(Into::into)
     }
 }
 

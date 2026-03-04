@@ -7,14 +7,16 @@ use nitro_cli::common::json_output::{EnclaveRunInfo, EnclaveTerminateInfo};
 use nitro_cli::common::{self as nitro_common, logger};
 use nitro_cli::enclave_proc_comm;
 use std::future;
+use std::process::ExitStatus;
 
 pub struct NitroEnclaves;
 pub struct RunningNitroEnclave(EnclaveRunInfo);
 
 impl EnclaveRuntime for RunningNitroEnclave {
     // TODO(RTE-828): Fix the following implementation.
-    async fn wait(&mut self) -> Result<(), RunnerError> {
-        Ok(future::pending::<()>().await)
+    async fn wait(&mut self) -> Result<ExitStatus, RunnerError> {
+        future::pending::<()>().await;
+        Ok(Default::default())
     }
 }
 

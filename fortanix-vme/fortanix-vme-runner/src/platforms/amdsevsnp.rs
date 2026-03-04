@@ -6,7 +6,8 @@ use nix::Error;
 use rand::{self, Rng};
 use std::borrow::{Borrow, Cow};
 use std::os::fd::{AsRawFd, OwnedFd};
-use std::{path::PathBuf, process::Command};
+use std::path::PathBuf;
+use std::process::{Command, ExitStatus};
 use tokio::process::{Child, Command as TokioCommand};
 
 use crate::platforms::EnclaveRuntime;
@@ -63,13 +64,8 @@ pub struct RunningVm {
 }
 
 impl EnclaveRuntime for RunningVm {
-    async fn wait(&mut self) -> Result<(), RunnerError> {
-        let status = self.child.wait().await?;
-        if !status.success() {
-            return Err(RunnerError::PlatformCommandError(status));
-        }
-
-        Ok(())
+    async fn wait(&mut self) -> Result<ExitStatus, RunnerError> {
+        self.child.wait().await.map_err(Into::into)
     }
 }
 

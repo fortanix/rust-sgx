@@ -894,9 +894,15 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
 
         tokio::select! {
             enclave_status = enclave_descriptor.wait() => {
-                enclave_status?
+                let enclave_status = enclave_status?;
+                if !enclave_status.success() {
+                    return Err(RunnerError::PlatformCommandError(enclave_status));
+                }
+
+                return Ok(());
             }
             res = command_server_handle => {
+                //TODO(RTE-831): Handle exit & panic forwarding here.
                 res?;
             }
         }

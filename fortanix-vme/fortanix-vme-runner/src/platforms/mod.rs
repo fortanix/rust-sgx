@@ -1,4 +1,5 @@
 use crate::RunnerError;
+use std::process::ExitStatus;
 
 pub(crate) mod amdsevsnp;
 
@@ -16,5 +17,5 @@ pub trait Platform: Send + Sync {
 }
 
 pub trait EnclaveRuntime {
-    async fn wait(&mut self) -> Result<(), RunnerError>;
+    async fn wait(&mut self) -> Result<ExitStatus, RunnerError>;
 }
