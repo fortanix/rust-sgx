@@ -16,6 +16,7 @@ use std::marker::PhantomData;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::os::fd::AsRawFd;
 use std::pin::Pin;
+use std::process::ExitStatus;
 use std::str;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -34,6 +35,8 @@ pub use platforms::{EnclaveSimulator, EnclaveSimulatorArgs, NitroEnclaves, Platf
 pub use confidential_vm_blobs::{AMD_SEV_OVMF_PATH, VANILLA_OVMF_PATH};
 pub use fortanix_vme_eif::{read_eif_with_metadata, ReadEifResult};
 
+use crate::platforms::EnclaveRuntime;
+
 #[derive(thiserror::Error, Debug)]
 pub enum RunnerError {
     #[error("io error occurred: {0:?}")]
@@ -50,6 +53,8 @@ pub enum RunnerError {
     Nix(#[from] nix::Error),
     #[error("no available cid found")]
     NoAvailableCidFound,
+    #[error("platform command error: {0}")]
+    PlatformCommandError(ExitStatus),
 }
 
 impl From<VmeError> for RunnerError {
@@ -884,9 +889,23 @@ impl<P: Platform + 'static, Args: Into<P::RunArgs> + Send + 'static> EnclaveBuil
             }
         });
 
-        let _enclave_descriptor =
+        let mut enclave_descriptor =
             tokio::task::spawn_blocking(|| P::run(self.runner_args)).await??;
-        command_server_handle.await?;
+
+        tokio::select! {
+            enclave_status = enclave_descriptor.wait() => {
+                let enclave_status = enclave_status?;
+                if !enclave_status.success() {
+                    return Err(RunnerError::PlatformCommandError(enclave_status));
+                }
+
+                return Ok(());
+            }
+            res = command_server_handle => {
+                //TODO(RTE-831): Handle exit & panic forwarding here.
+                res?;
+            }
+        }
 
         Ok(())
     }

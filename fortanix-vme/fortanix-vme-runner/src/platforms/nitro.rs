@@ -1,13 +1,24 @@
 use super::Platform;
+use crate::platforms::EnclaveRuntime;
 use crate::RunnerError;
 use log::warn;
 use nitro_cli::common::commands_parser::{EmptyArgs, RunEnclavesArgs};
 use nitro_cli::common::json_output::{EnclaveRunInfo, EnclaveTerminateInfo};
 use nitro_cli::common::{self as nitro_common, logger};
 use nitro_cli::enclave_proc_comm;
+use std::future;
+use std::process::ExitStatus;
 
 pub struct NitroEnclaves;
 pub struct RunningNitroEnclave(EnclaveRunInfo);
+
+impl EnclaveRuntime for RunningNitroEnclave {
+    // TODO(RTE-828): Fix the following implementation.
+    async fn wait(&mut self) -> Result<ExitStatus, RunnerError> {
+        future::pending::<()>().await;
+        Ok(Default::default())
+    }
+}
 
 impl Platform for NitroEnclaves {
     type RunArgs = RunEnclavesArgs;
