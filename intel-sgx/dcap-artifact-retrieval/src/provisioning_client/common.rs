@@ -21,45 +21,45 @@ pub const TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN: &'static str = "TCB-Evaluati
 
 pub struct PckCertsApiNotSupported;
 
-impl<'inp> PckCertsService<'inp> for PckCertsApiNotSupported {
-    fn build_input(
-        &'inp self,
-        enc_ppid: &'inp EncPpid,
-        pce_id: PceId,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertsIn {
-            enc_ppid,
-            pce_id,
-            api_key: &None,
-            api_version: PcsVersion::V3, // does not matter, this API is not supported!
-        }
-    }
-}
+// impl<'inp> PckCertsService<'inp> for PckCertsApiNotSupported {
+//     fn build_input(
+//         &'inp self,
+//         enc_ppid: &'inp EncPpid,
+//         pce_id: PceId,
+//     ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+//         PckCertsIn {
+//             enc_ppid,
+//             pce_id,
+//             api_key: &None,
+//             api_version: PcsVersion::V3, // does not matter, this API is not supported!
+//         }
+//     }
+// }
 
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApiNotSupported {
-    type Input = PckCertsIn<'inp>;
-    type Output = PckCerts;
+// impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApiNotSupported {
+//     type Input = PckCertsIn<'inp>;
+//     type Output = PckCerts;
 
-    fn build_request(
-        &self,
-        _input: &Self::Input,
-    ) -> Result<(String, Vec<(String, String)>), Error> {
-        Err(Error::RequestNotSupported)
-    }
+//     fn build_request(
+//         &self,
+//         _input: &Self::Input,
+//     ) -> Result<(String, Vec<(String, String)>), Error> {
+//         Err(Error::RequestNotSupported)
+//     }
 
-    fn validate_response(&self, _status_code: StatusCode) -> Result<(), Error> {
-        Err(Error::RequestNotSupported)
-    }
+//     fn validate_response(&self, _status_code: StatusCode) -> Result<(), Error> {
+//         Err(Error::RequestNotSupported)
+//     }
 
-    fn parse_response(
-        &self,
-        _response_body: String,
-        _response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        Err(Error::RequestNotSupported)
-    }
-}
+//     fn parse_response(
+//         &self,
+//         _response_body: String,
+//         _response_headers: Vec<(String, String)>,
+//         _api_version: PcsVersion,
+//     ) -> Result<Self::Output, Error> {
+//         Err(Error::RequestNotSupported)
+//     }
+// }
 
 /// Returns the certificate chain starting from the leaf CA.
 pub fn parse_issuer_header(

@@ -11,6 +11,7 @@
 //! - <https://api.portal.trustedservices.intel.com/provisioning-certification>
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
+use pcs::platform::{self, SGX};
 use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl,
     PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
@@ -60,16 +61,28 @@ impl IntelProvisioningClientBuilder {
     }
 
     pub fn build<F: for<'a> Fetcher<'a>>(self, fetcher: F) -> Client<F> {
-        let pck_certs = PckCertsApi::new(self.api_version.clone(), self.api_key.clone());
-        let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
-        let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
-        let sgx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        // let pck_certs = PckCertsApi::new(self.api_version.clone(), self.api_key.clone());
+        // let pck_certs = PckCertsService{};
+        // let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
+        // let pck_crl = PckCrlApi::new(self.api_version.clone());
+        // let qeid = QeIdApi::new(self.api_version.clone());
+        // let sgx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        // let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
+        // let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        // let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+
+        let pck_certs = PckCertsService;
+        let pck_certs = PckCertsService;
+        let pck_cert = PckCertService;
+        let pck_crl = PckCrlService;
+        let qeid = QeIdService;
+        let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
+        let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
+        let sgx_evaluation_data_numbers: TcbEvaluationDataNumbersService<SGX> = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData, base_url: INTEL_BASE_URL.to_owned() };
+        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData, base_url: INTEL_BASE_URL.to_owned() };
 
         self.client_builder.build(
+            self.api_version,
             pck_certs,
             pck_cert,
             pck_crl,
@@ -97,49 +110,51 @@ impl PckCertsApi {
     }
 }
 
-impl<'inp> PckCertsService<'inp> for PckCertsApi {
-    fn build_input(
-        &'inp self,
-        enc_ppid: &'inp EncPpid,
-        pce_id: PceId,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertsIn {
-            enc_ppid,
-            pce_id,
-            api_key: &self.api_key,
-            api_version: self.api_version.clone(),
-        }
-    }
-}
+// impl PckCertsService for PckCertsApi {
+//     fn build_input<'inp>(
+//         &self,
+//         api_key: &'inp Option<String>,
+//         enc_ppid: &'inp EncPpid,
+//         pce_id: PceId,
+//     ) -> <Self as ProvisioningServiceApi>::Input<'inp> {
+//         PckCertsIn {
+//             enc_ppid,
+//             pce_id,
+//             api_key,
+//             api_version: self.api_version.clone(),
+//         }
+//     }
+// }
 
-impl<'inp> PckCertService<'inp> for PckCertApi {
-    fn build_input(
-        &'inp self,
-        encrypted_ppid: Option<&'inp EncPpid>,
-        pce_id: &'inp PceId,
-        cpu_svn: &'inp CpuSvn,
-        pce_isvsvn: PceIsvsvn,
-        qe_id: Option<&'inp QeId>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertIn {
-            encrypted_ppid,
-            pce_id,
-            cpu_svn,
-            pce_isvsvn,
-            qe_id,
-            api_key: &self.api_key,
-            api_version: self.api_version,
-        }
-    }
-}
+// impl PckCertService for PckCertApi {
+//     fn build_input<'inp>(
+//         &self,
+//         api_key: &'inp Option<String>,
+//         encrypted_ppid: Option<&'inp EncPpid>,
+//         pce_id: &'inp PceId,
+//         cpu_svn: &'inp CpuSvn,
+//         pce_isvsvn: PceIsvsvn,
+//         qe_id: Option<&'inp QeId>,
+//     ) -> <Self as ProvisioningServiceApi>::Input<'inp> {
+//         PckCertIn {
+//             encrypted_ppid,
+//             pce_id,
+//             cpu_svn,
+//             pce_isvsvn,
+//             qe_id,
+//             api_key,
+//             api_version: self.api_version,
+//         }
+//     }
+// }
 
 /// Implementation of pckcerts
 /// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
-    type Input = PckCertsIn<'inp>;
+impl ProvisioningServiceApi for PckCertsApi {
+    type Input<'a> = PckCertsIn<'a>;
     type Output = PckCerts;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input.enc_ppid.to_hex();
         let pce_id = input.pce_id.to_le_bytes().to_hex();
@@ -210,11 +225,11 @@ impl PckCertApi {
 
 /// Implementation of pckcert
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-certificate-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
-    type Input = PckCertIn<'inp>;
+impl ProvisioningServiceApi for PckCertApi {
+    type Input<'a> = PckCertIn<'a>;
     type Output = PckCert<Unverified>;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input
             .encrypted_ppid
@@ -284,25 +299,25 @@ impl PckCrlApi {
     }
 }
 
-impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(
-        &'inp self,
-        ca: DcapArtifactIssuer,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCrlIn {
-            api_version: self.api_version.clone(),
-            ca,
-        }
-    }
-}
+// impl PckCrlService for PckCrlApi {
+//     fn build_input(
+//         &self,
+//         ca: DcapArtifactIssuer,
+//     ) -> <Self as ProvisioningServiceApi>::Input<'_> {
+//         PckCrlIn {
+//             api_version: self.api_version.clone(),
+//             ca,
+//         }
+//     }
+// }
 
 /// Implementation of pckcrl
 /// See: <https://api.portal.trustedservices.intel.com/documentation#pcs-revocation-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
-    type Input = PckCrlIn;
+impl ProvisioningServiceApi for PckCrlApi {
+    type Input<'a> = PckCrlIn;
     type Output = PckCrl<Unverified>;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
             DcapArtifactIssuer::PCKProcessorCA => "processor",
             DcapArtifactIssuer::PCKPlatformCA => "platform",
@@ -369,31 +384,31 @@ impl<T: PlatformType> TcbInfoApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T>
-    for TcbInfoApi<T>
-{
-    fn build_input(
-        &'inp self,
-        fmspc: &'inp Fmspc,
-        tcb_evaluation_data_number: Option<u16>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbInfoIn {
-            api_version: self.api_version.clone(),
-            fmspc,
-            tcb_evaluation_data_number,
-        }
-    }
-}
+// impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<T>
+//     for TcbInfoApi<T>
+// {
+//     fn build_input(
+//         &'inp self,
+//         fmspc: &'inp Fmspc,
+//         tcb_evaluation_data_number: Option<u16>,
+//     ) -> <Self as ProvisioningServiceApi>::Input<'_> {
+//         TcbInfoIn {
+//             api_version: self.api_version.clone(),
+//             fmspc,
+//             tcb_evaluation_data_number,
+//         }
+//     }
+// }
 
 // Implementation of Get TCB Info
 // <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
+impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi
     for TcbInfoApi<T>
 {
-    type Input = TcbInfoIn<'inp>;
+    type Input<'a> = TcbInfoIn<'a>;
     type Output = TcbInfo<T>;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
@@ -468,25 +483,25 @@ impl QeIdApi {
     }
 }
 
-impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(
-        &'inp self,
-        tcb_evaluation_data_number: Option<u16>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        QeIdIn {
-            api_version: self.api_version.clone(),
-            tcb_evaluation_data_number,
-        }
-    }
-}
+// impl QeIdService for QeIdApi {
+//     fn build_input(
+//         &self,
+//         tcb_evaluation_data_number: Option<u16>,
+//     ) -> <Self as ProvisioningServiceApi>::Input<'_> {
+//         QeIdIn {
+//             api_version: self.api_version.clone(),
+//             tcb_evaluation_data_number,
+//         }
+//     }
+// }
 
 /// Implementation of qe/identity
 /// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
-    type Input = QeIdIn;
+impl ProvisioningServiceApi for QeIdApi {
+    type Input<'a> = QeIdIn;
     type Output = QeIdentitySigned;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
@@ -554,23 +569,23 @@ impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbersApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T>
-    for TcbEvaluationDataNumbersApi<T>
-{
-    fn build_input(&self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbEvaluationDataNumbersIn
-    }
-}
+// impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbEvaluationDataNumbersService<T>
+//     for TcbEvaluationDataNumbersApi<T>
+// {
+//     fn build_input(&self) -> <Self as ProvisioningServiceApi>::Input<'_> {
+//         TcbEvaluationDataNumbersIn
+//     }
+// }
 
 /// Implementation of TCB Evaluation Data Numbers endpoint
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
+impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi
     for TcbEvaluationDataNumbersApi<T>
 {
-    type Input = TcbEvaluationDataNumbersIn;
+    type Input<'a> = TcbEvaluationDataNumbersIn;
     type Output = RawTcbEvaluationDataNumbers<T>;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!(
             "{}/{}/certification/v{}/tcbevaluationdatanumbers",
             self.base_url,
@@ -626,6 +641,11 @@ mod tests {
         WriteOptionsBuilder,
     };
 
+    use crate::PckCertIn;
+    use crate::PckCertsIn;
+    use crate::PckCrlIn;
+    use crate::QeIdIn;
+    use crate::TcbInfoIn;
     use crate::provisioning_client::{
         test_helpers, ProvisioningClientFuncSelector, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
@@ -665,7 +685,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert_eq!(
                     test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
@@ -703,7 +723,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts( &pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 // The cache should be populated after initial service call
@@ -714,10 +734,11 @@ mod tests {
 
                     let (cached_pcks, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .pckcerts_service
-                            .pcs_service()
-                            .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                        // let input = client
+                        //     .pckcerts_service
+                        //     .pcs_service()
+                        //     .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                        let input = PckCertsIn { enc_ppid: &pckid.enc_ppid, pce_id: pckid.pce_id, api_key: &pcs_api_key(), api_version };
                         input.hash(&mut hasher);
 
                         cache
@@ -732,7 +753,7 @@ mod tests {
 
                 // Second service call should return value from cache
                 let pcks_from_service = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 assert_eq!(pcks, pcks_from_service);
@@ -746,7 +767,7 @@ mod tests {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
+            // if api_version == PcsVersion::V3 {
                 if let Some(pcs_api_key) = pcs_api_key() {
                     intel_builder.set_api_key(pcs_api_key);
                 } else {
@@ -754,7 +775,7 @@ mod tests {
                     // So we no longer force to test it.
                     continue;
                 }
-            }
+            // }
             let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
@@ -762,6 +783,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -810,6 +832,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -831,13 +854,14 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcert_service.pcs_service().build_input(
-                            Some(&pckid.enc_ppid),
-                            &pckid.pce_id,
-                            &pckid.cpu_svn,
-                            pckid.pce_isvsvn,
-                            None,
-                        );
+                        // let input = client.pckcert_service.pcs_service().build_input(
+                        //     Some(&pckid.enc_ppid),
+                        //     &pckid.pce_id,
+                        //     &pckid.cpu_svn,
+                        //     pckid.pce_isvsvn,
+                        //     None,
+                        // );
+                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: None, api_version, api_key: &pcs_api_key() };
                         input.hash(&mut hasher);
 
                         cache
@@ -861,6 +885,7 @@ mod tests {
                 // Second service call should return value from cache
                 let pck_from_service = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -903,7 +928,7 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
@@ -962,7 +987,7 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                 .unwrap();
             let fmspc = pckcerts.fmspc().unwrap();
 
@@ -1011,7 +1036,7 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
@@ -1024,10 +1049,11 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .sgx_tcbinfo_service
-                            .pcs_service()
-                            .build_input(&fmspc, None);
+                        // let input = client
+                        //     .sgx_tcbinfo_service
+                        //     .pcs_service()
+                        //     .build_input(&fmspc, None);
+                        let input = TcbInfoIn { api_version, fmspc: &fmspc, tcb_evaluation_data_number: None };
                         input.hash(&mut hasher);
 
                         cache
@@ -1107,7 +1133,8 @@ mod tests {
 
                     let (cached_pckcrl, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        // let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        let input = PckCrlIn { api_version, ca };
                         input.hash(&mut hasher);
 
                         cache
@@ -1174,7 +1201,8 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    // let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = QeIdIn{ api_version, tcb_evaluation_data_number: None };
                     input.hash(&mut hasher);
 
                     cache
