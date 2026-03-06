@@ -558,7 +558,7 @@ impl PckCerts {
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
         // level, maintain existing ordering (stable sort). PCK certs without a TCB
         // level are sorted last.
-        pck_certs.sort_by_cached_key(|cert| cert.find_tcb_level_idx(tcb_info).unwrap_or(usize::max_value()));
+        pck_certs.sort_by_cached_key(|cert| cert.find_sgx_tcb_level_idx(tcb_info).unwrap_or(usize::max_value()));
         pck_certs
     }
 
@@ -676,7 +676,7 @@ impl PckCert<Verified> {
         &self,
         tcb_data: &TcbData<T, V>,
     ) -> Option<TcbLevel<T::PlatformSpecificTcbComponentData>> {
-        let idx = self.find_tcb_level_idx(tcb_data)?;
+        let idx = self.find_sgx_tcb_level_idx(tcb_data)?;
         Some(tcb_data.tcb_levels()[idx].clone())
     }
 
@@ -753,9 +753,9 @@ impl<V: VerificationType> PckCert<V> {
     }
 
     /// Find the index of the highest matching TCB level
-    fn find_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
+    fn find_sgx_tcb_level_idx<V2: VerificationType, T: PlatformTypeForTcbInfo>(&self, tcb_info: &TcbData<T, V2>) -> Option<usize> {
         let pck_tcb_level = self.platform_tcb().ok()?;
-        tcb_info.find_tcb_level_idx(&pck_tcb_level.tcb_components)
+        tcb_info.find_sgx_tcb_level_idx(&pck_tcb_level.tcb_components)
     }
 
     fn valid_for_tcb(&self, comps: &TcbComponents<SGXSpecificTcbComponentData>, pceid: u16) -> Result<(), Error> {

@@ -454,11 +454,11 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
 
     /// Function to find matching TCB level, but disregarding the platform-specific
     /// TCB components, and only compares the SGX TCB components.
-    pub fn find_tcb_level<TT>(
+    pub fn find_sgx_tcb_level<TT>(
         &self,
         tcb_level: &TcbComponents<TT>,
     ) -> Option<&TcbLevel<T::PlatformSpecificTcbComponentData>> {
-        let idx = self.find_tcb_level_idx(tcb_level)?;
+        let idx = self.find_sgx_tcb_level_idx(tcb_level)?;
         Some(&self.tcb_levels[idx])
     }
 }
@@ -517,7 +517,7 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
             .map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
     }
 
-    pub(crate) fn find_tcb_level_idx<TT>(&self, tcb_level: &TcbComponents<TT>) -> Option<usize> {
+    pub(crate) fn find_sgx_tcb_level_idx<TT>(&self, tcb_level: &TcbComponents<TT>) -> Option<usize> {
         // Reference:
         // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-v4
         //
@@ -895,10 +895,10 @@ mod tests {
 
         // This should retrieve the UpToDate level
         let tcb_level = TcbComponentsOf::<platform::SGX>::from_raw([6, 6, 10, 10, 5, 255, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 14);
-        let matching_level = sgx_tcb_info.find_tcb_level(&tcb_level).unwrap();
+        let matching_level = sgx_tcb_info.find_sgx_tcb_level(&tcb_level).unwrap();
         assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
 
-        let matching_level = tdx_tcb_info.find_tcb_level(&tcb_level).unwrap();
+        let matching_level = tdx_tcb_info.find_sgx_tcb_level(&tcb_level).unwrap();
         assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
     }
 
