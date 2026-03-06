@@ -6,17 +6,23 @@
 */
 
 use std::convert::TryFrom;
- use std::convert::TryInto;
+use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 
 use chrono::{DateTime, Utc};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer, de::DeserializeOwned};
+use serde::{de, de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
-    pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
+    mbedtls::alloc::List as MbedtlsList,
+    mbedtls::error::{codes, Error as ErrMbed},
+    mbedtls::x509::certificate::Certificate,
+    pkix::oid,
+    pkix::pem::PEM_CERTIFICATE,
+    pkix::x509::GenericCertificate,
+    pkix::FromBer,
+    std::ops::Deref,
 };
 
 use crate::io::WriteOptions;
@@ -128,6 +134,8 @@ pub struct TcbLevel<P> {
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
     advisory_ids: Vec<AdvisoryID>,
 }
+
+pub type TcbLevelOf<T> = TcbLevel<<T as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData>;
 
 impl<P> TcbLevel<P> {
     pub fn components(&self) -> &TcbComponents<P> {
@@ -241,6 +249,11 @@ impl Default for TdxModule {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleIdentity {
+    #[serde(
+        deserialize_with = "tdx_id_deserializer",
+        serialize_with = "tdx_id_serializer"
+    )]
+    id: u8,
     #[serde(flatten)]
     tdx_module: TdxModule,
     tcb_levels: Vec<TdxModuleTcbLevel>,
@@ -262,12 +275,24 @@ impl TdxModuleIdentity {
     pub fn tcb_levels_iter(&self) -> impl Iterator<Item = &TdxModuleTcbLevel> + '_ {
         self.tcb_levels.iter()
     }
+
+    /// Function to find best TDX TCB level for this TDX Module
+    pub fn find_best_tcb_level(&self, level: u64) -> Option<&TdxModuleTcbLevel> {
+        // Continuing reference:
+        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+        //
+        // 5. [...] for the selected TDX Module Identity go over the sorted collection of TCB Levels
+        //    starting from the first item on the list and compare its isvsvn value to the TEE TCB SVN at
+        //    index 0. If TEE TCB SVN at index 0 is greater or equal to its value, read tcbStatus assigned
+        //    to this TCB level, otherwise move to the next item on TCB levels list.
+        self.tcb_levels.iter().find(|tcb| tcb.tcb() <= level)
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TdxModuleTcbLevelIsvSvn {
-    isvsvn: u64
+    isvsvn: u64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq)]
@@ -278,7 +303,7 @@ pub struct TdxModuleTcbLevel {
     tcb_date: DateTime<Utc>,
     tcb_status: TcbStatus,
     #[serde(default, rename = "advisoryIDs", skip_serializing_if = "Vec::is_empty")]
-    advisory_ids: Vec<AdvisoryID>
+    advisory_ids: Vec<AdvisoryID>,
 }
 
 impl TdxModuleTcbLevel {
@@ -299,14 +324,48 @@ impl TdxModuleTcbLevel {
     }
 }
 
-fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<[u8; 48], D::Error> {
+/// Deserializer function for TDX ID as it appears in the TDX Module entry of the TDX TCB Info.
+/// TDX ID is always in the format of "TDX_xx" in which xx is a number of the TDX Module ID.
+/// It is currently unspecified if the number is in base 10 or base 16. Currently it is assumed
+/// it is base 10 with leading zero.
+///
+/// Reference: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+/// step no. 5
+fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
+    let id_str = String::deserialize(deserializer)?;
+    let split = id_str
+        .split('_')
+        .skip(1)
+        .next()
+        .ok_or(serde::de::Error::custom(format!(
+            "Failed to parse TDX ID. Found: {id_str}"
+        )))?;
+    split
+        .parse::<u8>()
+        .map_err(|_| serde::de::Error::custom(format!("Failed to parse TDX ID. Found: {id_str}")))
+}
+
+#[allow(unused)]
+fn tdx_id_serializer<S>(id: u8, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+where
+    S: ::serde::Serializer,
+{
+    serializer.serialize_str(format!("TDX_{id:02}").as_str())
+}
+
+fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<[u8; 48], D::Error> {
     let mrsigner = String::deserialize(deserializer)?;
     let mrsigner = base16::decode(&mrsigner).map_err(de::Error::custom)?;
     mrsigner.as_slice().try_into().map_err(de::Error::custom)
 }
 
 #[allow(unused)]
-fn tdx_mrsigner_serializer<S>(mrsigner: &[u8; 48], serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+fn tdx_mrsigner_serializer<S>(
+    mrsigner: &[u8; 48],
+    serializer: S,
+) -> ::std::result::Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
@@ -392,6 +451,16 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
     }
+
+    /// Function to find matching TCB level, but disregarding the platform-specific
+    /// TCB components, and only compares the SGX TCB components.
+    pub fn find_sgx_tcb_level<TT>(
+        &self,
+        tcb_level: &TcbComponents<TT>,
+    ) -> Option<&TcbLevel<T::PlatformSpecificTcbComponentData>> {
+        let idx = self.find_sgx_tcb_level_idx(tcb_level)?;
+        Some(&self.tcb_levels[idx])
+    }
 }
 
 impl<'de, T: PlatformTypeForTcbInfo> TcbData<T, Unverified> {
@@ -443,8 +512,32 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     }
 
     pub fn iter_tcb_components(&self) -> impl Iterator<Item = (CpuSvn, PceIsvsvn)> + '_ {
-        self.tcb_levels.iter().map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
+        self.tcb_levels
+            .iter()
+            .map(|tcb_level| (tcb_level.tcb.cpu_svn(), tcb_level.tcb.pce_svn()))
     }
+
+    pub(crate) fn find_sgx_tcb_level_idx<TT>(&self, tcb_level: &TcbComponents<TT>) -> Option<usize> {
+        // Reference:
+        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-v4
+        //
+        // 3. Go over the sorted collection of TCB Levels retrieved from TCB Info starting from the first item on the list:
+        //   a. Compare all of the SGX TCB Comp SVNs retrieved from the SGX PCK Certificate (from 01 to 16) with the corresponding
+        //      values in the TCB Level. If all SGX TCB Comp SVNs in the certificate are greater or equal to the corresponding values
+        //      in TCB Level, go to 3.b, otherwise move to the next item on TCB Levels list.
+        //   b. Compare PCESVN value retrieved from the SGX PCK certificate with the corresponding value in the TCB Level. If it is
+        //      greater or equal to the value in TCB Level, read status assigned to this TCB level. Otherwise, move to the next item
+        //      on TCB Levels list.
+        // 4. If no TCB level matches your SGX PCK Certificate, your TCB Level is not supported.
+        self.tcb_levels()
+            .iter()
+            .position(|tcb| *tcb.components() <= *tcb_level)
+    }
+}
+
+pub enum TdxTcbLevel<'a> {
+    TcbLevel(&'a TcbLevelOf<platform::TDX>),
+    TcbLevelWithModule(&'a TcbLevelOf<platform::TDX>, &'a TdxModuleTcbLevel),
 }
 
 impl TcbData<platform::TDX, Verified> {
@@ -454,6 +547,53 @@ impl TcbData<platform::TDX, Verified> {
 
     pub fn iter_tdx_module_identities(&self) -> impl Iterator<Item = &TdxModuleIdentity> + '_ {
         self.platform_specific_data.tdx_module_identities.iter()
+    }
+
+    pub fn find_tdx_module_identity(&self, id: u8) -> Option<&TdxModuleIdentity> {
+        self.platform_specific_data
+            .tdx_module_identities
+            .iter()
+            .find(|x| x.id == id)
+    }
+
+    /// Function to find matching TCB level with TDX TCB comparison function
+    pub fn find_tdx_tcb_level<'a>(
+        &'a self,
+        tcb_level: &TcbComponents<
+            <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
+        >,
+    ) -> Option<TdxTcbLevel<'a>> {
+        // Continuing reference from:
+        // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+        //
+        // 4. If no TCB level matches your SGX PCK Certificate and TD Report, your TCB level is not supported.
+        let matching_tcb_level = self.tcb_levels().iter().find(|tcb| {
+            *tcb.components() <= *tcb_level
+                && *tcb.components().tdx_tcb_components() <= *tcb_level.tdx_tcb_components()
+        })?;
+
+        // 5. Perform additional TCB status evaluation for TDX module in case TEE TCB SVN at index 1 is greater or
+        //    equal to 1, otherwise finish the comparison logic. In order to determine TCB status of TDX module,
+        //    find a matching TDX Module Identity (in tdxModuleIdentities array of TCB Info) with its id set to
+        //    "TDX_<version>" where <version> matches the value of TEE TCB SVN at index 1. If a matching TDX Module
+        //    Identity cannot be found, go to step 6, otherwise, for the selected TDX Module Identity go over the
+        //    sorted collection of TCB Levels starting from the first item on the list and compare its isvsvn value
+        //    to the TEE TCB SVN at index 0. If TEE TCB SVN at index 0 is greater or equal to its value,
+        //    read tcbStatus assigned to this TCB level, otherwise move to the next item on TCB levels list.
+        // 6. If no TCB level matches, the TCB level of TDX Module is not supported.
+        if tcb_level.tdx_tcb_components().tdx_module_id() == 0 {
+            Some(TdxTcbLevel::TcbLevel(matching_tcb_level))
+        } else {
+            // If tdxtcbcomponent[1] != 0, we have to iterate TDX modules
+            let tdx_module =
+                self.find_tdx_module_identity(tcb_level.tdx_tcb_components().tdx_module_id())?;
+            let tdx_module_tcb_level = tdx_module
+                .find_best_tcb_level(tcb_level.tdx_tcb_components().tdx_module_svn().into())?;
+            Some(TdxTcbLevel::TcbLevelWithModule(
+                matching_tcb_level,
+                tdx_module_tcb_level,
+            ))
+        }
     }
 }
 
@@ -503,7 +643,6 @@ impl<T> TcbInfo<T> {
     pub fn certificate_chain(&self) -> &Vec<String> {
         &self.ca_chain
     }
-
 }
 
 impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
@@ -627,8 +766,9 @@ mod tests {
         crate::platform,
         tempdir::TempDir,
     };
-    use {crate::{TcbData, Unverified}, std::convert::TryFrom};
+    use {crate::{PlatformTypeForTcbInfo, TcbComponentsOf, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, std::convert::TryFrom};
     use super::AdvisoryID;
+    use test_case::test_case;
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -704,12 +844,12 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
 
-        let januari_30_2026 = Utc.with_ymd_and_hms(2026, 1, 30, 12, 0, 0).unwrap();
+        let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 1, 12, 0, 0).unwrap();
 
         // Parse and verify TDX TCB Info
         let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
         TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).unwrap();
-        tdx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+        tdx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
 
         // Passing SGX TCB Info JSON to the TDX type must throw error
         let sgx_tcbinfo_in_tdx_type = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), vec![]).unwrap();
@@ -718,10 +858,100 @@ mod tests {
         // Parse and verify SGX TCB Info
         let sgx_tcbinfo = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), ca_chain.clone()).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(sgx_tcbinfo.raw_tcb_info()).is_ok());
-        sgx_tcbinfo.verify_ex(&root_certificates, 0, &januari_30_2026).unwrap();
+        sgx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
 
         // Passing TDX TCB Info JSON to the SGX type must throw error
         let tgx_tcbinfo_in_sdx_type = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), vec![]).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(tgx_tcbinfo_in_sdx_type.raw_tcb_info()).is_err());
     }
+
+    fn load_tcb_info<T: PlatformTypeForTcbInfo>(json_file: &str) -> TcbData<T> {
+        use std::io::Read;
+        fn read_to_string(file: &str) -> String {
+            let mut ret = String::new();
+            let _ = std::fs::File::open(file).unwrap().read_to_string(&mut ret).unwrap();
+            ret
+        }
+
+        let ca_chain = vec![
+            include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(),
+            include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
+        ];
+
+        let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_certificates = [&root_certificate[..]];
+
+        let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 10, 12, 0, 0).unwrap();
+
+        // Parse and verify TDX TCB Info
+        let tcbinfo = TcbInfo::<T>::parse(&read_to_string(json_file), ca_chain.clone()).unwrap();
+        tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap()
+    }
+
+    #[test]
+    fn find_tcb_level() {
+        let sgx_tcb_info: TcbData<platform::SGX> = load_tcb_info("./tests/data/tcb-json/tcb-sgx.json");
+        let tdx_tcb_info: TcbData<platform::TDX> = load_tcb_info("./tests/data/tcb-json/tcb-tdx.json");
+
+        // This should retrieve the UpToDate level
+        let tcb_level = TcbComponentsOf::<platform::SGX>::from_raw([6, 6, 10, 10, 5, 255, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 14);
+        let matching_level = sgx_tcb_info.find_sgx_tcb_level(&tcb_level).unwrap();
+        assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
+
+        let matching_level = tdx_tcb_info.find_sgx_tcb_level(&tcb_level).unwrap();
+        assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
+    }
+
+    enum ExpectTcbLevel {
+        None,
+        TcbOnly(TcbStatus),
+        WithModule(TcbStatus, TcbStatus),
+    }
+
+    impl<'a> PartialEq<TdxTcbLevel<'a>> for ExpectTcbLevel {
+        fn eq(&self, other: &TdxTcbLevel<'a>) -> bool {
+            match (self, other) {
+                (ExpectTcbLevel::TcbOnly(s), TdxTcbLevel::TcbLevel(tcb)) => s == &tcb.tcb_status(),
+                (
+                    ExpectTcbLevel::WithModule(s, m),
+                    TdxTcbLevel::TcbLevelWithModule(tcb, module),
+                ) => s == &tcb.tcb_status() && m == &module.tcb_status(),
+                _ => false,
+            }
+        }
+    }
+
+    #[test_case("tcb-tdx.json", [6, 6, 10, 10, 5, 255, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], 14, [5, 3, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::WithModule(TcbStatus::UpToDate, TcbStatus::UpToDate); "Up To Date - Own machine")]
+    #[test_case("tcb-tdx-2.json", [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [5, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::TcbOnly(TcbStatus::UpToDate); "Up to Date TCB")]
+    #[test_case("tcb-tdx-2.json", [2, 2, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [5, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::TcbOnly(TcbStatus::OutOfDate); "Out of Date SGX SVN")]
+    #[test_case("tcb-tdx-2.json", [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [5, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::TcbOnly(TcbStatus::OutOfDate); "Out of Date TDX SVN")]
+    #[test_case("tcb-tdx-2.json", [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [6, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::WithModule(TcbStatus::UpToDate, TcbStatus::UpToDate); "Up to Date TCB and Module")]
+    #[test_case("tcb-tdx-2.json", [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [5, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::WithModule(TcbStatus::UpToDate, TcbStatus::OutOfDate); "Up to Date TCB and Out of Date Module")]
+    #[test_case("tcb-tdx-2.json", [3, 3, 2, 2, 4, 1, 0, 5, 0, 0, 0, 0, 0, 0, 0, 0], 11, [6, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::WithModule(TcbStatus::OutOfDate, TcbStatus::UpToDate); "Out of Date TDX SVN and Up to Date Module")]
+    #[test_case("tcb-tdx-2.json", [1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], 1,  [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], ExpectTcbLevel::None; "Cannot determine TCB level")]
+    fn evaluate_tdx_module_tcb(
+        tcb_info_json: &str,
+        cpusvn: [u8; 16],
+        pcesvn: u16,
+        tdxsvn: [u8; 16],
+        expected: ExpectTcbLevel,
+    ) {
+        // This test case is retrieved from an actual testing machine that we own
+        let tdx_tcb_info: TcbData<platform::TDX> =
+            load_tcb_info(("./tests/data/tcb-json/".to_owned() + tcb_info_json).as_str());
+        let tcb_level = TcbComponentsOf::<platform::TDX>::from_raw(cpusvn, pcesvn, tdxsvn);
+        if let Some(matching_level) = tdx_tcb_info.find_tdx_tcb_level(&tcb_level) {
+            if let ExpectTcbLevel::None = expected {
+                panic!("Expecting None but receiving TCB level");
+            } else if expected != matching_level {
+                panic!("Invalid TDX TCB Level");
+            }
+        } else {
+            if let ExpectTcbLevel::None = expected {
+            } else {
+                panic!("Expecting")
+            }
+        }
+    }
+
 }

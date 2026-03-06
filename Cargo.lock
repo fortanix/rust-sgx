@@ -3484,6 +3484,7 @@ dependencies = [
  "sgx-isa 0.4.1",
  "sgx_pkix 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "tempdir",
+ "test-case",
  "yasna 0.3.2",
 ]
 
