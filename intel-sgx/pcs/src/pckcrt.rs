@@ -35,8 +35,7 @@ use {
 use crate::io::{self, WriteOptions};
 use crate::tcb_info::{Fmspc, TcbData, TcbLevel};
 use crate::{
-    platform, CpuSvn, Error, PlatformTypeForTcbInfo, Unverified, VerificationType,
-    Verified,
+    CpuSvn, Error, PlatformTypeForTcbInfo, Unverified, VerificationType, Verified, platform
 };
 
 /// [`SGXType`] is a rust enum representing the Intel® SGX Type.
@@ -95,13 +94,31 @@ pub struct TcbComponentsV3 {
 
 /// TCB component as specified in TcbInfo (version 3) of the PCS version 4 API
 /// https://api.trustedservices.intel.com/documents/PCS_V3-V4_migration_guide.pdf
-#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, Eq)]
 pub struct TcbComponentEntry {
     svn: u8,
     #[serde(default)]
     category: String,
     #[serde(default, rename = "type")]
     comp_type: String,
+}
+
+impl Ord for TcbComponentEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.svn.cmp(&other.svn)
+    }
+}
+
+impl PartialOrd for TcbComponentEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.svn.partial_cmp(&other.svn)
+    }
+}
+
+impl PartialEq for TcbComponentEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.svn == other.svn
+    }
 }
 
 impl From<u8> for TcbComponentEntry {
@@ -123,13 +140,48 @@ pub struct TDXSpecificTcbComponentData {
 }
 
 impl TDXSpecificTcbComponentData {
+    /// According to PCS reference: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+    /// the second element of the `tdxTcbComponents` indicates the Module ID to be used to select TDX Module Identity on the
+    /// TCB info.
+    ///
+    /// > find a matching TDX Module Identity (in tdxModuleIdentities array of TCB Info) with its id set to
+    //    "TDX_<version>" where <version> matches the value of TEE TCB SVN at index 1.
     pub fn tdx_module_id(&self) -> u8 {
         self.tdxtcbcomponents[1].svn
     }
 
+    /// According to PCS reference: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
+    /// the second element of the `tdxTcbComponents` indicates the ISV SVN for the TDX Module of the machine.
+    ///
+    /// > [...] for the selected TDX Module Identity go over the sorted collection of TCB Levels starting
+    ///   from the first item on the list and compare its isvsvn value to the TEE TCB SVN at index 0.
     pub fn tdx_module_svn(&self) -> u8 {
         self.tdxtcbcomponents[0].svn
     }
+}
+
+/// Function to compare sequences of pairs `(a, b)`, where `a` will be compared against `b` and
+/// produces an ordering in which all pairs must have equal or consistent ordering (i.e, if one
+/// pair orders to `Ordering::Greater`, every other pairs must also be either `Ordering::Greater`
+/// or `Ordering::Equal`). If the sequence has inconsistent ordering, it returns `None`.
+fn sequence_partial_cmp<T: Iterator, U: Ord>(iter: T) -> Option<Ordering>
+    where T: Iterator<Item = (U, U)>
+{
+    let mut prev: Option<Ordering> = None;
+
+    for (a, b) in iter {
+        match (a.cmp(&b), prev) {
+            (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
+            (Ordering::Greater, Some(Ordering::Less))
+            | (Ordering::Less, Some(Ordering::Greater)) => return None,
+            (Ordering::Equal, Some(Ordering::Less))
+            | (Ordering::Equal, Some(Ordering::Greater))
+            | (Ordering::Less, Some(Ordering::Less))
+            | (Ordering::Greater, Some(Ordering::Greater)) => (),
+        }
+    }
+
+    prev
 }
 
 impl PartialOrd for TDXSpecificTcbComponentData {
@@ -140,30 +192,16 @@ impl PartialOrd for TDXSpecificTcbComponentData {
         // Compare SVNs in TEE TCB SVN array retrieved from TD Report in Quote
         // (from index 0 to 15 if TEE TCB SVN at index 1 is set to 0, or from index 2 to 15 otherwise) with
         // the corresponding values of SVNs in tdxtcbcomponents array of TCB Level.
-        let mut prev: Option<Ordering> = None;
-
-        let skip_idx = if self.tdxtcbcomponents[1].svn != 0 || other.tdxtcbcomponents[1].svn != 0 {
+        let skip_idx = if self.tdx_module_id() != 0 || other.tdx_module_id() != 0 {
             2
         } else {
             0
         };
 
-        for (a, b) in self.tdxtcbcomponents
+        sequence_partial_cmp(self.tdxtcbcomponents
             .iter()
             .zip(other.tdxtcbcomponents.iter())
-            .skip(skip_idx)
-        {
-            match (a.svn.cmp(&b.svn), prev) {
-                (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
-                (Ordering::Greater, Some(Ordering::Less))
-                | (Ordering::Less, Some(Ordering::Greater)) => return None,
-                (Ordering::Equal, Some(Ordering::Less))
-                | (Ordering::Equal, Some(Ordering::Greater))
-                | (Ordering::Less, Some(Ordering::Less))
-                | (Ordering::Greater, Some(Ordering::Greater)) => (),
-            }
-        }
-        prev
+            .skip(skip_idx))
     }
 }
 
@@ -172,22 +210,13 @@ impl PartialEq for TDXSpecificTcbComponentData {
         // Following the `PartialCmp` implementation, we ignore the first and second
         // element if the second element is non-zero, as the second element indicates
         // TdxModule identity that is evaluated separately
-        let skip_idx = if other.tdxtcbcomponents[1].svn != 0 || self.tdxtcbcomponents[1].svn != 0 {
+        let skip_idx = if self.tdx_module_id() != 0 || other.tdx_module_id() != 0 {
             2
         } else {
             0
         };
-        for (a, b) in self
-            .tdxtcbcomponents
-            .iter()
-            .zip(other.tdxtcbcomponents.iter())
-            .skip(skip_idx)
-        {
-            if a != b {
-                return false;
-            }
-        }
-        true
+
+        self.tdxtcbcomponents.iter().skip(skip_idx).eq(other.tdxtcbcomponents.iter().skip(skip_idx))
     }
 }
 
@@ -290,6 +319,8 @@ impl TryFrom<&str> for TcbComponentType {
     }
 }
 
+pub type TcbComponentsOf<T> = TcbComponents<<T as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData>;
+
 impl TcbComponents<SGXSpecificTcbComponentData> {
     pub fn from_raw(raw_cpusvn: [u8; 16], pcesvn: u16) -> Self {
         TcbComponents(TcbComponentsV4 {
@@ -297,20 +328,6 @@ impl TcbComponents<SGXSpecificTcbComponentData> {
             pcesvn,
             platform_specific_data: SGXSpecificTcbComponentData {},
         })
-    }
-}
-
-///Helper `impl` to simplify creating new `TcbComponent` for `platform::SGX`'s `PlatformType`
-impl TcbComponents<platform::SGX> {
-    pub fn from_raw(
-        raw_cpusvn: [u8; 16],
-        pcesvn: u16,
-    ) -> TcbComponents<
-        <platform::SGX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
-    > {
-        TcbComponents::<
-            <platform::SGX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
-        >::from_raw(raw_cpusvn, pcesvn)
     }
 }
 
@@ -325,21 +342,6 @@ impl TcbComponents<TDXSpecificTcbComponentData> {
 
     pub fn tdx_tcb_components(&self) -> &TDXSpecificTcbComponentData {
         &self.0.platform_specific_data
-    }
-}
-
-///Helper `impl` to simplify creating new `TcbComponent` for `platform::TDX`'s `PlatformType`
-impl TcbComponents<platform::TDX> {
-    pub fn from_raw(
-        raw_cpusvn: [u8; 16],
-        pcesvn: u16,
-        raw_tdxsvn: [u8; 16],
-    ) -> TcbComponents<
-        <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
-    > {
-        TcbComponents::<
-            <platform::TDX as PlatformTypeForTcbComponent>::PlatformSpecificTcbComponentData,
-        >::from_raw(raw_cpusvn, pcesvn, raw_tdxsvn)
     }
 }
 
@@ -381,30 +383,13 @@ impl<T, U> PartialOrd<TcbComponents<U>> for TcbComponents<T> {
     /// are less and others are greater, ordering is not defined. If some are
     /// less, order as less. If some are greater, order as greater.
     fn partial_cmp(&self, other: &TcbComponents<U>) -> Option<Ordering> {
-        let mut prev: Option<Ordering> = None;
-
-        for (a, b) in self.iter_components().zip(other.iter_components()) {
-            match (a.cmp(&b), prev) {
-                (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
-                (Ordering::Greater, Some(Ordering::Less)) | (Ordering::Less, Some(Ordering::Greater)) => return None,
-                (Ordering::Equal, Some(Ordering::Less))
-                | (Ordering::Equal, Some(Ordering::Greater))
-                | (Ordering::Less, Some(Ordering::Less))
-                | (Ordering::Greater, Some(Ordering::Greater)) => (),
-            }
-        }
-        prev
+        sequence_partial_cmp(self.iter_components().zip(other.iter_components()))
     }
 }
 
 impl<T, U> PartialEq<TcbComponents<U>> for TcbComponents<T> {
     fn eq(&self, other: &TcbComponents<U>) -> bool {
-        for (a, b) in self.iter_components().zip(other.iter_components()) {
-            if a != b {
-                return false;
-            }
-        }
-        true
+        self.iter_components().eq(other.iter_components())
     }
 }
 
@@ -1008,6 +993,7 @@ mod tests {
     use pkix::derives::ObjectIdentifier;
     use sgx_pkix::oid::{SGX_EXTENSION_PPID, SGX_EXTENSION_TCB, SGX_EXTENSION_TCB_COMP01_SVN};
     use yasna;
+    use test_case::test_case;
 
     use super::*;
     #[cfg(not(target_env = "sgx"))]
@@ -1444,46 +1430,25 @@ mod tests {
         assert_eq!(base.partial_cmp(&other), Some(Ordering::Greater));
     }
 
-    #[test]
-    fn tdx_tcb_level_partial_cmp() {
+    // Case 1: TeeTcbSvn[1] == 0
+    #[test_case([10, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Equal))]
+    #[test_case([10, 0, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less))]
+    #[test_case([20, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less))]
+    #[test_case([0, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater))]
+    #[test_case([10, 0, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater))]
+    #[test_case([0, 0, 20, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None)]
+    // Case 2: TeeTcbSvn[1] != 0
+    #[test_case([5, 1, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Equal))]
+    #[test_case([5, 1, 30, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less))]
+    #[test_case([5, 1, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less))]
+    #[test_case([30, 1, 10, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater))]
+    #[test_case([30, 1, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater))]
+    #[test_case([30, 1, 10, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None)]
+    fn tdx_tcb_level_partial_cmp(other_arr: [u8; 16], expected_comparison: Option<Ordering>) {
         let base_tcb = [10, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         let base = TDXSpecificTcbComponentData::from_raw(base_tcb);
-        let base = &base;
-        let other = base.clone();
-        assert_eq!(base.partial_cmp(&other), Some(Ordering::Equal));
-
-        let test_func = |(test_idx, &(other_arr, expected_comparison))| {
-            let other = TDXSpecificTcbComponentData::from_raw(other_arr);
-            assert_eq!(base.partial_cmp(&other), expected_comparison, "Test idx: {}", test_idx);
-        };
-
-        let test_data = [
-            // Case 1: Other has TeeTcbSvn[1] == 0
-            // Equal
-            (base_tcb, Some(Ordering::Equal)),
-            // Other has one element that is higher
-            ([10, 0, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
-            ([20, 0, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
-            // Other has element that is lower
-            ([0, 0, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
-            ([10, 0, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
-            // Other has element that is both lower and higher, which should be undefined
-            ([0, 0, 20, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None),
-
-            // Case 2: other has TeeTcbSvn[1] != 0
-            // Equal
-            ([5, 1, 20, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Equal)),
-            // Other has one element that is higher
-            ([5, 1, 30, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
-            ([5, 1, 20, 40, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Less)),
-            // Other has element that is lower
-            ([30, 1, 10, 30, 40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
-            ([30, 1, 20, 30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], Some(Ordering::Greater)),
-            // Other has element that is both lower and higher, which should be undefined
-            ([30, 1, 10, 30, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None),
-        ];
-
-        test_data.iter().enumerate().for_each(test_func);
+        let other = TDXSpecificTcbComponentData::from_raw(other_arr);
+        assert_eq!(base.partial_cmp(&other), expected_comparison);
     }
 
     #[test]
@@ -1491,7 +1456,7 @@ mod tests {
         let raw_cpu_svn = [
             10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160,
         ];
-        let comp = TcbComponents::<SGXSpecificTcbComponentData>::from_raw(raw_cpu_svn, 42);
+        let comp = TcbComponentsOf::<platform::SGX>::from_raw(raw_cpu_svn, 42);
         assert_eq!(comp.cpu_svn(), raw_cpu_svn);
     }
 

@@ -31,14 +31,14 @@ pub use crate::io::{WriteOptions, WriteOptionsBuilder};
 pub use crate::pckcrl::PckCrl;
 pub use crate::pckcrt::{
     PckCert, PckCerts, PlatformTCB, PlatformTypeForTcbComponent, SGXPCKCertificateExtension,
-    SGXType, TcbComponentType, TcbComponents
+    SGXType, TcbComponentType, TcbComponents, TcbComponentsOf
 };
 pub use crate::qe_identity::{EnclaveIdentity, QeIdentity, QeIdentitySigned};
 pub use crate::tcb_evaluation_data_numbers::{
     RawTcbEvaluationDataNumbers, TcbEvalNumber, TcbEvaluationDataNumbers, TcbPolicy,
 };
 pub use crate::tcb_info::{
-    AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevel, TdxModule,
+    AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevelOf, TcbLevel, TdxModule,
     TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, TdxTcbLevel
 };
 
