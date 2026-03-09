@@ -164,24 +164,17 @@ impl TDXSpecificTcbComponentData {
 /// produces an ordering in which all pairs must have equal or consistent ordering (i.e, if one
 /// pair orders to `Ordering::Greater`, every other pairs must also be either `Ordering::Greater`
 /// or `Ordering::Equal`). If the sequence has inconsistent ordering, it returns `None`.
-fn sequence_partial_cmp<T: Iterator, U: Ord>(iter: T) -> Option<Ordering>
+fn sequence_partial_cmp<T: Iterator, U: Ord>(mut iter: T) -> Option<Ordering>
     where T: Iterator<Item = (U, U)>
 {
-    let mut prev: Option<Ordering> = None;
-
-    for (a, b) in iter {
+    iter.try_fold(Ordering::Equal, |prev, (a, b)|
         match (a.cmp(&b), prev) {
-            (x, None) | (x, Some(Ordering::Equal)) => prev = Some(x),
-            (Ordering::Greater, Some(Ordering::Less))
-            | (Ordering::Less, Some(Ordering::Greater)) => return None,
-            (Ordering::Equal, Some(Ordering::Less))
-            | (Ordering::Equal, Some(Ordering::Greater))
-            | (Ordering::Less, Some(Ordering::Less))
-            | (Ordering::Greater, Some(Ordering::Greater)) => (),
+            (x, Ordering::Equal) => Some(x),
+            (Ordering::Greater, Ordering::Less)
+            | (Ordering::Less, Ordering::Greater) => None,
+            _ => Some(prev),
         }
-    }
-
-    prev
+    )
 }
 
 impl PartialOrd for TDXSpecificTcbComponentData {
