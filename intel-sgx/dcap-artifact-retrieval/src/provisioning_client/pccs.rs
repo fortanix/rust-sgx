@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::time::Duration;
 
+use pcs::platform::SGX;
 use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
@@ -24,8 +25,8 @@ use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
-use super::intel::TcbEvaluationDataNumbersApi;
-use crate::Error;
+use crate::{Error, PckCertsService};
+use crate::provisioning_client::{PCSPckCrlService, TcbEvaluationDataNumbersService};
 
 pub struct PccsProvisioningClientBuilder {
     base_url: Cow<'static, str>,
@@ -47,195 +48,51 @@ impl PccsProvisioningClientBuilder {
         self
     }
 
-    pub fn build<F: for<'a> Fetcher<'a>>(self, fetcher: F) -> Client<F> {
-        let pck_certs = PckCertsApiNotSupported;
-        let pck_cert = PckCertApi::new(self.base_url.clone(), self.api_version);
-        let pck_crl = PckCrlApi::new(self.base_url.clone(), self.api_version);
-        let qeid = QeIdApi::new(self.base_url.clone(), self.api_version.clone());
-        let sgx_tcbinfo = TcbInfoApi::<platform::SGX>::new(self.base_url.clone(), self.api_version);
-        let tdx_tcbinfo = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
-        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+    pub fn build<F: for<'a> Fetcher<'a>, PC: PckCrlService>(self, fetcher: F) -> Client<F, PC> {
+        let pck_certs = PckCertsService;
+        let pck_cert = PckCertService;
+        let pck_crl = PC::new();
+        let qeid = QeIdService;
+        let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
+        let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
+        let sgx_evaluation_data_numbers: TcbEvaluationDataNumbersService<SGX> = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
+        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
+
 
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
+            .build(&self.base_url, self.api_version, pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
     }
 }
 
-pub struct PckCertApi {
-    base_url: Cow<'static, str>,
-    api_version: PcsVersion,
+
+pub struct PCCSPckCrlService {
+    parent: PCSPckCrlService
 }
 
-impl PckCertApi {
-    pub(crate) fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> PckCertApi {
-        PckCertApi {
-            base_url,
-            api_version,
-        }
+impl PckCrlService for PCCSPckCrlService {
+    fn build_input(&self, api_version: PcsVersion, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi>::Input<'_> {
+        PckCrlIn { api_version, ca }
     }
-}
-
-impl<'inp> PckCertService<'inp> for PckCertApi {
-    fn build_input(
-        &'inp self,
-        encrypted_ppid: Option<&'inp EncPpid>,
-        pce_id: &'inp PceId,
-        cpu_svn: &'inp CpuSvn,
-        pce_isvsvn: PceIsvsvn,
-        qe_id: Option<&'inp QeId>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertIn {
-            encrypted_ppid,
-            pce_id,
-            cpu_svn,
-            pce_isvsvn,
-            qe_id,
-            api_key: &None,
-            api_version: self.api_version,
-        }
+    
+    fn new() -> Self {
+        Self { parent: PCSPckCrlService }
     }
 }
 
-/// Implementation of Get PCK Certificate API (section 3.1 in the [reference]).
-///
-/// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
-    type Input = PckCertIn<'inp>;
-    type Output = PckCert<Unverified>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let encrypted_ppid = input
-            .encrypted_ppid
-            .ok_or(Error::NoEncPPID)
-            .map(|e_ppid| e_ppid.to_hex())?;
-
-        let cpu_svn = input.cpu_svn.to_hex();
-        let pce_isvsvn = input.pce_isvsvn.to_le_bytes().to_hex();
-        let pce_id = input.pce_id.to_le_bytes().to_hex();
-        let qe_id = input
-            .qe_id
-            .ok_or(Error::NoQeID)
-            .map(|qe_id| qe_id.to_hex())?;
-
-        let url = format!(
-            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}&qeid={}",
-            self.base_url, api_version, encrypted_ppid, cpu_svn, pce_isvsvn, pce_id, qe_id,
-        );
-        let headers = Vec::new();
-        Ok((url, headers))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => {
-                Err(Error::PCSError(status_code, "Invalid request parameters"))
-            }
-            StatusCode::NotFound => Err(Error::PCSError(
-                status_code,
-                "No cache data for this platform",
-            )),
-            StatusCode::NonStandard461 => Err(Error::PCSError(
-                status_code,
-                "The platform was not found in the cache",
-            )),
-            StatusCode::NonStandard462 => Err(Error::PCSError(
-                status_code,
-                "Certificates are not available for certain TCBs",
-            )),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCCS suffered from an internal server error",
-            )),
-            StatusCode::BadGateway => Err(Error::PCSError(
-                status_code,
-                "Unable to retrieve the collateral from the Intel SGX PCS",
-            )),
-            _ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
+impl ProvisioningServiceApi for PCCSPckCrlService {
+    type Input<'a> = <PCSPckCrlService as ProvisioningServiceApi>::Input<'a>;
+    type Output = <PCSPckCrlService as ProvisioningServiceApi>::Output;
+    
+    fn build_request(
         &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
-        Ok(PckCert::new(response_body, ca_chain))
+        base_url: &str,
+        input: &Self::Input<'_>,
+    ) -> Result<(String, Vec<(String, String)>), Error> {
+        self.parent.build_request(base_url, input)
     }
-}
-
-pub struct PckCrlApi {
-    base_url: Cow<'static, str>,
-    api_version: PcsVersion,
-}
-
-impl PckCrlApi {
-    pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
-        PckCrlApi {
-            base_url,
-            api_version,
-        }
-    }
-}
-
-impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCrlIn {
-            api_version: self.api_version,
-            ca,
-        }
-    }
-}
-
-/// Implementation of Get PCK Cert CRL API (section 3.2 of [reference]).
-///
-/// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
-    type Input = PckCrlIn;
-    type Output = PckCrl<Unverified>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let ca = match input.ca {
-            DcapArtifactIssuer::PCKProcessorCA => "processor",
-            DcapArtifactIssuer::PCKPlatformCA => "platform",
-            DcapArtifactIssuer::SGXRootCA => {
-                return Err(Error::PCSError(StatusCode::BadRequest, "Invalid ca parameter"));
-            },
-        };
-        let url = format!(
-            "{}/sgx/certification/v{}/pckcrl?ca={}",
-            self.base_url, input.api_version as u8, ca
-        );
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => {
-                Err(Error::PCSError(status_code, "Invalid request parameters"))
-            }
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "PCK CRL cannot be found")),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCCS suffered from an internal server error",
-            )),
-            StatusCode::BadGateway => Err(Error::PCSError(
-                status_code,
-                "Unable to retrieve the collateral from the Intel SGX PCS",
-            )),
-            _ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCCS server",
-            )),
-        }
+    
+    fn validate_response(&self, code: StatusCode) -> Result<(), Error> {
+        self.parent.validate_response(code)
     }
 
     fn parse_response(
@@ -257,178 +114,6 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
     }
 }
 
-pub struct TcbInfoApi<T> {
-    base_url: Cow<'static, str>,
-    api_version: PcsVersion,
-    type_: PhantomData<T>
-}
-
-impl<T: PlatformType> TcbInfoApi<T> {
-    pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
-        TcbInfoApi {
-            base_url,
-            api_version,
-            type_: PhantomData
-        }
-    }
-}
-
-impl<'inp, T: PlatformTypeForTcbInfo> TcbInfoService<'inp, T> for TcbInfoApi<T> {
-    fn build_input(
-        &'inp self,
-        fmspc: &'inp Fmspc,
-        tcb_evaluation_data_number: Option<u16>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbInfoIn {
-            api_version: self.api_version,
-            fmspc,
-            tcb_evaluation_data_number,
-        }
-    }
-}
-
-/// Implementation of Get TCB Info API (section 3.3 of [reference]).
-///
-/// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp, T: PlatformTypeForTcbInfo> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
-    type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo<T>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let fmspc = input.fmspc.as_bytes().to_hex();
-        let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
-            format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                self.base_url, api_version, fmspc, evaluation_data_number)
-        } else {
-            format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-                self.base_url, api_version, fmspc,
-            )
-        };
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => {
-                Err(Error::PCSError(status_code, "Invalid request parameters"))
-            }
-            StatusCode::NotFound => Err(Error::PCSError(
-                status_code,
-                "TCB information for provided FMSPC cannot be found",
-            )),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCCS suffered from an internal server error",
-            )),
-            StatusCode::BadGateway => Err(Error::PCSError(
-                status_code,
-                "Unable to retrieve the collateral from the Intel SGX PCS",
-            )),
-            _ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let key = match api_version {
-            PcsVersion::V3 => TCB_INFO_ISSUER_CHAIN_HEADER_V3,
-            PcsVersion::V4 => TCB_INFO_ISSUER_CHAIN_HEADER_V4,
-        };
-        let ca_chain = parse_issuer_header(&response_headers, key)?;
-        Ok(TcbInfo::parse(&response_body, ca_chain)?)
-    }
-}
-
-pub struct QeIdApi {
-    base_url: Cow<'static, str>,
-    api_version: PcsVersion,
-}
-
-impl QeIdApi {
-    pub fn new(base_url: Cow<'static, str>, api_version: PcsVersion) -> Self {
-        QeIdApi {
-            base_url,
-            api_version,
-        }
-    }
-}
-
-impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        QeIdIn {
-            api_version: self.api_version,
-            tcb_evaluation_data_number,
-        }
-    }
-}
-
-/// Implementation of Get Intel's QE Identity API (section 3.4 of [reference]).
-///
-/// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
-    type Input = QeIdIn;
-    type Output = QeIdentitySigned;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
-            format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
-                self.base_url, api_version, tcb_evaluation_data_number
-            )
-        } else {
-            format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                self.base_url, api_version,
-            )
-        };
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::NotFound => Err(Error::PCSError(
-                status_code,
-                "QE identity information cannot be found",
-            )),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCCS suffered from an internal server error",
-            )),
-            StatusCode::BadGateway => Err(Error::PCSError(
-                status_code,
-                "Unable to retrieve the collateral from the Intel SGX PCS",
-            )),
-            _ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, ENCLAVE_ID_ISSUER_CHAIN_HEADER)?;
-        let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
-        Ok(id)
-    }
-}
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
@@ -440,15 +125,16 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
+        EnclaveIdentity, Fmspc, PckCrl, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
     };
 
     use super::Client;
+    use crate::pccs::PCCSPckCrlService;
     use crate::provisioning_client::{
         test_helpers, DcapArtifactIssuer, Error, PccsProvisioningClientBuilder, PcsVersion,
         ProvisioningClient, StatusCode,
     };
-    use crate::{reqwest_client_insecure_tls, ReqwestClient};
+    use crate::{PckCertIn, PckCrlIn, QeIdIn, ReqwestClient, TcbInfoIn, reqwest_client_insecure_tls};
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
@@ -465,7 +151,7 @@ mod tests {
         url
     }
 
-    fn make_client(api_version: PcsVersion) -> Client<ReqwestClient> {
+    fn make_client(api_version: PcsVersion) -> Client<ReqwestClient, PCCSPckCrlService> {
         let url = &*PCCS_URL.get_or_init(pccs_url_from_env);
         PccsProvisioningClientBuilder::new(api_version, url)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
@@ -483,6 +169,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -512,6 +199,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -530,13 +218,7 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcert_service.pcs_service().build_input(
-                            Some(&pckid.enc_ppid),
-                            &pckid.pce_id,
-                            &pckid.cpu_svn,
-                            pckid.pce_isvsvn,
-                            Some(&pckid.qe_id),
-                        );
+                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: Some(&pckid.qe_id), api_version, api_key: &None };
                         input.hash(&mut hasher);
 
                         cache
@@ -560,6 +242,7 @@ mod tests {
                 // Second service call should return value from cache
                 let pck_from_service = client
                     .pckcert(
+                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -591,7 +274,7 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
+                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
                 let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
@@ -603,6 +286,7 @@ mod tests {
 
                 let pck = client
                     .pckcert(
+                        &None,
                     Some(&pckid.enc_ppid),
                     &pckid.pce_id,
                     &pckid.cpu_svn,
@@ -628,7 +312,7 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
+                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
 
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
@@ -646,7 +330,7 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts_with_fallback(&pckid)
+                .pckcerts_with_fallback(&None, &pckid)
                 .unwrap();
 
             let fmspc = pckcerts.fmspc().unwrap();
@@ -689,7 +373,7 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
+                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
@@ -701,10 +385,7 @@ mod tests {
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .sgx_tcbinfo_service
-                            .pcs_service()
-                            .build_input(&fmspc, None);
+                        let input = TcbInfoIn{ api_version, fmspc: &fmspc, tcb_evaluation_data_number: None };
                         input.hash(&mut hasher);
 
                         cache
@@ -757,7 +438,7 @@ mod tests {
 
                     let (cached_pckcrl, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        let input = PckCrlIn { api_version, ca };
                         input.hash(&mut hasher);
 
                         cache
@@ -801,7 +482,7 @@ mod tests {
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = QeIdIn { api_version, tcb_evaluation_data_number: None };
                     input.hash(&mut hasher);
 
                     cache

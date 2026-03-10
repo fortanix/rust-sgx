@@ -23,17 +23,16 @@ use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
 use rustc_serialize::hex::ToHex;
 
 use crate::Error;
-use crate::intel::{INTEL_BASE_URL, PckCertsApi};
 use crate::provisioning_client::common::{ENCLAVE_ID_ISSUER_CHAIN_HEADER, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER, PCK_CRL_ISSUER_CHAIN_HEADER, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN, TCB_INFO_ISSUER_CHAIN_HEADER_V3, TCB_INFO_ISSUER_CHAIN_HEADER_V4, parse_issuer_header};
 
 // pub mod azure;
 pub(self) mod common;
 pub mod intel;
-// pub mod pccs;
+pub mod pccs;
 
 // pub use self::azure::AzureProvisioningClientBuilder;
 pub use self::intel::IntelProvisioningClientBuilder;
-// pub use self::pccs::PccsProvisioningClientBuilder;
+pub use self::pccs::PccsProvisioningClientBuilder;
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
 #[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
@@ -174,13 +173,13 @@ impl ProvisioningServiceApi for PckCertsService {
     type Input<'a> = PckCertsIn<'a>;
     type Output = PckCerts;
 
-        fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input.enc_ppid.to_hex();
         let pce_id = input.pce_id.to_le_bytes().to_hex();
         let url = format!(
             "{}/sgx/certification/v{}/pckcerts?encrypted_ppid={}&pceid={}",
-            INTEL_BASE_URL, api_version, encrypted_ppid, pce_id,
+            base_url, api_version, encrypted_ppid, pce_id,
         );
         let headers = if let Some(api_key) = &input.api_key {
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
@@ -251,7 +250,7 @@ impl ProvisioningServiceApi for PckCertService {
     type Input<'a> = PckCertIn<'a>;
     type Output = PckCert<Unverified>;
 
-    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input
             .encrypted_ppid
@@ -260,9 +259,13 @@ impl ProvisioningServiceApi for PckCertService {
         let cpusvn = input.cpu_svn.to_hex();
         let pce_isvsvn = input.pce_isvsvn.to_le_bytes().to_hex();
         let pce_id = input.pce_id.to_le_bytes().to_hex();
+        let qe_id = match input.qe_id {
+            Some(qe_id) => format!("&qeid={}", qe_id.to_hex()),
+            None => String::new(),
+        };
         let url = format!(
-            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}",
-            INTEL_BASE_URL, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id,
+            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}{}",
+            base_url, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id, qe_id
         );
         let headers = if let Some(api_key) = input.api_key {
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
@@ -317,18 +320,29 @@ pub struct PckCrlIn {
     ca: DcapArtifactIssuer,
 }
 
+impl PckCrlIn {
+    fn new(api_version: PcsVersion, ca: DcapArtifactIssuer) -> Self {
+        PckCrlIn { api_version, ca }
+    }
+}
+
 impl WithApiVersion for PckCrlIn {
     fn api_version(&self) -> PcsVersion {
         self.api_version
     }
 }
 
-struct PckCrlService;
-impl ProvisioningServiceApi for PckCrlService {
+pub trait PckCrlService : ProvisioningServiceApi {
+    fn new() -> Self;
+    fn build_input(&self, api_version: PcsVersion, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi>::Input<'_>;
+}
+
+pub struct PCSPckCrlService;
+impl ProvisioningServiceApi for PCSPckCrlService {
     type Input<'a> = PckCrlIn;
     type Output = PckCrl<Unverified>;
 
-    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
             DcapArtifactIssuer::PCKProcessorCA => "processor",
             DcapArtifactIssuer::PCKPlatformCA => "platform",
@@ -341,7 +355,7 @@ impl ProvisioningServiceApi for PckCrlService {
         };
         let url = format!(
             "{}/sgx/certification/v{}/pckcrl?ca={}&encoding=pem",
-            INTEL_BASE_URL, input.api_version as u8, ca,
+            base_url, input.api_version as u8, ca,
         );
         Ok((url, Vec::new()))
     }
@@ -398,17 +412,17 @@ impl ProvisioningServiceApi for QeIdService {
     type Input<'a> = QeIdIn;
     type Output = QeIdentitySigned;
 
-    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
                 "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, tcb_evaluation_data_number
+                base_url, api_version, tcb_evaluation_data_number
             )
         } else {
             format!(
                 "{}/sgx/certification/v{}/qe/identity?update=early",
-                INTEL_BASE_URL, api_version,
+                base_url, api_version,
             )
         };
         Ok((url, Vec::new()))
@@ -472,13 +486,13 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbI
     type Input<'a> = TcbInfoIn<'a>;
     type Output = TcbInfo<T>;
 
-    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
                 "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL,
+                base_url,
                 T::tag(),
                 api_version,
                 fmspc,
@@ -487,7 +501,7 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbI
         } else {
             format!(
                 "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
-                INTEL_BASE_URL,
+                base_url,
                 T::tag(),
                 api_version,
                 fmspc,
@@ -547,17 +561,16 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
 }
 
 struct TcbEvaluationDataNumbersService<T: PlatformTypeForTcbInfo> {
-    base_url: String,
     _type: PhantomData<T>
 }
 impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbEvaluationDataNumbersService<T> {
     type Input<'a> = TcbEvaluationDataNumbersIn;
     type Output = RawTcbEvaluationDataNumbers<T>;
 
-    fn build_request(&self, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!(
             "{}/{}/certification/v{}/tcbevaluationdatanumbers",
-            self.base_url,
+            base_url,
             T::tag(),
             input.api_version() as u8,
         );
@@ -620,31 +633,23 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<F>(
+    pub(crate) fn build<F: for<'a> Fetcher<'a>, PC: PckCrlService>(
         self,
+        base_url: &str,
         api_version: PcsVersion,
         pckcerts_service: PckCertsService,
         pckcert_service: PckCertService,
-        pckcrl_service: PckCrlService,
+        pckcrl_service: PC,
         qeid_service: QeIdService,
         sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
         tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
         sgx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::SGX>,
         tdx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::TDX>,
         fetcher: F,
-    ) -> Client<F>
-    where
-        // PSS: for<'a> PckCertsService + Sync + Send + 'static,
-        // PS: for<'a> PckCertService + Sync + Send + 'static,
-        // PC: for<'a> PckCrlService + Sync + Send + 'static,
-        // QS: for<'a> QeIdService + Sync + Send + 'static,
-        // TS: for<'a> TcbInfoService<platform::SGX> + Sync + Send + 'static,
-        // TDS: for<'a> TcbInfoService<platform::TDX> + Sync + Send + 'static,
-        // ES: for<'a> TcbEvaluationDataNumbersService<platform::SGX> + Sync + Send + 'static,
-        // TES: for<'a> TcbEvaluationDataNumbersService<platform::TDX> + Sync + Send + 'static,
-        F: for<'a> Fetcher<'a>,
+    ) -> Client<F, PC>
     {
         Client::new(
+            base_url,
             api_version,
             pckcerts_service,
             pckcert_service,
@@ -680,10 +685,10 @@ impl<T: ProvisioningServiceApi> PcsService<T> {
     fn call_service<'a, F: Fetcher<'a>>(
         &self,
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi>::Input<'_>,
-    ) -> Result<<T as ProvisioningServiceApi>::Output, Error> {
-        let (url, headers) =
-            <T as ProvisioningServiceApi>::build_request(&self.pcs_service(), input)?;
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
+        let (url, headers) = self.service.build_request(base_url, input)?;
         let req = fetcher.build_request(&url, headers)?;
         let api_version = input.api_version();
 
@@ -701,7 +706,7 @@ impl<T: ProvisioningServiceApi> PcsService<T> {
 
 struct CachedService<T: ProvisioningServiceApi> {
     service: BackoffService<T>,
-    cache: Mutex<LruCache<u64, (<T as ProvisioningServiceApi>::Output, SystemTime)>>,
+    cache: Mutex<LruCache<u64, (T::Output, SystemTime)>>,
     cache_shelf_time: Duration,
 }
 
@@ -727,8 +732,9 @@ impl<T: ProvisioningServiceApi>
     pub fn call_service<'a, F: Fetcher<'a>>(
         &self,
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi>::Input<'_>,
-    ) -> Result<<T as ProvisioningServiceApi>::Output, Error> {
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
         let key = {
             let mut hasher = DefaultHasher::new();
             input.hash(&mut hasher);
@@ -743,7 +749,7 @@ impl<T: ProvisioningServiceApi>
                 return Ok(value.to_owned());
             }
         }
-        let value = self.service.call_service::<F>(fetcher, input)?;
+        let value = self.service.call_service::<F>(fetcher, base_url, input)?;
         cache.insert(key, (value.clone(), SystemTime::now()));
         Ok(value)
     }
@@ -774,10 +780,11 @@ impl<T: ProvisioningServiceApi> BackoffService<T> {
     pub fn call_service<'a, F: Fetcher<'a>>(
         &self,
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi>::Input<'_>,
-    ) -> Result<<T as ProvisioningServiceApi>::Output, Error> {
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
         if let Some(retry_timeout) = self.retry_timeout {
-            let op = || match self.service.call_service::<F>(fetcher, input) {
+            let op = || match self.service.call_service::<F>(fetcher, base_url, input) {
                 Ok(output) => Ok(output),
                 Err(err) => match err {
                     Error::PCSError(status_code, msg) => {
@@ -801,27 +808,19 @@ impl<T: ProvisioningServiceApi> BackoffService<T> {
                 backoff::Error::Transient { err, .. } => err,
             })
         } else {
-            self.service.call_service::<F>(fetcher, input)
+            self.service.call_service::<F>(fetcher, base_url, input)
         }
     }
 }
 
-pub struct Client<F: for<'a> Fetcher<'a>>
-where
-    // PSS: PckCertsService,
-    // PS: PckCertService + Sync + Send + 'static,
-    // PC: PckCrlService + Sync + Send + 'static,
-    // QS: QeIdService + Sync + Send + 'static,
-    // TS: TcbInfoService<platform::SGX> + Sync + Send + 'static,
-    // TDS: TcbInfoService<platform::TDX> + Sync + Send + 'static,
-    // ES: TcbEvaluationDataNumbersService<platform::SGX> + Sync + Send + 'static,
-    // TES: TcbEvaluationDataNumbersService<platform::TDX> + Sync + Send + 'static,
+pub struct Client<F: for<'a> Fetcher<'a>, PC: PckCrlService>
 {
+    base_url: String,
     api_version: PcsVersion,
     pckcerts_service: CachedService<PckCertsService>,
     pckcert_service:
         CachedService<PckCertService>,
-    pckcrl_service: CachedService<PckCrlService>,
+    pckcrl_service: CachedService<PC>,
     qeid_service: CachedService<QeIdService>,
     sgx_tcbinfo_service: CachedService<TcbInfoService<platform::SGX>>,
     tdx_tcbinfo_service: CachedService<TcbInfoService<platform::TDX>>,
@@ -830,22 +829,14 @@ where
     fetcher: F,
 }
 
-impl<F: for<'a> Fetcher<'a>> Client<F>
-where
-    // PSS: PckCertsService,
-    // PS: PckCertService + Sync + Send + 'static,
-    // PC: PckCrlService + Sync + Send + 'static,
-    // QS: QeIdService + Sync + Send + 'static,
-    // TS: TcbInfoService<platform::SGX> + Sync + Send + 'static,
-    // TDS: TcbInfoService<platform::TDX> + Sync + Send + 'static,
-    // ES: TcbEvaluationDataNumbersService<platform::SGX> + Sync + Send + 'static,
-    // TES: TcbEvaluationDataNumbersService<platform::TDX> + Sync + Send + 'static
+impl<F: for<'a> Fetcher<'a>, PC: PckCrlService> Client<F, PC>
 {
     fn new(
+        base_url: &str,
         api_version: PcsVersion,
         pckcerts_service: PckCertsService,
         pckcert_service: PckCertService,
-        pckcrl_service: PckCrlService,
+        pckcrl_service: PC,
         qeid_service: QeIdService,
         sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
         tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
@@ -856,17 +847,9 @@ where
         cache_capacity: usize,
         cache_shelf_time: Duration,
     ) -> Self
-    where
-        // PSS: PckCertsService,
-        // PS: PckCertService + Sync + Send + 'static,
-        // PC: PckCrlService + Sync + Send + 'static,
-        // QS: QeIdService + Sync + Send + 'static,
-        // TS: TcbInfoService<platform::SGX> + Sync + Send + 'static,
-        // TDS: TcbInfoService<platform::TDX> + Sync + Send + 'static,
-        // ES: TcbEvaluationDataNumbersService<platform::SGX> + Sync + Send + 'static,
-        // TES: TcbEvaluationDataNumbersService<platform::TDX> + Sync + Send + 'static,
     {
         Client {
+            base_url: base_url.to_owned(),
             api_version,
             pckcerts_service: CachedService::new(
                 BackoffService::new(
@@ -937,7 +920,7 @@ where
     }
 }
 
-pub trait ProvisioningClient {
+pub trait ProvisioningClient<PC: PckCrlService> {
     fn pckcerts(&self, api_key: &Option<String>, enc_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error>;
 
     fn pckcert(
@@ -954,7 +937,7 @@ pub trait ProvisioningClient {
 
     fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
 
-    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PC::Output, Error>;
 
     fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
 
@@ -1043,45 +1026,36 @@ pub trait ProvisioningClient {
 
 
 pub trait ProvisioningClientFuncSelector: PlatformTypeForTcbInfo {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
+    fn get_tcb_evaluation_data_numbers<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
+    fn get_tcbinfo<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
 }
 
 impl ProvisioningClientFuncSelector for platform::SGX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+    fn get_tcb_evaluation_data_numbers<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
         pc.sgx_tcb_evaluation_data_numbers()
     }
 
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+    fn get_tcbinfo<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
         pc.sgx_tcbinfo(fmspc, evaluation_data_number)
     }
 }
 
 impl ProvisioningClientFuncSelector for platform::TDX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+    fn get_tcb_evaluation_data_numbers<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         pc.tdx_tcb_evaluation_data_numbers()
     }
 
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+    fn get_tcbinfo<PC: PckCrlService>(pc: &dyn ProvisioningClient<PC>, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
         pc.tdx_tcbinfo(fmspc, evaluation_data_number)
     }
 }
 
 
-impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
-where
-    // PSS: PckCertsService,
-    // PS: PckCertService + Sync + Send + 'static,
-    // PC: PckCrlService + Sync + Send + 'static,
-    // QS: QeIdService + Sync + Send + 'static,
-    // TS: TcbInfoService<platform::SGX> + Sync + Send + 'static,
-    // TDS: TcbInfoService<platform::TDX> + Sync + Send + 'static,
-    // ES: TcbEvaluationDataNumbersService<platform::SGX> + Sync + Send + 'static,
-    // TES: TcbEvaluationDataNumbersService<platform::TDX> + Sync + Send + 'static
+impl<F: for<'a> Fetcher<'a>, PC: PckCrlService> ProvisioningClient<PC> for Client<F, PC>
 {
     fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
         let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.api_version };
-        self.pckcerts_service.call_service(&self.fetcher, &input)
+        self.pckcerts_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn pckcert(
@@ -1094,41 +1068,37 @@ where
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error> {
         let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_version: self.api_version, api_key };
-        self.pckcert_service.call_service(&self.fetcher, &input)
+        self.pckcert_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-        // let input = self.sgx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
         let input = TcbInfoIn { api_version: self.api_version, fmspc, tcb_evaluation_data_number };
-        self.sgx_tcbinfo_service.call_service(&self.fetcher, &input)
+        self.sgx_tcbinfo_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn tdx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
-        // let input = self.tdx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
         let input = TcbInfoIn { api_version: self.api_version, fmspc, tcb_evaluation_data_number };
-        self.tdx_tcbinfo_service.call_service(&self.fetcher, &input)
+        self.tdx_tcbinfo_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
-    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
-        // let input = self.pckcrl_service.pcs_service().build_input(ca);
-        let input = PckCrlIn { api_version: self.api_version, ca };
-        self.pckcrl_service.call_service(&self.fetcher, &input)
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PC::Output, Error> {
+        let input = self.pckcrl_service.pcs_service().build_input(self.api_version, ca);
+        self.pckcrl_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
         let input = QeIdIn { api_version: self.api_version, tcb_evaluation_data_number };
-        self.qeid_service.call_service(&self.fetcher, &input)
+        self.qeid_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
         let input = TcbEvaluationDataNumbersIn;
-        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-        // let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
         let input = TcbEvaluationDataNumbersIn;
-        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &self.base_url, &input)
 
     }
 }
@@ -1219,6 +1189,7 @@ pub trait ProvisioningServiceApi {
 
     fn build_request(
         &self,
+        base_url: &str,
         input: &Self::Input<'_>,
     ) -> Result<(String, Vec<(String, String)>), Error>;
 
@@ -1271,6 +1242,7 @@ mod tests {
 
         fn build_request(
             &self,
+            _base_url: &str,
             _input: &Self::Input<'_>,
         ) -> Result<(String, Vec<(String, String)>), Error> {
             Ok((_input.0.to_string(), vec![]))
@@ -1328,10 +1300,10 @@ mod tests {
         let input_b = MockInput(420);
 
         // Initial call to populate the cache for `input_a`
-        cached_service.call_service(&fetcher, &input_a).unwrap();
+        cached_service.call_service(&fetcher, "", &input_a).unwrap();
 
         // input_b should provoke cache miss and add new key to the cache
-        let result = cached_service.call_service(&fetcher, &input_b).unwrap();
+        let result = cached_service.call_service(&fetcher, "", &input_b).unwrap();
 
         let (cached_value, _) = {
             let mut cache = cached_service.cache.lock().unwrap();
@@ -1352,7 +1324,7 @@ mod tests {
         let input = MockInput(42);
 
         // Initial call to populate the cache
-        let _ = cached_service.call_service(&fetcher, &input).unwrap();
+        let _ = cached_service.call_service(&fetcher, "", &input).unwrap();
 
         // Now the service should not be called, and the cached result should be returned
         let (cached_value, _) = {
@@ -1360,7 +1332,7 @@ mod tests {
             cache.get_mut(&calculate_key(&input)).unwrap().to_owned()
         };
 
-        let result = cached_service.call_service(&fetcher, &input).unwrap();
+        let result = cached_service.call_service(&fetcher, "", &input).unwrap();
         assert_eq!(result, cached_value);
     }
 
@@ -1376,7 +1348,7 @@ mod tests {
         // Insert entries into the cache, exceeding its capacity
         for i in 0..3 {
             let input = MockInput(i);
-            let _ = cached_service.call_service(&fetcher, &input).unwrap();
+            let _ = cached_service.call_service(&fetcher, "", &input).unwrap();
         }
 
         // At this point, the cache should have evicted the first inserted entry (MockInput(0))
