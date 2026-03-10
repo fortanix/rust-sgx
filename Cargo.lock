@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner-sgx"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -1760,7 +1760,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -2425,7 +2425,7 @@ dependencies = [
 
 [[package]]
 name = "ias"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "aesm-client",
  "base64 0.13.0",
@@ -4509,7 +4509,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "byteorder 1.5.0",
