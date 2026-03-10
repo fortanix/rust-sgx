@@ -346,7 +346,7 @@ fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8,
 }
 
 #[allow(unused)]
-fn tdx_id_serializer<S>(id: u8, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+fn tdx_id_serializer<S>(id: u8, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
@@ -365,7 +365,7 @@ fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(
 fn tdx_mrsigner_serializer<S>(
     mrsigner: &[u8; 48],
     serializer: S,
-) -> ::std::result::Result<S::Ok, S::Error>
+) -> Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
@@ -379,7 +379,7 @@ fn tdx_attribute_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Res
 }
 
 #[allow(unused)]
-fn tdx_attribute_serializer<S>(attribute: u64, serializer: S) -> ::std::result::Result<S::Ok, S::Error>
+fn tdx_attribute_serializer<S>(attribute: u64, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
@@ -535,6 +535,7 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbData<T, V> {
     }
 }
 
+#[derive(Debug)]
 pub enum TdxTcbLevel<'a> {
     TcbLevel(&'a TcbLevelOf<platform::TDX>),
     TcbLevelWithModule(&'a TcbLevelOf<platform::TDX>, &'a TdxModuleTcbLevel),
@@ -836,6 +837,9 @@ mod tests {
 
     #[test]
     fn parse_tcbinfo_json() {
+        // Note to anyone who needs it:
+        // This cert chain is attached from the HTTP response of TCB info API from PCS
+        // Will be highly unlikely to change unless Intel revokes their own certificate.
         let ca_chain = vec![
             include_str!("../tests/data/cert-chain/cert-chain-1.cert").to_string(),
             include_str!("../tests/data/cert-chain/cert-chain-2.cert").to_string()
@@ -902,6 +906,7 @@ mod tests {
         assert_eq!(matching_level.tcb_status(), TcbStatus::UpToDate);
     }
 
+    #[derive(Debug)]
     enum ExpectTcbLevel {
         None,
         TcbOnly(TcbStatus),
@@ -942,15 +947,12 @@ mod tests {
         let tcb_level = TcbComponentsOf::<platform::TDX>::from_raw(cpusvn, pcesvn, tdxsvn);
         if let Some(matching_level) = tdx_tcb_info.find_tdx_tcb_level(&tcb_level) {
             if let ExpectTcbLevel::None = expected {
-                panic!("Expecting None but receiving TCB level");
+                panic!("expecting None but receiving TCB level");
             } else if expected != matching_level {
-                panic!("Invalid TDX TCB Level");
+                panic!("invalid TDX TCB Level");
             }
         } else {
-            if let ExpectTcbLevel::None = expected {
-            } else {
-                panic!("Expecting")
-            }
+            assert!(matches!(expected, ExpectTcbLevel::None));
         }
     }
 

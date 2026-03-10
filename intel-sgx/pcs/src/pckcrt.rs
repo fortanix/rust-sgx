@@ -151,7 +151,7 @@ impl TDXSpecificTcbComponentData {
     }
 
     /// According to PCS reference: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
-    /// the second element of the `tdxTcbComponents` indicates the ISV SVN for the TDX Module of the machine.
+    /// the first element of the `tdxTcbComponents` indicates the ISV SVN for the TDX Module of the machine.
     ///
     /// > [...] for the selected TDX Module Identity go over the sorted collection of TCB Levels starting
     ///   from the first item on the list and compare its isvsvn value to the TEE TCB SVN at index 0.
@@ -376,6 +376,14 @@ impl<T, U> PartialOrd<TcbComponents<U>> for TcbComponents<T> {
     /// are less and others are greater, ordering is not defined. If some are
     /// less, order as less. If some are greater, order as greater.
     fn partial_cmp(&self, other: &TcbComponents<U>) -> Option<Ordering> {
+        // TODO: This likely violates PartialCmp/PartialEq semantics as it does not take
+        // platform specific data field into account. Likely to create separate
+        // wrapper type to perform this comparison instead of implementing it in
+        // the `TcbComponents` scope.
+        // The main issue is that currently Rust cannot allow defining generic specialization
+        // that intersects with existing generic bounds. Since this impl allows comparison
+        // with differing platform specific type (T vs. U), T.partial_cmp(U) is unspecified.
+        // But if T == U, T.partial_cmp(U) is well-defined.
         sequence_partial_cmp(self.iter_components().zip(other.iter_components()))
     }
 }
