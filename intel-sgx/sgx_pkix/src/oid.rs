@@ -28,7 +28,8 @@ lazy_static!{
     pub static ref attestationEmbeddedIasReport: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 3].into();
 
     pub static ref attestationEmbeddedQe3Quote: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 4].into();
-    pub static ref attestationDcap: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 5].into();
+    pub static ref attestationDcapSgx: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 5].into();
+    pub static ref attestationDcapTdx: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 16].into();
 
     // Fortanix public key algorithm identifiers
     pub static ref ledaCrypt_34_0: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 4, 1].into();
@@ -70,7 +71,7 @@ lazy_static!{
     pub static ref SGX_EXTENSION_CONF_DYNAMIC_PLATFORM: ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 1].into();
     pub static ref SGX_EXTENSION_CONF_CACHED_KEYS:    ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 2].into();
     pub static ref SGX_EXTENSION_CONF_SMT_ENABLED:    ObjectIdentifier  = vec![1, 2, 840, 113741, 1, 13, 1, 7, 3].into();
-    
+
     static ref MAPPING: (HashMap<ObjectIdentifier, &'static str>, HashMap<&'static str, ObjectIdentifier>) = {
         let mut name_to_oid = HashMap::new();
         let mut oid_to_name = HashMap::new();
