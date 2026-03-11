@@ -5,11 +5,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use pcs::{EncPpid, PceId, PckCerts};
 use percent_encoding::percent_decode;
 use pkix::pem::PemBlock;
 
-use super::{PckCertsIn, PckCertsService, PcsVersion, ProvisioningServiceApi, StatusCode};
 use crate::Error;
 
 pub const PCK_CERTIFICATE_ISSUER_CHAIN_HEADER: &'static str = "SGX-PCK-Certificate-Issuer-Chain";

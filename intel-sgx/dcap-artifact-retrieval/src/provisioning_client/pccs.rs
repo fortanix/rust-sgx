@@ -11,22 +11,24 @@
 //! <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
+use std::convert::TryInto;
 use std::marker::PhantomData;
 use std::time::Duration;
 
 use pcs::platform::SGX;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCrlIn, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
-use crate::{Error, PckCertsService};
-use crate::provisioning_client::{PCSPckCrlService, TcbEvaluationDataNumbersService};
+use crate::{Error, ProvisioningClient, WithApiVersion};
+use crate::provisioning_client::{BackoffService, CachedService, PckCertService, PcsService, TcbEvaluationDataNumbersService};
 
 pub struct PccsProvisioningClientBuilder {
     base_url: Cow<'static, str>,
@@ -48,40 +50,176 @@ impl PccsProvisioningClientBuilder {
         self
     }
 
-    pub fn build<F: for<'a> Fetcher<'a>, PC: PckCrlService>(self, fetcher: F) -> Client<F, PC> {
-        let pck_certs = PckCertsService;
-        let pck_cert = PckCertService;
-        let pck_crl = PC::new();
+    pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> PCCSClient<F> {
+        let pckcert_service = PckCertService;
+        let pckcrl_service = PckCrlService::new();
         let qeid = QeIdService;
         let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
         let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
         let sgx_evaluation_data_numbers: TcbEvaluationDataNumbersService<SGX> = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
 
-
-        self.client_builder
-            .build(&self.base_url, self.api_version, pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
+        let client = self.client_builder
+            .build(&self.base_url,
+                self.api_version,
+                // pck_certs,
+                // pck_cert,
+                // pck_crl,
+                qeid,
+                sgx_tcbinfo,
+                tdx_tcbinfo,
+                sgx_evaluation_data_numbers,
+                tdx_evaluation_data_numbers,
+                fetcher);
+        PCCSClient {
+            pckcert_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(pckcert_service),
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            pckcrl_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(pckcrl_service),
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            client
+        }
     }
 }
 
-
-pub struct PCCSPckCrlService {
-    parent: PCSPckCrlService
+struct PCCSClient<F: for<'a> Fetcher<'a>> {
+    pckcert_service: CachedService<PckCertService>,
+    pckcrl_service: CachedService<PckCrlService>,
+    client: Client<F>,
 }
 
-impl PckCrlService for PCCSPckCrlService {
-    fn build_input(&self, api_version: PcsVersion, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi>::Input<'_> {
-        PckCrlIn { api_version, ca }
+impl<F: for<'a> Fetcher<'a>> PCCSClient<F> {
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        // let input = PckCertsIn { api_version: self.client.api_version, pck_id: &pck_id };
+        // self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+
+        let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
+            let pck_cert = self.pckcert(
+                Some(&pck_id.enc_ppid),
+                &pck_id.pce_id,
+                cpu_svn,
+                pce_svn,
+                &pck_id.qe_id,
+            )?;
+
+            // Getting PCK cert using CPUSVN from PCKID
+            let ptcb = pck_cert.platform_tcb()?;
+            collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
+            Ok(pck_cert)
+        };
+
+        // Use BTreeMap to have an ordered PckCerts at the end
+        let mut pckcerts_map = BTreeMap::new();
+
+        // 1. Use PCK ID to get best available PCK Cert
+        let pck_cert = get_and_collect(&mut pckcerts_map, &pck_id.cpu_svn, pck_id.pce_isvsvn)?;
+
+        // 2. Getting PCK cert using CPUSVN all 1's
+        let _ign_err = get_and_collect(&mut pckcerts_map, &[u8::MAX; 16], pck_id.pce_isvsvn);
+
+        let fmspc = pck_cert.sgx_extension()?.fmspc;
+        let tcb_info = self.sgx_tcbinfo(&fmspc, None)?;
+        let tcb_data = tcb_info.data()?;
+        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+            // 3. Get PCK based on TCB levels
+            let _ = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn)?;
+
+            // 4. If late loaded microcode version is higher than early loaded microcode,
+            //    also try with highest microcode version of both components. We found cases where
+            //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
+            //    Cert for that level
+            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
+            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
+            if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
+                let early_ucode = cpu_svn[early_ucode_idx];
+                let late_ucode = cpu_svn[late_ucode_idx];
+                if early_ucode < late_ucode {
+                    let mut cpu_svn = cpu_svn.clone();
+                    cpu_svn[early_ucode_idx] = late_ucode;
+                    let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
+                }
+            }
+        }
+
+        // BTreeMap by default is Ascending
+        let pck_certs: Vec<_> = pckcerts_map.into_iter().rev().map(|(_, v)| v).collect();
+        pck_certs
+            .try_into()
+            .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
+    }
+
+    fn pckcert(
+        &self,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: &QeId,
+    ) -> Result<PckCert<Unverified>, Error> {
+        let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id: Some(&qe_id), api_version: self.client.api_version, api_key: &None };
+        self.pckcert_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
     }
     
-    fn new() -> Self {
-        Self { parent: PCSPckCrlService }
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        let input = PckCrlIn { api_version: self.client.api_version, ca };
+        self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        self.client.qe_identity(evaluation_data_number)
+    }
+
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        self.client.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        self.client.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        self.client.tdx_tcb_evaluation_data_numbers()
     }
 }
 
-impl ProvisioningServiceApi for PCCSPckCrlService {
-    type Input<'a> = <PCSPckCrlService as ProvisioningServiceApi>::Input<'a>;
-    type Output = <PCSPckCrlService as ProvisioningServiceApi>::Output;
+#[derive(Hash)]
+struct PckCertsIn<'a> {
+    api_version: PcsVersion,
+    pck_id: &'a PckID,
+}
+
+impl<'a> WithApiVersion for PckCertsIn<'a> {
+    fn api_version(&self) -> PcsVersion {
+        self.api_version
+    }
+}
+
+struct PckCrlService {
+    parent: crate::provisioning_client::PckCrlService
+}
+impl PckCrlService {
+    fn new() -> Self {
+        Self { parent: crate::provisioning_client::PckCrlService }
+    }
+}
+impl ProvisioningServiceApi for PckCrlService {
+    type Input<'a> = PckCrlIn;
+    type Output = PckCrl<Unverified>;
     
     fn build_request(
         &self,
@@ -118,6 +256,7 @@ impl ProvisioningServiceApi for PCCSPckCrlService {
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
     use assert_matches::assert_matches;
+    use reqwest::blocking::Client;
     use std::convert::TryFrom;
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
@@ -125,16 +264,15 @@ mod tests {
     use std::time::Duration;
 
     use pcs::{
-        EnclaveIdentity, Fmspc, PckCrl, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
+        EnclaveIdentity, Fmspc, PckID, RawTcbEvaluationDataNumbers, TcbEvaluationDataNumbers, WriteOptionsBuilder, platform
     };
 
-    use super::Client;
-    use crate::pccs::PCCSPckCrlService;
+    use crate::pccs::PCCSClient;
     use crate::provisioning_client::{
         test_helpers, DcapArtifactIssuer, Error, PccsProvisioningClientBuilder, PcsVersion,
         ProvisioningClient, StatusCode,
     };
-    use crate::{PckCertIn, PckCrlIn, QeIdIn, ReqwestClient, TcbInfoIn, reqwest_client_insecure_tls};
+    use crate::{Fetcher, PckCertIn, PckCrlIn, QeIdIn, TcbInfoIn, reqwest_client_insecure_tls};
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
@@ -151,7 +289,7 @@ mod tests {
         url
     }
 
-    fn make_client(api_version: PcsVersion) -> Client<ReqwestClient, PCCSPckCrlService> {
+    fn make_client(api_version: PcsVersion) -> PCCSClient<reqwest::blocking::Client> {
         let url = &*PCCS_URL.get_or_init(pccs_url_from_env);
         PccsProvisioningClientBuilder::new(api_version, url)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
@@ -169,12 +307,11 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
-                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
-                        Some(&pckid.qe_id),
+                        &pckid.qe_id,
                     )
                     .unwrap();
 
@@ -199,12 +336,11 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
-                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
-                        Some(&pckid.qe_id),
+                        &pckid.qe_id,
                     )
                     .unwrap();
 
@@ -218,7 +354,7 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: Some(&pckid.qe_id), api_version, api_key: &None };
+                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: Some(&pckid.qe_id), api_version, api_key: &None};
                         input.hash(&mut hasher);
 
                         cache
@@ -242,12 +378,11 @@ mod tests {
                 // Second service call should return value from cache
                 let pck_from_service = client
                     .pckcert(
-                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
-                        Some(&pckid.qe_id),
+                        &pckid.qe_id,
                     )
                     .unwrap();
 
@@ -274,7 +409,7 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
+                let pckcerts = client.pckcerts(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
                 let tcb_info = client.sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None).unwrap();
@@ -286,12 +421,11 @@ mod tests {
 
                 let pck = client
                     .pckcert(
-                        &None,
                     Some(&pckid.enc_ppid),
                     &pckid.pce_id,
                     &pckid.cpu_svn,
                     pckid.pce_isvsvn,
-                    Some(&pckid.qe_id),
+                    &pckid.qe_id,
                     )
                     .unwrap();
 
@@ -312,7 +446,7 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
+                let pckcerts = client.pckcerts(&pckid).unwrap();
 
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
@@ -330,7 +464,7 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts_with_fallback(&None, &pckid)
+                .pckcerts(&pckid)
                 .unwrap();
 
             let fmspc = pckcerts.fmspc().unwrap();
@@ -373,13 +507,13 @@ mod tests {
                 .unwrap()
                 .iter()
             {
-                let pckcerts = client.pckcerts_with_fallback(&None, &pckid).unwrap();
+                let pckcerts = client.pckcerts(&pckid).unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
-                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
+                    let mut cache = client.client.sgx_tcbinfo_service.cache.lock().unwrap();
 
                     assert!(cache.len() > 0);
 
@@ -476,7 +610,7 @@ mod tests {
 
             // The cache should be populated after initial service call
             {
-                let mut cache = client.qeid_service.cache.lock().unwrap();
+                let mut cache = client.client.qeid_service.cache.lock().unwrap();
 
                 assert!(cache.len() > 0);
 

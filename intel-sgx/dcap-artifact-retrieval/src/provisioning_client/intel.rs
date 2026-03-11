@@ -24,13 +24,12 @@ use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService,
-    WithApiVersion,
+    TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService,
 };
-use crate::provisioning_client::{PCSPckCrlService, PlatformApiTag};
-use crate::Error;
+use crate::provisioning_client::{BackoffService, CachedService, PcsService, PlatformApiTag};
+use crate::{Error, ProvisioningClient};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
@@ -38,7 +37,7 @@ const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
 pub struct IntelProvisioningClientBuilder {
     api_key: Option<String>,
     api_version: PcsVersion,
-    client_builder: ClientBuilder,
+    pub(crate) client_builder: ClientBuilder,
 }
 
 impl IntelProvisioningClientBuilder {
@@ -60,41 +59,172 @@ impl IntelProvisioningClientBuilder {
         self
     }
 
-    pub fn build<F: for<'a> Fetcher<'a>, PC: PckCrlService>(self, fetcher: F) -> Client<F, PC> {
-        let pck_certs = PckCertsService;
-        let pck_cert = PckCertService;
-        let pck_crl = PC::new();
+    pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> IntelPCSClient<F> {
+        let pckcerts_service = PckCertsService;
+        let pckcert_service = PckCertService;
+        let pckcrl_service = PckCrlService;
         let qeid = QeIdService;
         let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
         let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
 
-        self.client_builder.build(
+        let client = self.client_builder.build(
             INTEL_BASE_URL,
             self.api_version,
-            pck_certs,
-            pck_cert,
-            pck_crl,
+            // pck_certs,
+            // pck_cert,
+            // pck_crl,
             qeid,
             sgx_tcbinfo,
             tdx_tcbinfo,
             sgx_evaluation_data_numbers,
             tdx_evaluation_data_numbers,
             fetcher,
-        )
+        );
+        IntelPCSClient {
+            pckcerts_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(pckcerts_service),
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            pckcert_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(pckcert_service),
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            pckcrl_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(pckcrl_service),
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            client
+        }
     }
 }
 
-impl PckCrlService for PCSPckCrlService {
-    fn build_input(&self, api_version: PcsVersion, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi>::Input<'_> {
-        PckCrlIn { api_version, ca }
+pub struct IntelPCSClient<F: for<'a> Fetcher<'a>> {
+    pckcerts_service: CachedService<PckCertsService>,
+    pckcert_service: CachedService<PckCertService>,
+    pckcrl_service: CachedService<PckCrlService>,
+    pub(crate) client: Client<F>
+}
+
+impl<F: for<'a> Fetcher<'a>> IntelPCSClient<F> {
+    pub fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
+        let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.client.api_version };
+        self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
     }
-    
-    fn new() -> Self {
-        Self
+
+    pub fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_version: self.client.api_version, api_key };
+        self.pckcert_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    pub fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        let input = PckCrlIn { api_version: self.client.api_version, ca };
+        self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    pub fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        self.client.qe_identity(evaluation_data_number)
+    }
+
+    pub fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    pub fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        self.client.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    pub fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        self.client.sgx_tcb_evaluation_data_numbers()
+    }
+
+    pub fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        self.client.tdx_tcb_evaluation_data_numbers()
     }
 }
+
+pub struct PckCertsService;
+impl ProvisioningServiceApi for PckCertsService {
+    type Input<'a> = PckCertsIn<'a>;
+    type Output = PckCerts;
+
+    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let api_version = input.api_version as u8;
+        let encrypted_ppid = input.enc_ppid.to_hex();
+        let pce_id = input.pce_id.to_le_bytes().to_hex();
+        let url = format!(
+            "{}/sgx/certification/v{}/pckcerts?encrypted_ppid={}&pceid={}",
+            base_url, api_version, encrypted_ppid, pce_id,
+        );
+        let headers = if let Some(api_key) = &input.api_key {
+            vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
+        } else {
+            Vec::new()
+        };
+        Ok((url, headers))
+    }
+
+    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+        match status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request (check your PCS key)",
+            )),
+            StatusCode::NotFound => Err(Error::PCSError(
+                status_code,
+                "Cannot find the requested certificate",
+            )),
+            StatusCode::TooManyRequests => Err(Error::PCSError(status_code, "Too many requests")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            _ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
+        PckCerts::parse(&response_body, ca_chain).map_err(|e| Error::OfflineAttestationError(e))
+    }
+}
+
+
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
@@ -112,7 +242,6 @@ mod tests {
         WriteOptionsBuilder,
     };
 
-    use crate::PCSPckCrlService;
     use crate::PckCertIn;
     use crate::PckCertsIn;
     use crate::PckCrlIn;
@@ -150,7 +279,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
 
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
@@ -188,7 +317,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
 
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
@@ -244,7 +373,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -283,7 +412,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             let crl_processor = client
                 .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
                 .unwrap()
@@ -322,7 +451,7 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: None, api_version, api_key: &pcs_api_key() };
+                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: None, api_version, api_key: &pcs_api_key()};
                         input.hash(&mut hasher);
 
                         cache
@@ -383,7 +512,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -407,7 +536,7 @@ mod tests {
     pub fn tcb_info_tdx() {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
-        let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+        let client = intel_builder.build(reqwest_client());
         let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
 
@@ -442,7 +571,7 @@ mod tests {
     pub fn tcb_info_with_evaluation_data_number() {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
-        let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+        let client = intel_builder.build(reqwest_client());
         for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
             .unwrap()
             .iter()
@@ -491,7 +620,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
                 .unwrap()
                 .iter()
@@ -504,7 +633,7 @@ mod tests {
 
                 // The cache should be populated after initial service call
                 {
-                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
+                    let mut cache = client.client.sgx_tcbinfo_service.cache.lock().unwrap();
 
                     assert!(cache.len() > 0);
 
@@ -548,7 +677,7 @@ mod tests {
                         continue;
                     }
                 }
-                let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+                let client = intel_builder.build(reqwest_client());
                 assert!(client
                     .pckcrl(ca)
                     .and_then(|crl| {
@@ -579,7 +708,7 @@ mod tests {
                         continue;
                     }
                 }
-                let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+                let client = intel_builder.build(reqwest_client());
                 let pckcrl = client.pckcrl(ca).unwrap();
 
                 // The cache should be populated after initial service call
@@ -624,7 +753,7 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None).unwrap();
             assert!(qe_id
                 .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
@@ -646,12 +775,12 @@ mod tests {
                     continue;
                 }
             }
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             let qe_id = client.qe_identity(None).unwrap();
 
             // The cache should be populated after initial service call
             {
-                let mut cache = client.qeid_service.cache.lock().unwrap();
+                let mut cache = client.client.qeid_service.cache.lock().unwrap();
 
                 assert!(cache.len() > 0);
 
@@ -681,7 +810,7 @@ mod tests {
         for api_version in [PcsVersion::V3, PcsVersion::V4] {
             let intel_builder = IntelProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
+            let client = intel_builder.build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
             assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
@@ -696,8 +825,8 @@ mod tests {
         let root_cas = [&root_ca[..]];
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
-        let client: crate::Client<reqwest::blocking::Client, PCSPckCrlService> = intel_builder.build(reqwest_client());
-        let eval_numbers = T::get_tcb_evaluation_data_numbers(&client).unwrap();
+        let client = intel_builder.build(reqwest_client());
+        let eval_numbers = T::get_tcb_evaluation_data_numbers(&client.client).unwrap();
 
         let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
             .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers<T>>(&v))
@@ -725,7 +854,7 @@ mod tests {
                 u64::from(number)
             );
 
-            let tcb_info = T::get_tcbinfo(&client, &fmspc, Some(number))
+            let tcb_info = T::get_tcbinfo(&client.client, &fmspc, Some(number))
                 .unwrap()
                 .verify(&root_cas, 2)
                 .unwrap();
