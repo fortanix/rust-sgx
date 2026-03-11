@@ -34,7 +34,7 @@ dependencies = [
  "protobuf",
  "protobuf-codegen",
  "report-test",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "sgxs-loaders",
  "thiserror 1.0.59",
@@ -1303,7 +1303,7 @@ dependencies = [
  "report-test",
  "serde",
  "serde_json",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "sgxs-loaders",
  "yasna 0.3.2",
@@ -1315,7 +1315,7 @@ version = "0.2.2"
 dependencies = [
  "num-derive",
  "num-traits",
- "sgx-isa 0.5.0",
+ "sgx-isa",
 ]
 
 [[package]]
@@ -1326,7 +1326,7 @@ dependencies = [
  "anyhow",
  "dcap-ql",
  "report-test",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs-loaders",
 ]
 
@@ -1502,8 +1502,8 @@ dependencies = [
  "serde_bytes",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json",
- "sgx-isa 0.5.0",
- "sgx_pkix 0.2.3",
+ "sgx-isa",
+ "sgx_pkix",
  "url 1.7.2",
  "uuid 0.6.5",
  "uuid 0.8.2",
@@ -1599,7 +1599,7 @@ dependencies = [
  "nix 0.13.1",
  "openssl",
  "rustc_version",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "thiserror 1.0.59",
  "tokio",
@@ -1773,7 +1773,7 @@ dependencies = [
  "os_str_bytes 7.1.1",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "sgxs-loaders",
  "thiserror 1.0.59",
@@ -2444,8 +2444,8 @@ dependencies = [
  "serde-bytes-repr",
  "serde_bytes",
  "serde_json",
- "sgx-isa 0.5.0",
- "sgx_pkix 0.2.3",
+ "sgx-isa",
+ "sgx_pkix",
  "sgxs",
  "sgxs-loaders",
  "tokio",
@@ -3481,8 +3481,8 @@ dependencies = [
  "rustc-serialize",
  "serde",
  "serde_json",
- "sgx-isa 0.5.0",
- "sgx_pkix 0.2.2",
+ "sgx-isa",
+ "sgx_pkix",
  "tempdir",
  "test-case",
  "yasna 0.3.2",
@@ -3933,7 +3933,7 @@ dependencies = [
  "anyhow",
  "enclave-runner 0.8.0",
  "enclave-runner-sgx",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
 ]
 
@@ -4467,15 +4467,6 @@ dependencies = [
 
 [[package]]
 name = "sgx-isa"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0746ac51caf664e67fdb6643b27f0e29d4b9e1cea0b374644ab28bfa2b83fc9"
-dependencies = [
- "bitflags 1.2.1",
-]
-
-[[package]]
-name = "sgx-isa"
 version = "0.5.0"
 dependencies = [
  "bitflags 1.2.1",
@@ -4485,26 +4476,13 @@ dependencies = [
 
 [[package]]
 name = "sgx_pkix"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbd99155dbd1b4c45ad6a742cb0415387b68f22ab7e8f4cabba4e49d606e5ded"
+version = "0.3.0"
 dependencies = [
  "byteorder 1.5.0",
  "lazy_static",
  "pkix",
  "quick-error",
- "sgx-isa 0.4.1",
-]
-
-[[package]]
-name = "sgx_pkix"
-version = "0.2.3"
-dependencies = [
- "byteorder 1.5.0",
- "lazy_static",
- "pkix",
- "quick-error",
- "sgx-isa 0.5.0",
+ "sgx-isa",
 ]
 
 [[package]]
@@ -4517,7 +4495,7 @@ dependencies = [
  "foreign-types",
  "openssl",
  "openssl-sys",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sha2 0.10.9",
  "thiserror 1.0.59",
  "time 0.3.41",
@@ -4533,7 +4511,7 @@ dependencies = [
  "libloading 0.5.2",
  "nix 0.15.0",
  "report-test",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "thiserror 1.0.59",
  "winapi",
@@ -4568,7 +4546,7 @@ dependencies = [
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_yaml",
- "sgx-isa 0.5.0",
+ "sgx-isa",
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
@@ -4778,7 +4756,7 @@ version = "0.1.0"
 dependencies = [
  "clap 4.4.18",
  "nix 0.30.1",
- "sgx-isa 0.5.0",
+ "sgx-isa",
 ]
 
 [[package]]

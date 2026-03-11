@@ -30,7 +30,7 @@ uuid_sdkms = { package = "uuid", version = "0.8", features = ["v4", "serde"] }
 yasna = { version = "0.3", features = ["num-bigint", "bit-vec"] }
 
 [target.x86_64-fortanix-unknown-sgx.dependencies]
-sgx_pkix = { version = "0.2.0", path = "../intel-sgx/sgx_pkix" }
+sgx_pkix = { version = "0.3.0", path = "../intel-sgx/sgx_pkix" }
 sgx-isa = { version = "0.5", path = "../intel-sgx/sgx-isa", default-features = false }
 
 [target.x86_64-unknown-linux-musl.dependencies]
