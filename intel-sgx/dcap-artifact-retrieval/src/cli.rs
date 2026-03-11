@@ -8,16 +8,16 @@
 use std::path::{Path, PathBuf};
 
 use clap::clap_app;
-use pcs::{PckID, DcapArtifactIssuer, WriteOptionsBuilder};
+use pcs::{DcapArtifactIssuer, PckID, WriteOptionsBuilder};
 use reqwest::Url;
 use rustc_serialize::hex::ToHex;
 use serde::de::{value, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::{
-    // AzureProvisioningClientBuilder,
+    AzureProvisioningClientBuilder,
     Error, IntelProvisioningClientBuilder,
-    // PccsProvisioningClientBuilder,
+    PccsProvisioningClientBuilder,
     PcsVersion, ProvisioningClient, StatusCode,
 };
 
@@ -72,7 +72,7 @@ fn download_dcap_artifacts(
 
         // Fetch pckcerts, note that Azure and PCCS do not support this API,
         // instead we mimic it using pckcert API.
-        let pckcerts = prov_client.pckcerts_with_fallback(&None, &pckid)?;
+        let pckcerts = prov_client.pckcerts(&pckid)?;
 
         let pckcerts_file = pckcerts.write_to_file(output_dir, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build())?;
 
@@ -257,23 +257,23 @@ pub fn main() {
             };
 
             let client: Box<dyn ProvisioningClient> = match origin {
-                // Origin::Intel => {
-                _ => {
+                Origin::Intel => {
                     let mut client_builder = IntelProvisioningClientBuilder::new(api_version);
-                    if let Some(api_key) = matches.value_of("API_KEY") {
-                        client_builder.set_api_key(api_key.into());
+                    let api_key = matches.value_of("API_KEY");
+                    if api_key.is_some() {
+                        client_builder.set_api_key(api_key.unwrap().into());
                     }
                     Box::new(client_builder.build(fetcher))
                 }
-                // Origin::Azure => {
-                //     let client_builder = AzureProvisioningClientBuilder::new(api_version);
-                //     Box::new(client_builder.build(fetcher))
-                // }
-                // Origin::Pccs => {
-                //     let pccs_url = matches.value_of("PCCS_URL").expect("validated").to_owned();
-                //     let client_builder = PccsProvisioningClientBuilder::new(api_version, pccs_url);
-                //     Box::new(client_builder.build(fetcher))
-                // }
+                Origin::Azure => {
+                    let client_builder = AzureProvisioningClientBuilder::new(api_version);
+                    Box::new(client_builder.build(fetcher))
+                }
+                Origin::Pccs => {
+                    let pccs_url = matches.value_of("PCCS_URL").expect("validated").to_owned();
+                    let client_builder = PccsProvisioningClientBuilder::new(api_version, pccs_url);
+                    Box::new(client_builder.build(fetcher))
+                }
             };
             download_dcap_artifacts(&*client, pckid_file, output_dir, 0 < verboseness)
         }

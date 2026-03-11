@@ -10,16 +10,15 @@ use rustc_serialize::hex::ToHex;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
-use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::{
-    Client, ClientBuilder, Fetcher, PcsVersion, ProvisioningServiceApi,
+    Fetcher, PcsVersion, ProvisioningServiceApi,
     StatusCode,
 };
 use crate::intel::IntelPCSClient;
-use crate::provisioning_client::{BackoffService, CachedService, PcsService, QeIdService, TcbEvaluationDataNumbersService, TcbInfoService};
-use crate::{Error, IntelProvisioningClientBuilder, WithApiVersion};
+use crate::provisioning_client::{BackoffService, CachedService, PcsService};
+use crate::{Error, IntelProvisioningClientBuilder, ProvisioningClient, WithApiVersion};
 
 /// A Provisioning Certificate client builder for Azure. It is based on the internal logic of the Azure DCAP
 /// provider. Only the PCK certificates are downloaded from Azure. For others Intel is contacted.
@@ -46,12 +45,6 @@ impl AzureProvisioningClientBuilder {
 
     pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> AzureClient<F> {
         let pckcert_service = PckCertService;
-        let qeid = QeIdService;
-        let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
-        let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
-        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
-
         let client = self.client_builder.build(
             fetcher,
         );
@@ -72,7 +65,7 @@ impl AzureProvisioningClientBuilder {
     }
 }
 
-struct AzureClient<F: for<'b> Fetcher<'b>> {
+pub struct AzureClient<F: for<'b> Fetcher<'b>> {
     azure_base_url: String,
     azure_client_id: String,
     azure_api_id: String,
@@ -80,30 +73,28 @@ struct AzureClient<F: for<'b> Fetcher<'b>> {
     client: IntelPCSClient<F>,
 }
 
-impl<F: for<'a> Fetcher<'a>> AzureClient<F> {
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for AzureClient<F> {
     fn pckcert(
         &self,
+        api_key: &Option<String>,
         encrypted_ppid: Option<&EncPpid>,
         pce_id: &PceId,
         cpu_svn: &CpuSvn,
         pce_isvsvn: PceIsvsvn,
-        qe_id: &QeId,
+        qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error> {
-        let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id: Some(&qe_id), api_version: self.client.client.api_version, api_key: &None, azure_client_id: &self.azure_client_id, azure_api_version: &self.azure_api_id };
+        let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_version: self.client.client.api_version, api_key, azure_client_id: &self.azure_client_id, azure_api_version: &self.azure_api_id };
         self.pckcert_service.call_service(&self.client.client.fetcher, &self.azure_base_url, &input)
     }
-
     fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
-        // let input = PckCertsIn { api_version: self.client.api_version, pck_id: &pck_id };
-        // self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
-
         let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
             let pck_cert = self.pckcert(
+                &None,
                 Some(&pck_id.enc_ppid),
                 &pck_id.pce_id,
                 cpu_svn,
                 pce_svn,
-                &pck_id.qe_id,
+                Some(&pck_id.qe_id),
             )?;
 
             // Getting PCK cert using CPUSVN from PCKID
@@ -151,12 +142,33 @@ impl<F: for<'a> Fetcher<'a>> AzureClient<F> {
             .try_into()
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
+
+    fn sgx_tcbinfo(&self, fmspc: &pcs::Fmspc, evaluation_data_number: Option<u16>) -> Result<pcs::TcbInfo<platform::SGX>, Error> {
+        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &pcs::Fmspc, evaluation_data_number: Option<u16>) -> Result<pcs::TcbInfo<platform::TDX>, Error> {
+        self.client.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn pckcrl(&self, ca: pcs::DcapArtifactIssuer) -> Result<pcs::PckCrl<Unverified>, Error> {
+        self.client.pckcrl(ca)
+    }
+
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<pcs::QeIdentitySigned, Error> {
+        self.client.qe_identity(evaluation_data_number)
+    }
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<pcs::RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        self.client.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<pcs::RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        self.client.tdx_tcb_evaluation_data_numbers()
+    }
 }
 
-pub struct PckCertApi {
-    api_version: PcsVersion,
-}
-
+pub struct PckCertApi;
 impl PckCertApi {
     // Constants from the Azure DCAP client:
     // (host of primary URL is down)
@@ -302,11 +314,12 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &None,
                         None,
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
-                        &pckid.qe_id
+                        Some(&pckid.qe_id)
                     )
                     .unwrap();
 
@@ -321,7 +334,7 @@ mod tests {
                 );
 
                 let fmspc: Fmspc = pck.fmspc().unwrap();
-                assert!(client.client.sgx_tcbinfo(&fmspc, None).is_ok());
+                assert!(client.sgx_tcbinfo(&fmspc, None).is_ok());
             }
         }
     }
@@ -332,8 +345,8 @@ mod tests {
             let client = AzureProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
-            assert!(client.client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).is_ok());
-            assert!(client.client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).is_ok());
+            assert!(client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).is_ok());
+            assert!(client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).is_ok());
         }
     }
 
@@ -343,7 +356,7 @@ mod tests {
             let client = AzureProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
-            assert!(client.client.qe_identity(None).is_ok());
+            assert!(client.qe_identity(None).is_ok());
         }
     }
 
@@ -355,11 +368,11 @@ mod tests {
                 .build(reqwest_client());
             let fmspc = Fmspc::try_from("90806f000000").unwrap();
             assert_matches!(
-                client.client.qe_identity(Some(15)),
+                client.qe_identity(Some(15)),
                 Err(Error::PCSError(StatusCode::Gone, _))
             );
             assert_matches!(
-                client.client.sgx_tcbinfo(&fmspc, Some(15)),
+                client.sgx_tcbinfo(&fmspc, Some(15)),
                 Err(Error::PCSError(StatusCode::Gone, _))
             );
         }
@@ -379,7 +392,7 @@ mod tests {
                 let pckcerts = client.pckcerts(&pckid).unwrap();
                 println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client.client
+                let tcb_info = client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
                     .unwrap();
                 let tcb_data = tcb_info.data().unwrap();
@@ -390,11 +403,12 @@ mod tests {
 
                 let pck = client
                     .pckcert(
+                        &None,
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
-                        &pckid.qe_id,
+                        Some(&pckid.qe_id),
                     )
                     .unwrap();
 
@@ -412,7 +426,7 @@ mod tests {
             let client = AzureProvisioningClientBuilder::new(api_version)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT)
                 .build(reqwest_client());
-            assert!(client.client.sgx_tcb_evaluation_data_numbers().is_ok());
+            assert!(client.sgx_tcb_evaluation_data_numbers().is_ok());
         }
     }
 }

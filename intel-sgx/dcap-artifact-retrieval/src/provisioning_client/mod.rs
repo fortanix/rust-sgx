@@ -5,8 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::BTreeMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
 use std::marker::PhantomData;
@@ -567,9 +566,6 @@ impl ClientBuilder {
         &self,
         base_url: &str,
         api_version: PcsVersion,
-        // pckcerts_service: PckCertsService,
-        // pckcert_service: CS,
-        // pckcrl_service: PC,
         qeid_service: QeIdService,
         sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
         tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
@@ -581,9 +577,6 @@ impl ClientBuilder {
         Client::new(
             base_url,
             api_version,
-            // pckcerts_service,
-            // pckcert_service,
-            // pckcrl_service,
             qeid_service,
             sgx_tcbinfo_service,
             tdx_tcbinfo_service,
@@ -747,9 +740,6 @@ pub struct Client<F: for<'a> Fetcher<'a>>
 {
     base_url: String,
     api_version: PcsVersion,
-    // pckcerts_service: CachedService<PckCertsService>,
-    // pckcert_service: CachedService<CS>,
-    // pckcrl_service: CachedService<PC>,
     qeid_service: CachedService<QeIdService>,
     sgx_tcbinfo_service: CachedService<TcbInfoService<platform::SGX>>,
     tdx_tcbinfo_service: CachedService<TcbInfoService<platform::TDX>>,
@@ -763,9 +753,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
     fn new(
         base_url: &str,
         api_version: PcsVersion,
-        // pckcerts_service: PckCertsService,
-        // pckcert_service: CS,
-        // pckcrl_service: PC,
         qeid_service: QeIdService,
         sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
         tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
@@ -780,30 +767,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
         Client {
             base_url: base_url.to_owned(),
             api_version,
-            // pckcerts_service: CachedService::new(
-            //     BackoffService::new(
-            //         PcsService::new(pckcerts_service),
-            //         retry_timeout.clone(),
-            //     ),
-            //     cache_capacity,
-            //     cache_shelf_time,
-            // ),
-            // pckcert_service: CachedService::new(
-            //     BackoffService::new(
-            //         PcsService::new(pckcert_service),
-            //         retry_timeout.clone(),
-            //     ),
-            //     cache_capacity,
-            //     cache_shelf_time,
-            // ),
-            // pckcrl_service: CachedService::new(
-            //     BackoffService::new(
-            //         PcsService::new(pckcrl_service),
-            //         retry_timeout.clone(),
-            //     ),
-            //     cache_capacity,
-            //     cache_shelf_time,
-            // ),
             qeid_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(qeid_service),
@@ -851,6 +814,68 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
 
 pub trait ProvisioningClient {
     // fn pckcerts(&self, api_key: &Option<String>, enc_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error>;
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error>;
+
+    fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error>;
+
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
+
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
+
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
+}
+
+
+pub trait ProvisioningClientFuncSelector: PlatformTypeForTcbInfo {
+    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
+    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
+}
+
+impl ProvisioningClientFuncSelector for platform::SGX {
+    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        pc.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        pc.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
+impl ProvisioningClientFuncSelector for platform::TDX {
+    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        pc.tdx_tcb_evaluation_data_numbers()
+    }
+
+    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        pc.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+}
+
+
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
+{
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        todo!()
+    }
+
+    // fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
+    //     let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.api_version };
+    //     self.pckcerts_service.call_service(&self.fetcher, &self.base_url, &input)
+    // }
 
     // fn pckcert(
     //     &self,
@@ -860,18 +885,13 @@ pub trait ProvisioningClient {
     //     cpu_svn: &CpuSvn,
     //     pce_isvsvn: PceIsvsvn,
     //     qe_id: Option<&QeId>,
-    // ) -> Result<PckCert<Unverified>, Error>;
+    // ) -> Result<PckCert<Unverified>, Error> {
+    //     let input = self.pckcert_service.pcs_service().build_input(self.api_version, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_key, None, None);
+    //     self.pckcert_service.call_service(&self.fetcher, &self.base_url, &input)
+    // }
 
-    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
-
-    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
-
-    // fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl, Error>;
-
-    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
-
-    /// Retrieve PCK certificates using `pckcerts()` and fallback to the
-    /// following method if that's not supported:
+    /// Retrieve PCK certificates when `pckcerts` Rest API is not supported
+    /// using the following method:
     /// 1. Call `pckcert()` with PCK ID to get best available PCK cert.
     /// 2. Try to call `pckcert()` with PCK ID but with CPUSVN all 1's.
     /// 3. Using the FMSPC value from PCK cert in step 1, call `tcbinfo()` to
@@ -884,7 +904,7 @@ pub trait ProvisioningClient {
     ///       microcode value is set to the late microcode value.
     ///
     /// Note that PCK certs for some TCB levels may be missing.
-    // fn pckcerts_with_fallback(&self, api_key: &Option<String>, pck_id: &PckID) -> Result<PckCerts, Error> {
+    // fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
     //     let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
     //         let pck_cert = self.pckcert(
     //             api_key,
@@ -900,13 +920,6 @@ pub trait ProvisioningClient {
     //         collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
     //         Ok(pck_cert)
     //     };
-
-    //     match self.pckcerts(api_key, &pck_id.enc_ppid, pck_id.pce_id) {
-    //         Ok(pck_certs) => return Ok(pck_certs),
-    //         Err(Error::RequestNotSupported) => {} // fallback below
-    //         Err(e) => return Err(e),
-    //     }
-    //     // fallback:
 
     //     // Use BTreeMap to have an ordered PckCerts at the end
     //     let mut pckcerts_map = BTreeMap::new();
@@ -947,58 +960,10 @@ pub trait ProvisioningClient {
     //         .try_into()
     //         .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     // }
-
-    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
-
-    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
-}
-
-
-pub trait ProvisioningClientFuncSelector: PlatformTypeForTcbInfo {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
-}
-
-impl ProvisioningClientFuncSelector for platform::SGX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
-        pc.sgx_tcb_evaluation_data_numbers()
+    
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        todo!()
     }
-
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-        pc.sgx_tcbinfo(fmspc, evaluation_data_number)
-    }
-}
-
-impl ProvisioningClientFuncSelector for platform::TDX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-        pc.tdx_tcb_evaluation_data_numbers()
-    }
-
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
-        pc.tdx_tcbinfo(fmspc, evaluation_data_number)
-    }
-}
-
-
-impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
-{
-    // fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
-    //     let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.api_version };
-    //     self.pckcerts_service.call_service(&self.fetcher, &self.base_url, &input)
-    // }
-
-    // fn pckcert(
-    //     &self,
-    //     api_key: &Option<String>,
-    //     encrypted_ppid: Option<&EncPpid>,
-    //     pce_id: &PceId,
-    //     cpu_svn: &CpuSvn,
-    //     pce_isvsvn: PceIsvsvn,
-    //     qe_id: Option<&QeId>,
-    // ) -> Result<PckCert<Unverified>, Error> {
-    //     let input = self.pckcert_service.pcs_service().build_input(self.api_version, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_key, None, None);
-    //     self.pckcert_service.call_service(&self.fetcher, &self.base_url, &input)
-    // }
 
     fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
         let input = TcbInfoIn { api_version: self.api_version, fmspc, tcb_evaluation_data_number };
@@ -1028,7 +993,18 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         let input = TcbEvaluationDataNumbersIn;
         self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &self.base_url, &input)
-
+    }
+    
+    fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        todo!()
     }
 }
 

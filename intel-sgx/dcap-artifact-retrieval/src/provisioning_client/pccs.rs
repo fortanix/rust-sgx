@@ -18,16 +18,16 @@ use std::time::Duration;
 
 use pcs::platform::SGX;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
 };
-use rustc_serialize::hex::{FromHex, ToHex};
+use rustc_serialize::hex::FromHex;
 
 use super::common::*;
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCrlIn, PcsVersion,
-    ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
+    ProvisioningServiceApi, QeIdService, StatusCode, TcbInfoService,
 };
-use crate::{Error, ProvisioningClient, WithApiVersion};
+use crate::{Error, ProvisioningClient};
 use crate::provisioning_client::{BackoffService, CachedService, PckCertService, PcsService, TcbEvaluationDataNumbersService};
 
 pub struct PccsProvisioningClientBuilder {
@@ -62,9 +62,6 @@ impl PccsProvisioningClientBuilder {
         let client = self.client_builder
             .build(&self.base_url,
                 self.api_version,
-                // pck_certs,
-                // pck_cert,
-                // pck_crl,
                 qeid,
                 sgx_tcbinfo,
                 tdx_tcbinfo,
@@ -93,7 +90,7 @@ impl PccsProvisioningClientBuilder {
     }
 }
 
-struct PCCSClient<F: for<'a> Fetcher<'a>> {
+pub struct PCCSClient<F: for<'a> Fetcher<'a>> {
     pckcert_service: CachedService<PckCertService>,
     pckcrl_service: CachedService<PckCrlService>,
     client: Client<F>,
@@ -101,9 +98,6 @@ struct PCCSClient<F: for<'a> Fetcher<'a>> {
 
 impl<F: for<'a> Fetcher<'a>> PCCSClient<F> {
     fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
-        // let input = PckCertsIn { api_version: self.client.api_version, pck_id: &pck_id };
-        // self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
-
         let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
             let pck_cert = self.pckcert(
                 Some(&pck_id.enc_ppid),
@@ -170,7 +164,27 @@ impl<F: for<'a> Fetcher<'a>> PCCSClient<F> {
         let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id: Some(&qe_id), api_version: self.client.api_version, api_key: &None };
         self.pckcert_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
     }
+
     
+}
+
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for PCCSClient<F> {
+    fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        self.client.pckcert(api_key, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id)
+    }
+
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        self.client.pckcerts(pck_id)
+    }
+
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
         let input = PckCrlIn { api_version: self.client.api_version, ca };
         self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
@@ -194,18 +208,6 @@ impl<F: for<'a> Fetcher<'a>> PCCSClient<F> {
 
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         self.client.tdx_tcb_evaluation_data_numbers()
-    }
-}
-
-#[derive(Hash)]
-struct PckCertsIn<'a> {
-    api_version: PcsVersion,
-    pck_id: &'a PckID,
-}
-
-impl<'a> WithApiVersion for PckCertsIn<'a> {
-    fn api_version(&self) -> PcsVersion {
-        self.api_version
     }
 }
 
@@ -256,7 +258,7 @@ impl ProvisioningServiceApi for PckCrlService {
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
     use assert_matches::assert_matches;
-    use reqwest::blocking::Client;
+    
     use std::convert::TryFrom;
     use std::hash::{DefaultHasher, Hash, Hasher};
     use std::path::PathBuf;
@@ -272,7 +274,7 @@ mod tests {
         test_helpers, DcapArtifactIssuer, Error, PccsProvisioningClientBuilder, PcsVersion,
         ProvisioningClient, StatusCode,
     };
-    use crate::{Fetcher, PckCertIn, PckCrlIn, QeIdIn, TcbInfoIn, reqwest_client_insecure_tls};
+    use crate::{PckCertIn, PckCrlIn, QeIdIn, TcbInfoIn, reqwest_client_insecure_tls};
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";

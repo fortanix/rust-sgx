@@ -11,24 +11,21 @@
 //! - <https://api.portal.trustedservices.intel.com/provisioning-certification>
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
-use pcs::platform::{self, SGX};
+use pcs::platform;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl,
-    PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
-    TcbInfo, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified
 };
 use rustc_serialize::hex::ToHex;
-use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::common::*;
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn,
-    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService,
+    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdService, StatusCode,
+    TcbEvaluationDataNumbersService, TcbInfoService,
 };
-use crate::provisioning_client::{BackoffService, CachedService, PcsService, PlatformApiTag};
+use crate::provisioning_client::{BackoffService, CachedService, PcsService};
 use crate::{Error, ProvisioningClient};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
@@ -72,9 +69,6 @@ impl IntelProvisioningClientBuilder {
         let client = self.client_builder.build(
             INTEL_BASE_URL,
             self.api_version,
-            // pck_certs,
-            // pck_cert,
-            // pck_crl,
             qeid,
             sgx_tcbinfo,
             tdx_tcbinfo,
@@ -120,8 +114,8 @@ pub struct IntelPCSClient<F: for<'a> Fetcher<'a>> {
 }
 
 impl<F: for<'a> Fetcher<'a>> IntelPCSClient<F> {
-    pub fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
-        let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.client.api_version };
+    pub fn pckcerts(&self, api_key: Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
+        let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key: &api_key, api_version: self.client.api_version };
         self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
     }
 
@@ -138,29 +132,55 @@ impl<F: for<'a> Fetcher<'a>> IntelPCSClient<F> {
         self.pckcert_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
     }
 
-    pub fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
-        let input = PckCrlIn { api_version: self.client.api_version, ca };
-        self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
-    }
-
-    pub fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
-        self.client.qe_identity(evaluation_data_number)
-    }
-
-    pub fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
-    }
-
     pub fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
         self.client.tdx_tcbinfo(fmspc, evaluation_data_number)
     }
 
-    pub fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+    pub fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        self.client.tdx_tcb_evaluation_data_numbers()
+    }
+}
+
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for IntelPCSClient<F> {
+    fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        self.client.pckcert(api_key, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id)
+    }
+
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        self.pckcerts(None, &pck_id.enc_ppid, pck_id.pce_id)
+    }
+
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        let input = PckCrlIn { api_version: self.client.api_version, ca };
+        self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        todo!()
+    }
+
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        self.client.qe_identity(evaluation_data_number)
+    }
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
         self.client.sgx_tcb_evaluation_data_numbers()
     }
 
-    pub fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-        self.client.tdx_tcb_evaluation_data_numbers()
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        todo!()
     }
 }
 
@@ -286,7 +306,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert_eq!(
                     test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
@@ -324,7 +344,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts( &pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts( pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 // The cache should be populated after initial service call
@@ -350,7 +370,7 @@ mod tests {
 
                 // Second service call should return value from cache
                 let pcks_from_service = client
-                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 assert_eq!(pcks, pcks_from_service);
@@ -518,7 +538,7 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
@@ -577,7 +597,7 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                 .unwrap();
             let fmspc = pckcerts.fmspc().unwrap();
 
@@ -626,7 +646,7 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();

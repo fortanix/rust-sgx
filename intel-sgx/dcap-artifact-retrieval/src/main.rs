@@ -7,5 +7,5 @@
 
 #[cfg(all(not(target_env = "sgx"), feature = "reqwest"))]
 fn main() {
-    // dcap_artifact_retrieval::cli::main()
+    dcap_artifact_retrieval::cli::main()
 }
