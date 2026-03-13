@@ -16,16 +16,14 @@ use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified
 };
 use rustc_serialize::hex::ToHex;
-use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::common::*;
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn,
-    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersService, TcbInfoService,
+    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, StatusCode,
 };
-use crate::provisioning_client::{BackoffService, CachedService, PcsService};
+use crate::provisioning_client::{BackoffService, CachedService};
 use crate::{Error, ProvisioningClient};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
@@ -57,29 +55,14 @@ impl IntelProvisioningClientBuilder {
     }
 
     pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> IntelPCSClient<F> {
-        let pckcerts_service = PckCertsService;
-        let pckcert_service = PckCertService;
-        let pckcrl_service = PckCrlService;
-        let qeid = QeIdService;
-        let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
-        let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
-        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
-
         let client = self.client_builder.build(
             INTEL_BASE_URL,
             self.api_version,
-            qeid,
-            sgx_tcbinfo,
-            tdx_tcbinfo,
-            sgx_evaluation_data_numbers,
-            tdx_evaluation_data_numbers,
             fetcher,
         );
         IntelPCSClient {
             pckcerts_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcerts_service),
                     self.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.cache_capacity.clone(),
@@ -87,7 +70,6 @@ impl IntelProvisioningClientBuilder {
             ),
             pckcert_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcert_service),
                     self.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.cache_capacity.clone(),
@@ -95,7 +77,6 @@ impl IntelProvisioningClientBuilder {
             ),
             pckcrl_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcrl_service),
                     self.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.cache_capacity.clone(),
@@ -189,7 +170,7 @@ impl ProvisioningServiceApi for PckCertsService {
     type Input<'a> = PckCertsIn<'a>;
     type Output = PckCerts;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input.enc_ppid.to_hex();
         let pce_id = input.pce_id.to_le_bytes().to_hex();
@@ -205,7 +186,7 @@ impl ProvisioningServiceApi for PckCertsService {
         Ok((url, headers))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -234,7 +215,6 @@ impl ProvisioningServiceApi for PckCertsService {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,

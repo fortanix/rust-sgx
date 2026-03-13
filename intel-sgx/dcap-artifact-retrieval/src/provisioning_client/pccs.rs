@@ -13,10 +13,8 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
-use std::marker::PhantomData;
 use std::time::Duration;
 
-use pcs::platform::SGX;
 use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
 };
@@ -25,10 +23,10 @@ use rustc_serialize::hex::FromHex;
 use super::common::*;
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCrlIn, PcsVersion,
-    ProvisioningServiceApi, QeIdService, StatusCode, TcbInfoService,
+    ProvisioningServiceApi, StatusCode,
 };
 use crate::{Error, ProvisioningClient};
-use crate::provisioning_client::{BackoffService, CachedService, PckCertService, PcsService, TcbEvaluationDataNumbersService};
+use crate::provisioning_client::{BackoffService, CachedService, PckCertService};
 
 pub struct PccsProvisioningClientBuilder {
     base_url: Cow<'static, str>,
@@ -51,27 +49,14 @@ impl PccsProvisioningClientBuilder {
     }
 
     pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> PCCSClient<F> {
-        let pckcert_service = PckCertService;
-        let pckcrl_service = PckCrlService::new();
-        let qeid = QeIdService;
-        let sgx_tcbinfo = TcbInfoService::<platform::SGX> {_type: PhantomData};
-        let tdx_tcbinfo = TcbInfoService::<platform::TDX> {_type: PhantomData};
-        let sgx_evaluation_data_numbers: TcbEvaluationDataNumbersService<SGX> = TcbEvaluationDataNumbersService::<platform::SGX> { _type: PhantomData };
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersService::<platform::TDX> { _type: PhantomData };
 
         let client = self.client_builder
             .build(&self.base_url,
                 self.api_version,
-                qeid,
-                sgx_tcbinfo,
-                tdx_tcbinfo,
-                sgx_evaluation_data_numbers,
-                tdx_evaluation_data_numbers,
                 fetcher);
         PCCSClient {
             pckcert_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcert_service),
                     self.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.cache_capacity.clone(),
@@ -79,7 +64,6 @@ impl PccsProvisioningClientBuilder {
             ),
             pckcrl_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcrl_service),
                     self.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.cache_capacity.clone(),
@@ -211,32 +195,23 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for PCCSClient<F> {
     }
 }
 
-struct PckCrlService {
-    parent: crate::provisioning_client::PckCrlService
-}
-impl PckCrlService {
-    fn new() -> Self {
-        Self { parent: crate::provisioning_client::PckCrlService }
-    }
-}
+struct PckCrlService;
 impl ProvisioningServiceApi for PckCrlService {
     type Input<'a> = PckCrlIn;
     type Output = PckCrl<Unverified>;
     
     fn build_request(
-        &self,
         base_url: &str,
         input: &Self::Input<'_>,
     ) -> Result<(String, Vec<(String, String)>), Error> {
-        self.parent.build_request(base_url, input)
+        crate::provisioning_client::PckCrlService::build_request(base_url, input)
     }
     
-    fn validate_response(&self, code: StatusCode) -> Result<(), Error> {
-        self.parent.validate_response(code)
+    fn validate_response(code: StatusCode) -> Result<(), Error> {
+        crate::provisioning_client::PckCrlService::validate_response(code)
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,

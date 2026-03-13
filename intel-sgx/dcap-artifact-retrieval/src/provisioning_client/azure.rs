@@ -17,7 +17,7 @@ use super::{
     StatusCode,
 };
 use crate::intel::IntelPCSClient;
-use crate::provisioning_client::{BackoffService, CachedService, PcsService};
+use crate::provisioning_client::{BackoffService, CachedService};
 use crate::{Error, IntelProvisioningClientBuilder, ProvisioningClient, WithApiVersion};
 
 /// A Provisioning Certificate client builder for Azure. It is based on the internal logic of the Azure DCAP
@@ -26,14 +26,12 @@ use crate::{Error, IntelProvisioningClientBuilder, ProvisioningClient, WithApiVe
 /// field in the past (see PROD-5800).
 /// For info on the Azure DCAP provider: <https://github.com/microsoft/Azure-DCAP-Client>
 pub struct AzureProvisioningClientBuilder {
-    api_version: PcsVersion,
     client_builder: IntelProvisioningClientBuilder,
 }
 
 impl AzureProvisioningClientBuilder {
     pub fn new(api_version: PcsVersion) -> Self {
         Self {
-            api_version,
             client_builder: IntelProvisioningClientBuilder::new(api_version),
         }
     }
@@ -44,7 +42,6 @@ impl AzureProvisioningClientBuilder {
     }
 
     pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> AzureClient<F> {
-        let pckcert_service = PckCertService;
         let client = self.client_builder.build(
             fetcher,
         );
@@ -54,7 +51,6 @@ impl AzureProvisioningClientBuilder {
             azure_api_id: PckCertApi::API_VERSION_07_2021.to_owned(),
             pckcert_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(pckcert_service),
                     self.client_builder.client_builder.retry_timeout.clone(),
                 ),
                 self.client_builder.client_builder.cache_capacity.clone(),
@@ -201,7 +197,7 @@ impl ProvisioningServiceApi for PckCertService {
     type Input<'a> = PckCertIn<'a>;
     type Output = PckCert<Unverified>;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         // Re-implements `build_pck_cert_url` from Azure's DCAP Client
         // https://github.com/microsoft/Azure-DCAP-Client/blob/master/src/dcap_provider.cpp#L677
         // Constants from the Azure DCAP client:
@@ -217,7 +213,7 @@ impl ProvisioningServiceApi for PckCertService {
         Ok((url, Vec::new()))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match &status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -249,7 +245,6 @@ impl ProvisioningServiceApi for PckCertService {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         _response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,

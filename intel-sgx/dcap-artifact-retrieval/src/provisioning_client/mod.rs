@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -190,7 +190,7 @@ impl ProvisioningServiceApi for PckCertService {
     type Input<'a> = PckCertIn<'a>;
     type Output = PckCert<Unverified>;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input
             .encrypted_ppid
@@ -215,7 +215,7 @@ impl ProvisioningServiceApi for PckCertService {
         Ok((url, headers))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -244,7 +244,6 @@ impl ProvisioningServiceApi for PckCertService {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
@@ -271,7 +270,7 @@ impl ProvisioningServiceApi for PckCrlService {
     type Input<'a> = PckCrlIn;
     type Output = PckCrl<Unverified>;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let ca = match input.ca {
             DcapArtifactIssuer::PCKProcessorCA => "processor",
             DcapArtifactIssuer::PCKPlatformCA => "platform",
@@ -289,7 +288,7 @@ impl ProvisioningServiceApi for PckCrlService {
         Ok((url, Vec::new()))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match &status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -313,7 +312,6 @@ impl ProvisioningServiceApi for PckCrlService {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
@@ -341,7 +339,7 @@ impl ProvisioningServiceApi for QeIdService {
     type Input<'a> = QeIdIn;
     type Output = QeIdentitySigned;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
@@ -357,7 +355,7 @@ impl ProvisioningServiceApi for QeIdService {
         Ok((url, Vec::new()))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match &status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -384,7 +382,6 @@ impl ProvisioningServiceApi for QeIdService {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
@@ -415,7 +412,7 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbI
     type Input<'a> = TcbInfoIn<'a>;
     type Output = TcbInfo<T>;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
@@ -439,7 +436,7 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbI
         Ok((url, Vec::new()))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match &status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -465,7 +462,6 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbI
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         api_version: PcsVersion,
@@ -496,7 +492,7 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbE
     type Input<'a> = TcbEvaluationDataNumbersIn;
     type Output = RawTcbEvaluationDataNumbers<T>;
 
-    fn build_request(&self, base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!(
             "{}/{}/certification/v{}/tcbevaluationdatanumbers",
             base_url,
@@ -506,7 +502,7 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbE
         Ok((url, Vec::new()))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match &status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::InternalServerError => Err(Error::PCSError(
@@ -525,7 +521,6 @@ impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbE
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
@@ -566,22 +561,12 @@ impl ClientBuilder {
         &self,
         base_url: &str,
         api_version: PcsVersion,
-        qeid_service: QeIdService,
-        sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
-        tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
-        sgx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::SGX>,
-        tdx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::TDX>,
         fetcher: F,
     ) -> Client<F>
     {
         Client::new(
             base_url,
             api_version,
-            qeid_service,
-            sgx_tcbinfo_service,
-            tdx_tcbinfo_service,
-            sgx_tcb_evaluation_data_numbers_service,
-            tdx_tcb_evaluation_data_numbers_service,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -590,36 +575,22 @@ impl ClientBuilder {
     }
 }
 
-struct PcsService<T: ProvisioningServiceApi> {
-    service: T,
-}
+struct PcsService;
+impl PcsService {
 
-impl<T: ProvisioningServiceApi> PcsService<T> {
-    pub fn new(service: T) -> Self {
-        Self { service }
-    }
-}
-
-impl<T: ProvisioningServiceApi> PcsService<T> {
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service
-    }
-
-    fn call_service<'a, F: Fetcher<'a>>(
-        &self,
+    fn call_service<'a, F: Fetcher<'a>, T: ProvisioningServiceApi>(
         fetcher: &'a F,
         base_url: &str,
         input: &T::Input<'_>,
     ) -> Result<T::Output, Error> {
-        let (url, headers) = self.service.build_request(base_url, input)?;
+        let (url, headers) = T::build_request(base_url, input)?;
         let req = fetcher.build_request(&url, headers)?;
         let api_version = input.api_version();
 
         let (status_code, resp) = fetcher.send(req)?;
-        <T as ProvisioningServiceApi>::validate_response(self.pcs_service(), status_code)?;
+        T::validate_response(status_code)?;
         let (response_body, response_headers) = fetcher.parse_response(resp)?;
-        <T as ProvisioningServiceApi>::parse_response(
-            self.pcs_service(),
+        T::parse_response(
             response_body,
             response_headers,
             api_version,
@@ -628,7 +599,7 @@ impl<T: ProvisioningServiceApi> PcsService<T> {
 }
 
 struct CachedService<T: ProvisioningServiceApi> {
-    service: BackoffService<T>,
+    service: BackoffService,
     cache: Mutex<LruCache<u64, (T::Output, SystemTime)>>,
     cache_shelf_time: Duration,
 }
@@ -636,7 +607,7 @@ struct CachedService<T: ProvisioningServiceApi> {
 impl<T: ProvisioningServiceApi>
     CachedService<T>
 {
-    pub fn new(service: BackoffService<T>, capacity: usize, cache_shelf_time: Duration) -> Self {
+    pub fn new(service: BackoffService, capacity: usize, cache_shelf_time: Duration) -> Self {
         Self {
             service,
             cache: Mutex::new(LruCache::new(capacity)),
@@ -648,10 +619,6 @@ impl<T: ProvisioningServiceApi>
 impl<T: ProvisioningServiceApi>
     CachedService<T>
 {
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service.pcs_service()
-    }
-
     pub fn call_service<'a, F: Fetcher<'a>>(
         &self,
         fetcher: &'a F,
@@ -672,42 +639,36 @@ impl<T: ProvisioningServiceApi>
                 return Ok(value.to_owned());
             }
         }
-        let value = self.service.call_service::<F>(fetcher, base_url, input)?;
+        let value = self.service.call_service::<F, T>(fetcher, base_url, input)?;
         cache.insert(key, (value.clone(), SystemTime::now()));
         Ok(value)
     }
 }
 
-struct BackoffService<T: ProvisioningServiceApi> {
-    service: PcsService<T>,
+struct BackoffService {
     retry_timeout: Option<Duration>,
 }
 
-impl<T: ProvisioningServiceApi> BackoffService<T> {
-    pub fn new(service: PcsService<T>, retry_timeout: Option<Duration>) -> Self {
+impl BackoffService {
+    pub fn new(retry_timeout: Option<Duration>) -> Self {
         Self {
-            service,
             retry_timeout,
         }
     }
 }
 
-impl<T: ProvisioningServiceApi> BackoffService<T> {
+impl BackoffService {
     const RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(2);
     const RETRY_INTERVAL_MULTIPLIER: f64 = 2.0;
 
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service.pcs_service()
-    }
-
-    pub fn call_service<'a, F: Fetcher<'a>>(
+    pub fn call_service<'a, F: Fetcher<'a>, T: ProvisioningServiceApi>(
         &self,
         fetcher: &'a F,
         base_url: &str,
         input: &T::Input<'_>,
     ) -> Result<T::Output, Error> {
         if let Some(retry_timeout) = self.retry_timeout {
-            let op = || match self.service.call_service::<F>(fetcher, base_url, input) {
+            let op = || match PcsService::call_service::<F, T>(fetcher, base_url, input) {
                 Ok(output) => Ok(output),
                 Err(err) => match err {
                     Error::PCSError(status_code, msg) => {
@@ -731,7 +692,7 @@ impl<T: ProvisioningServiceApi> BackoffService<T> {
                 backoff::Error::Transient { err, .. } => err,
             })
         } else {
-            self.service.call_service::<F>(fetcher, base_url, input)
+            PcsService::call_service::<F, T>(fetcher, base_url, input)
         }
     }
 }
@@ -753,11 +714,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
     fn new(
         base_url: &str,
         api_version: PcsVersion,
-        qeid_service: QeIdService,
-        sgx_tcbinfo_service: TcbInfoService<platform::SGX>,
-        tdx_tcbinfo_service: TcbInfoService<platform::TDX>,
-        sgx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::SGX>,
-        tdx_tcb_evaluation_data_numbers_service: TcbEvaluationDataNumbersService<platform::TDX>,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
@@ -769,7 +725,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
             api_version,
             qeid_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(qeid_service),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -777,7 +732,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
             ),
             sgx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(sgx_tcbinfo_service),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -785,7 +739,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
             ),
             tdx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(tdx_tcbinfo_service),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -793,7 +746,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
             ),
             sgx_tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(sgx_tcb_evaluation_data_numbers_service),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -801,7 +753,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
             ),
             tdx_tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(tdx_tcb_evaluation_data_numbers_service),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -813,7 +764,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F>
 }
 
 pub trait ProvisioningClient {
-    // fn pckcerts(&self, api_key: &Option<String>, enc_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error>;
     fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error>;
 
     fn pckcert(
@@ -975,11 +925,6 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
         self.tdx_tcbinfo_service.call_service(&self.fetcher, &self.base_url, &input)
     }
 
-    // fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl, Error> {
-    //     let input = self.pckcrl_service.pcs_service().build_input(self.api_version, ca);
-    //     self.pckcrl_service.call_service(&self.fetcher, &self.base_url, &input)
-    // }
-
     fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
         let input = QeIdIn { api_version: self.api_version, tcb_evaluation_data_number };
         self.qeid_service.call_service(&self.fetcher, &self.base_url, &input)
@@ -1093,15 +1038,13 @@ pub trait ProvisioningServiceApi {
     type Output: Clone;
 
     fn build_request(
-        &self,
         base_url: &str,
         input: &Self::Input<'_>,
     ) -> Result<(String, Vec<(String, String)>), Error>;
 
-    fn validate_response(&self, code: StatusCode) -> Result<(), Error>;
+    fn validate_response(code: StatusCode) -> Result<(), Error>;
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         api_version: PcsVersion,
@@ -1146,19 +1089,17 @@ mod tests {
         type Output = MockOutput;
 
         fn build_request(
-            &self,
             _base_url: &str,
             _input: &Self::Input<'_>,
         ) -> Result<(String, Vec<(String, String)>), Error> {
             Ok((_input.0.to_string(), vec![]))
         }
 
-        fn validate_response(&self, _code: StatusCode) -> Result<(), Error> {
+        fn validate_response(_code: StatusCode) -> Result<(), Error> {
             Ok(())
         }
 
         fn parse_response(
-            &self,
             response_body: String,
             _response_headers: Vec<(std::string::String, std::string::String)>,
             _api_version: PcsVersion,
@@ -1195,11 +1136,8 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_miss() {
-        let service = PcsService {
-            service: MockService,
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service: CachedService<MockService> = CachedService::new(service, 5, Duration::from_secs(120));
         let fetcher = MockFetcher;
         let input_a = MockInput(42);
         let input_b = MockInput(420);
@@ -1220,11 +1158,8 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_hit() {
-        let service = PcsService {
-            service: MockService,
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service: CachedService<MockService> = CachedService::new(service, 5, Duration::from_secs(120));
         let fetcher = MockFetcher;
         let input = MockInput(42);
 
@@ -1243,11 +1178,8 @@ mod tests {
 
     #[test]
     fn test_cache_capacity_eviction() {
-        let service = PcsService {
-            service: MockService,
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 2, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service = CachedService::<MockService>::new(service, 2, Duration::from_secs(120));
         let fetcher = MockFetcher;
 
         // Insert entries into the cache, exceeding its capacity
