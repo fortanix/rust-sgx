@@ -1,8 +1,6 @@
 #! /bin/bash
 
-
 set -e
-
 
 terminal=
 script_name="$(basename ${0})"
@@ -50,7 +48,6 @@ err_print()
     printf "\n" 1>&2
 }
 
-
 parse_line()
 {
     local line=$1
@@ -59,7 +56,7 @@ parse_line()
         usage
         drain
     fi
-    line=`printf "%s" "${line}" | awk '{$1=$1};1'`
+    line=`printf "%s" "${line}" | awk '{$1=$1};1' | awk '{ print gensub(/ - <unknown>$/, "", "G") }'`
 
     if [ "${state}" == "waiting_stack" ]; then
         echo_opt "${line}"
@@ -132,7 +129,7 @@ while getopts "h?o:e:f:sr:" opt; do
     r)
         reset_state="printing"
         start_address=$OPTARG
-        ;; 
+        ;;
     esac
 done
 
