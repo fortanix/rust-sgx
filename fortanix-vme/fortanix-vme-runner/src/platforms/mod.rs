@@ -17,5 +17,5 @@ pub trait Platform: Send + Sync {
 }
 
 pub trait EnclaveRuntime {
-    async fn wait(&mut self) -> Result<ExitStatus, RunnerError>;
+    fn wait(&mut self) -> impl std::future::Future<Output = Result<ExitStatus, RunnerError>> + Send;
 }
