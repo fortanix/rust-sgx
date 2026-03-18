@@ -7,10 +7,9 @@
 use std::io::{Read, Result as IoResult, Write};
 
 use time::OffsetDateTime;
-use time::macros::format_description;
 
-use abi::{SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
 pub use abi::{Attributes, AttributesFlags, Miscselect, Sigstruct};
+use abi::{SIGSTRUCT_HEADER1, SIGSTRUCT_HEADER2};
 use crypto::{Hash, SgxHashOps, SgxRsaOps, SgxRsaPubOps};
 use sgxs::{copy_measured, SgxsRead};
 
@@ -75,12 +74,10 @@ impl Signer {
     /// Create a new `Signer` with default attributes (64-bit, XFRM: `0x3`) and
     /// today's date.
     pub fn new(enclavehash: EnclaveHash) -> Signer {
-        let format = format_description!("[Year][month][day]");
         // Unfortunately `OffsetDateTime::now_local()` doesn't work inside an SGX enclave
-        let now = OffsetDateTime::now_utc()
-            .format(&format)
-            .unwrap()
-            .to_string();
+        let now = OffsetDateTime::now_utc();
+        let (yyyy, mm, dd) = (now.year(), u8::from(now.month()), now.day());
+        let now = format!("{yyyy:04}{mm:02}{dd:02}");
 
         Signer {
             date: u32::from_str_radix(&now, 16).unwrap(),

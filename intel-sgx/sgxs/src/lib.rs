@@ -9,7 +9,6 @@
        html_root_url = "https://edp.fortanix.com/docs/api/")]
 
 extern crate byteorder;
-extern crate thiserror;
 #[cfg(feature = "crypto-openssl")]
 extern crate foreign_types;
 #[cfg(feature = "crypto-openssl")]
