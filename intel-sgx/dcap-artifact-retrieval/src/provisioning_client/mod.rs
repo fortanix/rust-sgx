@@ -5,22 +5,24 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-use std::collections::BTreeMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
+use std::marker::PhantomData;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified, platform
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
+use rustc_serialize::hex::ToHex;
 
 use crate::Error;
+use crate::provisioning_client::common::{ENCLAVE_ID_ISSUER_CHAIN_HEADER, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER, PCK_CRL_ISSUER_CHAIN_HEADER, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN, TCB_INFO_ISSUER_CHAIN_HEADER_V3, TCB_INFO_ISSUER_CHAIN_HEADER_V4, parse_issuer_header};
 
 pub mod azure;
 pub(self) mod common;
@@ -117,6 +119,8 @@ pub enum StatusCode {
     Unassigned = 599,
 }
 
+const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
+
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PcsVersion {
     V3 = 3,
@@ -163,15 +167,7 @@ impl WithApiVersion for PckCertsIn<'_> {
     }
 }
 
-pub trait PckCertsService<'inp>:
-    ProvisioningServiceApi<'inp, Input = PckCertsIn<'inp>, Output = PckCerts>
-{
-    fn build_input(
-        &'inp self,
-        enc_ppid: &'inp EncPpid,
-        pce_id: PceId,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
-}
+
 
 #[derive(Hash)]
 pub struct PckCertIn<'a> {
@@ -189,18 +185,72 @@ impl WithApiVersion for PckCertIn<'_> {
         self.api_version
     }
 }
+struct PckCertService;
+impl ProvisioningServiceApi for PckCertService {
+    type Input<'a> = PckCertIn<'a>;
+    type Output = PckCert<Unverified>;
 
-pub trait PckCertService<'inp>:
-    ProvisioningServiceApi<'inp, Input = PckCertIn<'inp>, Output = PckCert<Unverified>>
-{
-    fn build_input(
-        &'inp self,
-        encrypted_ppid: Option<&'inp EncPpid>,
-        pce_id: &'inp PceId,
-        cpu_svn: &'inp CpuSvn,
-        pce_isvsvn: PceIsvsvn,
-        qe_id: Option<&'inp QeId>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let api_version = input.api_version as u8;
+        let encrypted_ppid = input
+            .encrypted_ppid
+            .ok_or(Error::NoEncPPID)
+            .map(|e_ppid| e_ppid.to_hex())?;
+        let cpusvn = input.cpu_svn.to_hex();
+        let pce_isvsvn = input.pce_isvsvn.to_le_bytes().to_hex();
+        let pce_id = input.pce_id.to_le_bytes().to_hex();
+        let qe_id = match input.qe_id {
+            Some(qe_id) => format!("&qeid={}", qe_id.to_hex()),
+            None => String::new(),
+        };
+        let url = format!(
+            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}{}",
+            base_url, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id, qe_id
+        );
+        let headers = if let Some(api_key) = input.api_key {
+            vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
+        } else {
+            Vec::new()
+        };
+        Ok((url, headers))
+    }
+
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
+        match status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request (check your PCS key)",
+            )),
+            StatusCode::NotFound => Err(Error::PCSError(
+                status_code,
+                "Cannot find the requested certificate",
+            )),
+            StatusCode::TooManyRequests => Err(Error::PCSError(status_code, "Too many requests")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            _ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
+        Ok(PckCert::new(response_body, ca_chain))
+    }
 }
 
 #[derive(Hash)]
@@ -215,10 +265,61 @@ impl WithApiVersion for PckCrlIn {
     }
 }
 
-pub trait PckCrlService<'inp>:
-    ProvisioningServiceApi<'inp, Input = PckCrlIn, Output = PckCrl<Unverified>>
-{
-    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+pub struct PckCrlService;
+impl ProvisioningServiceApi for PckCrlService {
+    type Input<'a> = PckCrlIn;
+    type Output = PckCrl<Unverified>;
+
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let ca = match input.ca {
+            DcapArtifactIssuer::PCKProcessorCA => "processor",
+            DcapArtifactIssuer::PCKPlatformCA => "platform",
+            DcapArtifactIssuer::SGXRootCA => {
+                return Err(Error::PCSError(
+                    StatusCode::BadRequest,
+                    "Invalid ca parameter",
+                ));
+            }
+        };
+        let url = format!(
+            "{}/sgx/certification/v{}/pckcrl?ca={}&encoding=pem",
+            base_url, input.api_version as u8, ca,
+        );
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request (check your PCS key)",
+            )),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let ca_chain = parse_issuer_header(&response_headers, PCK_CRL_ISSUER_CHAIN_HEADER)?;
+        let crl = PckCrl::new(response_body, ca_chain)?;
+        Ok(crl)
+    }
 }
 
 #[derive(Hash)]
@@ -233,16 +334,68 @@ impl WithApiVersion for QeIdIn {
     }
 }
 
-pub trait QeIdService<'inp>:
-    ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned>
-{
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+struct QeIdService;
+impl ProvisioningServiceApi for QeIdService {
+    type Input<'a> = QeIdIn;
+    type Output = QeIdentitySigned;
+
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let api_version = input.api_version as u8;
+        let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
+                base_url, api_version, tcb_evaluation_data_number
+            )
+        } else {
+            format!(
+                "{}/sgx/certification/v{}/qe/identity?update=early",
+                base_url, api_version,
+            )
+        };
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request (check your PCS key)",
+            )),
+            StatusCode::NotFound => {
+                Err(Error::PCSError(status_code, "QE identity Cannot be found"))
+            }
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let ca_chain = parse_issuer_header(&response_headers, ENCLAVE_ID_ISSUER_CHAIN_HEADER)?;
+        let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
+        Ok(id)
+    }
 }
 
 #[derive(Hash)]
-pub struct TcbInfoIn<'i> {
+pub struct TcbInfoIn<'a> {
     pub(crate) api_version: PcsVersion,
-    pub(crate) fmspc: &'i Fmspc,
+    pub(crate) fmspc: &'a Fmspc,
     pub(crate) tcb_evaluation_data_number: Option<u16>,
 }
 
@@ -252,11 +405,75 @@ impl WithApiVersion for TcbInfoIn<'_> {
     }
 }
 
-pub trait TcbInfoService<'inp, T: PlatformTypeForTcbInfo>:
-    ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo<T>>
-{
-    fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
-        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+struct TcbInfoService<T> {
+    _type: PhantomData<T>,
+}
+impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbInfoService<T> {
+    type Input<'a> = TcbInfoIn<'a>;
+    type Output = TcbInfo<T>;
+
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let api_version = input.api_version as u8;
+        let fmspc = input.fmspc.as_bytes().to_hex();
+        let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
+            format!(
+                "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                base_url,
+                T::tag(),
+                api_version,
+                fmspc,
+                evaluation_data_number
+            )
+        } else {
+            format!(
+                "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
+                base_url,
+                T::tag(),
+                api_version,
+                fmspc,
+            )
+        };
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request (check your PCS key)",
+            )),
+            StatusCode::NotFound => Err(Error::PCSError(status_code, "TCB info cannot be found")),
+            StatusCode::Gone => Err(Error::PCSError(status_code, "TCB info no longer available")),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let key = match api_version {
+            PcsVersion::V3 => TCB_INFO_ISSUER_CHAIN_HEADER_V3,
+            PcsVersion::V4 => TCB_INFO_ISSUER_CHAIN_HEADER_V4,
+        };
+        let ca_chain = parse_issuer_header(&response_headers, key)?;
+        let tcb_info = TcbInfo::parse(&response_body, ca_chain)?;
+        Ok(tcb_info)
+    }
 }
 
 #[derive(Hash)]
@@ -268,11 +485,50 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
     }
 }
 
-pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo>:
-    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers<T>>
-{
-    fn build_input(&self)
-        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+struct TcbEvaluationDataNumbersService<T: PlatformTypeForTcbInfo> {
+    _type: PhantomData<T>
+}
+impl<T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi for TcbEvaluationDataNumbersService<T> {
+    type Input<'a> = TcbEvaluationDataNumbersIn;
+    type Output = RawTcbEvaluationDataNumbers<T>;
+
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
+        let url = format!(
+            "{}/{}/certification/v{}/tcbevaluationdatanumbers",
+            base_url,
+            T::tag(),
+            input.api_version() as u8,
+        );
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        let ca_chain =
+            parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
+        RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
+    }
 }
 
 pub struct ClientBuilder {
@@ -301,38 +557,16 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, TDS, ES, TES, F>(
-        self,
-        pckcerts_service: PSS,
-        pckcert_service: PS,
-        pckcrl_service: PC,
-        qeid_service: QS,
-        sgx_tcbinfo_service: TS,
-        tdx_tcbinfo_service: TDS,
-        sgx_tcb_evaluation_data_numbers_service: ES,
-        tdx_tcb_evaluation_data_numbers_service: TES,
+    pub(crate) fn build<F: for<'a> Fetcher<'a>>(
+        &self,
+        base_url: &str,
+        api_version: PcsVersion,
         fetcher: F,
     ) -> Client<F>
-    where
-        PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
-        PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
-        PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
-        QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
-        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
-        ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
-        TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
-        F: for<'a> Fetcher<'a>,
     {
         Client::new(
-            pckcerts_service,
-            pckcert_service,
-            pckcrl_service,
-            qeid_service,
-            sgx_tcbinfo_service,
-            tdx_tcbinfo_service,
-            sgx_tcb_evaluation_data_numbers_service,
-            tdx_tcb_evaluation_data_numbers_service,
+            base_url,
+            api_version,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -341,36 +575,22 @@ impl ClientBuilder {
     }
 }
 
-struct PcsService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
-    service: Box<T>,
-}
+struct PcsService;
+impl PcsService {
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
-    pub fn new(service: Box<T>) -> Self {
-        Self { service }
-    }
-}
-
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service
-    }
-
-    fn call_service<'a, F: Fetcher<'a>>(
-        &'a self,
+    fn call_service<'a, F: Fetcher<'a>, T: ProvisioningServiceApi>(
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi<'a>>::Input,
-    ) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
-        let (url, headers) =
-            <T as ProvisioningServiceApi<'a>>::build_request(&self.pcs_service(), input)?;
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
+        let (url, headers) = T::build_request(base_url, input)?;
         let req = fetcher.build_request(&url, headers)?;
         let api_version = input.api_version();
 
         let (status_code, resp) = fetcher.send(req)?;
-        <T as ProvisioningServiceApi<'a>>::validate_response(self.pcs_service(), status_code)?;
+        T::validate_response(status_code)?;
         let (response_body, response_headers) = fetcher.parse_response(resp)?;
-        <T as ProvisioningServiceApi<'a>>::parse_response(
-            self.pcs_service(),
+        T::parse_response(
             response_body,
             response_headers,
             api_version,
@@ -378,16 +598,16 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> PcsService<T> {
     }
 }
 
-struct CachedService<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized> {
-    service: BackoffService<T>,
-    cache: Mutex<LruCache<u64, (O, SystemTime)>>,
+struct CachedService<T: ProvisioningServiceApi> {
+    service: BackoffService,
+    cache: Mutex<LruCache<u64, (T::Output, SystemTime)>>,
     cache_shelf_time: Duration,
 }
 
-impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized>
-    CachedService<O, T>
+impl<T: ProvisioningServiceApi>
+    CachedService<T>
 {
-    pub fn new(service: BackoffService<T>, capacity: usize, cache_shelf_time: Duration) -> Self {
+    pub fn new(service: BackoffService, capacity: usize, cache_shelf_time: Duration) -> Self {
         Self {
             service,
             cache: Mutex::new(LruCache::new(capacity)),
@@ -396,18 +616,15 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
     }
 }
 
-impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized>
-    CachedService<O, T>
+impl<T: ProvisioningServiceApi>
+    CachedService<T>
 {
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service.pcs_service()
-    }
-
     pub fn call_service<'a, F: Fetcher<'a>>(
-        &'a self,
+        &self,
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi<'a>>::Input,
-    ) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
         let key = {
             let mut hasher = DefaultHasher::new();
             input.hash(&mut hasher);
@@ -422,41 +639,36 @@ impl<O: Clone, T: for<'a> ProvisioningServiceApi<'a, Output = O> + Sync + ?Sized
                 return Ok(value.to_owned());
             }
         }
-        let value = self.service.call_service::<F>(fetcher, input)?;
+        let value = self.service.call_service::<F, T>(fetcher, base_url, input)?;
         cache.insert(key, (value.clone(), SystemTime::now()));
         Ok(value)
     }
 }
 
-struct BackoffService<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> {
-    service: PcsService<T>,
+struct BackoffService {
     retry_timeout: Option<Duration>,
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
-    pub fn new(service: PcsService<T>, retry_timeout: Option<Duration>) -> Self {
+impl BackoffService {
+    pub fn new(retry_timeout: Option<Duration>) -> Self {
         Self {
-            service,
             retry_timeout,
         }
     }
 }
 
-impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
+impl BackoffService {
     const RETRY_INITIAL_INTERVAL: Duration = Duration::from_secs(2);
     const RETRY_INTERVAL_MULTIPLIER: f64 = 2.0;
 
-    pub(crate) fn pcs_service(&self) -> &T {
-        &self.service.pcs_service()
-    }
-
-    pub fn call_service<'a, F: Fetcher<'a>>(
-        &'a self,
+    pub fn call_service<'a, F: Fetcher<'a>, T: ProvisioningServiceApi>(
+        &self,
         fetcher: &'a F,
-        input: &<T as ProvisioningServiceApi<'a>>::Input,
-    ) -> Result<<T as ProvisioningServiceApi<'a>>::Output, Error> {
+        base_url: &str,
+        input: &T::Input<'_>,
+    ) -> Result<T::Output, Error> {
         if let Some(retry_timeout) = self.retry_timeout {
-            let op = || match self.service.call_service::<F>(fetcher, input) {
+            let op = || match PcsService::call_service::<F, T>(fetcher, base_url, input) {
                 Ok(output) => Ok(output),
                 Err(err) => match err {
                     Error::PCSError(status_code, msg) => {
@@ -480,77 +692,39 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
                 backoff::Error::Transient { err, .. } => err,
             })
         } else {
-            self.service.call_service::<F>(fetcher, input)
+            PcsService::call_service::<F, T>(fetcher, base_url, input)
         }
     }
 }
 
-pub struct Client<F: for<'a> Fetcher<'a>> {
-    pckcerts_service: CachedService<PckCerts, dyn for<'a> PckCertsService<'a> + Sync + Send>,
-    pckcert_service:
-        CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
-    pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
-    qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
-    sgx_tcbinfo_service: CachedService<TcbInfo<platform::SGX>, dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send>,
-    tdx_tcbinfo_service: CachedService<TcbInfo<platform::TDX>, dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send>,
-    sgx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::SGX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send>,
-    tdx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::TDX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send>,
+pub struct Client<F: for<'a> Fetcher<'a>>
+{
+    base_url: String,
+    api_version: PcsVersion,
+    qeid_service: CachedService<QeIdService>,
+    sgx_tcbinfo_service: CachedService<TcbInfoService<platform::SGX>>,
+    tdx_tcbinfo_service: CachedService<TcbInfoService<platform::TDX>>,
+    sgx_tcb_evaluation_data_numbers_service: CachedService<TcbEvaluationDataNumbersService<platform::SGX>>,
+    tdx_tcb_evaluation_data_numbers_service: CachedService<TcbEvaluationDataNumbersService<platform::TDX>>,
     fetcher: F,
 }
 
-impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS, TDS, ES, TES>(
-        pckcerts_service: PSS,
-        pckcert_service: PS,
-        pckcrl_service: PC,
-        qeid_service: QS,
-        sgx_tcbinfo_service: TS,
-        tdx_tcbinfo_service: TDS,
-        sgx_tcb_evaluation_data_numbers_service: ES,
-        tdx_tcb_evaluation_data_numbers_service: TES,
+impl<F: for<'a> Fetcher<'a>> Client<F>
+{
+    fn new(
+        base_url: &str,
+        api_version: PcsVersion,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
         cache_shelf_time: Duration,
-    ) -> Client<F>
-    where
-        PSS: for<'a> PckCertsService<'a> + Sync + Send + 'static,
-        PS: for<'a> PckCertService<'a> + Sync + Send + 'static,
-        PC: for<'a> PckCrlService<'a> + Sync + Send + 'static,
-        QS: for<'a> QeIdService<'a> + Sync + Send + 'static,
-        TS: for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send + 'static,
-        TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
-        ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
-        TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
+    ) -> Self
     {
         Client {
-            pckcerts_service: CachedService::new(
-                BackoffService::new(
-                    PcsService::new(Box::new(pckcerts_service)),
-                    retry_timeout.clone(),
-                ),
-                cache_capacity,
-                cache_shelf_time,
-            ),
-            pckcert_service: CachedService::new(
-                BackoffService::new(
-                    PcsService::new(Box::new(pckcert_service)),
-                    retry_timeout.clone(),
-                ),
-                cache_capacity,
-                cache_shelf_time,
-            ),
-            pckcrl_service: CachedService::new(
-                BackoffService::new(
-                    PcsService::new(Box::new(pckcrl_service)),
-                    retry_timeout.clone(),
-                ),
-                cache_capacity,
-                cache_shelf_time,
-            ),
+            base_url: base_url.to_owned(),
+            api_version,
             qeid_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(qeid_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -558,7 +732,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             ),
             sgx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(sgx_tcbinfo_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -566,7 +739,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             ),
             tdx_tcbinfo_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(tdx_tcbinfo_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -574,7 +746,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             ),
             sgx_tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(sgx_tcb_evaluation_data_numbers_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -582,7 +753,6 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             ),
             tdx_tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
-                    PcsService::new(Box::new(tdx_tcb_evaluation_data_numbers_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -594,10 +764,11 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
 }
 
 pub trait ProvisioningClient {
-    fn pckcerts(&self, enc_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error>;
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error>;
 
     fn pckcert(
         &self,
+        api_key: &Option<String>,
         encrypted_ppid: Option<&EncPpid>,
         pce_id: &PceId,
         cpu_svn: &CpuSvn,
@@ -612,83 +783,6 @@ pub trait ProvisioningClient {
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
     fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error>;
-
-    /// Retrieve PCK certificates using `pckcerts()` and fallback to the
-    /// following method if that's not supported:
-    /// 1. Call `pckcert()` with PCK ID to get best available PCK cert.
-    /// 2. Try to call `pckcert()` with PCK ID but with CPUSVN all 1's.
-    /// 3. Using the FMSPC value from PCK cert in step 1, call `tcbinfo()` to
-    ///    get TCB info.
-    /// 4. For each TCB level in the result of previous call:
-    ///     - Call `pckcert()` to get the best available PCK cert for that TCB
-    ///       level.
-    ///     - When late microcode value is higher than the early microcode
-    ///       value, also try to get PCK cert with TCB level where the early
-    ///       microcode value is set to the late microcode value.
-    ///
-    /// Note that PCK certs for some TCB levels may be missing.
-    fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
-        let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
-            let pck_cert = self.pckcert(
-                Some(&pck_id.enc_ppid),
-                &pck_id.pce_id,
-                cpu_svn,
-                pce_svn,
-                Some(&pck_id.qe_id),
-            )?;
-
-            // Getting PCK cert using CPUSVN from PCKID
-            let ptcb = pck_cert.platform_tcb()?;
-            collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
-            Ok(pck_cert)
-        };
-
-        match self.pckcerts(&pck_id.enc_ppid, pck_id.pce_id) {
-            Ok(pck_certs) => return Ok(pck_certs),
-            Err(Error::RequestNotSupported) => {} // fallback below
-            Err(e) => return Err(e),
-        }
-        // fallback:
-
-        // Use BTreeMap to have an ordered PckCerts at the end
-        let mut pckcerts_map = BTreeMap::new();
-
-        // 1. Use PCK ID to get best available PCK Cert
-        let pck_cert = get_and_collect(&mut pckcerts_map, &pck_id.cpu_svn, pck_id.pce_isvsvn)?;
-
-        // 2. Getting PCK cert using CPUSVN all 1's
-        let _ign_err = get_and_collect(&mut pckcerts_map, &[u8::MAX; 16], pck_id.pce_isvsvn);
-
-        let fmspc = pck_cert.sgx_extension()?.fmspc;
-        let tcb_info = self.sgx_tcbinfo(&fmspc, None)?;
-        let tcb_data = tcb_info.data()?;
-        for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
-            // 3. Get PCK based on TCB levels
-            let _ = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn)?;
-
-            // 4. If late loaded microcode version is higher than early loaded microcode,
-            //    also try with highest microcode version of both components. We found cases where
-            //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
-            //    Cert for that level
-            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
-            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
-            if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
-                let early_ucode = cpu_svn[early_ucode_idx];
-                let late_ucode = cpu_svn[late_ucode_idx];
-                if early_ucode < late_ucode {
-                    let mut cpu_svn = cpu_svn.clone();
-                    cpu_svn[early_ucode_idx] = late_ucode;
-                    let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
-                }
-            }
-        }
-
-        // BTreeMap by default is Ascending
-        let pck_certs: Vec<_> = pckcerts_map.into_iter().rev().map(|(_, v)| v).collect();
-        pck_certs
-            .try_into()
-            .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
-    }
 
     fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
 
@@ -722,62 +816,140 @@ impl ProvisioningClientFuncSelector for platform::TDX {
 }
 
 
-impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
-    fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
-        let input = self
-            .pckcerts_service
-            .pcs_service()
-            .build_input(encrypted_ppid, pce_id);
-        self.pckcerts_service.call_service(&self.fetcher, &input)
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F>
+{
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        todo!()
     }
 
+    // fn pckcerts(&self, api_key: &Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
+    //     let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key, api_version: self.api_version };
+    //     self.pckcerts_service.call_service(&self.fetcher, &self.base_url, &input)
+    // }
+
+    // fn pckcert(
+    //     &self,
+    //     api_key: &Option<String>,
+    //     encrypted_ppid: Option<&EncPpid>,
+    //     pce_id: &PceId,
+    //     cpu_svn: &CpuSvn,
+    //     pce_isvsvn: PceIsvsvn,
+    //     qe_id: Option<&QeId>,
+    // ) -> Result<PckCert<Unverified>, Error> {
+    //     let input = self.pckcert_service.pcs_service().build_input(self.api_version, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_key, None, None);
+    //     self.pckcert_service.call_service(&self.fetcher, &self.base_url, &input)
+    // }
+
+    /// Retrieve PCK certificates when `pckcerts` Rest API is not supported
+    /// using the following method:
+    /// 1. Call `pckcert()` with PCK ID to get best available PCK cert.
+    /// 2. Try to call `pckcert()` with PCK ID but with CPUSVN all 1's.
+    /// 3. Using the FMSPC value from PCK cert in step 1, call `tcbinfo()` to
+    ///    get TCB info.
+    /// 4. For each TCB level in the result of previous call:
+    ///     - Call `pckcert()` to get the best available PCK cert for that TCB
+    ///       level.
+    ///     - When late microcode value is higher than the early microcode
+    ///       value, also try to get PCK cert with TCB level where the early
+    ///       microcode value is set to the late microcode value.
+    ///
+    /// Note that PCK certs for some TCB levels may be missing.
+    // fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+    //     let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
+    //         let pck_cert = self.pckcert(
+    //             api_key,
+    //             Some(&pck_id.enc_ppid),
+    //             &pck_id.pce_id,
+    //             cpu_svn,
+    //             pce_svn,
+    //             Some(&pck_id.qe_id),
+    //         )?;
+
+    //         // Getting PCK cert using CPUSVN from PCKID
+    //         let ptcb = pck_cert.platform_tcb()?;
+    //         collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
+    //         Ok(pck_cert)
+    //     };
+
+    //     // Use BTreeMap to have an ordered PckCerts at the end
+    //     let mut pckcerts_map = BTreeMap::new();
+
+    //     // 1. Use PCK ID to get best available PCK Cert
+    //     let pck_cert = get_and_collect(&mut pckcerts_map, &pck_id.cpu_svn, pck_id.pce_isvsvn)?;
+
+    //     // 2. Getting PCK cert using CPUSVN all 1's
+    //     let _ign_err = get_and_collect(&mut pckcerts_map, &[u8::MAX; 16], pck_id.pce_isvsvn);
+
+    //     let fmspc = pck_cert.sgx_extension()?.fmspc;
+    //     let tcb_info = self.sgx_tcbinfo(&fmspc, None)?;
+    //     let tcb_data = tcb_info.data()?;
+    //     for (cpu_svn, pce_isvsvn) in tcb_data.iter_tcb_components() {
+    //         // 3. Get PCK based on TCB levels
+    //         let _ = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn)?;
+
+    //         // 4. If late loaded microcode version is higher than early loaded microcode,
+    //         //    also try with highest microcode version of both components. We found cases where
+    //         //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
+    //         //    Cert for that level
+    //         let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
+    //         let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
+    //         if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
+    //             let early_ucode = cpu_svn[early_ucode_idx];
+    //             let late_ucode = cpu_svn[late_ucode_idx];
+    //             if early_ucode < late_ucode {
+    //                 let mut cpu_svn = cpu_svn.clone();
+    //                 cpu_svn[early_ucode_idx] = late_ucode;
+    //                 let _ign_err = get_and_collect(&mut pckcerts_map, &cpu_svn, pce_isvsvn);
+    //             }
+    //         }
+    //     }
+
+    //     // BTreeMap by default is Ascending
+    //     let pck_certs: Vec<_> = pckcerts_map.into_iter().rev().map(|(_, v)| v).collect();
+    //     pck_certs
+    //         .try_into()
+    //         .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
+    // }
+    
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        todo!()
+    }
+
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        let input = TcbInfoIn { api_version: self.api_version, fmspc, tcb_evaluation_data_number };
+        self.sgx_tcbinfo_service.call_service(&self.fetcher, &self.base_url, &input)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        let input = TcbInfoIn { api_version: self.api_version, fmspc, tcb_evaluation_data_number };
+        self.tdx_tcbinfo_service.call_service(&self.fetcher, &self.base_url, &input)
+    }
+
+    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        let input = QeIdIn { api_version: self.api_version, tcb_evaluation_data_number };
+        self.qeid_service.call_service(&self.fetcher, &self.base_url, &input)
+    }
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        let input = TcbEvaluationDataNumbersIn;
+        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &self.base_url, &input)
+    }
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        let input = TcbEvaluationDataNumbersIn;
+        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &self.base_url, &input)
+    }
+    
     fn pckcert(
         &self,
+        api_key: &Option<String>,
         encrypted_ppid: Option<&EncPpid>,
         pce_id: &PceId,
         cpu_svn: &CpuSvn,
         pce_isvsvn: PceIsvsvn,
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error> {
-        let input = self.pckcert_service.pcs_service().build_input(
-            encrypted_ppid,
-            pce_id,
-            cpu_svn,
-            pce_isvsvn,
-            qe_id,
-        );
-        self.pckcert_service.call_service(&self.fetcher, &input)
-    }
-
-    fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-        let input = self.sgx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
-        self.sgx_tcbinfo_service.call_service(&self.fetcher, &input)
-    }
-
-    fn tdx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
-        let input = self.tdx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
-        self.tdx_tcbinfo_service.call_service(&self.fetcher, &input)
-    }
-
-    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
-        let input = self.pckcrl_service.pcs_service().build_input(ca);
-        self.pckcrl_service.call_service(&self.fetcher, &input)
-    }
-
-    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
-        self.qeid_service.call_service(&self.fetcher, &input)
-    }
-
-    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
-        let input = self.sgx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
-        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
-    }
-
-    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-        let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
-        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
-
+        todo!()
     }
 }
 
@@ -861,19 +1033,18 @@ impl<'req> Fetcher<'req> for ReqwestClient {
     }
 }
 
-pub trait ProvisioningServiceApi<'inp> {
-    type Input: 'inp + WithApiVersion + Hash;
+pub trait ProvisioningServiceApi {
+    type Input<'a>: WithApiVersion + Hash;
     type Output: Clone;
 
     fn build_request(
-        &'inp self,
-        input: &Self::Input,
+        base_url: &str,
+        input: &Self::Input<'_>,
     ) -> Result<(String, Vec<(String, String)>), Error>;
 
-    fn validate_response(&'inp self, code: StatusCode) -> Result<(), Error>;
+    fn validate_response(code: StatusCode) -> Result<(), Error>;
 
     fn parse_response(
-        &'inp self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         api_version: PcsVersion,
@@ -913,23 +1084,22 @@ mod tests {
     #[derive(Clone, PartialEq, Eq, Debug)]
     struct MockOutput(String);
 
-    impl<'a> ProvisioningServiceApi<'a> for MockService {
-        type Input = MockInput;
+    impl ProvisioningServiceApi for MockService {
+        type Input<'a> = MockInput;
         type Output = MockOutput;
 
         fn build_request(
-            &'a self,
-            _input: &Self::Input,
+            _base_url: &str,
+            _input: &Self::Input<'_>,
         ) -> Result<(String, Vec<(String, String)>), Error> {
             Ok((_input.0.to_string(), vec![]))
         }
 
-        fn validate_response(&'a self, _code: StatusCode) -> Result<(), Error> {
+        fn validate_response(_code: StatusCode) -> Result<(), Error> {
             Ok(())
         }
 
         fn parse_response(
-            &'a self,
             response_body: String,
             _response_headers: Vec<(std::string::String, std::string::String)>,
             _api_version: PcsVersion,
@@ -966,20 +1136,17 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_miss() {
-        let service = PcsService {
-            service: Box::new(MockService),
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service: CachedService<MockService> = CachedService::new(service, 5, Duration::from_secs(120));
         let fetcher = MockFetcher;
         let input_a = MockInput(42);
         let input_b = MockInput(420);
 
         // Initial call to populate the cache for `input_a`
-        cached_service.call_service(&fetcher, &input_a).unwrap();
+        cached_service.call_service(&fetcher, "", &input_a).unwrap();
 
         // input_b should provoke cache miss and add new key to the cache
-        let result = cached_service.call_service(&fetcher, &input_b).unwrap();
+        let result = cached_service.call_service(&fetcher, "", &input_b).unwrap();
 
         let (cached_value, _) = {
             let mut cache = cached_service.cache.lock().unwrap();
@@ -991,16 +1158,13 @@ mod tests {
 
     #[test]
     fn test_call_service_cache_hit() {
-        let service = PcsService {
-            service: Box::new(MockService),
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 5, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service: CachedService<MockService> = CachedService::new(service, 5, Duration::from_secs(120));
         let fetcher = MockFetcher;
         let input = MockInput(42);
 
         // Initial call to populate the cache
-        let _ = cached_service.call_service(&fetcher, &input).unwrap();
+        let _ = cached_service.call_service(&fetcher, "", &input).unwrap();
 
         // Now the service should not be called, and the cached result should be returned
         let (cached_value, _) = {
@@ -1008,23 +1172,20 @@ mod tests {
             cache.get_mut(&calculate_key(&input)).unwrap().to_owned()
         };
 
-        let result = cached_service.call_service(&fetcher, &input).unwrap();
+        let result = cached_service.call_service(&fetcher, "", &input).unwrap();
         assert_eq!(result, cached_value);
     }
 
     #[test]
     fn test_cache_capacity_eviction() {
-        let service = PcsService {
-            service: Box::new(MockService),
-        };
-        let service = BackoffService::new(service, None);
-        let cached_service = CachedService::new(service, 2, Duration::from_secs(120));
+        let service = BackoffService::new(None);
+        let cached_service = CachedService::<MockService>::new(service, 2, Duration::from_secs(120));
         let fetcher = MockFetcher;
 
         // Insert entries into the cache, exceeding its capacity
         for i in 0..3 {
             let input = MockInput(i);
-            let _ = cached_service.call_service(&fetcher, &input).unwrap();
+            let _ = cached_service.call_service(&fetcher, "", &input).unwrap();
         }
 
         // At this point, the cache should have evicted the first inserted entry (MockInput(0))
