@@ -70,6 +70,9 @@ pub const TDX_REPORT_MAC_STRUCT_SIZE: usize = 256;
 pub const TDX_REPORT_MAC_STRUCT_RESERVED1_BYTES: usize = 12;
 pub const TDX_REPORT_MAC_STRUCT_RESERVED2_BYTES: usize = 32;
 
+// Ensure new type name is backward compatibe
+pub type TdxReportMac = ReportMac;
+
 struct_def! {
     /// Rust definition of `REPORTMACSTRUCT` from `TDREPORT_STRUCT`.
     ///
@@ -81,7 +84,7 @@ struct_def! {
         feature = "large_array_derive",
         derive(Clone, Debug, Eq, PartialEq)
     )]
-    pub struct TdxReportMac {
+    pub struct ReportMac {
         /// (  0) TEE Report type
         pub report_type: TeeReportType,
         /// (  4) Reserved, must be zero
@@ -101,12 +104,12 @@ struct_def! {
     }
 }
 
-impl TdxReportMac {
+impl ReportMac {
     pub const UNPADDED_SIZE: usize = 256;
 }
 
 #[cfg(target_env = "sgx")]
-impl AsRef<tdx_arch::Align256<[u8; TdxReportMac::UNPADDED_SIZE]>> for TdxReportMac {
+impl AsRef<tdx_arch::Align256<[u8; ReportMac::UNPADDED_SIZE]>> for ReportMac {
     fn as_ref(&self) -> &tdx_arch::Align256<[u8; Self::UNPADDED_SIZE]> {
         unsafe { &*(self as *const _ as *const _) }
     }
@@ -253,7 +256,7 @@ struct_def! {
     )]
     pub struct TdxReportV1 {
         /// (  0) Report mac struct for SGX report type 2
-        pub report_mac: TdxReportMac,
+        pub report_mac: ReportMac,
         /// (256) Struct contains details about extra TCB elements not found in CPUSVN
         pub tee_tcb_info: TeeTcbInfo,
         /// (495) Reserved, must be zero
@@ -324,7 +327,7 @@ impl Display for TdxError {
             TdxError::Interrupted => f.write_str("Usercall is interrupted"),
             TdxError::InvalidCpuSvn => f.write_str("Failed to verify TD report: invalid Cpu Svn"),
             TdxError::InvalidParameter => f.write_str("The parameter is incorrect"),
-            TdxError::InvalidReportMacStruct => f.write_str("Failed to verify TD report: invalid TdxReportMac"),
+            TdxError::InvalidReportMacStruct => f.write_str("Failed to verify TD report: invalid ReportMac"),
             TdxError::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
             TdxError::NotSupported => f.write_str("Request feature is not supported"),
             TdxError::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
@@ -344,9 +347,9 @@ mod debug_impl {
     use super::*;
     use core::fmt::{Debug, Formatter, Result};
 
-    impl Debug for TdxReportMac {
+    impl Debug for ReportMac {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-            f.debug_struct("TdxReportMac")
+            f.debug_struct("ReportMac")
                 .field("report_type", &self.report_type)
                 .field("reserved1", &self.reserved1)
                 .field("cpu_svn", &self.cpu_svn)
@@ -419,7 +422,7 @@ mod tdx_arch {
     pub struct Align256<T>(pub T);
 
     /// Call the `EVERIFYREPORT2` instruction to verify a 256-bit TDX REPORT MAC struct.
-    /// The concrete type is [`crate::tdx::TdxReportMac`].
+    /// The concrete type is [`crate::tdx::ReportMac`].
     pub fn everifyreport2(tdx_report_mac: &Align256<[u8; 256]>) -> Result<(), u32> {
         unsafe {
             let error: u32;
