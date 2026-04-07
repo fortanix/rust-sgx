@@ -12,17 +12,7 @@ use crate::arch;
 #[cfg(all(target_env = "sgx", feature = "sgxstd"))]
 use std::os::fortanix_sgx::arch;
 
-use core::fmt::Display;
-
-use crate::{slice, struct_def};
-
-/// SHA384 hash size in bytes
-pub const TEE_HASH_384_SIZE: usize = 48;
-/// Message SHA 256 HASH Code - 32 bytes
-pub const TEE_MAC_SIZE: usize = 32;
-
-pub const TDX_REPORT_DATA_SIZE: usize = 64;
-pub const TEE_CPU_SVN_SIZE: usize = 16;
+use crate::{slice, struct_def, ErrorCode, ReportMac, Sha384Hash};
 
 /// SGX Legacy Report Type
 pub const SGX_LEGACY_REPORT_TYPE: usize = 0x0;
@@ -35,85 +25,8 @@ pub const TEE_REPORT2_VERSION: usize = 0x0;
 /// VERSION for Report Type2 which mr_servicetd is used
 pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
 
-/// SHA384 hash
-pub type Sha384Hash = [u8; TEE_HASH_384_SIZE];
-
-struct_def! {
-    /// Rust definition of `REPORTTYPE` from `REPORTMACSTRUCT`.
-    ///
-    /// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-4.
-    /// Version: 343754-002US, MAY 2021
-    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
-    #[repr(C, align(4))]
-    #[derive(Clone, Debug, Default, Eq, PartialEq)]
-    pub struct TeeReportType {
-        /// Trusted Execution Environment(TEE) type:
-        ///   0x00:      SGX Legacy REPORT TYPE
-        ///   0x7F-0x01: Reserved
-        ///   0x80:      Reserved
-        ///   0x81:      TEE Report type 2
-        ///   0xFF-0x82: Reserved
-        pub report_type: u8,
-        /// TYPE-specific subtype, Stage1: value is 0
-        pub subtype: u8,
-        /// TYPE-specific version, Stage1: value is 0
-        pub version: u8,
-        pub reserved: u8,
-    }
-}
-
-impl TeeReportType {
-    pub const UNPADDED_SIZE: usize = 4;
-}
-
-pub const TDX_REPORT_MAC_STRUCT_SIZE: usize = 256;
-pub const TDX_REPORT_MAC_STRUCT_RESERVED1_BYTES: usize = 12;
-pub const TDX_REPORT_MAC_STRUCT_RESERVED2_BYTES: usize = 32;
-
 // Ensure new type name is backward compatibe
-pub type TdxReportMac = ReportMac;
-
-struct_def! {
-    /// Rust definition of `REPORTMACSTRUCT` from `TDREPORT_STRUCT`.
-    ///
-    /// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-5.
-    /// Version: 343754-002US, MAY 2021
-    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
-    #[repr(C, align(256))]
-    #[cfg_attr(
-        feature = "large_array_derive",
-        derive(Clone, Debug, Eq, PartialEq)
-    )]
-    pub struct ReportMac {
-        /// (  0) TEE Report type
-        pub report_type: TeeReportType,
-        /// (  4) Reserved, must be zero
-        pub reserved1: [u8; TDX_REPORT_MAC_STRUCT_RESERVED1_BYTES],
-        /// ( 16) Security Version of the CPU
-        pub cpu_svn: [u8; TEE_CPU_SVN_SIZE],
-        /// ( 32) SHA384 of TEE_TCB_INFO for TEEs
-        pub tee_tcb_info_hash: Sha384Hash,
-        /// ( 80) SHA384 of TEE_INFO
-        pub tee_info_hash: Sha384Hash,
-        /// (128) Data provided by the user
-        pub report_data: [u8; TDX_REPORT_DATA_SIZE],
-        /// (192) Reserved, must be zero
-        pub reserved2: [u8; TDX_REPORT_MAC_STRUCT_RESERVED2_BYTES],
-        /// (224) The Message Authentication Code over this structure
-        pub mac: [u8; TEE_MAC_SIZE],
-    }
-}
-
-impl ReportMac {
-    pub const UNPADDED_SIZE: usize = 256;
-}
-
-#[cfg(target_env = "sgx")]
-impl AsRef<tdx_arch::Align256<[u8; ReportMac::UNPADDED_SIZE]>> for ReportMac {
-    fn as_ref(&self) -> &tdx_arch::Align256<[u8; Self::UNPADDED_SIZE]> {
-        unsafe { &*(self as *const _ as *const _) }
-    }
-}
+pub type TdxReportMac = super::ReportMac;
 
 /// Size of a TDX report in bytes.
 pub const TDX_REPORT_SIZE: usize = 1024;
@@ -239,7 +152,6 @@ impl TdInfoV1 {
 }
 
 // TODO(RTE-805): Add support for TDINFO_STRUCT with size 768 bytes
-
 struct_def! {
     /// Rust definition of `TDREPORT_STRUCT` from the output of the `TDG.MR.REPORT` function.
     /// Total size of this variant is __1024__ bytes with `report_mac.report_type.version` equals __0 or 1__.
@@ -270,75 +182,8 @@ impl TdxReportV1 {
     pub const UNPADDED_SIZE: usize = 1024;
 
     #[cfg(target_env = "sgx")]
-    pub fn verify(&self) -> Result<(), TdxError> {
-        tdx_arch::everifyreport2(self.report_mac.as_ref())
-            .map_err(TdxError::from_everifyreport2_return_code)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TdxError {
-    Success,
-    BadAddress,
-    Busy,
-    DeviceFailure,
-    ExtendFailure,
-    Interrupted,
-    InvalidCpuSvn,
-    InvalidParameter,
-    InvalidReportMacStruct,
-    InvalidRtmrIndex,
-    NotSupported,
-    OutOfMemory,
-    QuoteFailure,
-    ReportFailure,
-    TdcallFailure,
-    UnsupportedAttKeyId,
-    VsockFailure,
-    WrongDevice,
-    Unexpected(u32),
-}
-
-impl TdxError {
-    #[cfg(target_env = "sgx")]
-    fn from_everifyreport2_return_code(code: u32) -> TdxError {
-        match code {
-            0 => TdxError::Success,
-            // This leaf operation is not supported on this CPU
-            0b00001 => TdxError::NotSupported,
-            0b01110 => TdxError::InvalidReportMacStruct,
-            0b10000 => TdxError::InvalidCpuSvn,
-            other => TdxError::Unexpected(other),
-        }
-    }
-}
-
-#[cfg(all(feature = "sgxstd", target_env = "sgx"))]
-impl std::error::Error for TdxError {}
-
-impl Display for TdxError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            TdxError::Success => f.write_str("Success"),
-            TdxError::BadAddress => f.write_str("Bad address"),
-            TdxError::Busy => f.write_str("The device driver return busy"),
-            TdxError::DeviceFailure => f.write_str("Failed to acess tdx attest device"),
-            TdxError::ExtendFailure => f.write_str("Failed to extend rtmr"),
-            TdxError::Interrupted => f.write_str("Usercall is interrupted"),
-            TdxError::InvalidCpuSvn => f.write_str("Failed to verify TD report: invalid Cpu Svn"),
-            TdxError::InvalidParameter => f.write_str("The parameter is incorrect"),
-            TdxError::InvalidReportMacStruct => f.write_str("Failed to verify TD report: invalid ReportMac"),
-            TdxError::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
-            TdxError::NotSupported => f.write_str("Request feature is not supported"),
-            TdxError::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
-            TdxError::QuoteFailure => f.write_str("Failed to get the TD Quote"),
-            TdxError::ReportFailure => f.write_str("Failed to get the TD Report"),
-            TdxError::TdcallFailure => f.write_str("TD call failed"),
-            TdxError::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
-            TdxError::VsockFailure => f.write_str("vsock related failure"),
-            TdxError::WrongDevice => f.write_str("Unsupported device"),
-            TdxError::Unexpected(num) => f.write_fmt(format_args!("Unexpected errno: {}", num)),
-        }
+    pub fn verify(&self) -> Result<(), ErrorCode> {
+        self.report_mac.verify()
     }
 }
 
@@ -346,21 +191,6 @@ impl Display for TdxError {
 mod debug_impl {
     use super::*;
     use core::fmt::{Debug, Formatter, Result};
-
-    impl Debug for ReportMac {
-        fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-            f.debug_struct("ReportMac")
-                .field("report_type", &self.report_type)
-                .field("reserved1", &self.reserved1)
-                .field("cpu_svn", &self.cpu_svn)
-                .field("tee_tcb_info_hash", &self.tee_tcb_info_hash)
-                .field("tee_info_hash", &self.tee_info_hash)
-                .field("report_data", &self.report_data)
-                .field("reserved2", &self.reserved2)
-                .field("mac", &self.mac)
-                .finish()
-        }
-    }
 
     impl Debug for TdxReportV1 {
         fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -407,40 +237,6 @@ mod debug_impl {
                 .field("rtmr", &self.rtmr)
                 .field("servtd_hash", &self.servtd_hash)
                 .finish()
-        }
-    }
-}
-
-/// Since this is not upstreamed to rust yet.
-#[cfg(target_env = "sgx")]
-mod tdx_arch {
-    use crate::Enclu;
-    use core::arch::asm;
-
-    /// Wrapper struct to force 256-byte alignment.
-    #[repr(align(256))]
-    pub struct Align256<T>(pub T);
-
-    /// Call the `EVERIFYREPORT2` instruction to verify a 256-bit TDX REPORT MAC struct.
-    /// The concrete type is [`crate::tdx::ReportMac`].
-    pub fn everifyreport2(tdx_report_mac: &Align256<[u8; 256]>) -> Result<(), u32> {
-        unsafe {
-            let error: u32;
-            asm!(
-                "xchg %rbx, {0}",
-                "enclu",
-                "mov {0}, %rbx",
-                "jz 1f",
-                "xor %eax, %eax",
-                "1:",
-                inout(reg) tdx_report_mac => _,
-                inlateout("eax") Enclu::EVerifyReport2 as u32 => error,
-                options(att_syntax, nostack),
-            );
-            match error {
-                0 => Ok(()),
-                err => Err(err),
-            }
         }
     }
 }

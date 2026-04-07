@@ -15,6 +15,10 @@ pub struct Align16<T>(pub T);
 #[repr(align(128))]
 pub struct Align128<T>(pub T);
 
+/// Wrapper struct to force 256-byte alignment.
+#[repr(align(256))]
+pub struct Align256<T>(pub T);
+
 /// Wrapper struct to force 512-byte alignment.
 #[repr(align(512))]
 pub struct Align512<T>(pub T);
@@ -68,5 +72,28 @@ pub fn ereport(
         );
 
         report.assume_init()
+    }
+}
+
+/// Call the `EVERIFYREPORT2` instruction to verify a REPORT MAC struct.
+/// The concrete type is [`crate::ReportMac`].
+pub fn everifyreport2(tdx_report_mac: &Align256<[u8; 256]>) -> Result<(), u32> {
+    unsafe {
+        let error: u32;
+        asm!(
+            "xchg %rbx, {0}",
+            "enclu",
+            "mov {0}, %rbx",
+            "jz 1f",
+            "xor %eax, %eax",
+            "1:",
+            inout(reg) tdx_report_mac => _,
+            inlateout("eax") Enclu::EVerifyReport2 as u32 => error,
+            options(att_syntax, nostack),
+        );
+        match error {
+            0 => Ok(()),
+            err => Err(err),
+        }
     }
 }

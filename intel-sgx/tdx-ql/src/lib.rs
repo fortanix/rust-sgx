@@ -8,10 +8,59 @@
 #![doc = include_str!("../README.md")]
 
 use nix::errno::Errno;
-use sgx_isa::tdx::TdxError;
-pub use sgx_isa::tdx::{TdxReportV1, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE};
+pub use sgx_isa::REPORT_DATA_SIZE;
+pub use sgx_isa::tdx::{TdxReportV1, TDX_REPORT_SIZE};
 
 pub mod tdx_ioctl;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TdxError {
+    Success,
+    BadAddress,
+    Busy,
+    DeviceFailure,
+    ExtendFailure,
+    Interrupted,
+    InvalidCpuSvn,
+    InvalidParameter,
+    InvalidReportMacStruct,
+    InvalidRtmrIndex,
+    NotSupported,
+    OutOfMemory,
+    QuoteFailure,
+    ReportFailure,
+    TdcallFailure,
+    UnsupportedAttKeyId,
+    VsockFailure,
+    WrongDevice,
+    Unexpected(u32),
+}
+
+impl core::fmt::Display for TdxError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            TdxError::Success => f.write_str("Success"),
+            TdxError::BadAddress => f.write_str("Bad address"),
+            TdxError::Busy => f.write_str("The device driver return busy"),
+            TdxError::DeviceFailure => f.write_str("Failed to acess tdx attest device"),
+            TdxError::ExtendFailure => f.write_str("Failed to extend rtmr"),
+            TdxError::Interrupted => f.write_str("Usercall is interrupted"),
+            TdxError::InvalidCpuSvn => f.write_str("Failed to verify TD report: invalid Cpu Svn"),
+            TdxError::InvalidParameter => f.write_str("The parameter is incorrect"),
+            TdxError::InvalidReportMacStruct => f.write_str("Failed to verify TD report: invalid ReportMac"),
+            TdxError::InvalidRtmrIndex => f.write_str("Only supported RTMR index is 2 and 3"),
+            TdxError::NotSupported => f.write_str("Request feature is not supported"),
+            TdxError::OutOfMemory => f.write_str("Not enough memory is available to complete this operation"),
+            TdxError::QuoteFailure => f.write_str("Failed to get the TD Quote"),
+            TdxError::ReportFailure => f.write_str("Failed to get the TD Report"),
+            TdxError::TdcallFailure => f.write_str("TD call failed"),
+            TdxError::UnsupportedAttKeyId => f.write_str("The platform Quoting infrastructure does not support any of the keys described in att_key_id_list"),
+            TdxError::VsockFailure => f.write_str("vsock related failure"),
+            TdxError::WrongDevice => f.write_str("Unsupported device"),
+            TdxError::Unexpected(num) => f.write_fmt(format_args!("Unexpected errno: {}", num)),
+        }
+    }
+}
 
 // TODO: Add TdxReportV2 support
 /// Request a TDX Report of the calling TD.
@@ -26,7 +75,7 @@ pub mod tdx_ioctl;
 ///
 /// # Errors
 /// Propagates the underlying TDX attestation error code.
-pub fn get_tdx_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReportV1, TdxError> {
+pub fn get_tdx_report(report_data: [u8; REPORT_DATA_SIZE]) -> Result<TdxReportV1, TdxError> {
     tdx_ioctl::get_report(report_data)
 }
 
@@ -84,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_tdx_att_get_report_invalid_device() {
-        let result = get_tdx_report([0; TDX_REPORT_DATA_SIZE]);
+        let result = get_tdx_report([0; REPORT_DATA_SIZE]);
         match result {
             Ok(_) => panic!("expecting error"),
             Err(err) => assert_eq!(err, TdxError::DeviceFailure),
