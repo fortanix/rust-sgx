@@ -31,7 +31,7 @@ use serde::{Serialize, Deserialize};
 #[cfg(target_env = "sgx")]
 mod arch;
 
-use core::{convert::TryFrom, num::TryFromIntError, slice};
+use core::{slice, convert::TryFrom};
 
 #[cfg(feature = "serde")]
 mod array_64 {
@@ -114,6 +114,7 @@ macro_rules! impl_default_clone_eq {
 
 pub mod tdx;
 
+#[macro_export]
 macro_rules! enum_def {
     (
         #[derive($($derive:meta),*)]
@@ -128,8 +129,8 @@ macro_rules! enum_def {
             $($key = $val,)*
         }
 
-        impl TryFrom<$repr> for $name {
-            type Error = TryFromIntError;
+        impl core::convert::TryFrom<$repr> for $name {
+            type Error = core::num::TryFromIntError;
             fn try_from(v: $repr) -> Result<Self, Self::Error> {
                 match v {
                     $($val => Ok($name::$key),)*
@@ -835,6 +836,19 @@ struct_def! {
 
 impl ReportType {
     pub const UNPADDED_SIZE: usize = 4;
+}
+
+// All variants of ReportVersion that is valid for TDX report
+enum_def! {
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[repr(u8)]
+pub enum ReportTypeType {
+    Sgx = 0x00,
+    // 0x01 - 0x7F - Reserved for processor-based TEE report
+    // 0x80 - Reserved for SEAM-based TEE report
+    Tdx = 0x81,
+    // 0x82 - 0xFF - Reserved for SEAM-based TEE report
+}
 }
 
 /// SHA384 hash size in bytes

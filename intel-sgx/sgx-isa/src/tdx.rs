@@ -12,7 +12,7 @@ use crate::arch;
 #[cfg(all(target_env = "sgx", feature = "sgxstd"))]
 use std::os::fortanix_sgx::arch;
 
-use crate::{slice, struct_def, ReportMacStruct, Sha384Hash};
+use crate::{enum_def, slice, struct_def, ReportMacStruct, Sha384Hash};
 
 #[cfg(target_env = "sgx")]
 use crate::ErrorCode;
@@ -23,10 +23,17 @@ pub const SGX_LEGACY_REPORT_TYPE: usize = 0x0;
 pub const TEE_REPORT2_TYPE: usize = 0x8;
 /// SUBTYPE for Report Type2 is 0
 pub const TEE_REPORT2_SUBTYPE: usize = 0x0;
-/// VERSION for Report Type2 is 0
-pub const TEE_REPORT2_VERSION: usize = 0x0;
-/// VERSION for Report Type2 which mr_servicetd is used
-pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
+
+// All variants of REPORTTYPE.VERSION that is valid for TDX report
+enum_def! {
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[repr(u8)]
+pub enum TdxReportTypeVersion {
+    NoBound       = 0x00,
+    ServTdUsed    = 0x01,
+    ConfigSvnUsed = 0x02,
+}
+}
 
 // Ensure new type name is backward compatibe
 pub type TdxReportMac = super::ReportMacStruct;
