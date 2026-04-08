@@ -12,7 +12,10 @@ use crate::arch;
 #[cfg(all(target_env = "sgx", feature = "sgxstd"))]
 use std::os::fortanix_sgx::arch;
 
-use crate::{slice, struct_def, ErrorCode, ReportMac, Sha384Hash};
+use crate::{slice, struct_def, ReportMacStruct, Sha384Hash};
+
+#[cfg(target_env = "sgx")]
+use crate::ErrorCode;
 
 /// SGX Legacy Report Type
 pub const SGX_LEGACY_REPORT_TYPE: usize = 0x0;
@@ -26,7 +29,7 @@ pub const TEE_REPORT2_VERSION: usize = 0x0;
 pub const TEE_REPORT2_VERSION_SERVICETD: usize = 0x1;
 
 // Ensure new type name is backward compatibe
-pub type TdxReportMac = super::ReportMac;
+pub type TdxReportMac = super::ReportMacStruct;
 
 /// Size of a TDX report in bytes.
 pub const TDX_REPORT_SIZE: usize = 1024;
@@ -168,7 +171,7 @@ struct_def! {
     )]
     pub struct TdxReportV1 {
         /// (  0) Report mac struct for SGX report type 2
-        pub report_mac: ReportMac,
+        pub report_mac: ReportMacStruct,
         /// (256) Struct contains details about extra TCB elements not found in CPUSVN
         pub tee_tcb_info: TeeTcbInfo,
         /// (495) Reserved, must be zero

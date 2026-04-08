@@ -28,22 +28,8 @@ extern crate serde;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 
-#[cfg(all(target_env = "sgx", feature = "sgxstd"))]
-use std::os::fortanix_sgx::arch;
-
-#[cfg(all(target_env = "sgx", not(feature = "sgxstd")))]
+#[cfg(target_env = "sgx")]
 mod arch;
-
-// Compatibility layer before the `EVERIFYREPORT2` is upstreamed
-#[cfg(all(target_env = "sgx", feature = "sgxstd"))]
-#[path ="arch.rs"]
-mod non_std_arch;
-
-#[cfg(all(target_env = "sgx", feature = "sgxstd"))]
-use non_std_arch::{Align256, everifyreport2};
-
-#[cfg(all(target_env = "sgx", not(feature = "sgxstd")))]
-use arch::{Align256, everifyreport2};
 
 use core::{convert::TryFrom, num::TryFromIntError, slice};
 
@@ -235,7 +221,9 @@ macro_rules! struct_def {
     (@align bytes 128 name $name:ident) => {
         struct_def!(@align type Align128 name $name);
     };
-
+    (@align bytes 256 name $name:ident) => {
+        struct_def!(@align type Align256 name $name);
+    };
     (@align bytes 512 name $name:ident) => {
         struct_def!(@align type Align512 name $name);
     };
@@ -829,7 +817,7 @@ struct_def! {
     /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
     #[repr(C, align(4))]
     #[derive(Clone, Debug, Default, Eq, PartialEq)]
-    pub struct TeeReportType {
+    pub struct ReportType {
         /// Trusted Execution Environment(TEE) type:
         ///   0x00:      SGX Legacy REPORT TYPE
         ///   0x7F-0x01: Reserved
@@ -845,7 +833,7 @@ struct_def! {
     }
 }
 
-impl TeeReportType {
+impl ReportType {
     pub const UNPADDED_SIZE: usize = 4;
 }
 
@@ -875,15 +863,15 @@ struct_def! {
 #[repr(C, align(256))]
 #[cfg_attr(
     feature = "large_array_derive",
-    derive(Clone, Debug, Eq, PartialEq)
+    derive(Clone, Debug, Default, Eq, PartialEq)
 )]
-pub struct ReportMac {
+pub struct ReportMacStruct {
     /// (  0) TEE Report type
-    pub report_type: TeeReportType,
+    pub report_type: ReportType,
     /// (  4) Reserved, must be zero
-    pub reserved1: [u8; REPORT_MAC_STRUCT_RESERVED1_BYTES],
+    pub _reserved1: [u8; REPORT_MAC_STRUCT_RESERVED1_BYTES],
     /// ( 16) Security Version of the CPU
-    pub cpu_svn: [u8; CPU_SVN_SIZE],
+    pub cpusvn: [u8; CPU_SVN_SIZE],
     /// ( 32) SHA384 of TEE_TCB_INFO for TEEs
     pub tee_tcb_info_hash: Sha384Hash,
     /// ( 80) SHA384 of TEE_INFO
@@ -891,27 +879,20 @@ pub struct ReportMac {
     /// (128) Data provided by the user
     pub report_data: [u8; REPORT_DATA_SIZE],
     /// (192) Reserved, must be zero
-    pub reserved2: [u8; REPORT_MAC_STRUCT_RESERVED2_BYTES],
+    pub _reserved2: [u8; REPORT_MAC_STRUCT_RESERVED2_BYTES],
     /// (224) The Message Authentication Code over this structure
     pub mac: [u8; TEE_MAC_SIZE],
 }
 }
 
-impl ReportMac {
+impl ReportMacStruct {
     pub const UNPADDED_SIZE: usize = 256;
 
     #[cfg(target_env = "sgx")]
     pub fn verify(&self) -> Result<(), ErrorCode> {
-        everifyreport2(self.as_ref())
+        arch::everifyreport2(self.as_ref())
             // Same as `egetkey` reasoning: unwrap is okay here
             .map_err(|e| ErrorCode::try_from(e).unwrap())
-    }
-}
-
-#[cfg(target_env = "sgx")]
-impl AsRef<Align256<[u8; ReportMac::UNPADDED_SIZE]>> for ReportMac {
-    fn as_ref(&self) -> &Align256<[u8; Self::UNPADDED_SIZE]> {
-        unsafe { &*(self as *const _ as *const _) }
     }
 }
 
