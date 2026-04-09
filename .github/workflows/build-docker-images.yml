@@ -15,9 +15,7 @@ on:
       - ".github/workflows/**"
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -26,4 +24,3 @@ jobs:
         run: |
           cd intel-sgx/ppid-retrieval-tool/Docker
           ./build.sh
-
