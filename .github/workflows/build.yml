@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "0 6 * * *" # Run CI Daily few hours after UTC midnight, so we can track changes from nightly rust & Intel PCS
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions: {}
 
 env:
