@@ -35,6 +35,8 @@ on:
       - "rs-libc_v[0-9]+.[0-9]+.[0-9]+"
       - "tdx-ql_v[0-9]+.[0-9]+.[0-9]+"
 
+permissions: {}
+
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
@@ -54,6 +56,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: sudo ./install_build_deps.sh
@@ -85,10 +89,14 @@ jobs:
     needs: publish
     environment: "Publish to crates.io"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Needed to publish Github releases
 
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: ./install_build_deps.sh
