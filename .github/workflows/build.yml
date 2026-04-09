@@ -122,5 +122,5 @@ jobs:
       - name: Run memory allocator stress test
         run: cd ./examples/mem-alloc-test && cargo run
 
-      - name: snmalloc correntness test
+      - name: snmalloc correctness test
         run: cd ./examples/mem-correctness-test && cargo run
