@@ -9,6 +9,8 @@ on:
   schedule:
     - cron: "0 6 * * *" # Run CI Daily few hours after UTC midnight, so we can track changes from nightly rust & Intel PCS
 
+permissions: {}
+
 env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
@@ -28,7 +30,10 @@ jobs:
       CMAKE_POLICY_VERSION_MINIMUM: 3.5
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Conditionally export PCS_API_KEY and PCCS_URL
         run: |
