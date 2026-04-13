@@ -61,10 +61,17 @@ pub fn get_runtime_configuration(
     }
     
     config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
-    
-    let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(format!("nodes.{}", server)));
+
+    let base_path = if server.starts_with("ccm.") && server.ends_with("fortanix.com") {
+        format!("nodes.{}", server)
+    } else {
+        server.to_owned()
+    };
+
+    let ssl = MbedSSLClient::new_with_sni(Arc::new(config), true, Some(base_path.clone()));
     let connector = HttpsConnector::new(ssl);
-    let client = Client::try_new_with_connector(&format!("https://{}:{}/v1/runtime/app_configs", server, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
+    let mut client = Client::try_new_with_connector(&format!("https://{}:{}", base_path, port), None, connector).map_err(|e| format!("EM SaaS request failed: {:?}", e))?;
+    client.set_use_new_paths(true);
     let response = client.get_runtime_application_config(expected_hash).map_err(|e| format!("Failed requesting workflow config response: {:?}", e))?;
 
     Ok(response)
