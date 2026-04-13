@@ -17,16 +17,9 @@ use crate::{enum_def, slice, struct_def, ReportMacStruct, Sha384Hash};
 #[cfg(target_env = "sgx")]
 use crate::ErrorCode;
 
-/// SGX Legacy Report Type
-pub const SGX_LEGACY_REPORT_TYPE: usize = 0x0;
-/// TEE Report Type2
-pub const TEE_REPORT2_TYPE: usize = 0x8;
-/// SUBTYPE for Report Type2 is 0
-pub const TEE_REPORT2_SUBTYPE: usize = 0x0;
-
 // All variants of REPORTTYPE.VERSION that is valid for TDX report
 enum_def! {
-#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum TdxReportTypeVersion {
     NoBound       = 0x00,
@@ -34,9 +27,6 @@ pub enum TdxReportTypeVersion {
     ConfigSvnUsed = 0x02,
 }
 }
-
-// Ensure new type name is backward compatibe
-pub type TdxReportMac = super::ReportMacStruct;
 
 /// Size of a TDX report in bytes.
 pub const TDX_REPORT_SIZE: usize = 1024;
@@ -190,11 +180,6 @@ struct_def! {
 
 impl TdxReportV1 {
     pub const UNPADDED_SIZE: usize = 1024;
-
-    #[cfg(target_env = "sgx")]
-    pub fn verify(&self) -> Result<(), ErrorCode> {
-        self.report_mac.verify()
-    }
 }
 
 #[cfg(not(feature = "large_array_derive"))]
