@@ -28,12 +28,10 @@ extern crate serde;
 #[cfg(feature = "serde")]
 use serde::{Serialize, Deserialize};
 
-#[cfg(all(target_env = "sgx", feature = "sgxstd"))]
-use std::os::fortanix_sgx::arch;
-#[cfg(all(target_env = "sgx", not(feature = "sgxstd")))]
+#[cfg(target_env = "sgx")]
 mod arch;
-use core::{convert::TryFrom, num::TryFromIntError, slice};
 
+use core::{slice, convert::TryFrom};
 
 #[cfg(feature = "serde")]
 mod array_64 {
@@ -116,6 +114,7 @@ macro_rules! impl_default_clone_eq {
 
 pub mod tdx;
 
+#[macro_export]
 macro_rules! enum_def {
     (
         #[derive($($derive:meta),*)]
@@ -130,8 +129,8 @@ macro_rules! enum_def {
             $($key = $val,)*
         }
 
-        impl TryFrom<$repr> for $name {
-            type Error = TryFromIntError;
+        impl core::convert::TryFrom<$repr> for $name {
+            type Error = core::num::TryFromIntError;
             fn try_from(v: $repr) -> Result<Self, Self::Error> {
                 match v {
                     $($val => Ok($name::$key),)*
@@ -223,7 +222,9 @@ macro_rules! struct_def {
     (@align bytes 128 name $name:ident) => {
         struct_def!(@align type Align128 name $name);
     };
-
+    (@align bytes 256 name $name:ident) => {
+        struct_def!(@align type Align256 name $name);
+    };
     (@align bytes 512 name $name:ident) => {
         struct_def!(@align type Align512 name $name);
     };
@@ -305,6 +306,7 @@ pub enum ErrorCode {
     PageAttributesMismatch =  19,
     PageNotModifiable      =  20,
     PageNotDebuggable      =  21,
+    InvalidReportMacStruct =  28,
     InvalidCpusvn          =  32,
     InvalidIsvsvn          =  64,
     UnmaskedEvent          = 128,
@@ -702,7 +704,7 @@ impl Report {
     /// implementation of the verifying function.
     ///
     /// Care should be taken that `check_mac` prevents timing attacks,
-    /// in particular that the comparison happens in constant time. 
+    /// in particular that the comparison happens in constant time.
     #[cfg(target_env = "sgx")]
     pub fn verify<F, R>(&self, check_mac: F) -> R
     where
@@ -805,6 +807,106 @@ bitflags! {
 impl Default for Keypolicy {
     fn default() -> Self {
         Self::empty()
+    }
+}
+
+struct_def! {
+    /// Rust definition of `REPORTTYPE` from `REPORTMACSTRUCT`.
+    ///
+    /// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-4.
+    /// Version: 343754-002US, MAY 2021
+    /// Link: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
+    #[repr(C, align(4))]
+    #[derive(Clone, Debug, Default, Eq, PartialEq)]
+    pub struct ReportType {
+        /// Trusted Execution Environment(TEE) type:
+        ///   0x00:      SGX Legacy REPORT TYPE
+        ///   0x7F-0x01: Reserved
+        ///   0x80:      Reserved
+        ///   0x81:      TEE Report type 2
+        ///   0xFF-0x82: Reserved
+        pub report_type: u8,
+        /// TYPE-specific subtype, Stage1: value is 0
+        pub subtype: u8,
+        /// TYPE-specific version, Stage1: value is 0
+        pub version: u8,
+        pub reserved: u8,
+    }
+}
+
+impl ReportType {
+    pub const UNPADDED_SIZE: usize = 4;
+}
+
+// All variants of ReportVersion that is valid for TDX report
+enum_def! {
+#[derive(Clone,Copy,Debug,PartialEq,Eq)]
+#[repr(u8)]
+pub enum ReportTypeType {
+    Sgx = 0x00,
+    // 0x01 - 0x7F - Reserved for processor-based TEE report
+    // 0x80 - Reserved for SEAM-based TEE report
+    Tdx = 0x81,
+    // 0x82 - 0xFF - Reserved for SEAM-based TEE report
+}
+}
+
+/// SHA384 hash size in bytes
+pub const HASH_384_SIZE: usize = 48;
+/// SHA384 hash
+pub type Sha384Hash = [u8; HASH_384_SIZE];
+
+pub const CPU_SVN_SIZE: usize = 16;
+pub const REPORT_MAC_STRUCT_SIZE: usize = 256;
+pub const REPORT_MAC_STRUCT_RESERVED1_BYTES: usize = 12;
+pub const REPORT_MAC_STRUCT_RESERVED2_BYTES: usize = 32;
+pub const REPORT_DATA_SIZE: usize = 64;
+
+/// Message SHA 256 HASH Code - 32 bytes
+pub const TEE_MAC_SIZE: usize = 32;
+
+
+struct_def! {
+/// Rust definition of `REPORTMACSTRUCT`, used by TDX `TDREPORT_STRUCT`
+/// and the future 256BITSGX
+///
+/// Ref: Intel® Trust Domain CPU Architectural Extensions, table 2-5.
+/// Version: 343754-002US, MAY 2021
+/// Link TDX: <https://cdrdv2.intel.com/v1/dl/getContent/733582>
+/// Link 256BITSGX: <https://cdrdv2-public.intel.com/851355/319433-057-architecture-instruction-set-extensions-programming-reference.pdf>
+#[repr(C, align(256))]
+#[cfg_attr(
+    feature = "large_array_derive",
+    derive(Clone, Debug, Default, Eq, PartialEq)
+)]
+pub struct ReportMacStruct {
+    /// (  0) TEE Report type
+    pub report_type: ReportType,
+    /// (  4) Reserved, must be zero
+    pub _reserved1: [u8; REPORT_MAC_STRUCT_RESERVED1_BYTES],
+    /// ( 16) Security Version of the CPU
+    pub cpusvn: [u8; CPU_SVN_SIZE],
+    /// ( 32) SHA384 of TEE_TCB_INFO for TEEs
+    pub tee_tcb_info_hash: Sha384Hash,
+    /// ( 80) SHA384 of TEE_INFO
+    pub tee_info_hash: Sha384Hash,
+    /// (128) Data provided by the user
+    pub report_data: [u8; REPORT_DATA_SIZE],
+    /// (192) Reserved, must be zero
+    pub _reserved2: [u8; REPORT_MAC_STRUCT_RESERVED2_BYTES],
+    /// (224) The Message Authentication Code over this structure
+    pub mac: [u8; TEE_MAC_SIZE],
+}
+}
+
+impl ReportMacStruct {
+    pub const UNPADDED_SIZE: usize = 256;
+
+    #[cfg(target_env = "sgx")]
+    pub fn verify(&self) -> Result<(), ErrorCode> {
+        arch::everifyreport2(self.as_ref())
+            // Same as `egetkey` reasoning: unwrap is okay here
+            .map_err(|e| ErrorCode::try_from(e).unwrap())
     }
 }
 

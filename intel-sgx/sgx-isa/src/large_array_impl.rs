@@ -288,3 +288,18 @@ impl ::core::fmt::Debug for Keyrequest {
         }
     }
 }
+
+impl ::core::fmt::Debug for ReportMacStruct {
+    fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+        f.debug_struct("ReportMac")
+            .field("report_type", &self.report_type)
+            .field("reserved1", &self._reserved1)
+            .field("cpusvn", &self.cpusvn)
+            .field("tee_tcb_info_hash", &self.tee_tcb_info_hash)
+            .field("tee_info_hash", &self.tee_info_hash)
+            .field("report_data", &self.report_data)
+            .field("reserved2", &self._reserved2)
+            .field("mac", &self.mac)
+            .finish()
+    }
+}

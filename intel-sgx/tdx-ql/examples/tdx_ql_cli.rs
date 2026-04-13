@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use tdx_ql::{
-    TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, extend_tdx_rtmr,
+    REPORT_DATA_SIZE, TDX_REPORT_SIZE, TDX_RTMR_EXTEND_DATA_SIZE, extend_tdx_rtmr,
     get_tdx_report,
 };
 
@@ -41,8 +41,8 @@ fn main() {
             verbose,
         } => {
             let report_data = match report_data {
-                Some(hex) => parse_hex_exact::<TDX_REPORT_DATA_SIZE>(&hex),
-                None => Ok([0u8; TDX_REPORT_DATA_SIZE]),
+                Some(hex) => parse_hex_exact::<REPORT_DATA_SIZE>(&hex),
+                None => Ok([0u8; REPORT_DATA_SIZE]),
             }
             .unwrap_or_else(|err| exit_with_error(&err));
 

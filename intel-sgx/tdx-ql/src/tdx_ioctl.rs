@@ -8,7 +8,7 @@
 //! ioctl-based TDX attestation backend.
 
 use crate::{
-    errno_to_tdx_err, TdxError, TdxReportV1, TDX_REPORT_DATA_SIZE, TDX_REPORT_SIZE,
+    errno_to_tdx_err, TdxError, TdxReportV1, REPORT_DATA_SIZE, TDX_REPORT_SIZE,
     TDX_RTMR_EXTEND_DATA_SIZE,
 };
 
@@ -16,7 +16,7 @@ const TDX_ATTEST_DEV_PATH: &str = "/dev/tdx_guest";
 
 #[repr(C)]
 struct TdxReportReq {
-    report_data: [u8; TDX_REPORT_DATA_SIZE],
+    report_data: [u8; REPORT_DATA_SIZE],
     td_report: [u8; TDX_REPORT_SIZE],
 }
 
@@ -26,7 +26,7 @@ nix::ioctl_readwrite!(tdx_cmd_get_report, b'T', 1, TdxReportReq);
 /// This function only able to provide a report with version number 0.
 ///
 /// Note: Linux kernel currently only support version 0, see <https://docs.kernel.org/virt/coco/tdx-guest.html>
-pub fn get_report(report_data: [u8; TDX_REPORT_DATA_SIZE]) -> Result<TdxReportV1, TdxError> {
+pub fn get_report(report_data: [u8; REPORT_DATA_SIZE]) -> Result<TdxReportV1, TdxError> {
     use std::os::fd::AsRawFd;
     let mut req = TdxReportReq {
         report_data,
