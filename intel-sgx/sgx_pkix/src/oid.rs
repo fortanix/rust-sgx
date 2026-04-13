@@ -30,6 +30,8 @@ lazy_static!{
     pub static ref attestationEmbeddedQe3Quote: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 4].into();
     pub static ref attestationDcapSgx: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 5].into();
     pub static ref attestationDcapTdx: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 16].into();
+    pub static ref attestationTeeReportMac: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 17].into();
+    pub static ref attestationTdxReportMeasurements: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 2, 18].into();
 
     // Fortanix public key algorithm identifiers
     pub static ref ledaCrypt_34_0: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 4, 1].into();
