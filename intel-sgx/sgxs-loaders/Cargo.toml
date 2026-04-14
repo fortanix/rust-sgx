@@ -25,7 +25,7 @@ no_sgx_enclave_common = []
 
 [dependencies]
 # Project dependencies
-sgxs = { version = "0.8.0", path = "../sgxs" }
+sgxs = { version = "0.8.2", path = "../sgxs" }
 sgx-isa = { version = "0.5.0", path = "../sgx-isa" }
 
 # External dependencies

@@ -43,7 +43,7 @@ clap = "2.34.0"
 
 report-test = { version = "0.5", path = "../report-test" }
 aesm-client = { version = "0.6", features = ["sgxs"], path = "../aesm-client" }
-sgxs = { version = "0.8", path = "../sgxs" }
+sgxs = { version = "0.8.2", path = "../sgxs" }
 sgxs-loaders = { version = "0.5", path = "../sgxs-loaders" }
 
 [[example]]
