@@ -1,6 +1,6 @@
 [package]
 name = "ias"
-version = "0.2.2"
+version = "0.2.3"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2018"
@@ -23,8 +23,8 @@ url = "2.2"
 mbedtls = { version = ">=0.12.0, <0.14.0", features = ["std"], default-features = false, optional = true }
 pkix = ">=0.1.0, <0.3.0"
 
-sgx-isa = { version = "0.4", path = "../sgx-isa" }
-sgx_pkix = { version = "0.2", path = "../sgx_pkix" }
+sgx-isa = { version = "0.5", path = "../sgx-isa" }
+sgx_pkix = { version = "0.3", path = "../sgx_pkix" }
 
 [target.'cfg(not(target_env="sgx"))'.dependencies]
 reqwest = { version = "0.12", features = ["json"], optional = true }
@@ -43,7 +43,7 @@ clap = "2.34.0"
 
 report-test = { version = "0.5", path = "../report-test" }
 aesm-client = { version = "0.6", features = ["sgxs"], path = "../aesm-client" }
-sgxs = { version = "0.8", path = "../sgxs" }
+sgxs = { version = "0.8.2", path = "../sgxs" }
 sgxs-loaders = { version = "0.5", path = "../sgxs-loaders" }
 
 [[example]]
