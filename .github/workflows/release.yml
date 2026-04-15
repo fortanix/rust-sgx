@@ -6,34 +6,40 @@ name: Create GitHub release and publish crate to crates.io
 on:
   push:
     tags:
-      - 'em-app_v[0-9]+.[0-9]+.[0-9]+'
-      - 'aesm-client_v[0-9]+.[0-9]+.[0-9]+'
-      - 'async-usercalls_v[0-9]+.[0-9]+.[0-9]+'
-      - 'confidential-vm-blobs_v[0-9]+.[0-9]+.[0-9]+'
-      - 'dcap-artifact-retrieval_v[0-9]+.[0-9]+.[0-9]+'
-      - 'dcap-provider_v[0-9]+.[0-9]+.[0-9]+'
-      - 'dcap-ql-sys_v[0-9]+.[0-9]+.[0-9]+'
-      - 'dcap-ql_v[0-9]+.[0-9]+.[0-9]+'
-      - 'dcap-retrieve-pckid_v[0-9]+.[0-9]+.[0-9]+'
-      - 'enclave-runner_v[0-9]+.[0-9]+.[0-9]+'
-      - 'enclave-runner-sgx_v[0-9]+.[0-9]+.[0-9]+'
-      - 'fortanix-sgx-abi_v[0-9]+.[0-9]+.[0-9]+'
-      - 'fortanix-sgx-tools_v[0-9]+.[0-9]+.[0-9]+'
-      - 'fortanix-vme-eif_v[0-9]+.[0-9]+.[0-9]+'
-      - 'fortanix-vme-initramfs_v[0-9]+.[0-9]+.[0-9]+'
-      - 'fortanix-vme-runner_v[0-9]+.[0-9]+.[0-9]+'
-      - 'ias_v[0-9]+.[0-9]+.[0-9]+'
-      - 'insecure-time_v[0-9]+.[0-9]+.[0-9]+'
-      - 'pcs_v[0-9]+.[0-9]+.[0-9]+'
-      - 'report-test_v[0-9]+.[0-9]+.[0-9]+'
-      - 'sgx_pkix_v[0-9]+.[0-9]+.[0-9]+'
-      - 'sgx-isa_v[0-9]+.[0-9]+.[0-9]+'
-      - 'sgxs-loaders_v[0-9]+.[0-9]+.[0-9]+'
-      - 'sgxs-tools_v[0-9]+.[0-9]+.[0-9]+'
-      - 'sgxs_v[0-9]+.[0-9]+.[0-9]+'
-      - 'ipc-queue_v[0-9]+.[0-9]+.[0-9]+'
-      - 'rs-libc_v[0-9]+.[0-9]+.[0-9]+'
-      - 'tdx-ql_v[0-9]+.[0-9]+.[0-9]+'
+      - "em-app_v[0-9]+.[0-9]+.[0-9]+"
+      - "aesm-client_v[0-9]+.[0-9]+.[0-9]+"
+      - "async-usercalls_v[0-9]+.[0-9]+.[0-9]+"
+      - "confidential-vm-blobs_v[0-9]+.[0-9]+.[0-9]+"
+      - "dcap-artifact-retrieval_v[0-9]+.[0-9]+.[0-9]+"
+      - "dcap-provider_v[0-9]+.[0-9]+.[0-9]+"
+      - "dcap-ql-sys_v[0-9]+.[0-9]+.[0-9]+"
+      - "dcap-ql_v[0-9]+.[0-9]+.[0-9]+"
+      - "dcap-retrieve-pckid_v[0-9]+.[0-9]+.[0-9]+"
+      - "enclave-runner_v[0-9]+.[0-9]+.[0-9]+"
+      - "enclave-runner-sgx_v[0-9]+.[0-9]+.[0-9]+"
+      - "fortanix-sgx-abi_v[0-9]+.[0-9]+.[0-9]+"
+      - "fortanix-sgx-tools_v[0-9]+.[0-9]+.[0-9]+"
+      - "fortanix-vme-eif_v[0-9]+.[0-9]+.[0-9]+"
+      - "fortanix-vme-initramfs_v[0-9]+.[0-9]+.[0-9]+"
+      - "fortanix-vme-runner_v[0-9]+.[0-9]+.[0-9]+"
+      - "ias_v[0-9]+.[0-9]+.[0-9]+"
+      - "insecure-time_v[0-9]+.[0-9]+.[0-9]+"
+      - "pcs_v[0-9]+.[0-9]+.[0-9]+"
+      - "report-test_v[0-9]+.[0-9]+.[0-9]+"
+      - "sgx_pkix_v[0-9]+.[0-9]+.[0-9]+"
+      - "sgx-isa_v[0-9]+.[0-9]+.[0-9]+"
+      - "sgxs-loaders_v[0-9]+.[0-9]+.[0-9]+"
+      - "sgxs-tools_v[0-9]+.[0-9]+.[0-9]+"
+      - "sgxs_v[0-9]+.[0-9]+.[0-9]+"
+      - "ipc-queue_v[0-9]+.[0-9]+.[0-9]+"
+      - "rs-libc_v[0-9]+.[0-9]+.[0-9]+"
+      - "tdx-ql_v[0-9]+.[0-9]+.[0-9]+"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
 
 env:
   RUST_BACKTRACE: 1
@@ -53,23 +59,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: sudo ./install_build_deps.sh
-
 
       - name: Get name of crate to be published
         run: |
           # Extract the crate name from the GITHUB_REF_NAME environment variable
           # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
           export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
-          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+          echo "CRATE_NAME=$CRATE_NAME" >> "$GITHUB_ENV"
 
       - name: Set per-crate config (toolchain/target)
         run: |
           source ./crate-publish-config.sh "$CRATE_NAME"
-          echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET" >> $GITHUB_ENV
+          echo "CARGO_BUILD_TARGET=$CARGO_BUILD_TARGET" >> "$GITHUB_ENV"
 
       - name: Update Rust toolchain
         run: rustup update
@@ -86,10 +93,14 @@ jobs:
     needs: publish
     environment: "Publish to crates.io"
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # Needed to publish Github releases
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
 
       - name: Install build dependencies
         run: ./install_build_deps.sh
@@ -102,10 +113,10 @@ jobs:
           # Extract the crate name from the GITHUB_REF_NAME environment variable
           # GITHUB_REF_NAME contains the Tag name (e.g. rs-lic_v0.2.4) associated with the event
           export CRATE_NAME=$(python3 -c "print('$GITHUB_REF_NAME'.rsplit('_v', 1)[0])")
-          echo "CRATE_NAME=$CRATE_NAME" >> $GITHUB_ENV
+          echo "CRATE_NAME=$CRATE_NAME" >> "$GITHUB_ENV"
 
       - name: Build artifacts for GitHub Release
-        run: ./build-release-artifacts.py --target x86_64-unknown-linux-gnu --package $CRATE_NAME
+        run: ./build-release-artifacts.py --target x86_64-unknown-linux-gnu --package "$CRATE_NAME"
 
       - name: Publish GitHub Release using GitHub CLI
         env:
