@@ -66,7 +66,7 @@ pub enum Error {
 
 #[cfg(not(target_env = "sgx"))]
 fn cpuid(leaf: u32, eax: &mut u32, ebx: &mut u32, ecx: &mut u32, edx: &mut u32) {
-    unsafe { 
+    unsafe {
         let res = __cpuid(leaf);
         *eax = res.eax;
         *ebx = res.ebx;
@@ -401,7 +401,7 @@ impl<T: NativeTime> TimeMode<T> {
                 None => {
                     *last_time = Some(now);
                     now
-                }        
+                }
             };
             drop(last_time);
             unlock(self);
@@ -598,6 +598,7 @@ impl<T: NativeTime> Tsc<T> {
             return Err(ResyncError::WithinFrequencyLearningPeriod(system_now));
         }
         let tsc_now = Ticks::now();
+        // Arash: we always estimate freq from the beginning of time
         let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
 
         // Calculate error
@@ -610,7 +611,14 @@ impl<T: NativeTime> Tsc<T> {
             max_sync_interval.to_owned()
         } else {
             // Common case, estimate interval based on error and max acceptable error
-            diff_system * max_acceptable_drift.div_duration_f64(error) as u32
+
+            let _better_still_no_good = *max_sync_interval * max_acceptable_drift.div_duration_f64(error) as u32;
+
+            let _better = _better_still_no_good.max(*max_sync_interval);
+
+            // Arash: this does not make any sense
+            // diff_system * max_acceptable_drift.div_duration_f64(error) as u32
+            _better
         };
 
         Ok((system_now, max_sync_interval, estimated_freq))
