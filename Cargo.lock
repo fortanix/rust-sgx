@@ -1513,22 +1513,22 @@ dependencies = [
 
 [[package]]
 name = "em-client"
-version = "4.0.1"
+version = "4.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "987ea4131ab7c1fd254b26131b1198b333a822efd1c498acce803c704c8d5603"
+checksum = "a89c67a846bc4d226b730d258f02444b88aca1af0b994eebdee9f9c5dbeac5b3"
 dependencies = [
- "base64 0.10.1",
- "bitflags 1.2.1",
+ "base64 0.22.1",
+ "bitflags 2.11.0",
  "chrono",
- "futures 0.1.30",
+ "futures 0.3.31",
  "hyper 0.10.16",
  "lazy_static",
- "log 0.3.9",
+ "log 0.4.28",
  "mbedtls",
- "mime 0.2.6",
+ "mime 0.3.17",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_ignored",
+ "serde_ignored 0.1.12",
  "serde_json",
  "url 1.7.2",
  "uuid 0.6.5",
@@ -1549,7 +1549,7 @@ dependencies = [
  "mime 0.2.6",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde_ignored",
+ "serde_ignored 0.0.4",
  "serde_json",
  "url 1.7.2",
  "uuid 0.6.5",
@@ -2938,9 +2938,9 @@ dependencies = [
 
 [[package]]
 name = "mime"
-version = "0.3.16"
+version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a60c7ce501c71e03a9c9c0d35b861413ae925bd979cc7a4e30d060069aaac8d"
+checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "minimal-lexical"
@@ -3960,7 +3960,7 @@ dependencies = [
  "ipnet",
  "js-sys",
  "log 0.4.28",
- "mime 0.3.16",
+ "mime 0.3.17",
  "native-tls",
  "once_cell",
  "percent-encoding 2.3.2",
@@ -4352,6 +4352,15 @@ name = "serde_ignored"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "190e9765dcedb56be63b6e0993a006c7e3b071a016a304736e4a315dc01fb142"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "serde_ignored"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b516445dac1e3535b6d658a7b528d771153dfb272ed4180ca4617a20550365ff"
 dependencies = [
  "serde",
 ]
