@@ -14,6 +14,7 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::time::Duration;
 
+
 use pcs::{
     CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
 };
@@ -25,7 +26,7 @@ use super::{
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
 };
 use super::intel::TcbEvaluationDataNumbersApi;
-use crate::Error;
+use crate::{Error, provisioning_client::PlatformApiTag};
 
 pub struct PccsProvisioningClientBuilder {
     base_url: Cow<'static, str>,
@@ -273,7 +274,7 @@ impl<T: PlatformType> TcbInfoApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo> TcbInfoService<'inp, T> for TcbInfoApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -290,7 +291,7 @@ impl<'inp, T: PlatformTypeForTcbInfo> TcbInfoService<'inp, T> for TcbInfoApi<T> 
 /// Implementation of Get TCB Info API (section 3.3 of [reference]).
 ///
 /// [reference]: <https://download.01.org/intel-sgx/sgx-dcap/1.22/linux/docs/SGX_DCAP_Caching_Service_Design_Guide.pdf>
-impl<'inp, T: PlatformTypeForTcbInfo> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp> for TcbInfoApi<T> {
     type Input = TcbInfoIn<'inp>;
     type Output = TcbInfo<T>;
 
@@ -299,12 +300,12 @@ impl<'inp, T: PlatformTypeForTcbInfo> ProvisioningServiceApi<'inp> for TcbInfoAp
         let fmspc = input.fmspc.as_bytes().to_hex();
         let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                self.base_url, api_version, fmspc, evaluation_data_number)
+                "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
+                self.base_url, T::tag(), api_version, fmspc, evaluation_data_number)
         } else {
             format!(
-                "{}/sgx/certification/v{}/tcb?fmspc={}&update=early",
-                self.base_url, api_version, fmspc,
+                "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
+                self.base_url, T::tag(), api_version, fmspc,
             )
         };
         Ok((url, Vec::new()))
@@ -635,6 +636,40 @@ mod tests {
                     .and_then(|tcb| { Ok(tcb.write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build()).unwrap()) })
                     .is_ok());
             }
+        }
+    }
+
+    #[test]
+    pub fn tcb_info_tdx() {
+
+        let client = make_client(PcsVersion::V4);
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+
+        // List of knowns FMSPCS that has valid TDX TCB
+        let fmspcs = [
+            Fmspc::try_from("00a06d080000").unwrap(),
+            Fmspc::try_from("70a06d070000").unwrap(),
+            Fmspc::try_from("00a06e050000").unwrap(),
+            Fmspc::try_from("50806f000000").unwrap(),
+            Fmspc::try_from("20a06e050000").unwrap(),
+            Fmspc::try_from("10a06f010000").unwrap(),
+            Fmspc::try_from("b0c06f000000").unwrap(),
+            Fmspc::try_from("20a06f000000").unwrap(),
+            Fmspc::try_from("60a06f000000").unwrap(),
+            Fmspc::try_from("c0806f000000").unwrap(),
+            Fmspc::try_from("20a06d080000").unwrap(),
+            Fmspc::try_from("10a06d000000").unwrap(),
+            Fmspc::try_from("00806f050000").unwrap(),
+            Fmspc::try_from("90c06f000000").unwrap(),
+        ];
+
+        for item in fmspcs.iter() {
+            let tdx_tcbinfo = client.tdx_tcbinfo(&item, None);
+            println!("FMSPC: {} => {}", item.to_string(), tdx_tcbinfo.is_ok());
+            assert!(tdx_tcbinfo.is_ok());
+
+            let _ = tdx_tcbinfo.unwrap().verify(&root_cas, 2).unwrap();
         }
     }
 
