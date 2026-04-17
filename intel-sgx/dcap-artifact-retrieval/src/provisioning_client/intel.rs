@@ -11,25 +11,20 @@
 //! - <https://api.portal.trustedservices.intel.com/provisioning-certification>
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
+use pcs::platform;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl,
-    PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
-    TcbInfo, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbInfo, Unverified
 };
 use rustc_serialize::hex::ToHex;
-use std::borrow::Cow;
-use std::marker::PhantomData;
 use std::time::Duration;
 
 use super::common::*;
 use super::{
-    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
-    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
-    TcbEvaluationDataNumbersIn, TcbEvaluationDataNumbersService, TcbInfoIn, TcbInfoService,
-    WithApiVersion,
+    Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn,
+    PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, StatusCode,
 };
-use crate::provisioning_client::PlatformApiTag;
-use crate::Error;
+use crate::provisioning_client::{BackoffService, CachedService};
+use crate::{Error, ProvisioningClient};
 
 pub(crate) const INTEL_BASE_URL: &'static str = "https://api.trustedservices.intel.com";
 const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
@@ -37,7 +32,7 @@ const SUBSCRIPTION_KEY_HEADER: &'static str = "Ocp-Apim-Subscription-Key";
 pub struct IntelProvisioningClientBuilder {
     api_key: Option<String>,
     api_version: PcsVersion,
-    client_builder: ClientBuilder,
+    pub(crate) client_builder: ClientBuilder,
 }
 
 impl IntelProvisioningClientBuilder {
@@ -59,93 +54,129 @@ impl IntelProvisioningClientBuilder {
         self
     }
 
-    pub fn build<F: for<'a> Fetcher<'a>>(self, fetcher: F) -> Client<F> {
-        let pck_certs = PckCertsApi::new(self.api_version.clone(), self.api_key.clone());
-        let pck_cert = PckCertApi::new(self.api_version.clone(), self.api_key.clone());
-        let pck_crl = PckCrlApi::new(self.api_version.clone());
-        let qeid = QeIdApi::new(self.api_version.clone());
-        let sgx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
-        let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
-        let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
-
-        self.client_builder.build(
-            pck_certs,
-            pck_cert,
-            pck_crl,
-            qeid,
-            sgx_tcbinfo,
-            tdx_tcbinfo,
-            sgx_evaluation_data_numbers,
-            tdx_evaluation_data_numbers,
+    pub fn build<F: for<'a> Fetcher<'a>>(&self, fetcher: F) -> IntelPCSClient<F> {
+        let client = self.client_builder.build(
+            INTEL_BASE_URL,
+            self.api_version,
             fetcher,
-        )
-    }
-}
-
-pub struct PckCertsApi {
-    api_key: Option<String>,
-    api_version: PcsVersion,
-}
-
-impl PckCertsApi {
-    pub(crate) fn new(api_version: PcsVersion, api_key: Option<String>) -> PckCertsApi {
-        PckCertsApi {
-            api_version,
-            api_key,
+        );
+        IntelPCSClient {
+            pckcerts_service: CachedService::new(
+                BackoffService::new(
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            pckcert_service: CachedService::new(
+                BackoffService::new(
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            pckcrl_service: CachedService::new(
+                BackoffService::new(
+                    self.client_builder.retry_timeout.clone(),
+                ),
+                self.client_builder.cache_capacity.clone(),
+                self.client_builder.cache_shelf_time.clone(),
+            ),
+            client
         }
     }
 }
 
-impl<'inp> PckCertsService<'inp> for PckCertsApi {
-    fn build_input(
-        &'inp self,
-        enc_ppid: &'inp EncPpid,
-        pce_id: PceId,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertsIn {
-            enc_ppid,
-            pce_id,
-            api_key: &self.api_key,
-            api_version: self.api_version.clone(),
-        }
-    }
+pub struct IntelPCSClient<F: for<'a> Fetcher<'a>> {
+    pckcerts_service: CachedService<PckCertsService>,
+    pckcert_service: CachedService<PckCertService>,
+    pckcrl_service: CachedService<PckCrlService>,
+    pub(crate) client: Client<F>
 }
 
-impl<'inp> PckCertService<'inp> for PckCertApi {
-    fn build_input(
-        &'inp self,
-        encrypted_ppid: Option<&'inp EncPpid>,
-        pce_id: &'inp PceId,
-        cpu_svn: &'inp CpuSvn,
+impl<F: for<'a> Fetcher<'a>> IntelPCSClient<F> {
+    pub fn pckcerts(&self, api_key: Option<String>, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
+        let input = PckCertsIn { enc_ppid: encrypted_ppid, pce_id, api_key: &api_key, api_version: self.client.api_version };
+        self.pckcerts_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    pub fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
         pce_isvsvn: PceIsvsvn,
-        qe_id: Option<&'inp QeId>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCertIn {
-            encrypted_ppid,
-            pce_id,
-            cpu_svn,
-            pce_isvsvn,
-            qe_id,
-            api_key: &self.api_key,
-            api_version: self.api_version,
-        }
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        let input = PckCertIn { encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id, api_version: self.client.api_version, api_key };
+        self.pckcert_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    pub fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        self.client.tdx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    pub fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        self.client.tdx_tcb_evaluation_data_numbers()
     }
 }
 
-/// Implementation of pckcerts
-/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
-    type Input = PckCertsIn<'inp>;
+impl<F: for<'a> Fetcher<'a>> ProvisioningClient for IntelPCSClient<F> {
+    fn pckcert(
+        &self,
+        api_key: &Option<String>,
+        encrypted_ppid: Option<&EncPpid>,
+        pce_id: &PceId,
+        cpu_svn: &CpuSvn,
+        pce_isvsvn: PceIsvsvn,
+        qe_id: Option<&QeId>,
+    ) -> Result<PckCert<Unverified>, Error> {
+        self.client.pckcert(api_key, encrypted_ppid, pce_id, cpu_svn, pce_isvsvn, qe_id)
+    }
+
+    fn pckcerts(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
+        self.pckcerts(None, &pck_id.enc_ppid, pck_id.pce_id)
+    }
+
+    fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error> {
+        let input = PckCrlIn { api_version: self.client.api_version, ca };
+        self.pckcrl_service.call_service(&self.client.fetcher, &self.client.base_url, &input)
+    }
+
+    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+        self.client.sgx_tcbinfo(fmspc, evaluation_data_number)
+    }
+
+    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+        todo!()
+    }
+
+    fn qe_identity(&self, evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
+        self.client.qe_identity(evaluation_data_number)
+    }
+
+    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        self.client.sgx_tcb_evaluation_data_numbers()
+    }
+
+    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        todo!()
+    }
+}
+
+pub struct PckCertsService;
+impl ProvisioningServiceApi for PckCertsService {
+    type Input<'a> = PckCertsIn<'a>;
     type Output = PckCerts;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(base_url: &str, input: &Self::Input<'_>) -> Result<(String, Vec<(String, String)>), Error> {
         let api_version = input.api_version as u8;
         let encrypted_ppid = input.enc_ppid.to_hex();
         let pce_id = input.pce_id.to_le_bytes().to_hex();
         let url = format!(
             "{}/sgx/certification/v{}/pckcerts?encrypted_ppid={}&pceid={}",
-            INTEL_BASE_URL, api_version, encrypted_ppid, pce_id,
+            base_url, api_version, encrypted_ppid, pce_id,
         );
         let headers = if let Some(api_key) = &input.api_key {
             vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
@@ -155,7 +186,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
         Ok((url, headers))
     }
 
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+    fn validate_response(status_code: StatusCode) -> Result<(), Error> {
         match status_code {
             StatusCode::Ok => Ok(()),
             StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
@@ -184,7 +215,6 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
     }
 
     fn parse_response(
-        &self,
         response_body: String,
         response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
@@ -194,421 +224,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for PckCertsApi {
     }
 }
 
-pub struct PckCertApi {
-    api_key: Option<String>,
-    api_version: PcsVersion,
-}
 
-impl PckCertApi {
-    pub(crate) fn new(api_version: PcsVersion, api_key: Option<String>) -> PckCertApi {
-        PckCertApi {
-            api_version,
-            api_key,
-        }
-    }
-}
-
-/// Implementation of pckcert
-/// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-certificate-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCertApi {
-    type Input = PckCertIn<'inp>;
-    type Output = PckCert<Unverified>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let encrypted_ppid = input
-            .encrypted_ppid
-            .ok_or(Error::NoEncPPID)
-            .map(|e_ppid| e_ppid.to_hex())?;
-        let cpusvn = input.cpu_svn.to_hex();
-        let pce_isvsvn = input.pce_isvsvn.to_le_bytes().to_hex();
-        let pce_id = input.pce_id.to_le_bytes().to_hex();
-        let url = format!(
-            "{}/sgx/certification/v{}/pckcert?encrypted_ppid={}&cpusvn={}&pcesvn={}&pceid={}",
-            INTEL_BASE_URL, api_version, encrypted_ppid, cpusvn, pce_isvsvn, pce_id,
-        );
-        let headers = if let Some(api_key) = input.api_key {
-            vec![(SUBSCRIPTION_KEY_HEADER.to_owned(), api_key.to_string())]
-        } else {
-            Vec::new()
-        };
-        Ok((url, headers))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
-            StatusCode::Unauthorized => Err(Error::PCSError(
-                status_code,
-                "Failed to authenticate or authorize the request (check your PCS key)",
-            )),
-            StatusCode::NotFound => Err(Error::PCSError(
-                status_code,
-                "Cannot find the requested certificate",
-            )),
-            StatusCode::TooManyRequests => Err(Error::PCSError(status_code, "Too many requests")),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCS suffered from an internal server error",
-            )),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(
-                status_code,
-                "PCS is temporarily unavailable",
-            )),
-            _ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, PCK_CERTIFICATE_ISSUER_CHAIN_HEADER)?;
-        Ok(PckCert::new(response_body, ca_chain))
-    }
-}
-
-pub struct PckCrlApi {
-    api_version: PcsVersion,
-}
-
-impl PckCrlApi {
-    pub fn new(api_version: PcsVersion) -> Self {
-        PckCrlApi { api_version }
-    }
-}
-
-impl<'inp> PckCrlService<'inp> for PckCrlApi {
-    fn build_input(
-        &'inp self,
-        ca: DcapArtifactIssuer,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        PckCrlIn {
-            api_version: self.api_version.clone(),
-            ca,
-        }
-    }
-}
-
-/// Implementation of pckcrl
-/// See: <https://api.portal.trustedservices.intel.com/documentation#pcs-revocation-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for PckCrlApi {
-    type Input = PckCrlIn;
-    type Output = PckCrl<Unverified>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let ca = match input.ca {
-            DcapArtifactIssuer::PCKProcessorCA => "processor",
-            DcapArtifactIssuer::PCKPlatformCA => "platform",
-            DcapArtifactIssuer::SGXRootCA => {
-                return Err(Error::PCSError(
-                    StatusCode::BadRequest,
-                    "Invalid ca parameter",
-                ));
-            }
-        };
-        let url = format!(
-            "{}/sgx/certification/v{}/pckcrl?ca={}&encoding=pem",
-            INTEL_BASE_URL, input.api_version as u8, ca,
-        );
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
-            StatusCode::Unauthorized => Err(Error::PCSError(
-                status_code,
-                "Failed to authenticate or authorize the request (check your PCS key)",
-            )),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCS suffered from an internal server error",
-            )),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(
-                status_code,
-                "PCS is temporarily unavailable",
-            )),
-            __ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, PCK_CRL_ISSUER_CHAIN_HEADER)?;
-        let crl = PckCrl::new(response_body, ca_chain)?;
-        Ok(crl)
-    }
-}
-
-pub struct TcbInfoApi<T> {
-    api_version: PcsVersion,
-    _type: PhantomData<T>,
-}
-
-impl<T: PlatformType> TcbInfoApi<T> {
-    pub fn new(api_version: PcsVersion) -> Self {
-        TcbInfoApi {
-            api_version,
-            _type: PhantomData,
-        }
-    }
-}
-
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T>
-    for TcbInfoApi<T>
-{
-    fn build_input(
-        &'inp self,
-        fmspc: &'inp Fmspc,
-        tcb_evaluation_data_number: Option<u16>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbInfoIn {
-            api_version: self.api_version.clone(),
-            fmspc,
-            tcb_evaluation_data_number,
-        }
-    }
-}
-
-// Implementation of Get TCB Info
-// <https://api.portal.trustedservices.intel.com/documentation#pcs-tcb-info-v4>>
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
-    for TcbInfoApi<T>
-{
-    type Input = TcbInfoIn<'inp>;
-    type Output = TcbInfo<T>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let fmspc = input.fmspc.as_bytes().to_hex();
-        let url = if let Some(evaluation_data_number) = input.tcb_evaluation_data_number {
-            format!(
-                "{}/{}/certification/v{}/tcb?fmspc={}&tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL,
-                T::tag(),
-                api_version,
-                fmspc,
-                evaluation_data_number
-            )
-        } else {
-            format!(
-                "{}/{}/certification/v{}/tcb?fmspc={}&update=early",
-                INTEL_BASE_URL,
-                T::tag(),
-                api_version,
-                fmspc,
-            )
-        };
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
-            StatusCode::Unauthorized => Err(Error::PCSError(
-                status_code,
-                "Failed to authenticate or authorize the request (check your PCS key)",
-            )),
-            StatusCode::NotFound => Err(Error::PCSError(status_code, "TCB info cannot be found")),
-            StatusCode::Gone => Err(Error::PCSError(status_code, "TCB info no longer available")),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCS suffered from an internal server error",
-            )),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(
-                status_code,
-                "PCS is temporarily unavailable",
-            )),
-            __ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let key = match api_version {
-            PcsVersion::V3 => TCB_INFO_ISSUER_CHAIN_HEADER_V3,
-            PcsVersion::V4 => TCB_INFO_ISSUER_CHAIN_HEADER_V4,
-        };
-        let ca_chain = parse_issuer_header(&response_headers, key)?;
-        let tcb_info = TcbInfo::parse(&response_body, ca_chain)?;
-        Ok(tcb_info)
-    }
-}
-
-pub struct QeIdApi {
-    api_version: PcsVersion,
-}
-
-impl QeIdApi {
-    pub fn new(api_version: PcsVersion) -> Self {
-        QeIdApi { api_version }
-    }
-}
-
-impl<'inp> QeIdService<'inp> for QeIdApi {
-    fn build_input(
-        &'inp self,
-        tcb_evaluation_data_number: Option<u16>,
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        QeIdIn {
-            api_version: self.api_version.clone(),
-            tcb_evaluation_data_number,
-        }
-    }
-}
-
-/// Implementation of qe/identity
-/// <https://api.portal.trustedservices.intel.com/documentation#pcs-certificates-v://api.portal.trustedservices.intel.com/documentation#pcs-qe-identity-v4>
-impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
-    type Input = QeIdIn;
-    type Output = QeIdentitySigned;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let api_version = input.api_version as u8;
-        let url = if let Some(tcb_evaluation_data_number) = input.tcb_evaluation_data_number {
-            format!(
-                "{}/sgx/certification/v{}/qe/identity?tcbEvaluationDataNumber={}",
-                INTEL_BASE_URL, api_version, tcb_evaluation_data_number
-            )
-        } else {
-            format!(
-                "{}/sgx/certification/v{}/qe/identity?update=early",
-                INTEL_BASE_URL, api_version,
-            )
-        };
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
-            StatusCode::Unauthorized => Err(Error::PCSError(
-                status_code,
-                "Failed to authenticate or authorize the request (check your PCS key)",
-            )),
-            StatusCode::NotFound => {
-                Err(Error::PCSError(status_code, "QE identity Cannot be found"))
-            }
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCS suffered from an internal server error",
-            )),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(
-                status_code,
-                "PCS is temporarily unavailable",
-            )),
-            __ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain = parse_issuer_header(&response_headers, ENCLAVE_ID_ISSUER_CHAIN_HEADER)?;
-        let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
-        Ok(id)
-    }
-}
-
-pub struct TcbEvaluationDataNumbersApi<T: PlatformTypeForTcbInfo> {
-    base_url: Cow<'static, str>,
-    _platform: PhantomData<T>,
-}
-
-impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbersApi<T> {
-    pub fn new(base_url: Cow<'static, str>) -> Self {
-        TcbEvaluationDataNumbersApi {
-            base_url,
-            _platform: PhantomData,
-        }
-    }
-}
-
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbEvaluationDataNumbersService<'inp, T>
-    for TcbEvaluationDataNumbersApi<T>
-{
-    fn build_input(&self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
-        TcbEvaluationDataNumbersIn
-    }
-}
-
-/// Implementation of TCB Evaluation Data Numbers endpoint
-/// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-retrieve-tcbevalnumbers-v4>
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'inp>
-    for TcbEvaluationDataNumbersApi<T>
-{
-    type Input = TcbEvaluationDataNumbersIn;
-    type Output = RawTcbEvaluationDataNumbers<T>;
-
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
-        let url = format!(
-            "{}/{}/certification/v{}/tcbevaluationdatanumbers",
-            self.base_url,
-            T::tag(),
-            input.api_version() as u8,
-        );
-        Ok((url, Vec::new()))
-    }
-
-    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
-        match &status_code {
-            StatusCode::Ok => Ok(()),
-            StatusCode::InternalServerError => Err(Error::PCSError(
-                status_code,
-                "PCS suffered from an internal server error",
-            )),
-            StatusCode::ServiceUnavailable => Err(Error::PCSError(
-                status_code,
-                "PCS is temporarily unavailable",
-            )),
-            __ => Err(Error::PCSError(
-                status_code,
-                "Unexpected response from PCS server",
-            )),
-        }
-    }
-
-    fn parse_response(
-        &self,
-        response_body: String,
-        response_headers: Vec<(String, String)>,
-        _api_version: PcsVersion,
-    ) -> Result<Self::Output, Error> {
-        let ca_chain =
-            parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
-        RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
-    }
-}
 
 #[cfg(all(test, feature = "reqwest"))]
 mod tests {
@@ -626,6 +242,11 @@ mod tests {
         WriteOptionsBuilder,
     };
 
+    use crate::PckCertIn;
+    use crate::PckCertsIn;
+    use crate::PckCrlIn;
+    use crate::QeIdIn;
+    use crate::TcbInfoIn;
     use crate::provisioning_client::{
         test_helpers, ProvisioningClientFuncSelector, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
     };
@@ -665,7 +286,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert_eq!(
                     test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
@@ -703,7 +324,7 @@ mod tests {
                 .iter()
             {
                 let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts( pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 // The cache should be populated after initial service call
@@ -714,10 +335,7 @@ mod tests {
 
                     let (cached_pcks, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .pckcerts_service
-                            .pcs_service()
-                            .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                        let input = PckCertsIn { enc_ppid: &pckid.enc_ppid, pce_id: pckid.pce_id, api_key: &pcs_api_key(), api_version };
                         input.hash(&mut hasher);
 
                         cache
@@ -732,7 +350,7 @@ mod tests {
 
                 // Second service call should return value from cache
                 let pcks_from_service = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
 
                 assert_eq!(pcks, pcks_from_service);
@@ -762,6 +380,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -810,6 +429,7 @@ mod tests {
             {
                 let pck = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -831,13 +451,7 @@ mod tests {
 
                     let (cached_pck, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcert_service.pcs_service().build_input(
-                            Some(&pckid.enc_ppid),
-                            &pckid.pce_id,
-                            &pckid.cpu_svn,
-                            pckid.pce_isvsvn,
-                            None,
-                        );
+                        let input = PckCertIn { encrypted_ppid: Some(&pckid.enc_ppid), pce_id: &pckid.pce_id, cpu_svn: &pckid.cpu_svn, pce_isvsvn: pckid.pce_isvsvn, qe_id: None, api_version, api_key: &pcs_api_key()};
                         input.hash(&mut hasher);
 
                         cache
@@ -861,6 +475,7 @@ mod tests {
                 // Second service call should return value from cache
                 let pck_from_service = client
                     .pckcert(
+                        &pcs_api_key(),
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
@@ -903,7 +518,7 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 assert!(client
                     .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
@@ -962,7 +577,7 @@ mod tests {
             .iter()
         {
             let pckcerts = client
-                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                 .unwrap();
             let fmspc = pckcerts.fmspc().unwrap();
 
@@ -1011,23 +626,20 @@ mod tests {
                 .iter()
             {
                 let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                    .pckcerts(pcs_api_key(), &pckid.enc_ppid, pckid.pce_id.clone())
                     .unwrap();
                 let fmspc = pckcerts.fmspc().unwrap();
                 let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
 
                 // The cache should be populated after initial service call
                 {
-                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
+                    let mut cache = client.client.sgx_tcbinfo_service.cache.lock().unwrap();
 
                     assert!(cache.len() > 0);
 
                     let (cached_tcb_info, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .sgx_tcbinfo_service
-                            .pcs_service()
-                            .build_input(&fmspc, None);
+                        let input = TcbInfoIn { api_version, fmspc: &fmspc, tcb_evaluation_data_number: None };
                         input.hash(&mut hasher);
 
                         cache
@@ -1107,7 +719,7 @@ mod tests {
 
                     let (cached_pckcrl, _) = {
                         let mut hasher = DefaultHasher::new();
-                        let input = client.pckcrl_service.pcs_service().build_input(ca);
+                        let input = PckCrlIn { api_version, ca };
                         input.hash(&mut hasher);
 
                         cache
@@ -1168,13 +780,13 @@ mod tests {
 
             // The cache should be populated after initial service call
             {
-                let mut cache = client.qeid_service.cache.lock().unwrap();
+                let mut cache = client.client.qeid_service.cache.lock().unwrap();
 
                 assert!(cache.len() > 0);
 
                 let (cached_qeid, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = QeIdIn{ api_version, tcb_evaluation_data_number: None };
                     input.hash(&mut hasher);
 
                     cache
@@ -1214,7 +826,7 @@ mod tests {
         let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
         let client = intel_builder.build(reqwest_client());
-        let eval_numbers = T::get_tcb_evaluation_data_numbers(&client).unwrap();
+        let eval_numbers = T::get_tcb_evaluation_data_numbers(&client.client).unwrap();
 
         let eval_numbers2 = serde_json::ser::to_vec(&eval_numbers)
             .and_then(|v| serde_json::from_slice::<RawTcbEvaluationDataNumbers<T>>(&v))
@@ -1242,7 +854,7 @@ mod tests {
                 u64::from(number)
             );
 
-            let tcb_info = T::get_tcbinfo(&client, &fmspc, Some(number))
+            let tcb_info = T::get_tcbinfo(&client.client, &fmspc, Some(number))
                 .unwrap()
                 .verify(&root_cas, 2)
                 .unwrap();
