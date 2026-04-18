@@ -9,6 +9,8 @@ extern crate alloc;
 
 use alloc::borrow::ToOwned;
 
+use std::println;
+use std::sync::RwLock;
 #[cfg(feature = "std")]
 use std::time::SystemTime;
 
@@ -21,7 +23,7 @@ use core::arch::x86_64::__rdtscp;
 use core::cell::RefCell;
 use core::cmp::{self, PartialEq, PartialOrd};
 use core::fmt::{self, Debug, Display, Formatter};
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use core::time::Duration;
 use core::ops::Add;
 
@@ -44,7 +46,7 @@ impl NativeTime for SystemTime {
         // includes the duration between the two `SystemTime`s
         match self.duration_since(*earlier) {
             Ok(duration) => duration,
-            Err(e) => e.duration()
+            Err(e) => e.duration(),
         }
     }
 
@@ -344,6 +346,8 @@ enum TscMode {
         next_sync: Ticks,
         // Learned frequency
         frequency: Freq,
+        // number of times we estimated the frequency
+        freq_estimations: AtomicUsize,
     },
     NoRdtsc,
 }
@@ -419,6 +423,7 @@ impl<T: NativeTime> TimeMode<T> {
 /// frequency is deemed inaccurate, and shouldn't be used.
 pub struct Tsc<T: NativeTime> {
     t0: (Ticks, T),
+    recent_ticks_and_native_time: (Ticks, RwLock<T>),
     // The mode in which the Tsc operates
     tsc_mode: TscMode,
     // Time is forced to be monotonic, or not
@@ -539,6 +544,7 @@ impl<T: NativeTime> TscBuilder<T> for LearningFreqTscBuilder<T> {
             frequency_learning_period,
             next_sync,
             frequency,
+            freq_estimations: AtomicUsize::new(0)
         };
         Tsc::new(tsc_mode, time_mode)
     }
@@ -573,8 +579,10 @@ impl<T: NativeTime> FixedFreqTscBuilder<T> {
     }
 }
 
+#[derive(Debug)]
 enum ResyncError<T> {
-    WithinFrequencyLearningPeriod(T)
+    WithinFrequencyLearningPeriod(T),
+    UnreliableFreqEstimation(T, Ticks),
 }
 
 impl<T: NativeTime> Tsc<T> {
@@ -582,27 +590,34 @@ impl<T: NativeTime> Tsc<T> {
         let now = T::now();
         let t0 = if let TscMode::NoRdtsc = tsc_mode { Ticks::default() } else { Ticks::now() };
         Tsc {
-            t0: (t0, now),
+            t0: (Ticks::new(t0.0.load(Ordering::Relaxed)), now),
+            recent_ticks_and_native_time: (t0, RwLock::new(now)),
             tsc_mode,
             time_mode,
         }
     }
 
-    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration) -> Result<(T, Duration, Freq), ResyncError<T>> {
-        // Fetch actual time
-        let system_now = T::now();
+    fn resync_clocks(&self, current_freq: &Freq, frequency_learning_period: &Duration, max_acceptable_drift: &Duration, max_sync_interval: &Duration, freq_estimations: usize) -> Result<(T, Ticks, Duration, Freq), ResyncError<T>> {
+        let (system_now, tsc_now) = match Self::get_system_now_and_tsc(Some(current_freq)) {
+            Ok(st) => st,
+            // TODO: inaccurate error
+            Err(system_now) => return Err(ResyncError::WithinFrequencyLearningPeriod(system_now)),
+        };
 
         // Calculate new freq
-        let diff_system = system_now.abs_diff(&self.t0.1);
-        if diff_system < *frequency_learning_period {
+        let diff_system = system_now.abs_diff(&self.recent_ticks_and_native_time.1.read().unwrap());
+        if system_now.abs_diff(&self.t0.1) < *frequency_learning_period {
             return Err(ResyncError::WithinFrequencyLearningPeriod(system_now));
         }
-        let tsc_now = Ticks::now();
         // Arash: we always estimate freq from the beginning of time
-        let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
+        let estimated_freq = Freq::estimate(self.recent_ticks_and_native_time.0.abs_diff(&tsc_now), diff_system);
 
+        if freq_estimations > 5 && estimated_freq.as_u64().abs_diff(current_freq.as_u64()) > current_freq.as_u64() / 10 {
+            return Err(ResyncError::UnreliableFreqEstimation(system_now, tsc_now))
+        }
         // Calculate error
-        let now = self.now_ex(current_freq);
+        // let now = self.now_ex(current_freq);
+        let now = *self.recent_ticks_and_native_time.1.read().unwrap() + self.recent_ticks_and_native_time.0.abs_diff(&tsc_now).as_duration_ex(current_freq);
         let error = system_now.abs_diff(&now);
 
         // Calculate the maximum interval we need to re-sync
@@ -612,54 +627,85 @@ impl<T: NativeTime> Tsc<T> {
         } else {
             // Common case, estimate interval based on error and max acceptable error
 
-            let _better_still_no_good = *max_sync_interval * max_acceptable_drift.div_duration_f64(error) as u32;
+            let _better_still_no_good =
+                *max_sync_interval * max_acceptable_drift.div_duration_f64(error) as u32;
 
-            let _better = _better_still_no_good.max(*max_sync_interval);
+            let _better = _better_still_no_good.min(*max_sync_interval);
 
             // Arash: this does not make any sense
-            // diff_system * max_acceptable_drift.div_duration_f64(error) as u32
+            let current = diff_system * max_acceptable_drift.div_duration_f64(error) as u32;
+            // std::println!(
+            //     "resyncing! existing next_sync_interval: {current:?}, better: {_better:?}, error: {error:?}"
+            // );
+            // current
             _better
         };
 
-        Ok((system_now, max_sync_interval, estimated_freq))
+        Ok((system_now, tsc_now, max_sync_interval, estimated_freq))
     }
 
     fn now_ex(&self, freq: &Freq) -> T {
         self.t0.1 + self.t0.0.elapsed(freq)
     }
 
+    /// Gets current system time and tsc. Returns an error if it observes too much
+    /// delay between the two measurements.
+    fn get_system_now_and_tsc(current_freq_estimation: Option<&Freq>) -> Result<(T, Ticks), T> {
+        const ACCEPTABLE_LAG: Duration = Duration::from_millis(1000);
+        let tsc_before = current_freq_estimation.is_some().then(Ticks::now) ;
+        let system_now = T::now();
+        let tsc_after = Ticks::now();
+        if let (Some(current_freq_estimation), Some(tsc_before)) = (current_freq_estimation, tsc_before) {
+            if tsc_after.abs_diff(&tsc_before).as_duration_ex(current_freq_estimation) > ACCEPTABLE_LAG {
+                Err(system_now)
+            } else {
+                Ok((system_now, tsc_after))
+            }
+        } else {
+            Ok((system_now, tsc_after))
+        }
+    }
+
     pub fn now(&self) -> T {
         let now = match &self.tsc_mode {
             TscMode::NoRdtsc => T::now(),
-            TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval, next_sync, frequency } => {
+            TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval, next_sync, frequency, freq_estimations } => {
                 let (tsc_now, f) = if !frequency.is_zero() {
                     (Ticks::now(), Freq(frequency.as_u64().into()))
                 } else {
+                    let last_ticks_system_time = &self.recent_ticks_and_native_time;
                     // Calling rdtsc _after_ issuing a insecure_time usercall so frequency
                     // will be _over_ estimated rather than under estimated when system is
                     // under heavy load. An under estimated frequency is easier to fix
                     // afterwards when time needs to be monotonic.
-                    let system_now = T::now();
-                    let tsc_now = Ticks::now();
-                    let diff_system = system_now.abs_diff(&self.t0.1);
-                    if diff_system < *frequency_learning_period {
+                    let (system_now, tsc_now) = match Self::get_system_now_and_tsc(None) {
+                        Ok(st) => st,
+                        Err(system_now) => return system_now,
+                    };
+                    let diff_system = system_now.abs_diff(&last_ticks_system_time.1.read().unwrap());
+                    if system_now.abs_diff(&self.t0.1) < *frequency_learning_period {
                         // We don't have enough data to estimate frequency correctly
                         return system_now;
                     }
 
-                    let estimated_freq = Freq::estimate(self.t0.0.abs_diff(&tsc_now), diff_system);
+                    // Arash: why abs_diff here?
+                    let estimated_freq = Freq::estimate(last_ticks_system_time.0.abs_diff(&tsc_now), diff_system);
                     frequency.set(&estimated_freq);
                     (tsc_now, estimated_freq)
                 };
 
+                #[allow(unused)]
                 let now = self.now_ex(&f);
 
                 if tsc_now < *next_sync {
-                    now
+                    *self.recent_ticks_and_native_time.1.read().unwrap() + self.recent_ticks_and_native_time.0.elapsed(&f)
+                    // now
                 } else {
                     // Re-estimate freq when a time threshold is reached
-                    match self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval) {
-                        Ok((now, next_sync_interval, estimated_freq)) => {
+                    match self.resync_clocks(&f, &frequency_learning_period, &max_acceptable_drift, &max_sync_interval, freq_estimations.load(Ordering::Relaxed))
+                        .inspect_err(|e| println!("resync err: {e:?}")) {
+                        Ok((now, ticks, next_sync_interval, estimated_freq)) => {
+                            freq_estimations.fetch_add(1, Ordering::Relaxed);
                             // When `next_tsc` overflows, the system has been running for over 10
                             // years, or an attacker manipulated the TSC value. As we can't trust TSC
                             // anyway, we do the simple thing and continue trying to sync
@@ -667,10 +713,27 @@ impl<T: NativeTime> Tsc<T> {
                             if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
                                 next_sync.set(next_tsc);
                             }
-                            frequency.set(&estimated_freq);
+                            let prev_freq = frequency.as_u64();
+                            frequency.set(&Freq::from_u64(
+                                (estimated_freq.as_u64() * 2 + frequency.as_u64() * 8) / 10,
+                            ));
+                            // println!(
+                            //     "estimated freq: {}Hz/ diff: {}Hz ({:.1} PPM), exp avg freq: {}Hz",
+                            //     estimated_freq.as_u64(),
+                            //     estimated_freq.as_u64() as i64 - prev_freq as i64,
+                            //     (estimated_freq.as_u64() as f64 - prev_freq as f64) / prev_freq as f64 * 1_000_000f64,
+                            //     frequency.as_u64(),
+                            // );
+                            self.recent_ticks_and_native_time.0.set(ticks);
+                            *self.recent_ticks_and_native_time.1.write().unwrap() = now;
                             now
                         },
                         Err(ResyncError::WithinFrequencyLearningPeriod(now)) => now,
+                        Err(ResyncError::UnreliableFreqEstimation(now, ticks)) => {
+                            self.recent_ticks_and_native_time.0.set(ticks);
+                            *self.recent_ticks_and_native_time.1.write().unwrap() = now;
+                            now
+                        }
                     }
                 }
             }
@@ -680,6 +743,14 @@ impl<T: NativeTime> Tsc<T> {
         };
 
         self.time_mode.observe(now)
+    }
+
+    /// Current estimate of the TSC frequency
+    pub fn frequency_estimate(&self) -> Option<u64> {
+        match &self.tsc_mode {
+            TscMode::Fixed { frequency } | TscMode::Learn { frequency, .. } => Some(frequency.as_u64()),
+            TscMode::NoRdtsc => None,
+        }
     }
 }
 
