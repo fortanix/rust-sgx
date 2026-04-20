@@ -33,7 +33,7 @@ This section describes the requirements on the SGX thread control structure
 
 - `NSSA` should be set to 1.
 - `OGSBASGX` should point to a thread-specific memory region (e.g. TLS) of at 
-  least 112 bytes.
+  least 120 bytes.
 
 ### TLS
 
