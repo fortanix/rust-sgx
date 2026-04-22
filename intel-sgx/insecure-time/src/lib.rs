@@ -277,7 +277,6 @@ enum TscMode {
         max_acceptable_drift: Duration,
         // The maximum interval between re-syncing with the external clock source
         max_sync_interval: Duration,
-        initial_frequency: Option<Freq>,
     },
     NoRdtsc,
 }
@@ -389,8 +388,6 @@ pub struct LearningFreqTscBuilder<T: NativeTime> {
     frequency_learning_period: Duration,
     // Whether the TSC should be monotonic
     time_mode: TimeMode<T>,
-    // The frequency learned
-    frequency: Option<Freq>,
 }
 
 impl<T: NativeTime> LearningFreqTscBuilder<T> {
@@ -400,17 +397,7 @@ impl<T: NativeTime> LearningFreqTscBuilder<T> {
             max_acceptable_drift: Duration::from_millis(1),
             max_sync_interval: Duration::from_secs(60),
             time_mode: TimeMode::non_monotonic(),
-            frequency: None,
         }
-    }
-
-    pub fn set_initial_frequency(mut self, freq: Freq) -> Self {
-        self.frequency = Some(freq);
-        self
-    }
-
-    pub fn initial_frequency(&self) -> &Option<Freq> {
-        &self.frequency
     }
 
     pub fn set_max_acceptable_drift(mut self, error: Duration) -> Self {
@@ -448,12 +435,11 @@ impl<T: NativeTime> TscBuilder<T> for LearningFreqTscBuilder<T> {
     }
 
     fn build(self) -> Tsc<T> {
-        let LearningFreqTscBuilder { frequency, max_sync_interval, max_acceptable_drift, frequency_learning_period, time_mode, } = self;
+        let LearningFreqTscBuilder { max_sync_interval, max_acceptable_drift, frequency_learning_period, time_mode } = self;
         let tsc_mode = TscMode::Learn {
             max_sync_interval,
             max_acceptable_drift,
             frequency_learning_period: frequency_learning_period.max(max_sync_interval),
-            initial_frequency: frequency
         };
         Tsc::new(tsc_mode, time_mode)
     }
@@ -501,7 +487,7 @@ impl<T: NativeTime> Tsc<T> {
 
         let (frequency, max_sync_interval) = match &tsc_mode {
             TscMode::Fixed { frequency } => (Some(*frequency), Duration::MAX),
-            TscMode::Learn { initial_frequency, max_sync_interval, .. } => (*initial_frequency, *max_sync_interval),
+            TscMode::Learn { max_sync_interval, .. } => (None, *max_sync_interval),
             TscMode::NoRdtsc => (None, Duration::MAX),
         };
         let (next_sync, frequency) =
@@ -579,7 +565,7 @@ impl<T: NativeTime> Tsc<T> {
     fn now_internal(&self) -> T {
         match &self.tsc_mode {
             TscMode::NoRdtsc => T::now(),
-            TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval, initial_frequency: _ } => {
+            TscMode::Learn { frequency_learning_period, max_acceptable_drift, max_sync_interval } => {
                 let state = *self.tsc_state.read();
                 let (tsc_now, state) = if state.frequency.as_u64() != 0 {
                     (Ticks::now(), state)
@@ -942,10 +928,8 @@ mod tests {
     fn high_variation_system_time_lag() {
         for monotonic in [false, true] {
             for _run in 0..30 {
-                let freq = Freq::get().unwrap();
                 let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
-                        .set_monotonic_time()
-                        .set_initial_frequency(freq);
+                        .set_monotonic_time();
                 clock_drift::<_, SystemTime>(tsc_builder, Duration::from_secs(1), &(2 * HighVariationSystemTime::variation()), monotonic);
             }
         }
@@ -956,7 +940,6 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     fn high_variation_system_time_drift() {
         let tsc_builder: LearningFreqTscBuilder<HighVariationSystemTime> = LearningFreqTscBuilder::new()
-                .set_initial_frequency(Freq::get().unwrap())
                 .set_frequency_learning_period(Duration::from_secs(120))
                 .set_max_acceptable_drift(Duration::from_millis(1))
                 .set_max_sync_interval(Duration::from_secs(60))
