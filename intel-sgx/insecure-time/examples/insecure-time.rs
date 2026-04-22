@@ -45,7 +45,7 @@ fn estimate_frequency() {
         let t1 = (SystemTime::now(), Ticks::now());
         let test_duration = diff_system_time(t0.0, t1.0);
 
-        println!("{:?}: Estimated frequency = {:?}, reported frequency = {:?}", test_duration, Freq::estimate(t1.1.abs_diff(&t0.1), test_duration), &reported_freq);
+        println!("{:?}: Estimated frequency = {:?}, reported frequency = {:?}", test_duration, Freq::estimate(t1.1.abs_diff(t0.1), test_duration), &reported_freq);
         std::thread::sleep(Duration::from_secs(10));
     }
 }
