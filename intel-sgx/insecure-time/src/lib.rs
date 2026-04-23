@@ -514,7 +514,7 @@ impl<T: NativeTime> Tsc<T> {
 
     const ACCEPTABLE_FREQ_RANGE: RangeInclusive<u64> = 50_000_000..=100_000_000_000;
     fn resync_clocks(max_acceptable_drift: Duration, max_sync_interval: Duration, state: &TscState<T>) -> Result<(T, Ticks, Duration, Freq), ResyncError<T>> {
-        let (system_now, tsc_now) = match Self::get_system_now_and_tsc(Some(state.frequency)) {
+        let (system_now, tsc_now) = match Self::get_system_now_and_tsc(max_sync_interval, Some(state.frequency)) {
             Ok(st) => st,
             Err(system_now) => return Err(ResyncError::UnreliableTscReading(system_now)),
         };
@@ -542,17 +542,13 @@ impl<T: NativeTime> Tsc<T> {
 
     /// Gets current system time and tsc. Returns an error if it observes too much
     /// delay between the two measurements.
-    fn get_system_now_and_tsc(current_freq_estimation: Option<Freq>) -> Result<(T, Ticks), T> {
-        const ACCEPTABLE_LAG: Duration = Duration::from_millis(250);
+    fn get_system_now_and_tsc(max_sync_interval: Duration, current_freq_estimation: Option<Freq>) -> Result<(T, Ticks), T> {
         let tsc_before = current_freq_estimation.is_some().then(Ticks::now);
-        // Calling rdtsc _after_ issuing a insecure_time usercall so frequency
-        // will be _over_ estimated rather than under estimated when system is
-        // under heavy load. An under estimated frequency is easier to fix
-        // afterwards when time needs to be monotonic.
         let system_now = T::now();
         let tsc_after = Ticks::now();
         if let (Some(current_freq_estimation), Some(tsc_before)) = (current_freq_estimation, tsc_before) {
-            if tsc_after.abs_diff(tsc_before).as_duration_ex(current_freq_estimation) > ACCEPTABLE_LAG {
+            let acceptable_lag = Duration::from_millis(10).max(max_sync_interval / 1000);
+            if tsc_after.abs_diff(tsc_before).as_duration_ex(current_freq_estimation) > acceptable_lag {
                 Err(system_now)
             } else {
                 Ok((system_now, tsc_after))
@@ -570,7 +566,7 @@ impl<T: NativeTime> Tsc<T> {
                 let (tsc_now, state) = if state.frequency.as_u64() != 0 {
                     (Ticks::now(), state)
                 } else {
-                    let (system_now, tsc_now) = match Self::get_system_now_and_tsc(None) {
+                    let (system_now, tsc_now) = match Self::get_system_now_and_tsc(*max_sync_interval, None) {
                         Ok(st) => st,
                         Err(system_now) => return system_now,
                     };
@@ -597,20 +593,22 @@ impl<T: NativeTime> Tsc<T> {
                                 // We don't have enough data to estimate frequency correctly
                                 return now;
                             }
-                            // this instead of self.tsc_state.write() to avoid starvation
-                            let mut state = self.tsc_state.upgradeable_read().upgrade();
-                            state.freq_estimations = new_freq_estimations;
+                            // exponential averaging to reduce noise
+                            let w = (state.recent_ticks.elapsed(state.frequency).as_secs_f64() * 0.4).clamp(0.001, 0.9);
+                            let new_freq = Freq::from_u64(
+                                (estimated_freq.as_u64() as f64 * w + state.frequency.as_u64() as f64 * (1.0 - w)) as u64
+                            );
                             // When `next_tsc` overflows, the system has been running for over 10
                             // years, or an attacker manipulated the TSC value. As we can't trust TSC
                             // anyway, we do the simple thing and continue trying to sync
-                            let duration = Ticks::from_duration(next_sync_interval, estimated_freq);
-                            if let Ok(next_tsc) = tsc_now + duration.unwrap_or(Ticks::max()) {
+                            let next_sync_ticks = Ticks::from_duration(next_sync_interval, estimated_freq).unwrap_or(Ticks::max());
+                            // this instead of self.tsc_state.write() to avoid starvation
+                            let mut state = self.tsc_state.upgradeable_read().upgrade();
+                            state.freq_estimations = new_freq_estimations;
+                            if let Ok(next_tsc) = tsc_now + next_sync_ticks {
                                 state.next_sync = next_tsc;
                             }
-                            // exponential averaging to reduce noise
-                            state.frequency = Freq::from_u64(
-                                (estimated_freq.as_u64() * 3 + state.frequency.as_u64() * 7) / 10,
-                            );
+                            state.frequency = new_freq;
                             state.recent_ticks = ticks;
                             state.recent_native_time = now;
                             now
