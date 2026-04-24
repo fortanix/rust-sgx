@@ -14,20 +14,11 @@ use chrono::{DateTime, Utc};
 use serde::{de, de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
-use {
-    mbedtls::alloc::List as MbedtlsList,
-    mbedtls::error::{codes, Error as ErrMbed},
-    mbedtls::x509::certificate::Certificate,
-    pkix::oid,
-    pkix::pem::PEM_CERTIFICATE,
-    pkix::x509::GenericCertificate,
-    pkix::FromBer,
-    std::ops::Deref,
-};
+use std::ops::Deref;
 
 use crate::io::WriteOptions;
 use crate::pckcrt::{PlatformTypeForTcbComponent, TcbComponentsV3};
-use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
+use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified, RootCaCrl};
 use crate::{
     pckcrt::{TcbComponentType, TcbComponents},
     platform, PlatformType,
@@ -672,21 +663,20 @@ impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16) -> Result<TcbData<T, Verified>, Error> {
         let now = Utc::now();
-        self.verify_ex(trusted_root_certs, min_version, &now)
+        self.verify_ex(trusted_root_certs, &[], min_version, &now)
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<T, Verified>, Error> {
+    pub fn verify_with_rootcacrl<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl], min_version: u16) -> Result<TcbData<T, Verified>, Error> {
+        let now = Utc::now();
+        self.verify_ex(trusted_root_certs, root_ca_crls, min_version, &now)
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl], min_version: u16, now: &DateTime<Utc>) -> Result<TcbData<T, Verified>, Error> {
         // Check cert chain
-        let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
+        let (chain, root) = crate::build_and_verify_cert_chain(&self.ca_chain, trusted_root_certs, root_ca_crls)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
-        let root_list = std::iter::once(root).collect();
-        if 0 < chain.len() {
-            let trust_ca: MbedtlsList<Certificate> = chain.into_iter().collect();
-            let mut err = String::default();
-            Certificate::verify(&trust_ca, &root_list, None, Some(&mut err))
-                .map_err(|_| Error::InvalidTcbInfo(format!("Invalid TcbInfo: {}", err)))?;
-        }
 
         // Check signature on data
         let mut hash = [0u8; 32];
@@ -694,22 +684,6 @@ impl<T: PlatformTypeForTcbInfo> TcbInfo<T> {
         leaf.public_key_mut()
             .verify(mbedtls::hash::Type::Sha256, &hash, self.signature())
             .map_err(|_| Error::InvalidTcbInfo("Signature verification failed".into()))?;
-
-        // Check common name TCB cert
-        let leaf = self.ca_chain.first().ok_or(Error::IncorrectCA)?;
-        let tcb =
-            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let name = tcb
-            .tbscert
-            .subject
-            .get(&*oid::commonName)
-            .ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
-            return Err(Error::IncorrectCA);
-        }
-
-        crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let TcbData {
             id,
@@ -765,6 +739,7 @@ mod tests {
         crate::Error,
         crate::tcb_info::{Fmspc, TcbInfo},
         crate::platform,
+        crate::RootCaCrl,
         tempdir::TempDir,
     };
     use {crate::{PlatformTypeForTcbInfo, TcbComponentsOf, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, std::convert::TryFrom};
@@ -785,7 +760,11 @@ mod tests {
             e => assert!(false, "wrong result: {:?}", e),
         }
         let juni_5_2020 = Utc.with_ymd_and_hms(2020, 6, 5, 12, 0, 0).unwrap();
-        assert!(info.verify_ex(&root_certificates, 2, &juni_5_2020).is_ok());
+
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
+        assert!(info.verify_ex(&root_certificates, &root_ca_crls, 2, &juni_5_2020).is_ok());
 
         // Test serialization/deserialization
         let temp_dir = TempDir::new("tempdir").unwrap();
@@ -811,8 +790,12 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
         let june_5_2025 = Utc.with_ymd_and_hms(2025, 6, 5, 12, 0, 0).unwrap();
-        assert!(tcb_info.verify_ex(&root_certificates, 3, &june_5_2025).is_ok());
-        assert!(tcb_info.verify_ex(&root_certificates, 4, &june_5_2025).is_err());
+
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
+        assert!(tcb_info.verify_ex(&root_certificates, &root_ca_crls, 3, &june_5_2025).is_ok());
+        assert!(tcb_info.verify_ex(&root_certificates, &root_ca_crls, 4, &june_5_2025).is_err());
     }
 
     #[test]
@@ -848,12 +831,15 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
 
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
         let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 1, 12, 0, 0).unwrap();
 
         // Parse and verify TDX TCB Info
         let tdx_tcbinfo = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), ca_chain.clone()).unwrap();
         TcbData::<platform::TDX, Unverified>::parse(tdx_tcbinfo.raw_tcb_info()).unwrap();
-        tdx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
+        tdx_tcbinfo.verify_ex(&root_certificates, &root_ca_crls, 0, &march_1_2026).unwrap();
 
         // Passing SGX TCB Info JSON to the TDX type must throw error
         let sgx_tcbinfo_in_tdx_type = TcbInfo::<platform::TDX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), vec![]).unwrap();
@@ -862,7 +848,7 @@ mod tests {
         // Parse and verify SGX TCB Info
         let sgx_tcbinfo = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-sgx.json").to_string(), ca_chain.clone()).unwrap();
         assert!(TcbData::<platform::SGX, Unverified>::parse(sgx_tcbinfo.raw_tcb_info()).is_ok());
-        sgx_tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap();
+        sgx_tcbinfo.verify_ex(&root_certificates, &root_ca_crls, 0, &march_1_2026).unwrap();
 
         // Passing TDX TCB Info JSON to the SGX type must throw error
         let tgx_tcbinfo_in_sdx_type = TcbInfo::<platform::SGX>::parse(&include_str!("../tests/data/tcb-json/tcb-tdx.json").to_string(), vec![]).unwrap();
@@ -885,11 +871,14 @@ mod tests {
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
 
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
         let march_1_2026 = Utc.with_ymd_and_hms(2026, 3, 10, 12, 0, 0).unwrap();
 
         // Parse and verify TDX TCB Info
         let tcbinfo = TcbInfo::<T>::parse(&read_to_string(json_file), ca_chain.clone()).unwrap();
-        tcbinfo.verify_ex(&root_certificates, 0, &march_1_2026).unwrap()
+        tcbinfo.verify_ex(&root_certificates, &root_ca_crls, 0, &march_1_2026).unwrap()
     }
 
     #[test]

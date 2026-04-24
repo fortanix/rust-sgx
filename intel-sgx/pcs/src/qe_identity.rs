@@ -15,8 +15,8 @@ use serde_json::value::RawValue;
 use sgx_isa::{Attributes, Miscselect};
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
-    pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
+    std::ops::Deref,
+    crate::RootCaCrl,
 };
 
 use crate::io::{self};
@@ -301,17 +301,16 @@ impl QeIdentitySigned {
     pub fn certificate_chain(&self) -> &Vec<String> {
         &self.ca_chain
     }
-
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], enclave_identity: EnclaveIdentity) -> Result<QeIdentity, Error> {
+        self.verify_with_rootcacrl(trusted_root_certs, &[], enclave_identity)
+    }
+
+    #[cfg(feature = "verify")]
+    pub fn verify_with_rootcacrl<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl], enclave_identity: EnclaveIdentity) -> Result<QeIdentity, Error> {
         // check cert chain
-        let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
+        let (chain, root) = crate::build_and_verify_cert_chain(&self.ca_chain, trusted_root_certs, root_ca_crls)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
-        let root_list = std::iter::once(root).collect();
-        if 0 < chain.len() {
-            let trust_ca: MbedtlsList<Certificate> = chain.into_iter().collect();
-            Certificate::verify(&trust_ca, &root_list, None, None).map_err(|e| Error::InvalidQe3Id(e))?;
-        }
 
         // Check signature on data
         let mut hash = [0u8; 32];
@@ -319,22 +318,6 @@ impl QeIdentitySigned {
         leaf.public_key_mut()
             .verify(mbedtls::hash::Type::Sha256, &hash, &self.signature)
             .map_err(|e| Error::InvalidQe3Id(e))?;
-
-        // Check common name TCB cert
-        let leaf = self.ca_chain.first().ok_or(Error::IncorrectCA)?;
-        let tcb =
-            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let name = tcb
-            .tbscert
-            .subject
-            .get(&*oid::commonName)
-            .ok_or(Error::InvalidQe3Id(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
-            return Err(Error::IncorrectCA);
-        }
-
-        crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let QeIdentity::<Unverified> {
             version,
