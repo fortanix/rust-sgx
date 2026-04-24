@@ -23,6 +23,7 @@ use {
     mbedtls::alloc::{Box as MbedtlsBox, List as MbedtlsList},
     mbedtls::x509::certificate::Certificate,
     mbedtls::Error as MbedError,
+    mbedtls::x509::Crl,
     std::ffi::CString,
     std::ops::Deref,
 };
@@ -41,6 +42,7 @@ pub use crate::tcb_info::{
     AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevelOf, TcbLevel, TdxModule,
     TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, TdxTcbLevel
 };
+pub use crate::rootcacrl::RootCaCrl;
 
 mod io;
 mod iso8601;
@@ -50,6 +52,7 @@ mod pckid;
 mod qe_identity;
 mod tcb_evaluation_data_numbers;
 mod tcb_info;
+mod rootcacrl;
 
 pub type CpuSvn = [u8; 16];
 pub type EncPpid = Vec<u8>;
@@ -281,6 +284,65 @@ fn create_cert_chain(certs: &Vec<String>) -> Result<(Vec<MbedtlsBox<Certificate>
     }
 }
 
+/// Function to verify the PCS certificate chain that is attached in the response
+/// from the PCS server. Previously it was replicated in each `verify` function. But
+/// we now centralize this in here and shared among all PCS types. Also, we incorporate
+/// passing the root CA CRL in here if available.
+#[cfg(feature = "verify")]
+fn build_and_verify_cert_chain<B: Deref<Target = [u8]>>(
+    ca_chain: &Vec<String>,
+    trusted_root_certs: &[B],
+    root_ca_crls: &[RootCaCrl]
+) -> Result<(Vec<MbedtlsBox<Certificate>>, MbedtlsBox<Certificate>), Error> {
+    use pkix::{oid, pem::PEM_CERTIFICATE, x509::GenericCertificate, FromBer};
+
+    let (chain, root) = crate::create_cert_chain(&ca_chain)?;
+    let root_list = std::iter::once(root.clone()).collect();
+
+    // Check if the root certificate is a part of the trusted root list
+    crate::check_root_ca(trusted_root_certs, &root_list)?;
+
+    if 0 < chain.len() {
+        let trust_ca: MbedtlsList<Certificate> = chain.clone().into_iter().collect();
+
+        // Build the CRL chain. We are assuming that there can be multiple trusted root
+        // CA, so it can also have multiple root CA CRLs
+        let mut root_crl =  if !root_ca_crls.is_empty() {
+            let mut crls = Crl::new();
+            for crl in root_ca_crls {
+                let pem_cstr = CString::new(crl.crl().as_bytes()).map_err(|_| Error::InvalidCrlFormat)?;
+                crls.push_from_pem(pem_cstr.as_bytes_with_nul()).map_err(|e| Error::InvalidCrl(e))?;
+            }
+            Some(crls)
+        } else {
+            None
+        };
+
+        let root_crl_ref = if let Some(crl) = &mut root_crl {
+            Some(crl)
+        } else {
+            None
+        };
+        Certificate::verify(&trust_ca, &root_list, root_crl_ref, None).map_err(|e| Error::InvalidQe3Id(e))?;
+    }
+
+    // Check common name TCB cert
+    let leaf = ca_chain.first().ok_or(Error::MissingCaChain)?;
+    let tcb =
+        &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::InvalidCaFormat)?;
+    let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::InvalidCaFormat)?;
+    let name = tcb
+        .tbscert
+        .subject
+        .get(&*oid::commonName)
+        .ok_or(Error::InvalidCaFormat)?;
+    if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
+        return Err(Error::IncorrectCA);
+    }
+
+    Ok((chain, root))
+}
+
 // Typically, certificates are verified directly against a pool of trusted root
 // certificates. The DCAP attestation verification logic works differently.
 // It first verifies against a root certificate included in the attestation,
@@ -358,4 +420,12 @@ impl fmt::Display for TcbStatus {
             TcbStatus::Revoked => write!(f, "Revoked"),
         }
     }
+}
+
+#[cfg(feature = "verify")]
+pub(crate) fn as_mbedtls_crl(crl_pem: &String) -> Result<Crl, Error> {
+    let c = CString::new(crl_pem.as_bytes()).map_err(|_| Error::InvalidCrlFormat)?;
+    let mut crl = Crl::new();
+    crl.push_from_pem(c.as_bytes_with_nul()).map_err(|_| Error::InvalidCrlFormat)?;
+    Ok(crl)
 }
