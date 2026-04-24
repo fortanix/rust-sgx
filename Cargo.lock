@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner-sgx"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -2622,12 +2622,13 @@ dependencies = [
 
 [[package]]
 name = "insecure-time"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "clap 4.4.18",
  "rand 0.8.5",
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
+ "spin",
 ]
 
 [[package]]
@@ -4640,6 +4641,12 @@ dependencies = [
  "libc",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "spin"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
 
 [[package]]
 name = "stable_deref_trait"
