@@ -14,11 +14,13 @@ use chrono::{DateTime, Utc};
 use serde::{de, de::DeserializeOwned, Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::value::RawValue;
 #[cfg(feature = "verify")]
-use std::ops::Deref;
+use {
+    std::ops::Deref, crate::RootCaCrl
+};
 
 use crate::io::WriteOptions;
 use crate::pckcrt::{PlatformTypeForTcbComponent, TcbComponentsV3};
-use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified, RootCaCrl};
+use crate::{io, CpuSvn, Error, PceIsvsvn, TcbStatus, Unverified, VerificationType, Verified};
 use crate::{
     pckcrt::{TcbComponentType, TcbComponents},
     platform, PlatformType,

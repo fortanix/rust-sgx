@@ -42,7 +42,7 @@ pub use crate::tcb_info::{
     AdvisoryID, Fmspc, PlatformTypeForTcbInfo, TcbData, TcbInfo, TcbLevelOf, TcbLevel, TdxModule,
     TdxModuleIdentity, TdxModuleTcbLevel, TdxModuleTcbLevelIsvSvn, TdxTcbLevel
 };
-pub use crate::rootcacrl::RootCaCrl;
+pub use crate::root_ca_crl::RootCaCrl;
 
 mod io;
 mod iso8601;
@@ -52,7 +52,7 @@ mod pckid;
 mod qe_identity;
 mod tcb_evaluation_data_numbers;
 mod tcb_info;
-mod rootcacrl;
+mod root_ca_crl;
 
 pub type CpuSvn = [u8; 16];
 pub type EncPpid = Vec<u8>;
@@ -422,7 +422,7 @@ impl fmt::Display for TcbStatus {
 }
 
 #[cfg(feature = "verify")]
-pub(crate) fn as_mbedtls_crl(crl_pem: &String) -> Result<Crl, Error> {
+pub(crate) fn as_mbedtls_crl(crl_pem: &str) -> Result<Crl, Error> {
     let c = CString::new(crl_pem.as_bytes()).map_err(|_| Error::InvalidCrlFormat)?;
     let mut crl = Crl::new();
     crl.push_from_pem(c.as_bytes_with_nul()).map_err(|_| Error::InvalidCrlFormat)?;

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use crate::{
     Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus,
-    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents, RootCaCrl
+    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use std::slice::Iter;
 
 #[cfg(feature = "verify")]
-use std::ops::Deref;
+use {
+    std::ops::Deref, crate::RootCaCrl
+};
 
 /// Implementation of the TcbEvaluationDataNumbers model
 /// <https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-eval-data-numbers-model-v1>
