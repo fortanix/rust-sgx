@@ -594,14 +594,14 @@ impl<T: NativeTime> Tsc<T> {
                                 return now;
                             }
                             // exponential averaging to reduce noise
-                            let w = (state.recent_ticks.elapsed(state.frequency).as_secs_f64() * 0.4).clamp(0.001, 0.9);
+                            let w = (state.recent_ticks.elapsed(state.frequency).as_secs_f64() * 0.01).clamp(0.001, 1.0);
                             let new_freq = Freq::from_u64(
                                 (estimated_freq.as_u64() as f64 * w + state.frequency.as_u64() as f64 * (1.0 - w)) as u64
                             );
                             // When `next_tsc` overflows, the system has been running for over 10
                             // years, or an attacker manipulated the TSC value. As we can't trust TSC
                             // anyway, we do the simple thing and continue trying to sync
-                            let next_sync_ticks = Ticks::from_duration(next_sync_interval, estimated_freq).unwrap_or(Ticks::max());
+                            let next_sync_ticks = Ticks::from_duration(next_sync_interval, new_freq).unwrap_or(Ticks::max());
                             // this instead of self.tsc_state.write() to avoid starvation
                             let mut state = self.tsc_state.upgradeable_read().upgrade();
                             state.freq_estimations = new_freq_estimations;
