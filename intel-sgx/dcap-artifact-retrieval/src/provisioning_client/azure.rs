@@ -11,7 +11,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::common::PckCertsApiNotSupported;
-use super::intel::{PckCrlApi, QeIdApi, TcbEvaluationDataNumbersApi, TcbInfoApi, INTEL_BASE_URL};
+use super::intel::{PckCrlApi, QeIdApi, RootCaCrlApi, TcbEvaluationDataNumbersApi, TcbInfoApi, INTEL_BASE_URL};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PcsVersion, ProvisioningServiceApi,
     StatusCode,
@@ -50,6 +50,7 @@ impl AzureProvisioningClientBuilder {
         let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let root_ca_crl = RootCaCrlApi::new();
 
         self.client_builder.build(
             pck_certs,
@@ -60,6 +61,7 @@ impl AzureProvisioningClientBuilder {
             tdx_tcbinfo,
             sgx_evaluation_data_numbers,
             tdx_evaluation_data_numbers,
+            root_ca_crl,
             fetcher,
         )
     }

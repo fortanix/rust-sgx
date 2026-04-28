@@ -12,15 +12,16 @@
 
 use std::borrow::Cow;
 use std::marker::PhantomData;
+use std::num::ParseIntError;
 use std::time::Duration;
 
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, TcbInfo, Unverified, platform
+    platform, CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RootCaCrl, TcbInfo, Unverified
 };
 use rustc_serialize::hex::{FromHex, ToHex};
 
-use super::common::*;
+use super::{common::*, RootCaCrlIn, RootCaCrlService};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCrlIn, PckCrlService, PcsVersion,
     ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode, TcbInfoIn, TcbInfoService,
@@ -57,9 +58,10 @@ impl PccsProvisioningClientBuilder {
         let tdx_tcbinfo = TcbInfoApi::<platform::TDX>::new(self.base_url.clone(), self.api_version);
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(self.base_url.clone());
+        let root_ca_crl = RootCaCrlApi::new(self.base_url.clone());
 
         self.client_builder
-            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, fetcher)
+            .build(pck_certs, pck_cert, pck_crl, qeid, sgx_tcbinfo, tdx_tcbinfo, sgx_evaluation_data_numbers, tdx_evaluation_data_numbers, root_ca_crl, fetcher)
     }
 }
 
@@ -428,6 +430,79 @@ impl<'inp> ProvisioningServiceApi<'inp> for QeIdApi {
         let ca_chain = parse_issuer_header(&response_headers, ENCLAVE_ID_ISSUER_CHAIN_HEADER)?;
         let id = QeIdentitySigned::parse(&response_body, ca_chain)?;
         Ok(id)
+    }
+}
+
+pub struct RootCaCrlApi {
+    base_url: Cow<'static, str>,
+}
+
+impl RootCaCrlApi {
+    pub fn new(base_url: Cow<'static, str>) -> Self {
+        RootCaCrlApi {
+            base_url
+        }
+    }
+}
+
+impl<'inp> RootCaCrlService<'inp> for RootCaCrlApi {
+    fn build_input(
+        &'inp self
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        RootCaCrlIn
+    }
+}
+
+impl<'inp> ProvisioningServiceApi<'inp> for RootCaCrlApi {
+    type Input = RootCaCrlIn;
+    type Output = RootCaCrl<Unverified>;
+
+    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let url = format!("{}/sgx/certification/v4/rootcacrl", self.base_url);
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request.",
+            )),
+            StatusCode::NotFound => {
+                Err(Error::PCSError(status_code, "Root CA CRL cannot be found"))
+            }
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
+            (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
+                .collect()
+        }
+
+        let der = decode_hex(&response_body).map_err(|_| Error::ReadResponseError(Cow::Borrowed("Cannot parse CRL repsonse")))?;
+        RootCaCrl::new(&der).map_err(|e| Error::ReadResponseError(Cow::Owned(e.to_string().into())))
     }
 }
 
@@ -910,5 +985,15 @@ mod tests {
                     .unwrap();
             assert_eq!(tcb_info.tcb_evaluation_data_number(), u64::from(number));
         }
+    }
+
+    #[test]
+    pub fn root_ca_crl() {
+        let client = make_client(PcsVersion::V4);
+        let root_ca_crl = client.root_ca_crl().unwrap();
+
+        let root_ca = include_bytes!("../../../pcs/tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+        root_ca_crl.verify(&root_cas).unwrap();
     }
 }
