@@ -270,7 +270,7 @@ fn intel_signature_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> R
 }
 
 #[cfg(feature = "verify")]
-fn create_cert_chain(certs: &Vec<String>) -> Result<(Vec<MbedtlsBox<Certificate>>, MbedtlsBox<Certificate>), Error> {
+fn create_cert_chain(certs: &[String]) -> Result<(Vec<MbedtlsBox<Certificate>>, MbedtlsBox<Certificate>), Error> {
     fn str_to_cert_box(ca: &String) -> Result<MbedtlsBox<Certificate>, Error> {
         let ca = CString::new(ca.as_bytes()).map_err(|_| Error::InvalidCaFormat)?;
         Certificate::from_pem(ca.as_bytes_with_nul()).map_err(|_| Error::InvalidCaFormat)
@@ -296,7 +296,7 @@ fn build_and_verify_cert_chain<B: Deref<Target = [u8]>>(
 ) -> Result<(Vec<MbedtlsBox<Certificate>>, MbedtlsBox<Certificate>), Error> {
     use pkix::{oid, pem::PEM_CERTIFICATE, x509::GenericCertificate, FromBer};
 
-    let (chain, root) = crate::create_cert_chain(&ca_chain)?;
+    let (chain, root) = crate::create_cert_chain(ca_chain)?;
     let root_list = std::iter::once(root.clone()).collect();
 
     // Check if the root certificate is a part of the trusted root list
