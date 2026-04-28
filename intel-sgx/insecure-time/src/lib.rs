@@ -594,14 +594,14 @@ impl<T: NativeTime> Tsc<T> {
                                 return now;
                             }
                             // exponential averaging to reduce noise
-                            let w = (state.recent_ticks.elapsed(state.frequency).as_secs_f64() * 0.4).clamp(0.001, 0.9);
+                            let w = new_freq_estimate_weight(state.recent_ticks.elapsed(state.frequency));
                             let new_freq = Freq::from_u64(
                                 (estimated_freq.as_u64() as f64 * w + state.frequency.as_u64() as f64 * (1.0 - w)) as u64
                             );
                             // When `next_tsc` overflows, the system has been running for over 10
                             // years, or an attacker manipulated the TSC value. As we can't trust TSC
                             // anyway, we do the simple thing and continue trying to sync
-                            let next_sync_ticks = Ticks::from_duration(next_sync_interval, estimated_freq).unwrap_or(Ticks::max());
+                            let next_sync_ticks = Ticks::from_duration(next_sync_interval, new_freq).unwrap_or(Ticks::max());
                             // this instead of self.tsc_state.write() to avoid starvation
                             let mut state = self.tsc_state.upgradeable_read().upgrade();
                             state.freq_estimations = new_freq_estimations;
@@ -648,6 +648,14 @@ impl<T: NativeTime> Tsc<T> {
     pub fn resyncs(&self) -> usize {
         self.tsc_state.read().freq_estimations
     }
+}
+
+/// calculate the weight of the new frequency estimate for exponential avergaging.
+/// The calculated weight fixes a specific half-life for catching up to the new frequency.
+fn new_freq_estimate_weight(freq_sync_time: Duration) -> f64 {
+    const HALF_LIFE: Duration = Duration::from_secs(30);
+    let cycles_recip = freq_sync_time.div_duration_f64(HALF_LIFE).max(0.001);
+    1.0 - 2f64.powf(-cycles_recip)
 }
 
 #[cfg(test)]
@@ -973,5 +981,17 @@ mod tests {
         // WARNING: Its up to the caller to ensure that the enclave runner used for this test does
         // not enable rdtsc-based time within the enclave
         clock_drift::<_, SystemTime>(tsc_builder, test_duration(), &ADDITIONAL_DRIFT, true);
+    }
+
+    #[test]
+    fn weight_formula_correct() {
+        let mut last_w = 0.0;
+        for t in [0, 100, 1_000, 5_000, 10_000, 15_000, 20_000, 30_000, 60_000, 10_000_000] {
+            let w = crate::new_freq_estimate_weight(Duration::from_millis(t));
+            #[cfg(feature = "std")]
+            std::println!("sync time: {t} ms, w: {w}");
+            assert!(w >= last_w && (0.0..=1.0).contains(&w));
+            last_w = w;
+        }
     }
 }
