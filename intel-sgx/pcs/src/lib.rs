@@ -290,7 +290,7 @@ fn create_cert_chain(certs: &Vec<String>) -> Result<(Vec<MbedtlsBox<Certificate>
 /// passing the root CA CRL in here if available
 #[cfg(feature = "verify")]
 fn build_and_verify_cert_chain<B: Deref<Target = [u8]>>(
-    ca_chain: &Vec<String>,
+    ca_chain: &[String],
     trusted_root_certs: &[B],
     root_ca_crls: &[RootCaCrl]
 ) -> Result<(Vec<MbedtlsBox<Certificate>>, MbedtlsBox<Certificate>), Error> {
