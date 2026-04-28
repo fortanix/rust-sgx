@@ -1,7 +1,7 @@
 use chrono::{DateTime, Duration, Utc};
 use crate::{
     Error, Fmspc, PlatformTypeForTcbInfo, QeIdentity, QeIdentitySigned, TcbData, TcbInfo, TcbStatus,
-    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents
+    Unverified, VerificationType, Verified, io::{self, WriteOptions}, pckcrt::TcbComponents,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
@@ -11,8 +11,7 @@ use std::slice::Iter;
 
 #[cfg(feature = "verify")]
 use {
-    mbedtls::alloc::List as MbedtlsList, mbedtls::x509::certificate::Certificate, mbedtls::error::{codes, Error as ErrMbed}, pkix::oid,
-    pkix::pem::PEM_CERTIFICATE, pkix::x509::GenericCertificate, pkix::FromBer, std::ops::Deref,
+    std::ops::Deref, crate::RootCaCrl
 };
 
 /// Implementation of the TcbEvaluationDataNumbers model
@@ -218,21 +217,19 @@ impl<T: PlatformTypeForTcbInfo> RawTcbEvaluationDataNumbers<T> {
 
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B]) -> Result<TcbEvaluationDataNumbers<T>, Error> {
-        self.verify_ex(trusted_root_certs, &Utc::now())
+        self.verify_ex(trusted_root_certs, &[], &Utc::now())
     }
 
     #[cfg(feature = "verify")]
-    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], now: &DateTime<Utc>) -> Result<TcbEvaluationDataNumbers<T>, Error> {
+    pub fn verify_with_rootcacrl<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl]) -> Result<TcbEvaluationDataNumbers<T>, Error> {
+        self.verify_ex(trusted_root_certs, root_ca_crls, &Utc::now())
+    }
+
+    #[cfg(feature = "verify")]
+    fn verify_ex<B: Deref<Target = [u8]>>(&self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl], now: &DateTime<Utc>) -> Result<TcbEvaluationDataNumbers<T>, Error> {
         // Check cert chain
-        let (chain, root) = crate::create_cert_chain(&self.ca_chain)?;
+        let (chain, root) = crate::build_and_verify_cert_chain(&self.ca_chain, trusted_root_certs, root_ca_crls)?;
         let mut leaf = chain.first().unwrap_or(&root).clone();
-        let root_list = std::iter::once(root).collect();
-        if 0 < chain.len() {
-            let trust_ca: MbedtlsList<Certificate> = chain.into_iter().collect();
-            let mut err = String::default();
-            Certificate::verify(&trust_ca, &root_list, None, Some(&mut err))
-                .map_err(|e| Error::UntrustworthyTcbEvaluationDataNumber(e))?;
-        }
 
         // Check signature on data
         let mut hash = [0u8; 32];
@@ -240,22 +237,6 @@ impl<T: PlatformTypeForTcbInfo> RawTcbEvaluationDataNumbers<T> {
         leaf.public_key_mut()
             .verify(mbedtls::hash::Type::Sha256, &hash, self.signature())
             .map_err(|e| Error::UntrustworthyTcbEvaluationDataNumber(e))?;
-
-        // Check common name TCB cert
-        let leaf = self.ca_chain.first().ok_or(Error::IncorrectCA)?;
-        let tcb =
-            &pkix::pem::pem_to_der(&leaf, Some(PEM_CERTIFICATE)).ok_or(Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let tcb = GenericCertificate::from_ber(&tcb).map_err(|_| Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        let name = tcb
-            .tbscert
-            .subject
-            .get(&*oid::commonName)
-            .ok_or(Error::UntrustworthyTcbEvaluationDataNumber(ErrMbed::HighLevel(codes::X509BadInputData)))?;
-        if String::from_utf8_lossy(&name.value()) != "Intel SGX TCB Signing" {
-            return Err(Error::IncorrectCA);
-        }
-
-        crate::check_root_ca(trusted_root_certs, &root_list)?;
 
         let TcbEvaluationDataNumbers::<T, Unverified> {
             id,
@@ -327,7 +308,7 @@ mod tests {
         crate::{Error, Unverified, platform}
     };
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
-    use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber};
+    use super::{RawTcbEvaluationDataNumbers, TcbPolicy, TcbEvalNumber, RootCaCrl};
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
     use chrono::{Duration, TimeZone, Utc};
 
@@ -337,7 +318,11 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
+
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
+        numbers.verify_ex(&root_certificates, &root_ca_crls, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
     }
 
     #[cfg(all(not(target_env = "sgx"), feature = "verify"))]
@@ -346,7 +331,11 @@ mod tests {
         let numbers = RawTcbEvaluationDataNumbers::<platform::SGX>::read_from_file("./tests/data").unwrap();
         let root_certificate = include_bytes!("../tests/data/root_SGX_CA_der.cert").to_owned();
         let root_certificates = [&root_certificate[..]];
-        numbers.verify_ex(&root_certificates, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
+
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_certificates).unwrap()];
+
+        numbers.verify_ex(&root_certificates, &root_ca_crls, &Utc.with_ymd_and_hms(2025, 6, 4, 12, 0, 0).unwrap()).unwrap();
 
         let mut corrupted = numbers.clone();
         corrupted.signature[10] = 0x66;

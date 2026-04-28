@@ -23,11 +23,12 @@ use sgx_pkix::oid::{self, SGX_EXTENSION};
 use yasna::{ASN1Error, ASN1ErrorKind, ASN1Result, BERDecodable, BERReader, BERReaderSeq};
 #[cfg(feature = "verify")]
 use {
-    super::{DcapArtifactIssuer, PckCrl},
+    super::{DcapArtifactIssuer, PckCrl, RootCaCrl},
     mbedtls::alloc::{Box as MbedtlsBox, List as MbedtlsList},
     mbedtls::ecp::EcPoint,
     mbedtls::error::{codes, Error as ErrMbed},
     mbedtls::x509::certificate::Certificate,
+    mbedtls::x509::Crl,
     std::ffi::CString,
     std::ops::Deref,
 };
@@ -627,12 +628,33 @@ impl PckCert<Unverified> {
 
     #[cfg(feature = "verify")]
     pub fn verify<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B], pckcrl: Option<&str>) -> Result<PckCert, Error> {
-        let mut crl = if let Some(pckcrl) = pckcrl {
+        self.verify_with_rootcacrl(trusted_root_certs, &[], pckcrl)
+    }
+
+    #[cfg(feature = "verify")]
+    pub fn verify_with_rootcacrl<B: Deref<Target = [u8]>>(self, trusted_root_certs: &[B], root_ca_crls: &[RootCaCrl], pckcrl: Option<&str>) -> Result<PckCert, Error> {
+        let crl = if let Some(pckcrl) = pckcrl {
             let pckcrl = PckCrl::new(pckcrl.to_string(), self.ca_chain.clone())?;
             let pckcrl = pckcrl.verify(trusted_root_certs)?;
-            Some(pckcrl.as_mbedtls_crl()?)
+
+            Some(crate::as_mbedtls_crl(&pckcrl.crl)?)
         } else {
             None
+        };
+
+        // Attempt to append Root CA CRL to the PCK CRL if available
+        let mut crl = if root_ca_crls.is_empty() {
+            crl
+        } else {
+            let mut base_crl = if let Some(pckcrl) = crl {
+                pckcrl
+            } else {
+                Crl::new()
+            };
+            for crl in root_ca_crls {
+                crl.push_to_crl_list(&mut base_crl)?;
+            }
+            Some(base_crl)
         };
 
         let pck = CString::new(self.cert.as_bytes()).map_err(|_| Error::InvalidPck("Conversion into CString failed".into()))?;
@@ -1231,11 +1253,14 @@ mod tests {
         {
             let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
             let root_cas = [&root_ca[..]];
+            let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+            let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_cas).unwrap()];
+
             let platform_crl = reqwest::blocking::get("https://api.trustedservices.intel.com/sgx/certification/v4/pckcrl?ca=platform&encoding=pem")
                 .unwrap()
                 .text()
                 .unwrap();
-            match pck.clone().verify(&root_cas, Some(&platform_crl)) {
+            match pck.clone().verify_with_rootcacrl(&root_cas, &root_ca_crls, Some(&platform_crl)) {
                 Err(Error::InvalidCrl(ErrMbed::HighLevel(codes::EcpVerifyFailed))) => (),
                 e => panic!("Unexpected error: {:?}", e),
             }
@@ -1243,7 +1268,8 @@ mod tests {
                 .unwrap()
                 .text()
                 .unwrap();
-            let pck = pck.verify(&root_cas, Some(&processor_crl)).unwrap();
+
+            let pck = pck.verify_with_rootcacrl(&root_cas, &root_ca_crls, Some(&processor_crl)).unwrap();
 
             let sgx_extension = pck.sgx_extension().expect("validated");
             assert_eq!(
@@ -1468,6 +1494,9 @@ mod tests {
 
         let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
         let root_cas = [&root_ca[..]];
+        let root_ca_crl_der = include_bytes!("../tests/data/IntelSGXRootCA.der");
+        let root_ca_crls = [RootCaCrl::new(root_ca_crl_der).unwrap().verify(&root_cas).unwrap()];
+
         let pck_certs = PckCerts::read_from_file(
             "./tests/data/",
             &base16::decode("881c3086c0eef78f60f5702a7e379efe".as_bytes()).unwrap())
@@ -1482,7 +1511,7 @@ mod tests {
 
         let pck_cert = pck_certs.select_pck(&tcb_info.data().unwrap(), &cpusvn, pcesvn, pceid)
             .unwrap()
-            .verify(&root_cas, None)
+            .verify_with_rootcacrl(&root_cas, &root_ca_crls, None)
             .unwrap();
         let ext = pck_cert.sgx_extension().unwrap();
         assert_eq!(ext.tcb.tcb_components, TcbComponents::<SGXSpecificTcbComponentData>::from_raw(cpusvn, pcesvn));
