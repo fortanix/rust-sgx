@@ -15,7 +15,7 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, TcbComponentType, TcbInfo, Unverified, platform
+    platform, CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, RootCaCrl, TcbComponentType, TcbInfo, Unverified
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -275,6 +275,21 @@ pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo>:
         -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
+#[derive(Hash)]
+pub struct RootCaCrlIn;
+
+impl WithApiVersion for RootCaCrlIn {
+    fn api_version(&self) -> PcsVersion {
+        PcsVersion::V4
+    }
+}
+
+pub trait RootCaCrlService<'inp>:
+    ProvisioningServiceApi<'inp, Input = RootCaCrlIn, Output = RootCaCrl<Unverified>>
+{
+    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+}
+
 pub struct ClientBuilder {
     retry_timeout: Option<Duration>,
     cache_capacity: usize,
@@ -301,7 +316,7 @@ impl ClientBuilder {
         self
     }
 
-    pub(crate) fn build<PSS, PS, PC, QS, TS, TDS, ES, TES, F>(
+    pub(crate) fn build<PSS, PS, PC, QS, TS, TDS, ES, TES, RCC, F>(
         self,
         pckcerts_service: PSS,
         pckcert_service: PS,
@@ -311,6 +326,7 @@ impl ClientBuilder {
         tdx_tcbinfo_service: TDS,
         sgx_tcb_evaluation_data_numbers_service: ES,
         tdx_tcb_evaluation_data_numbers_service: TES,
+        root_ca_crl_service: RCC,
         fetcher: F,
     ) -> Client<F>
     where
@@ -322,6 +338,7 @@ impl ClientBuilder {
         TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
         TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
+        RCC: for<'a> RootCaCrlService<'a> + Sync + Send + 'static,
         F: for<'a> Fetcher<'a>,
     {
         Client::new(
@@ -333,6 +350,7 @@ impl ClientBuilder {
             tdx_tcbinfo_service,
             sgx_tcb_evaluation_data_numbers_service,
             tdx_tcb_evaluation_data_numbers_service,
+            root_ca_crl_service,
             fetcher,
             self.retry_timeout,
             self.cache_capacity,
@@ -495,11 +513,12 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
     tdx_tcbinfo_service: CachedService<TcbInfo<platform::TDX>, dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send>,
     sgx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::SGX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send>,
     tdx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::TDX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send>,
+    root_ca_crl_service: CachedService<RootCaCrl<Unverified>, dyn for<'a> RootCaCrlService<'a> + Sync + Send>,
     fetcher: F,
 }
 
 impl<F: for<'a> Fetcher<'a>> Client<F> {
-    fn new<PSS, PS, PC, QS, TS, TDS, ES, TES>(
+    fn new<PSS, PS, PC, QS, TS, TDS, ES, TES, RCC>(
         pckcerts_service: PSS,
         pckcert_service: PS,
         pckcrl_service: PC,
@@ -508,6 +527,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         tdx_tcbinfo_service: TDS,
         sgx_tcb_evaluation_data_numbers_service: ES,
         tdx_tcb_evaluation_data_numbers_service: TES,
+        root_ca_crl_service: RCC,
         fetcher: F,
         retry_timeout: Option<Duration>,
         cache_capacity: usize,
@@ -522,6 +542,7 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
         TDS: for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send + 'static,
         ES: for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send + 'static,
         TES: for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send + 'static,
+        RCC: for<'a> RootCaCrlService<'a> + Sync + Send + 'static,
     {
         Client {
             pckcerts_service: CachedService::new(
@@ -583,6 +604,14 @@ impl<F: for<'a> Fetcher<'a>> Client<F> {
             tdx_tcb_evaluation_data_numbers_service: CachedService::new(
                 BackoffService::new(
                     PcsService::new(Box::new(tdx_tcb_evaluation_data_numbers_service)),
+                    retry_timeout.clone(),
+                ),
+                cache_capacity,
+                cache_shelf_time,
+            ),
+            root_ca_crl_service: CachedService::new(
+                BackoffService::new(
+                    PcsService::new(Box::new(root_ca_crl_service)),
                     retry_timeout.clone(),
                 ),
                 cache_capacity,
@@ -693,6 +722,8 @@ pub trait ProvisioningClient {
     fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
 
     fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
+
+    fn root_ca_crl(&self) -> Result<RootCaCrl<Unverified>, Error>;
 }
 
 
@@ -778,6 +809,11 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
         self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
 
+    }
+
+    fn root_ca_crl(&self) -> Result<RootCaCrl<Unverified>, Error> {
+        let input = self.root_ca_crl_service.pcs_service().build_input();
+        self.root_ca_crl_service.call_service(&self.fetcher, &input)
     }
 }
 

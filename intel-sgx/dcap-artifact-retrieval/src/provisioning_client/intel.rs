@@ -12,16 +12,14 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl,
-    PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
-    TcbInfo, Unverified,
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, RootCaCrl, TcbInfo, Unverified
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use super::common::*;
+use super::{common::*, RootCaCrlIn, RootCaCrlService};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PckCertsIn, PckCertsService,
     PckCrlIn, PckCrlService, PcsVersion, ProvisioningServiceApi, QeIdIn, QeIdService, StatusCode,
@@ -68,6 +66,7 @@ impl IntelProvisioningClientBuilder {
         let tdx_tcbinfo = TcbInfoApi::new(self.api_version.clone());
         let sgx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
         let tdx_evaluation_data_numbers = TcbEvaluationDataNumbersApi::new(INTEL_BASE_URL.into());
+        let root_ca_crl = RootCaCrlApi::new();
 
         self.client_builder.build(
             pck_certs,
@@ -78,6 +77,7 @@ impl IntelProvisioningClientBuilder {
             tdx_tcbinfo,
             sgx_evaluation_data_numbers,
             tdx_evaluation_data_numbers,
+            root_ca_crl,
             fetcher,
         )
     }
@@ -607,6 +607,67 @@ impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'i
         let ca_chain =
             parse_issuer_header(&response_headers, TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN)?;
         RawTcbEvaluationDataNumbers::parse(&response_body, ca_chain).map_err(|e| e.into())
+    }
+}
+
+pub struct RootCaCrlApi;
+
+impl RootCaCrlApi {
+    pub fn new() -> Self {
+        RootCaCrlApi
+    }
+}
+
+impl<'inp> RootCaCrlService<'inp> for RootCaCrlApi {
+    fn build_input(
+        &'inp self
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+        RootCaCrlIn
+    }
+}
+
+impl<'inp> ProvisioningServiceApi<'inp> for RootCaCrlApi {
+    type Input = RootCaCrlIn;
+    type Output = RootCaCrl<Unverified>;
+
+    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+        let url = format!("https://certificates.trustedservices.intel.com/IntelSGXRootCA.crl");
+        Ok((url, Vec::new()))
+    }
+
+    fn validate_response(&self, status_code: StatusCode) -> Result<(), Error> {
+        match &status_code {
+            StatusCode::Ok => Ok(()),
+            StatusCode::BadRequest => Err(Error::PCSError(status_code, "Invalid parameter")),
+            StatusCode::Unauthorized => Err(Error::PCSError(
+                status_code,
+                "Failed to authenticate or authorize the request.",
+            )),
+            StatusCode::NotFound => {
+                Err(Error::PCSError(status_code, "Root CA CRL cannot be found"))
+            }
+            StatusCode::InternalServerError => Err(Error::PCSError(
+                status_code,
+                "PCS suffered from an internal server error",
+            )),
+            StatusCode::ServiceUnavailable => Err(Error::PCSError(
+                status_code,
+                "PCS is temporarily unavailable",
+            )),
+            __ => Err(Error::PCSError(
+                status_code,
+                "Unexpected response from PCS server",
+            )),
+        }
+    }
+
+    fn parse_response(
+        &self,
+        response_body: String,
+        response_headers: Vec<(String, String)>,
+        _api_version: PcsVersion,
+    ) -> Result<Self::Output, Error> {
+        RootCaCrl::new_from_pem(&response_body).map_err(|e| Error::ReadResponseError(Cow::Owned(e.to_string().into())))
     }
 }
 
@@ -1258,5 +1319,19 @@ mod tests {
     #[test]
     pub fn tdx_tcb_evaluation_data_numbers() {
         tcb_evaluation_data_numbers_test_base::<platform::TDX>()
+    }
+
+    #[test]
+    pub fn root_ca_crl() {
+
+        let mut intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let root_ca_crl = client.root_ca_crl().unwrap();
+
+        let root_ca = include_bytes!("../../../pcs/tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+        root_ca_crl.verify(&root_cas).unwrap();
     }
 }
