@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 /* Copyright (c) Fortanix, Inc.
  *
  * This Source Code Form is subject to the terms of the Mozilla Public
@@ -8,7 +6,10 @@ use std::path::PathBuf;
  */
 use crate::{io, Error, WriteOptions};
 use crate::{DcapArtifactIssuer, Unverified, VerificationType, Verified};
+use pkix::pem::PEM_CRL;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::path::PathBuf;
 
 #[cfg(feature = "verify")]
 use {mbedtls::x509::{Certificate, Crl}, std::ops::Deref};
@@ -99,8 +100,6 @@ impl RootCaCrl<Unverified> {
         let crl: Self = io::read_from_file(input_dir, &filename)?;
         Ok(crl)
     }
-
-
 }
 
 impl<V: VerificationType> RootCaCrl<V> {
@@ -111,6 +110,20 @@ impl<V: VerificationType> RootCaCrl<V> {
     ) -> Result<Option<PathBuf>, Error> {
         let filename = crate::PckCrl::<Unverified>::filename_from_ca(DcapArtifactIssuer::SGXRootCA);
         io::write_to_file(&self, output_dir, &filename, option)
+    }
+
+    pub fn crl_as_der(&self) -> Result<Vec<u8>, Error> {
+        match &self.crl {
+            CrlType::Pem(pem) => pkix::pem::pem_to_der(&pem, Some(PEM_CRL)).ok_or(Error::InvalidCrlFormat),
+            CrlType::Der(der) => Ok(der.clone()),
+        }
+    }
+
+    pub fn crl_as_pem<'a>(&'a self) -> Cow<'a, String> {
+        match &self.crl {
+            CrlType::Pem(pem) => Cow::Borrowed(pem),
+            CrlType::Der(der) => Cow::Owned(pkix::pem::der_to_pem(der, PEM_CRL)),
+        }
     }
 }
 
@@ -152,4 +165,21 @@ mod tests {
         let _ = RootCaCrl::<Unverified>::read_from_file(path).unwrap().verify(&root_cas).unwrap();
     }
 
+    #[test]
+    fn root_ca_crl_der_conversion() {
+        let root_ca = include_bytes!("../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+
+        let crl_pem = include_str!("../tests/data/IntelSGXRootCA.crl");
+        let root_ca_crl = RootCaCrl::new_from_pem(crl_pem).unwrap();
+
+        let der = root_ca_crl.crl_as_der().unwrap();
+
+        let recreate_root_ca_crl = RootCaCrl::new(&der).unwrap();
+        let recreated_crl = recreate_root_ca_crl.verify(&root_cas).unwrap();
+
+        let pem_again = recreated_crl.crl_as_pem();
+        let recreate_root_ca_crl = RootCaCrl::new_from_pem(pem_again.as_str()).unwrap();
+        recreate_root_ca_crl.verify(&root_cas).unwrap();
+    }
 }
