@@ -1,3 +1,4 @@
+use crossterm::event::KeyCode;
 use insecure_time::{FixedFreqTscBuilder, Freq, NativeTime, Ticks, Tsc, TscBuilder};
 use rand::{distributions::Uniform, prelude::Distribution, thread_rng};
 use std::{
@@ -93,13 +94,17 @@ impl NativeTime for SystemTimeSource {
     fn now() -> Self {
         SYSTEM_TIME_NOW_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let slowness_micros = SYSTEM_TIME_SLOWNESS_MICROS.load(Ordering::Relaxed);
+        let delay = if slowness_micros > 0 {
+            Duration::from_micros(Uniform::new_inclusive(0, slowness_micros).sample(&mut thread_rng()))
+        } else {
+            Duration::ZERO
+        };
         let res = Self(
             SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap(),
         );
         if slowness_micros > 0 {
-            let delay = Duration::from_micros(Uniform::new_inclusive(0, slowness_micros).sample(&mut thread_rng()));
             let now = Instant::now();
             while now.elapsed() < delay {}
         }
@@ -108,6 +113,7 @@ impl NativeTime for SystemTimeSource {
 }
 
 fn learning_freq_tsc(sync_interval_millis: u64, max_acceptable_drift_micros: u64, frequency_learning_period_millis: u64) {
+    println!("nominal TSC frequency: {:?}", insecure_time::Freq::get());
     let tsc = insecure_time::LearningFreqTscBuilder::<SystemTimeSource>::new()
         .set_frequency_learning_period(Duration::from_millis(frequency_learning_period_millis))
         .set_max_acceptable_drift(Duration::from_micros(max_acceptable_drift_micros))
@@ -120,6 +126,7 @@ fn learning_freq_tsc(sync_interval_millis: u64, max_acceptable_drift_micros: u64
     let mut last_freq_estimate = None;
     let mut last_print = Duration::ZERO;
     let mut sum_drift_sq = 0i128;
+    let mut count_drift = 0;
     for i in 0usize.. {
         let system_time_now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -129,12 +136,13 @@ fn learning_freq_tsc(sync_interval_millis: u64, max_acceptable_drift_micros: u64
         let drift = tsc_now.0.as_nanos() as i128 - system_time_now.as_nanos() as i128;
 
         sum_drift_sq += drift * drift;
+        count_drift += 1;
         if max_drift_nanos.abs() < drift.abs() {
             max_drift_nanos = drift;
         }
 
         if system_time_now - last_print >= Duration::from_millis(1000) {
-            let dirft_rms = ((sum_drift_sq / (i as i128 + 1)) as f64).sqrt();
+            let dirft_rms = ((sum_drift_sq / count_drift) as f64).sqrt();
             println!("iter {i} - tsc drift: max: {:.2}μs, rms: {:.2}μs, current: {:.2}μs",
                 max_drift_nanos as f64 / 1000.0,
                 dirft_rms as f64 / 1000.0,
@@ -153,9 +161,22 @@ fn learning_freq_tsc(sync_interval_millis: u64, max_acceptable_drift_micros: u64
             );
             println!("System time reads: {}, tsc resyncs: {}", SYSTEM_TIME_NOW_CALLS.load(Ordering::Relaxed), tsc.resyncs());
             println!("---");
+
+            if crossterm::event::poll(Duration::ZERO).is_ok_and(|x| x) {
+                let event = crossterm::event::read().unwrap();
+                if let Some(key_event) = event.as_key_event().filter(|_| event.is_key_press()) {
+                    if key_event.code == KeyCode::Char('r') {
+                        println!(">>> Resetting drift RMS!");
+                        sum_drift_sq = 0;
+                        count_drift = 0;
+                    }
+                }
+            }
+
+
             last_print = system_time_now;
         }
-        std::thread::sleep(Duration::from_millis(100));
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 

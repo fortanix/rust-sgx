@@ -23,6 +23,7 @@ spin = { version = "0.10", default-features = false, features = ["rwlock", "mute
 [dev-dependencies]
 rand = "0.8"
 clap = { version = "4.4", features = ["derive"] }
+crossterm = "0.29"
 
 [features]
 default = ["std"]
