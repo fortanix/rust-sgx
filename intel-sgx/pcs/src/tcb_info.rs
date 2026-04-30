@@ -327,9 +327,7 @@ impl TdxModuleTcbLevel {
 fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8, D::Error> {
     let id_str = String::deserialize(deserializer)?;
     let split = id_str
-        .split('_')
-        .skip(1)
-        .next()
+        .strip_prefix("TDX_")
         .ok_or(serde::de::Error::custom(format!(
             "Failed to parse TDX ID. Found: {id_str}"
         )))?;
