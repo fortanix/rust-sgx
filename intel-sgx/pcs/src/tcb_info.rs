@@ -269,8 +269,13 @@ impl TdxModuleIdentity {
         self.tcb_levels.iter()
     }
 
+    #[deprecated(since="0.8.3", note = "this function is not supposed to be used externally")]
+    pub fn find_best_tcb_level(&self, _: u64) -> Option<&TdxModuleTcbLevel> {
+        None
+    }
+
     /// Function to find best TDX TCB level for this TDX Module
-    pub fn find_best_tcb_level(&self, level: u64) -> Option<&TdxModuleTcbLevel> {
+    pub(crate) fn find_tcb_level(&self, level: u64) -> Option<&TdxModuleTcbLevel> {
         // Continuing reference:
         // https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
         //
@@ -335,6 +340,7 @@ fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8,
         .parse::<u8>()
         .map_err(|_| serde::de::Error::custom(format!("Failed to parse TDX ID. Found: {id_str}")))
 }
+
 
 #[allow(unused)]
 fn tdx_id_serializer<S>(id: u8, serializer: S) -> Result<S::Ok, S::Error>
@@ -580,7 +586,7 @@ impl TcbData<platform::TDX, Verified> {
             let tdx_module =
                 self.find_tdx_module_identity(tcb_level.tdx_tcb_components().tdx_module_id())?;
             let tdx_module_tcb_level = tdx_module
-                .find_best_tcb_level(tcb_level.tdx_tcb_components().tdx_module_svn().into())?;
+                .find_tcb_level(tcb_level.tdx_tcb_components().tdx_module_svn().into())?;
             Some(TdxTcbLevel::TcbLevelWithModule(
                 matching_tcb_level,
                 tdx_module_tcb_level,
