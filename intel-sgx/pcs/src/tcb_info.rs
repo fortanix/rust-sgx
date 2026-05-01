@@ -269,9 +269,9 @@ impl TdxModuleIdentity {
         self.tcb_levels.iter()
     }
 
-    #[deprecated(since="0.8.3", note = "this function is not supposed to be used externally")]
-    pub fn find_best_tcb_level(&self, _: u64) -> Option<&TdxModuleTcbLevel> {
-        None
+    #[deprecated(since="0.8.3", note = "use `find_tcb_level` instead")]
+    pub fn find_best_tcb_level(&self, level: u64) -> Option<&TdxModuleTcbLevel> {
+        self.find_tcb_level(level)
     }
 
     /// Function to find best TDX TCB level for this TDX Module
