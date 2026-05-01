@@ -68,7 +68,7 @@ pub trait PlatformType : Clone + Default {
 
 ///Function to attempt deserialize [PlatformType] instance based on the [PlatformType::platform_id] value.
 pub fn deserialize_platform_id<'de, D: Deserializer<'de>, T: PlatformType>(deserializer: D) -> Result<T, D::Error> {
-    let platform_str = <&str>::deserialize(deserializer)?;
+    let platform_str = String::deserialize(deserializer)?;
     if platform_str == T::platform_id() {
         Ok(T::default())
     } else {
