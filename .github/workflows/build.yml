@@ -53,19 +53,19 @@ jobs:
 
       - name: Setup Rust toolchain
         run: |
+          rustup toolchain install nightly-2025-10-09
           rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
-          rustup toolchain add nightly
-          rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
+          rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl --toolchain nightly-2025-10-09
           rustup update
 
       - name: Cargo test --all --exclude sgxs-loaders
         run: cargo test --verbose --locked --all --exclude sgxs-loaders --exclude async-usercalls && [ "$(echo $(nm -D target/debug/sgx-detect|grep __vdso_sgx_enter_enclave))" = "w __vdso_sgx_enter_enclave" ]
 
       - name: Nightly test -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
-        run: cargo +nightly test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p async-usercalls --target x86_64-fortanix-unknown-sgx --no-run
 
       - name: Nightly test -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
-        run: cargo +nightly test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p dcap-artifact-retrieval --target x86_64-fortanix-unknown-sgx --no-default-features --no-run
 
       - name: Cargo test -p dcap-artifact-retrieval --features rustls-tls
         run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls
@@ -76,6 +76,9 @@ jobs:
       - name: Cargo test -p dcap-ql --features verify
         run: cargo test --verbose --locked -p dcap-ql --features verify
 
+      - name: Nightly Cargo test -p dcap-ql --features verify
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p dcap-ql --features verify
+
       - name: Cargo test -p ias --features mbedtls
         run: cargo test --verbose --locked -p ias --features mbedtls
 
@@ -84,20 +87,20 @@ jobs:
 
       # uses backtrace, which still requires nightly on SGX
       - name: Nightly build -p aesm-client --target=x86_64-fortanix-unknown-sgx
-        run: cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
+        run: cargo +nightly-2025-10-09 build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
 
       # uses sgxstd feature
       - name: Nightly build -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
-        run: cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
+        run: cargo +nightly-2025-10-09 build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx --features sgx-isa/sgxstd
 
       - name: Nightly test -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
-        run: cargo +nightly test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p sgx-isa --features sgxstd --target x86_64-fortanix-unknown-sgx --no-run
 
       - name: Nightly test -p pcs --target x86_64-fortanix-unknown-sgx
-        run: cargo +nightly test --verbose --locked -p pcs --target x86_64-fortanix-unknown-sgx --no-run
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p pcs --target x86_64-fortanix-unknown-sgx --no-run
 
       - name: Nightly test -p pcs --features verify
-        run: cargo +nightly test --verbose --locked -p pcs --features verify
+        run: cargo +nightly-2025-10-09 test --verbose --locked -p pcs --features verify
 
       # Unfortunately running `faketime '2021-09-10 11:00:00 GMT' cargo test -p nitro-attestation-verify` causes a segmentation
       #  fault while compiling. We only execute `faketime` during the tests
@@ -120,10 +123,10 @@ jobs:
         run: cargo build --verbose --locked -p em-app -p get-certificate --target=x86_64-fortanix-unknown-sgx
 
       - name: insecure-time test
-        run: cargo +nightly test -p insecure-time --features estimate_crystal_clock_freq
+        run: cargo +nightly-2025-10-09 test -p insecure-time --features estimate_crystal_clock_freq
 
       - name: insecure-time build for SGX platform
-        run: cargo +nightly build -p insecure-time --features estimate_crystal_clock_freq --target x86_64-fortanix-unknown-sgx
+        run: cargo +nightly-2025-10-09 build -p insecure-time --features estimate_crystal_clock_freq --target x86_64-fortanix-unknown-sgx
 
       - name: Generate API docs
         run: ./doc/generate-api-docs.sh
