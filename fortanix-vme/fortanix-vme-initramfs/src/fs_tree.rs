@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 const DEFAULT_FILE_PERMS: u32 = 0o100664;
 const DEFAULT_DIR_PERMS: u32 = 0o40775;
 const DEFAULT_EXEC_PERMS: u32 = 0o100775;
+pub const DEFAULT_SYMLINK_PERMS: u32 = 0o120777;
 const REL_TO_CUR: &str = "./";
 
 /// A builder for constructing an initramfs filesystem [`FsTree`] incrementally.
@@ -112,6 +113,22 @@ impl FsTree {
         self
     }
 
+    pub fn add_symlink(mut self, path: &str, target: &str) -> FsTree {
+        let mut path = Self::normalize_path(path);
+        let entry = FsTreeEntry::Symlink {
+            path: path.clone(),
+            target: target.to_owned(),
+        };
+
+        // Add parents first
+        if path.pop() {
+            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        }
+
+        self.0.push(entry);
+        self
+    }
+
     /// Normalizes a path and anchors it to the current working directory.
     ///
     /// This function performs standard path normalization, removes any leading
@@ -157,6 +174,10 @@ pub enum FsTreeEntry {
         #[derivative(Debug(format_with = "redact"))]
         content: Box<dyn ReadSeek>,
     },
+    Symlink {
+        path: PathBuf,
+        target: String,
+    },
 }
 
 fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -185,6 +206,17 @@ impl FsTreeEntry {
                 let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
                 Ok((builder, content))
             }
+            FsTreeEntry::Symlink { path, target } => {
+                let name = path
+                    .to_str()
+                    .ok_or(Error::PathError(path.display().to_string()))?;
+                let builder = NewcBuilder::new(name)
+                    .uid(0)
+                    .gid(0)
+                    .mode(DEFAULT_SYMLINK_PERMS);
+                let buffer = Box::new(Cursor::new(target.as_bytes().to_vec()));
+                Ok((builder, buffer))
+            }
         }
     }
 
@@ -206,6 +238,16 @@ impl FsTreeEntry {
                     path: p2, mode: m2, ..
                 },
             ) => p1 == p2 && m1 == m2,
+            (
+                FsTreeEntry::Symlink {
+                    path: p1,
+                    target: t1,
+                },
+                FsTreeEntry::Symlink {
+                    path: p2,
+                    target: t2,
+                },
+            ) => p1 == p2 && t1 == t2,
             _ => false,
         }
     }
@@ -230,6 +272,13 @@ mod tests {
         }
     }
 
+    fn make_symlink(path: &str, target: &str) -> FsTreeEntry {
+        FsTreeEntry::Symlink {
+            path: PathBuf::from(path),
+            target: target.to_owned(),
+        }
+    }
+
     #[test]
     fn test_structure() {
         let content = vec![0, 1, 2, 3, 4];
@@ -243,7 +292,8 @@ mod tests {
             .add_file("cmd", Cursor::new(content.clone()))
             .add_file("env", Cursor::new(content.clone()))
             .add_file("init", Cursor::new(content.clone()))
-            .add_file("nsm.ko", Cursor::new(content.clone()));
+            .add_file("nsm.ko", Cursor::new(content.clone()))
+            .add_symlink("rootfs/bin/sh", "dash");
 
         let expected = FsTree(vec![
             make_directory("./rootfs"),
@@ -258,6 +308,7 @@ mod tests {
             make_file("./env", Cursor::new(content.clone())),
             make_file("./init", Cursor::new(content.clone())),
             make_file("./nsm.ko", Cursor::new(content.clone())),
+            make_symlink("./rootfs/bin/sh", "dash"),
         ]);
         assert!(files.eq_metadata(&expected));
     }
