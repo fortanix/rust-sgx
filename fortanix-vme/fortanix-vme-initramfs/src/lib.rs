@@ -1,8 +1,8 @@
 #![deny(warnings)]
 use cpio::{self, NewcReader};
-use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
 use thiserror::Error;
@@ -232,7 +232,7 @@ impl<R: Read> Initramfs<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Initramfs, fs_tree::FsTree};
+    use super::{fs_tree::FsTree, Initramfs};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
     use std::io::{Cursor, Seek};
