@@ -44,9 +44,13 @@ impl FsTree {
         self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
     }
 
-    pub fn add_directory(mut self, dirname: &str) -> FsTree {
+    pub fn add_directory(self, dirname: &str) -> FsTree {
+        self.add_directory_with_permissions(dirname, DEFAULT_DIR_PERMS)
+    }
+
+    pub fn add_directory_with_permissions(mut self, dirname: &str, mode: u32) -> FsTree {
         let path = Self::normalize_path(dirname);
-        self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        self.add_directory_with_parents(path.as_path(), mode);
         self
     }
 
@@ -113,7 +117,11 @@ impl FsTree {
         self
     }
 
-    pub fn add_symlink(mut self, path: &str, target: &str) -> FsTree {
+    pub fn add_symlink(self, path: &str, target: &str) -> FsTree {
+        self.add_symlink_with_permissions(path, target, DEFAULT_SYMLINK_PERMS)
+    }
+
+    pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
         let mut path = Self::normalize_path(path);
         let entry = FsTreeEntry::Symlink {
             path: path.clone(),
@@ -122,7 +130,7 @@ impl FsTree {
 
         // Add parents first
         if path.pop() {
-            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+            self.add_directory_with_parents(path.as_path(), mode);
         }
 
         self.0.push(entry);
