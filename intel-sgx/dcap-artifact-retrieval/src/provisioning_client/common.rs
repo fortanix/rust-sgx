@@ -17,7 +17,8 @@ pub const PCK_CRL_ISSUER_CHAIN_HEADER: &'static str = "SGX-PCK-CRL-Issuer-Chain"
 pub const TCB_INFO_ISSUER_CHAIN_HEADER_V3: &'static str = "SGX-TCB-Info-Issuer-Chain";
 pub const TCB_INFO_ISSUER_CHAIN_HEADER_V4: &'static str = "TCB-Info-Issuer-Chain";
 pub const ENCLAVE_ID_ISSUER_CHAIN_HEADER: &'static str = "SGX-Enclave-Identity-Issuer-Chain";
-pub const TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN: &'static str = "TCB-Evaluation-Data-Numbers-Issuer-Chain";
+pub const TCB_EVALUATION_DATA_NUMBERS_ISSUER_CHAIN: &'static str =
+    "TCB-Evaluation-Data-Numbers-Issuer-Chain";
 
 pub struct PckCertsApiNotSupported;
 
@@ -31,7 +32,7 @@ impl<'inp> PckCertsService<'inp> for PckCertsApiNotSupported {
             enc_ppid,
             pce_id,
             api_key: &None,
-            api_version: PcsVersion::V3, // does not matter, this API is not supported!
+            api_version: PcsVersion::V4, // does not matter, this API is not supported!
         }
     }
 }

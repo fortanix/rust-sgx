@@ -12,7 +12,9 @@
 //! - <https://download.01.org/intel-sgx/dcap-1.1/linux/docs/Intel_SGX_PCK_Certificate_CRL_Spec-1.1.pdf>
 
 use pcs::{
-    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, RootCaCrl, TcbInfo, Unverified
+    CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl,
+    PlatformType, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
+    RootCaCrl, TcbInfo, Unverified,
 };
 use rustc_serialize::hex::ToHex;
 use std::borrow::Cow;
@@ -369,9 +371,7 @@ impl<T: PlatformType> TcbInfoApi<T> {
     }
 }
 
-impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T>
-    for TcbInfoApi<T>
-{
+impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> TcbInfoService<'inp, T> for TcbInfoApi<T> {
     fn build_input(
         &'inp self,
         fmspc: &'inp Fmspc,
@@ -442,6 +442,7 @@ impl<'inp, T: PlatformTypeForTcbInfo + PlatformApiTag> ProvisioningServiceApi<'i
         }
     }
 
+    #[allow(deprecated)]
     fn parse_response(
         &self,
         response_body: String,
@@ -619,9 +620,7 @@ impl RootCaCrlApi {
 }
 
 impl<'inp> RootCaCrlService<'inp> for RootCaCrlApi {
-    fn build_input(
-        &'inp self
-    ) -> <Self as ProvisioningServiceApi<'inp>>::Input {
+    fn build_input(&'inp self) -> <Self as ProvisioningServiceApi<'inp>>::Input {
         RootCaCrlIn
     }
 }
@@ -630,7 +629,7 @@ impl<'inp> ProvisioningServiceApi<'inp> for RootCaCrlApi {
     type Input = RootCaCrlIn;
     type Output = RootCaCrl<Unverified>;
 
-    fn build_request(&self, input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
+    fn build_request(&self, _input: &Self::Input) -> Result<(String, Vec<(String, String)>), Error> {
         let url = format!("https://certificates.trustedservices.intel.com/IntelSGXRootCA.crl");
         Ok((url, Vec::new()))
     }
@@ -664,10 +663,11 @@ impl<'inp> ProvisioningServiceApi<'inp> for RootCaCrlApi {
     fn parse_response(
         &self,
         response_body: String,
-        response_headers: Vec<(String, String)>,
+        _response_headers: Vec<(String, String)>,
         _api_version: PcsVersion,
     ) -> Result<Self::Output, Error> {
-        RootCaCrl::new_from_pem(&response_body).map_err(|e| Error::ReadResponseError(Cow::Owned(e.to_string().into())))
+        RootCaCrl::new_from_pem(&response_body)
+            .map_err(|e| Error::ReadResponseError(Cow::Owned(e.to_string().into())))
     }
 }
 
@@ -688,293 +688,236 @@ mod tests {
     };
 
     use crate::provisioning_client::{
-        test_helpers, ProvisioningClientFuncSelector, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        test_helpers, IntelProvisioningClientBuilder, PcsVersion, ProvisioningClient,
+        ProvisioningClientFuncSelector,
     };
-    use crate::{Error, reqwest_client, StatusCode};
+    use crate::{reqwest_client, Error, StatusCode};
     use std::hash::DefaultHasher;
 
     const PCKID_TEST_FILE: &str = "./tests/data/pckid_retrieval.csv";
     const OUTPUT_TEST_DIR: &str = "./tests/data/";
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
 
-    fn pcs_api_key() -> Option<String> {
-        let api_key_option = std::env::var("PCS_API_KEY").ok();
-        if let Some(api_key) = api_key_option.as_ref() {
-            assert!(!api_key.is_empty(), "Empty string in PCS_API_KEY");
-        }
-        api_key_option
-    }
-
     #[test]
     pub fn pcks() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
-            {
-                let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
-                    .unwrap();
-                assert_eq!(
-                    test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
-                    "Intel SGX Root CA"
-                );
-                pcks.fmspc().unwrap();
-                pcks.write_to_file(
-                    OUTPUT_TEST_DIR,
-                    pckid.qe_id.as_slice(),
-                    WriteOptionsBuilder::new().build(),
-                )
+        let client = intel_builder.build(reqwest_client());
+
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pcks = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
                 .unwrap();
-            }
+            assert_eq!(
+                test_helpers::get_cert_subject(pcks.ca_chain().last().unwrap()),
+                "Intel SGX Root CA"
+            );
+            pcks.fmspc().unwrap();
+            pcks.write_to_file(
+                OUTPUT_TEST_DIR,
+                pckid.qe_id.as_slice(),
+                WriteOptionsBuilder::new().build(),
+            )
+            .unwrap();
         }
     }
 
     #[test]
     pub fn pcks_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
+        let client = intel_builder.build(reqwest_client());
+
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pcks = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+
+            // The cache should be populated after initial service call
             {
-                let pcks = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
-                    .unwrap();
+                let mut cache = client.pckcerts_service.cache.lock().unwrap();
 
-                // The cache should be populated after initial service call
-                {
-                    let mut cache = client.pckcerts_service.cache.lock().unwrap();
+                assert!(cache.len() > 0);
 
-                    assert!(cache.len() > 0);
+                let (cached_pcks, _) = {
+                    let mut hasher = DefaultHasher::new();
+                    let input = client
+                        .pckcerts_service
+                        .pcs_service()
+                        .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
+                    input.hash(&mut hasher);
 
-                    let (cached_pcks, _) = {
-                        let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .pckcerts_service
-                            .pcs_service()
-                            .build_input(&pckid.enc_ppid, pckid.pce_id.clone());
-                        input.hash(&mut hasher);
+                    cache
+                        .get_mut(&hasher.finish())
+                        .expect("Can't find key in cache")
+                        .to_owned()
+                };
 
-                        cache
-                            .get_mut(&hasher.finish())
-                            .expect("Can't find key in cache")
-                            .to_owned()
-                    };
-
-                    assert_eq!(pcks.fmspc().unwrap(), cached_pcks.fmspc().unwrap());
-                    assert_eq!(pcks, cached_pcks);
-                }
-
-                // Second service call should return value from cache
-                let pcks_from_service = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
-                    .unwrap();
-
-                assert_eq!(pcks, pcks_from_service);
-                assert_eq!(pcks.fmspc().unwrap(), pcks_from_service.fmspc().unwrap());
+                assert_eq!(pcks.fmspc().unwrap(), cached_pcks.fmspc().unwrap());
+                assert_eq!(pcks, cached_pcks);
             }
+
+            // Second service call should return value from cache
+            let pcks_from_service = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+
+            assert_eq!(pcks, pcks_from_service);
+            assert_eq!(pcks.fmspc().unwrap(), pcks_from_service.fmspc().unwrap());
         }
     }
 
     #[test]
     pub fn pck() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
-            {
-                let pck = client
-                    .pckcert(
-                        Some(&pckid.enc_ppid),
-                        &pckid.pce_id,
-                        &pckid.cpu_svn,
-                        pckid.pce_isvsvn,
-                        None,
-                    )
-                    .unwrap();
-                assert_eq!(
-                    test_helpers::get_cert_subject(pck.ca_chain().last().unwrap()),
-                    "Intel SGX Root CA"
-                );
-            }
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pck = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    None,
+                )
+                .unwrap();
+            assert_eq!(
+                test_helpers::get_cert_subject(pck.ca_chain().last().unwrap()),
+                "Intel SGX Root CA"
+            );
         }
     }
 
     #[test]
     pub fn pck_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
-            let root_cas = [&root_ca[..]];
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
-            let crl_processor = client
-                .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
-                .unwrap()
-                .crl_as_pem()
-                .to_owned();
-            let crl_platform = client
-                .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
-                .unwrap()
-                .crl_as_pem()
-                .to_owned();
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let crl_processor = client
+            .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
+            .unwrap()
+            .crl_as_pem()
+            .to_owned();
+        let crl_platform = client
+            .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
+            .unwrap()
+            .crl_as_pem()
+            .to_owned();
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pck = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    None,
+                )
+                .unwrap();
+            let pck = pck
+                .clone()
+                .verify(&root_cas, Some(&crl_processor))
+                .or(pck.clone().verify(&root_cas, Some(&crl_platform)))
+                .unwrap();
+
+            // The cache should be populated after initial service call
             {
-                let pck = client
-                    .pckcert(
+                let mut cache = client.pckcert_service.cache.lock().unwrap();
+
+                assert!(cache.len() > 0);
+
+                let (cached_pck, _) = {
+                    let mut hasher = DefaultHasher::new();
+                    let input = client.pckcert_service.pcs_service().build_input(
                         Some(&pckid.enc_ppid),
                         &pckid.pce_id,
                         &pckid.cpu_svn,
                         pckid.pce_isvsvn,
                         None,
-                    )
-                    .unwrap();
-                let pck = pck
-                    .clone()
-                    .verify(&root_cas, Some(&crl_processor))
-                    .or(pck.clone().verify(&root_cas, Some(&crl_platform)))
-                    .unwrap();
-
-                // The cache should be populated after initial service call
-                {
-                    let mut cache = client.pckcert_service.cache.lock().unwrap();
-
-                    assert!(cache.len() > 0);
-
-                    let (cached_pck, _) = {
-                        let mut hasher = DefaultHasher::new();
-                        let input = client.pckcert_service.pcs_service().build_input(
-                            Some(&pckid.enc_ppid),
-                            &pckid.pce_id,
-                            &pckid.cpu_svn,
-                            pckid.pce_isvsvn,
-                            None,
-                        );
-                        input.hash(&mut hasher);
-
-                        cache
-                            .get_mut(&hasher.finish())
-                            .expect("Can't find key in cache")
-                            .to_owned()
-                    };
-
-                    assert_eq!(
-                        pck.fmspc().unwrap(),
-                        cached_pck
-                            .clone()
-                            .verify(&root_cas, None)
-                            .unwrap()
-                            .fmspc()
-                            .unwrap()
                     );
-                    assert_eq!(pck.ca_chain(), cached_pck.ca_chain());
-                }
+                    input.hash(&mut hasher);
 
-                // Second service call should return value from cache
-                let pck_from_service = client
-                    .pckcert(
-                        Some(&pckid.enc_ppid),
-                        &pckid.pce_id,
-                        &pckid.cpu_svn,
-                        pckid.pce_isvsvn,
-                        None,
-                    )
-                    .unwrap();
+                    cache
+                        .get_mut(&hasher.finish())
+                        .expect("Can't find key in cache")
+                        .to_owned()
+                };
 
                 assert_eq!(
                     pck.fmspc().unwrap(),
-                    pck_from_service
+                    cached_pck
                         .clone()
                         .verify(&root_cas, None)
                         .unwrap()
                         .fmspc()
                         .unwrap()
                 );
-                assert_eq!(pck.ca_chain(), pck_from_service.ca_chain());
+                assert_eq!(pck.ca_chain(), cached_pck.ca_chain());
             }
+
+            // Second service call should return value from cache
+            let pck_from_service = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    None,
+                )
+                .unwrap();
+
+            assert_eq!(
+                pck.fmspc().unwrap(),
+                pck_from_service
+                    .clone()
+                    .verify(&root_cas, None)
+                    .unwrap()
+                    .fmspc()
+                    .unwrap()
+            );
+            assert_eq!(pck.ca_chain(), pck_from_service.ca_chain());
         }
     }
 
     #[test]
     pub fn tcb_info() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
-            {
-                let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
-                    .unwrap();
-                assert!(client
-                    .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .and_then(|tcb| {
-                        Ok(tcb
-                            .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
-                            .unwrap())
-                    })
-                    .is_ok());
-            }
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+            assert!(client
+                .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
+                .and_then(|tcb| {
+                    Ok(tcb
+                        .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
+                        .unwrap())
+                })
+                .is_ok());
         }
     }
 
@@ -1054,57 +997,47 @@ mod tests {
 
     #[test]
     pub fn tcb_info_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client
+                .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
+                .unwrap();
+            let fmspc = pckcerts.fmspc().unwrap();
+            let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
+
+            // The cache should be populated after initial service call
             {
-                let pckcerts = client
-                    .pckcerts(&pckid.enc_ppid, pckid.pce_id.clone())
-                    .unwrap();
-                let fmspc = pckcerts.fmspc().unwrap();
-                let tcb_info = client.sgx_tcbinfo(&fmspc, None).unwrap();
+                let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
 
-                // The cache should be populated after initial service call
-                {
-                    let mut cache = client.sgx_tcbinfo_service.cache.lock().unwrap();
+                assert!(cache.len() > 0);
 
-                    assert!(cache.len() > 0);
+                let (cached_tcb_info, _) = {
+                    let mut hasher = DefaultHasher::new();
+                    let input = client
+                        .sgx_tcbinfo_service
+                        .pcs_service()
+                        .build_input(&fmspc, None);
+                    input.hash(&mut hasher);
 
-                    let (cached_tcb_info, _) = {
-                        let mut hasher = DefaultHasher::new();
-                        let input = client
-                            .sgx_tcbinfo_service
-                            .pcs_service()
-                            .build_input(&fmspc, None);
-                        input.hash(&mut hasher);
+                    cache
+                        .get_mut(&hasher.finish())
+                        .expect("Can't find key in cache")
+                        .to_owned()
+                };
 
-                        cache
-                            .get_mut(&hasher.finish())
-                            .expect("Can't find key in cache")
-                            .to_owned()
-                    };
-
-                    assert_eq!(tcb_info, cached_tcb_info);
-                }
-
-                // Second service call should return value from cache
-                let tcb_info_from_service = client.sgx_tcbinfo(&fmspc, None).unwrap();
-
-                assert_eq!(tcb_info, tcb_info_from_service);
+                assert_eq!(tcb_info, cached_tcb_info);
             }
+
+            // Second service call should return value from cache
+            let tcb_info_from_service = client.sgx_tcbinfo(&fmspc, None).unwrap();
+
+            assert_eq!(tcb_info, tcb_info_from_service);
         }
     }
 
@@ -1114,28 +1047,18 @@ mod tests {
             DcapArtifactIssuer::PCKProcessorCA,
             DcapArtifactIssuer::PCKPlatformCA,
         ] {
-            for api_version in [PcsVersion::V3, PcsVersion::V4] {
-                let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                    .set_retry_timeout(TIME_RETRY_TIMEOUT);
-                if api_version == PcsVersion::V3 {
-                    if let Some(pcs_api_key) = pcs_api_key() {
-                        intel_builder.set_api_key(pcs_api_key);
-                    } else {
-                        // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                        // So we no longer force to test it.
-                        continue;
-                    }
-                }
-                let client = intel_builder.build(reqwest_client());
-                assert!(client
-                    .pckcrl(ca)
-                    .and_then(|crl| {
-                        Ok(crl
-                            .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
-                            .unwrap())
-                    })
-                    .is_ok());
-            }
+            let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+                .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+            let client = intel_builder.build(reqwest_client());
+            assert!(client
+                .pckcrl(ca)
+                .and_then(|crl| {
+                    Ok(crl
+                        .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
+                        .unwrap())
+                })
+                .is_ok());
         }
     }
 
@@ -1145,97 +1068,21 @@ mod tests {
             DcapArtifactIssuer::PCKProcessorCA,
             DcapArtifactIssuer::PCKPlatformCA,
         ] {
-            for api_version in [PcsVersion::V3, PcsVersion::V4] {
-                let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                    .set_retry_timeout(TIME_RETRY_TIMEOUT);
-                if api_version == PcsVersion::V3 {
-                    if let Some(pcs_api_key) = pcs_api_key() {
-                        intel_builder.set_api_key(pcs_api_key);
-                    } else {
-                        // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                        // So we no longer force to test it.
-                        continue;
-                    }
-                }
-                let client = intel_builder.build(reqwest_client());
-                let pckcrl = client.pckcrl(ca).unwrap();
-
-                // The cache should be populated after initial service call
-                {
-                    let mut cache = client.pckcrl_service.cache.lock().unwrap();
-
-                    assert!(cache.len() > 0);
-
-                    let (cached_pckcrl, _) = {
-                        let mut hasher = DefaultHasher::new();
-                        let input = client.pckcrl_service.pcs_service().build_input(ca);
-                        input.hash(&mut hasher);
-
-                        cache
-                            .get_mut(&hasher.finish())
-                            .expect("Can't find key in cache")
-                            .to_owned()
-                    };
-
-                    assert_eq!(pckcrl, cached_pckcrl);
-                }
-
-                // Second service call should return value from cache
-                let pckcrl_from_service = client.pckcrl(ca).unwrap();
-
-                assert_eq!(pckcrl, pckcrl_from_service);
-            }
-        }
-    }
-
-    #[test]
-    pub fn qe_identity() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
+            let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
                 .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
-            let client = intel_builder.build(reqwest_client());
-            let qe_id = client.qe_identity(None).unwrap();
-            assert!(qe_id
-                .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
-                .is_ok());
-        }
-    }
 
-    #[test]
-    pub fn qe_identity_cached() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let mut intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            if api_version == PcsVersion::V3 {
-                if let Some(pcs_api_key) = pcs_api_key() {
-                    intel_builder.set_api_key(pcs_api_key);
-                } else {
-                    // Intel SGX PCS version 3 is scheduled to end of life not later than October 31, 2025.
-                    // So we no longer force to test it.
-                    continue;
-                }
-            }
             let client = intel_builder.build(reqwest_client());
-            let qe_id = client.qe_identity(None).unwrap();
+            let pckcrl = client.pckcrl(ca).unwrap();
 
             // The cache should be populated after initial service call
             {
-                let mut cache = client.qeid_service.cache.lock().unwrap();
+                let mut cache = client.pckcrl_service.cache.lock().unwrap();
 
                 assert!(cache.len() > 0);
 
-                let (cached_qeid, _) = {
+                let (cached_pckcrl, _) = {
                     let mut hasher = DefaultHasher::new();
-                    let input = client.qeid_service.pcs_service().build_input(None);
+                    let input = client.pckcrl_service.pcs_service().build_input(ca);
                     input.hash(&mut hasher);
 
                     cache
@@ -1244,26 +1091,76 @@ mod tests {
                         .to_owned()
                 };
 
-                assert_eq!(qe_id, cached_qeid);
+                assert_eq!(pckcrl, cached_pckcrl);
             }
 
             // Second service call should return value from cache
-            let qeid_from_service = client.qe_identity(None).unwrap();
+            let pckcrl_from_service = client.pckcrl(ca).unwrap();
 
-            assert_eq!(qe_id, qeid_from_service);
+            assert_eq!(pckcrl, pckcrl_from_service);
         }
     }
 
     #[test]
-    pub fn gone_artifacts() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let intel_builder = IntelProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT);
-            let client = intel_builder.build(reqwest_client());
-            let fmspc = Fmspc::try_from("90806f000000").unwrap();
-            assert_matches!(client.qe_identity(Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
-            assert_matches!(client.sgx_tcbinfo(&fmspc, Some(15)), Err(Error::PCSError(StatusCode::Gone, _)));
+    pub fn qe_identity() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let qe_id = client.qe_identity(None).unwrap();
+        assert!(qe_id
+            .write_to_file(OUTPUT_TEST_DIR, WriteOptionsBuilder::new().build())
+            .is_ok());
+    }
+
+    #[test]
+    pub fn qe_identity_cached() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+
+        let client = intel_builder.build(reqwest_client());
+        let qe_id = client.qe_identity(None).unwrap();
+
+        // The cache should be populated after initial service call
+        {
+            let mut cache = client.qeid_service.cache.lock().unwrap();
+
+            assert!(cache.len() > 0);
+
+            let (cached_qeid, _) = {
+                let mut hasher = DefaultHasher::new();
+                let input = client.qeid_service.pcs_service().build_input(None);
+                input.hash(&mut hasher);
+
+                cache
+                    .get_mut(&hasher.finish())
+                    .expect("Can't find key in cache")
+                    .to_owned()
+            };
+
+            assert_eq!(qe_id, cached_qeid);
         }
+
+        // Second service call should return value from cache
+        let qeid_from_service = client.qe_identity(None).unwrap();
+
+        assert_eq!(qe_id, qeid_from_service);
+    }
+
+    #[test]
+    pub fn gone_artifacts() {
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT);
+        let client = intel_builder.build(reqwest_client());
+        let fmspc = Fmspc::try_from("90806f000000").unwrap();
+        assert_matches!(
+            client.qe_identity(Some(15)),
+            Err(Error::PCSError(StatusCode::Gone, _))
+        );
+        assert_matches!(
+            client.sgx_tcbinfo(&fmspc, Some(15)),
+            Err(Error::PCSError(StatusCode::Gone, _))
+        );
     }
 
     fn tcb_evaluation_data_numbers_test_base<T: PartialEq>()
@@ -1323,8 +1220,7 @@ mod tests {
 
     #[test]
     pub fn root_ca_crl() {
-
-        let mut intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
+        let intel_builder = IntelProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT);
 
         let client = intel_builder.build(reqwest_client());
