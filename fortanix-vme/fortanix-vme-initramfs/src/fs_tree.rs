@@ -126,11 +126,12 @@ impl FsTree {
         let entry = FsTreeEntry::Symlink {
             path: path.clone(),
             target: target.to_owned(),
+            mode,
         };
 
         // Add parents first
         if path.pop() {
-            self.add_directory_with_parents(path.as_path(), mode);
+            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
         }
 
         self.0.push(entry);
@@ -185,6 +186,7 @@ pub enum FsTreeEntry {
     Symlink {
         path: PathBuf,
         target: String,
+        mode: u32,
     },
 }
 
@@ -214,14 +216,11 @@ impl FsTreeEntry {
                 let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
                 Ok((builder, content))
             }
-            FsTreeEntry::Symlink { path, target } => {
+            FsTreeEntry::Symlink { path, target, mode } => {
                 let name = path
                     .to_str()
                     .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name)
-                    .uid(0)
-                    .gid(0)
-                    .mode(DEFAULT_SYMLINK_PERMS);
+                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
                 let buffer = Box::new(Cursor::new(target.as_bytes().to_vec()));
                 Ok((builder, buffer))
             }
@@ -250,12 +249,14 @@ impl FsTreeEntry {
                 FsTreeEntry::Symlink {
                     path: p1,
                     target: t1,
+                    mode: m1,
                 },
                 FsTreeEntry::Symlink {
                     path: p2,
                     target: t2,
+                    mode: m2,
                 },
-            ) => p1 == p2 && t1 == t2,
+            ) => p1 == p2 && t1 == t2 && m1 == m2,
             _ => false,
         }
     }
@@ -284,6 +285,7 @@ mod tests {
         FsTreeEntry::Symlink {
             path: PathBuf::from(path),
             target: target.to_owned(),
+            mode: DEFAULT_SYMLINK_PERMS,
         }
     }
 
