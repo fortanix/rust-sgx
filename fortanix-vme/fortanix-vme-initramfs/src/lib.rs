@@ -123,18 +123,12 @@ impl<R: Read> Initramfs<R> {
                         .ok_or(Error::PathError(path.display().to_string()))?;
                     Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
                 }
-                FsTreeEntry::Symlink { path, target } => {
+                FsTreeEntry::Symlink { path, target, mode } => {
                     let path_str = path
                         .as_path()
                         .to_str()
                         .ok_or(Error::PathError(path.display().to_string()))?;
-                    Initramfs::verify_entry(
-                        &reader,
-                        path_str,
-                        DEFAULT_UID,
-                        DEFAULT_GID,
-                        DEFAULT_SYMLINK_PERMS,
-                    )?;
+                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
 
                     // Verify content (target)
                     Initramfs::verify_entry_content(&mut reader, path_str, target.as_bytes())?;
