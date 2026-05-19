@@ -11,7 +11,9 @@ use serde::Deserialize;
 use std::time::Duration;
 
 use super::common::PckCertsApiNotSupported;
-use super::intel::{PckCrlApi, QeIdApi, RootCaCrlApi, TcbEvaluationDataNumbersApi, TcbInfoApi, INTEL_BASE_URL};
+use super::intel::{
+    PckCrlApi, QeIdApi, RootCaCrlApi, TcbEvaluationDataNumbersApi, TcbInfoApi, INTEL_BASE_URL,
+};
 use super::{
     Client, ClientBuilder, Fetcher, PckCertIn, PckCertService, PcsVersion, ProvisioningServiceApi,
     StatusCode,
@@ -228,130 +230,118 @@ mod tests {
 
     #[test]
     pub fn pcks_azure() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
-            let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
-            let root_cas = [&root_ca[..]];
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        let root_ca = include_bytes!("../../tests/data/root_SGX_CA_der.cert");
+        let root_cas = [&root_ca[..]];
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
-            {
-                let pck = client
-                    .pckcert(
-                        None,
-                        &pckid.pce_id,
-                        &pckid.cpu_svn,
-                        pckid.pce_isvsvn,
-                        Some(&pckid.qe_id),
-                    )
-                    .unwrap();
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pck = client
+                .pckcert(
+                    None,
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    Some(&pckid.qe_id),
+                )
+                .unwrap();
 
-                let pck = pck.verify(&root_cas, None).unwrap();
-                assert_eq!(
-                    test_helpers::get_cert_subject(&pck.ca_chain().last().unwrap()),
-                    "Intel SGX Root CA"
-                );
-                assert_eq!(
-                    test_helpers::get_cert_subject(&pck.pck_pem()),
-                    "Intel SGX PCK Certificate"
-                );
+            let pck = pck.verify(&root_cas, None).unwrap();
+            assert_eq!(
+                test_helpers::get_cert_subject(&pck.ca_chain().last().unwrap()),
+                "Intel SGX Root CA"
+            );
+            assert_eq!(
+                test_helpers::get_cert_subject(&pck.pck_pem()),
+                "Intel SGX PCK Certificate"
+            );
 
-                let fmspc = pck.fmspc().unwrap();
-                assert!(client.sgx_tcbinfo(&fmspc, None).is_ok());
-            }
+            let fmspc = pck.fmspc().unwrap();
+            assert!(client.sgx_tcbinfo(&fmspc, None).is_ok());
         }
     }
 
     #[test]
     pub fn pck_crl() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
-            assert!(client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).is_ok());
-            assert!(client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).is_ok());
-        }
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.pckcrl(DcapArtifactIssuer::PCKProcessorCA).is_ok());
+        assert!(client.pckcrl(DcapArtifactIssuer::PCKPlatformCA).is_ok());
     }
 
     #[test]
     pub fn qe_identity() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
-            assert!(client.qe_identity(None).is_ok());
-        }
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.qe_identity(None).is_ok());
     }
 
     #[test]
     pub fn gone_artifacts() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
-            let fmspc = Fmspc::try_from("90806f000000").unwrap();
-            assert_matches!(
-                client.qe_identity(Some(15)),
-                Err(Error::PCSError(StatusCode::Gone, _))
-            );
-            assert_matches!(
-                client.sgx_tcbinfo(&fmspc, Some(15)),
-                Err(Error::PCSError(StatusCode::Gone, _))
-            );
-        }
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        let fmspc = Fmspc::try_from("90806f000000").unwrap();
+        assert_matches!(
+            client.qe_identity(Some(15)),
+            Err(Error::PCSError(StatusCode::Gone, _))
+        );
+        assert_matches!(
+            client.sgx_tcbinfo(&fmspc, Some(15)),
+            Err(Error::PCSError(StatusCode::Gone, _))
+        );
     }
 
     #[test]
     pub fn test_pckcerts_with_fallback() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
 
-            for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
-                .unwrap()
-                .iter()
-            {
-                let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
-                println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
+        for pckid in PckID::parse_file(&PathBuf::from(PCKID_TEST_FILE).as_path())
+            .unwrap()
+            .iter()
+        {
+            let pckcerts = client.pckcerts_with_fallback(&pckid).unwrap();
+            println!("Found {} PCK certs.", pckcerts.as_pck_certs().len());
 
-                let tcb_info = client
-                    .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
-                    .unwrap();
-                let tcb_data = tcb_info.data().unwrap();
+            let tcb_info = client
+                .sgx_tcbinfo(&pckcerts.fmspc().unwrap(), None)
+                .unwrap();
+            let tcb_data = tcb_info.data().unwrap();
 
-                let selected = pckcerts
-                    .select_pck(&tcb_data, &pckid.cpu_svn, pckid.pce_isvsvn, pckid.pce_id)
-                    .unwrap();
+            let selected = pckcerts
+                .select_pck(&tcb_data, &pckid.cpu_svn, pckid.pce_isvsvn, pckid.pce_id)
+                .unwrap();
 
-                let pck = client
-                    .pckcert(
-                        Some(&pckid.enc_ppid),
-                        &pckid.pce_id,
-                        &pckid.cpu_svn,
-                        pckid.pce_isvsvn,
-                        Some(&pckid.qe_id),
-                    )
-                    .unwrap();
+            let pck = client
+                .pckcert(
+                    Some(&pckid.enc_ppid),
+                    &pckid.pce_id,
+                    &pckid.cpu_svn,
+                    pckid.pce_isvsvn,
+                    Some(&pckid.qe_id),
+                )
+                .unwrap();
 
-                assert_eq!(
-                    format!("{:?}", selected.sgx_extension().unwrap()),
-                    format!("{:?}", pck.sgx_extension().unwrap())
-                );
-            }
+            assert_eq!(
+                format!("{:?}", selected.sgx_extension().unwrap()),
+                format!("{:?}", pck.sgx_extension().unwrap())
+            );
         }
     }
 
     #[test]
     pub fn sgx_tcb_evaluation_data_numbers() {
-        for api_version in [PcsVersion::V3, PcsVersion::V4] {
-            let client = AzureProvisioningClientBuilder::new(api_version)
-                .set_retry_timeout(TIME_RETRY_TIMEOUT)
-                .build(reqwest_client());
-            assert!(client.sgx_tcb_evaluation_data_numbers().is_ok());
-        }
+        let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
+            .set_retry_timeout(TIME_RETRY_TIMEOUT)
+            .build(reqwest_client());
+        assert!(client.sgx_tcb_evaluation_data_numbers().is_ok());
     }
 }

@@ -8,7 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::clap_app;
-use pcs::{PckID, DcapArtifactIssuer, WriteOptionsBuilder};
+use pcs::{DcapArtifactIssuer, PckID, WriteOptionsBuilder};
 use reqwest::Url;
 use rustc_serialize::hex::ToHex;
 use serde::de::{value, IntoDeserializer};
@@ -54,10 +54,7 @@ fn download_dcap_artifacts(
         if verbose {
             println!("==[ entry {} ]==", idx);
             println!(" Info:");
-            println!(
-                "   Encr. PPID:  {}",
-                enc_ppid.to_hex(),
-            );
+            println!("   Encr. PPID:  {}", enc_ppid.to_hex(),);
             println!("   pce_id:      {}", &&pckid.pce_id.to_le_bytes().to_hex());
             println!("   cpu svn:     {}", pckid.cpu_svn.as_slice().to_hex());
             println!(
@@ -72,32 +69,39 @@ fn download_dcap_artifacts(
         // instead we mimic it using pckcert API.
         let pckcerts = prov_client.pckcerts_with_fallback(&pckid)?;
 
-        let pckcerts_file = pckcerts.write_to_file(output_dir, pckid.qe_id.as_slice(), WriteOptionsBuilder::new().build())?;
+        let pckcerts_file = pckcerts.write_to_file(
+            output_dir,
+            pckid.qe_id.as_slice(),
+            WriteOptionsBuilder::new().build(),
+        )?;
 
         if verbose {
             println!("   pckcerts:    {}", pckcerts_file.unwrap().display());
         }
 
         let fmspc = pckcerts.fmspc()?;
-        let evaluation_data_numbers = prov_client
-            .sgx_tcb_evaluation_data_numbers()?;
+        let evaluation_data_numbers = prov_client.sgx_tcb_evaluation_data_numbers()?;
 
-        let file = evaluation_data_numbers.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
+        let file = evaluation_data_numbers
+            .write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
         if verbose {
-            println!("   tcb evaluation data numbers:    {}\n", file.unwrap().display());
+            println!(
+                "   tcb evaluation data numbers:    {}\n",
+                file.unwrap().display()
+            );
         }
 
         for number in evaluation_data_numbers.evaluation_data_numbers()?.numbers() {
-            let tcb_info = prov_client
-                .sgx_tcbinfo(&fmspc, Some(number.number()));
+            let tcb_info = prov_client.sgx_tcbinfo(&fmspc, Some(number.number()));
 
             match tcb_info {
                 Ok(tcb_info) => {
-                    let file = tcb_info.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
+                    let file =
+                        tcb_info.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
                     if verbose {
                         println!("   tcb info:    {}", file.unwrap().display());
                     }
-                },
+                }
                 Err(Error::PCSError(StatusCode::Gone, _)) => {
                     if verbose {
                         println!("   tcb info:    Gone (silently ignoring)");
@@ -105,16 +109,15 @@ fn download_dcap_artifacts(
                 }
                 Err(e) => {
                     return Err(e)?;
-                },
+                }
             }
 
-
-            let qe_identity = prov_client
-                .qe_identity(Some(number.number()));
+            let qe_identity = prov_client.qe_identity(Some(number.number()));
 
             match qe_identity {
                 Ok(qe_identity) => {
-                    let file = qe_identity.write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
+                    let file = qe_identity
+                        .write_to_file(output_dir, WriteOptionsBuilder::new().build())?;
                     if verbose {
                         println!("   qe identity: {}\n", file.unwrap().display());
                     }
@@ -126,13 +129,20 @@ fn download_dcap_artifacts(
                 }
                 Err(e) => {
                     return Err(e)?;
-                },
+                }
             }
         }
     }
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKProcessorCA)
-        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKProcessorCA, WriteOptionsBuilder::new().build()).map_err(|e| e.into()))?;
+        .and_then(|crl| {
+            crl.write_to_file_as(
+                output_dir,
+                DcapArtifactIssuer::PCKProcessorCA,
+                WriteOptionsBuilder::new().build(),
+            )
+            .map_err(|e| e.into())
+        })?;
     if verbose {
         println!("==[ generic ]==");
         println!("   PCKProcessorCA Crl:      {}", pckcrl.unwrap().display());
@@ -140,7 +150,14 @@ fn download_dcap_artifacts(
 
     let pckcrl = prov_client
         .pckcrl(DcapArtifactIssuer::PCKPlatformCA)
-        .and_then(|crl| crl.write_to_file_as(output_dir, DcapArtifactIssuer::PCKPlatformCA, WriteOptionsBuilder::new().build()).map_err(|e| e.into()))?;
+        .and_then(|crl| {
+            crl.write_to_file_as(
+                output_dir,
+                DcapArtifactIssuer::PCKPlatformCA,
+                WriteOptionsBuilder::new().build(),
+            )
+            .map_err(|e| e.into())
+        })?;
     if verbose {
         println!("   PCKPlatformCA Crl:      {}", pckcrl.unwrap().display());
     }
@@ -173,9 +190,9 @@ pub fn main() {
 
     fn parse_pcs_version(value: &str) -> Result<PcsVersion, String> {
         match value {
-            "3" => Ok(PcsVersion::V3),
+            "3" => Err(format!("As of May 13, Intel has completed the End-of-Life of the deprecated API versions 3 of Intel PCS")),
             "4" => Ok(PcsVersion::V4),
-            _ => Err(format!("Expected 3 or 4, found `{}`", value)),
+            _ => Err(format!("Expected 4, found `{}`", value)),
         }
     }
 
@@ -215,7 +232,7 @@ pub fn main() {
             (
                 @arg API_VERSION: --("api-version") +takes_value
                 validator(|s| parse_pcs_version(s.as_str()).map(|_| ()))
-                "API version for provisioning service, supported values are 3 and 4. Default: \"4\"."
+                "API version for provisioning service, supported value is 4. Default: \"4\"."
             )
             (
                 @arg API_KEY: --("api-key") +takes_value
@@ -243,11 +260,15 @@ pub fn main() {
     ) {
         (Some(pckid_file), Some(output_dir)) => {
             let verboseness = matches.occurrences_of("VERBOSE");
-            let api_version = parse_pcs_version(matches.value_of("API_VERSION").unwrap_or(DEFAULT_API_VERSION))
-                .expect("validated");
+            let api_version = parse_pcs_version(
+                matches
+                    .value_of("API_VERSION")
+                    .unwrap_or(DEFAULT_API_VERSION),
+            )
+            .expect("validated");
 
-            let origin =
-                parse_origin(matches.value_of("ORIGIN").unwrap_or(DEFAULT_ORIGIN)).expect("validated");
+            let origin = parse_origin(matches.value_of("ORIGIN").unwrap_or(DEFAULT_ORIGIN))
+                .expect("validated");
 
             let fetcher = match matches.is_present("INSECURE") {
                 false => crate::reqwest_client(),

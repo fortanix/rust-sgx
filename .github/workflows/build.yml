@@ -39,11 +39,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Conditionally export PCS_API_KEY and PCCS_URL
+      - name: Conditionally export PCCS_URL
         run: |
-          if [ -n "${{ secrets.PCS_API_KEY }}" ]; then
-            echo "PCS_API_KEY=${{ secrets.PCS_API_KEY }}" >> "$GITHUB_ENV"
-          fi
           if [ -n "${{ vars.PCCS_URL }}" ]; then
             echo "PCCS_URL=${{ vars.PCCS_URL }}" >> "$GITHUB_ENV"
           fi

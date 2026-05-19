@@ -15,7 +15,9 @@ use std::time::{Duration, SystemTime};
 use lru_cache::LruCache;
 use num_enum::TryFromPrimitive;
 use pcs::{
-    platform, CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts, PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers, RootCaCrl, TcbComponentType, TcbInfo, Unverified
+    platform, CpuSvn, DcapArtifactIssuer, EncPpid, Fmspc, PceId, PceIsvsvn, PckCert, PckCerts,
+    PckCrl, PckID, PlatformTypeForTcbInfo, QeId, QeIdentitySigned, RawTcbEvaluationDataNumbers,
+    RootCaCrl, TcbComponentType, TcbInfo, Unverified,
 };
 #[cfg(feature = "reqwest")]
 use reqwest::blocking::{Client as ReqwestClient, Response as ReqwestResponse};
@@ -119,6 +121,9 @@ pub enum StatusCode {
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub enum PcsVersion {
+    #[deprecated(
+        note = "As of May 13, Intel has completed the End-of-Life of the deprecated API versions 2 and 3 of Intel PCS."
+    )]
     V3 = 3,
     V4 = 4,
 }
@@ -218,7 +223,10 @@ impl WithApiVersion for PckCrlIn {
 pub trait PckCrlService<'inp>:
     ProvisioningServiceApi<'inp, Input = PckCrlIn, Output = PckCrl<Unverified>>
 {
-    fn build_input(&'inp self, ca: DcapArtifactIssuer) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(
+        &'inp self,
+        ca: DcapArtifactIssuer,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -236,7 +244,10 @@ impl WithApiVersion for QeIdIn {
 pub trait QeIdService<'inp>:
     ProvisioningServiceApi<'inp, Input = QeIdIn, Output = QeIdentitySigned>
 {
-    fn build_input(&'inp self, tcb_evaluation_data_number: Option<u16>) -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(
+        &'inp self,
+        tcb_evaluation_data_number: Option<u16>,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -255,8 +266,11 @@ impl WithApiVersion for TcbInfoIn<'_> {
 pub trait TcbInfoService<'inp, T: PlatformTypeForTcbInfo>:
     ProvisioningServiceApi<'inp, Input = TcbInfoIn<'inp>, Output = TcbInfo<T>>
 {
-    fn build_input(&'inp self, fmspc: &'inp Fmspc, tcb_evaluation_data_number: Option<u16>)
-        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(
+        &'inp self,
+        fmspc: &'inp Fmspc,
+        tcb_evaluation_data_number: Option<u16>,
+    ) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -269,10 +283,13 @@ impl WithApiVersion for TcbEvaluationDataNumbersIn {
 }
 
 pub trait TcbEvaluationDataNumbersService<'inp, T: PlatformTypeForTcbInfo>:
-    ProvisioningServiceApi<'inp, Input = TcbEvaluationDataNumbersIn, Output = RawTcbEvaluationDataNumbers<T>>
+    ProvisioningServiceApi<
+    'inp,
+    Input = TcbEvaluationDataNumbersIn,
+    Output = RawTcbEvaluationDataNumbers<T>,
+>
 {
-    fn build_input(&self)
-        -> <Self as ProvisioningServiceApi<'inp>>::Input;
+    fn build_input(&self) -> <Self as ProvisioningServiceApi<'inp>>::Input;
 }
 
 #[derive(Hash)]
@@ -509,11 +526,24 @@ pub struct Client<F: for<'a> Fetcher<'a>> {
         CachedService<PckCert<Unverified>, dyn for<'a> PckCertService<'a> + Sync + Send>,
     pckcrl_service: CachedService<PckCrl<Unverified>, dyn for<'a> PckCrlService<'a> + Sync + Send>,
     qeid_service: CachedService<QeIdentitySigned, dyn for<'a> QeIdService<'a> + Sync + Send>,
-    sgx_tcbinfo_service: CachedService<TcbInfo<platform::SGX>, dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send>,
-    tdx_tcbinfo_service: CachedService<TcbInfo<platform::TDX>, dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send>,
-    sgx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::SGX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send>,
-    tdx_tcb_evaluation_data_numbers_service: CachedService<RawTcbEvaluationDataNumbers<platform::TDX>, dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send>,
-    root_ca_crl_service: CachedService<RootCaCrl<Unverified>, dyn for<'a> RootCaCrlService<'a> + Sync + Send>,
+    sgx_tcbinfo_service: CachedService<
+        TcbInfo<platform::SGX>,
+        dyn for<'a> TcbInfoService<'a, platform::SGX> + Sync + Send,
+    >,
+    tdx_tcbinfo_service: CachedService<
+        TcbInfo<platform::TDX>,
+        dyn for<'a> TcbInfoService<'a, platform::TDX> + Sync + Send,
+    >,
+    sgx_tcb_evaluation_data_numbers_service: CachedService<
+        RawTcbEvaluationDataNumbers<platform::SGX>,
+        dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::SGX> + Sync + Send,
+    >,
+    tdx_tcb_evaluation_data_numbers_service: CachedService<
+        RawTcbEvaluationDataNumbers<platform::TDX>,
+        dyn for<'a> TcbEvaluationDataNumbersService<'a, platform::TDX> + Sync + Send,
+    >,
+    root_ca_crl_service:
+        CachedService<RootCaCrl<Unverified>, dyn for<'a> RootCaCrlService<'a> + Sync + Send>,
     fetcher: F,
 }
 
@@ -634,9 +664,17 @@ pub trait ProvisioningClient {
         qe_id: Option<&QeId>,
     ) -> Result<PckCert<Unverified>, Error>;
 
-    fn sgx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error>;
+    fn sgx_tcbinfo(
+        &self,
+        fmspc: &Fmspc,
+        evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::SGX>, Error>;
 
-    fn tdx_tcbinfo(&self, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error>;
+    fn tdx_tcbinfo(
+        &self,
+        fmspc: &Fmspc,
+        evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::TDX>, Error>;
 
     fn pckcrl(&self, ca: DcapArtifactIssuer) -> Result<PckCrl<Unverified>, Error>;
 
@@ -657,7 +695,10 @@ pub trait ProvisioningClient {
     ///
     /// Note that PCK certs for some TCB levels may be missing.
     fn pckcerts_with_fallback(&self, pck_id: &PckID) -> Result<PckCerts, Error> {
-        let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>, cpu_svn: &[u8; 16], pce_svn: u16| -> Result<PckCert<Unverified>, Error> {
+        let get_and_collect = |collection: &mut BTreeMap<([u8; 16], u16), PckCert<Unverified>>,
+                               cpu_svn: &[u8; 16],
+                               pce_svn: u16|
+         -> Result<PckCert<Unverified>, Error> {
             let pck_cert = self.pckcert(
                 Some(&pck_id.enc_ppid),
                 &pck_id.pce_id,
@@ -668,7 +709,10 @@ pub trait ProvisioningClient {
 
             // Getting PCK cert using CPUSVN from PCKID
             let ptcb = pck_cert.platform_tcb()?;
-            collection.insert((ptcb.cpusvn, ptcb.tcb_components.pce_svn()), pck_cert.clone());
+            collection.insert(
+                (ptcb.cpusvn, ptcb.tcb_components.pce_svn()),
+                pck_cert.clone(),
+            );
             Ok(pck_cert)
         };
 
@@ -699,9 +743,12 @@ pub trait ProvisioningClient {
             //    also try with highest microcode version of both components. We found cases where
             //    fetching the PCK Cert that exactly matched the TCB level, did not result in a PCK
             //    Cert for that level
-            let early_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
-            let late_ucode_idx = tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
-            if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx) {
+            let early_ucode_idx =
+                tcb_data.tcb_component_index(TcbComponentType::EarlyMicrocodeUpdate);
+            let late_ucode_idx =
+                tcb_data.tcb_component_index(TcbComponentType::LateMicrocodeUpdate);
+            if let (Some(early_ucode_idx), Some(late_ucode_idx)) = (early_ucode_idx, late_ucode_idx)
+            {
                 let early_ucode = cpu_svn[early_ucode_idx];
                 let late_ucode = cpu_svn[late_ucode_idx];
                 if early_ucode < late_ucode {
@@ -719,39 +766,59 @@ pub trait ProvisioningClient {
             .map_err(|e| Error::PCSDecodeError(format!("{}", e).into()))
     }
 
-    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
+    fn sgx_tcb_evaluation_data_numbers(
+        &self,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error>;
 
-    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
+    fn tdx_tcb_evaluation_data_numbers(
+        &self,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error>;
 
     fn root_ca_crl(&self) -> Result<RootCaCrl<Unverified>, Error>;
 }
 
-
 pub trait ProvisioningClientFuncSelector: PlatformTypeForTcbInfo {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<Self>, Error>;
+    fn get_tcb_evaluation_data_numbers(
+        pc: &dyn ProvisioningClient,
+    ) -> Result<RawTcbEvaluationDataNumbers<Self>, Error>;
+    fn get_tcbinfo(
+        pc: &dyn ProvisioningClient,
+        fmspc: &Fmspc,
+        evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<Self>, Error>;
 }
 
 impl ProvisioningClientFuncSelector for platform::SGX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+    fn get_tcb_evaluation_data_numbers(
+        pc: &dyn ProvisioningClient,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
         pc.sgx_tcb_evaluation_data_numbers()
     }
 
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
+    fn get_tcbinfo(
+        pc: &dyn ProvisioningClient,
+        fmspc: &Fmspc,
+        evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::SGX>, Error> {
         pc.sgx_tcbinfo(fmspc, evaluation_data_number)
     }
 }
 
 impl ProvisioningClientFuncSelector for platform::TDX {
-    fn get_tcb_evaluation_data_numbers(pc: &dyn ProvisioningClient) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+    fn get_tcb_evaluation_data_numbers(
+        pc: &dyn ProvisioningClient,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
         pc.tdx_tcb_evaluation_data_numbers()
     }
 
-    fn get_tcbinfo(pc: &dyn ProvisioningClient, fmspc: &Fmspc, evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
+    fn get_tcbinfo(
+        pc: &dyn ProvisioningClient,
+        fmspc: &Fmspc,
+        evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::TDX>, Error> {
         pc.tdx_tcbinfo(fmspc, evaluation_data_number)
     }
 }
-
 
 impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
     fn pckcerts(&self, encrypted_ppid: &EncPpid, pce_id: PceId) -> Result<PckCerts, Error> {
@@ -780,13 +847,27 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcert_service.call_service(&self.fetcher, &input)
     }
 
-    fn sgx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::SGX>, Error> {
-        let input = self.sgx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+    fn sgx_tcbinfo(
+        &self,
+        fmspc: &Fmspc,
+        tcb_evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::SGX>, Error> {
+        let input = self
+            .sgx_tcbinfo_service
+            .pcs_service()
+            .build_input(fmspc, tcb_evaluation_data_number);
         self.sgx_tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
-    fn tdx_tcbinfo(&self, fmspc: &Fmspc, tcb_evaluation_data_number: Option<u16>) -> Result<TcbInfo<platform::TDX>, Error> {
-        let input = self.tdx_tcbinfo_service.pcs_service().build_input(fmspc, tcb_evaluation_data_number);
+    fn tdx_tcbinfo(
+        &self,
+        fmspc: &Fmspc,
+        tcb_evaluation_data_number: Option<u16>,
+    ) -> Result<TcbInfo<platform::TDX>, Error> {
+        let input = self
+            .tdx_tcbinfo_service
+            .pcs_service()
+            .build_input(fmspc, tcb_evaluation_data_number);
         self.tdx_tcbinfo_service.call_service(&self.fetcher, &input)
     }
 
@@ -795,20 +876,37 @@ impl<F: for<'a> Fetcher<'a>> ProvisioningClient for Client<F> {
         self.pckcrl_service.call_service(&self.fetcher, &input)
     }
 
-    fn qe_identity(&self, tcb_evaluation_data_number: Option<u16>) -> Result<QeIdentitySigned, Error> {
-        let input = self.qeid_service.pcs_service().build_input(tcb_evaluation_data_number);
+    fn qe_identity(
+        &self,
+        tcb_evaluation_data_number: Option<u16>,
+    ) -> Result<QeIdentitySigned, Error> {
+        let input = self
+            .qeid_service
+            .pcs_service()
+            .build_input(tcb_evaluation_data_number);
         self.qeid_service.call_service(&self.fetcher, &input)
     }
 
-    fn sgx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
-        let input = self.sgx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
-        self.sgx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
+    fn sgx_tcb_evaluation_data_numbers(
+        &self,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::SGX>, Error> {
+        let input = self
+            .sgx_tcb_evaluation_data_numbers_service
+            .pcs_service()
+            .build_input();
+        self.sgx_tcb_evaluation_data_numbers_service
+            .call_service(&self.fetcher, &input)
     }
 
-    fn tdx_tcb_evaluation_data_numbers(&self) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
-        let input = self.tdx_tcb_evaluation_data_numbers_service.pcs_service().build_input();
-        self.tdx_tcb_evaluation_data_numbers_service.call_service(&self.fetcher, &input)
-
+    fn tdx_tcb_evaluation_data_numbers(
+        &self,
+    ) -> Result<RawTcbEvaluationDataNumbers<platform::TDX>, Error> {
+        let input = self
+            .tdx_tcb_evaluation_data_numbers_service
+            .pcs_service()
+            .build_input();
+        self.tdx_tcb_evaluation_data_numbers_service
+            .call_service(&self.fetcher, &input)
     }
 
     fn root_ca_crl(&self) -> Result<RootCaCrl<Unverified>, Error> {
@@ -942,7 +1040,7 @@ mod tests {
 
     impl WithApiVersion for MockInput {
         fn api_version(&self) -> PcsVersion {
-            PcsVersion::V3
+            PcsVersion::V4
         }
     }
 
