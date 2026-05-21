@@ -652,10 +652,15 @@ impl<T: NativeTime> Tsc<T> {
 
 /// calculate the weight of the new frequency estimate for exponential avergaging.
 /// The calculated weight fixes a specific half-life for catching up to the new frequency.
+/// (see the comments inside the function)
+#[inline]
 fn new_freq_estimate_weight(freq_sync_time: Duration) -> f64 {
     const HALF_LIFE: Duration = Duration::from_secs(30);
     let cycles_recip = freq_sync_time.div_duration_f64(HALF_LIFE).max(0.001);
-    1.0 - 2f64.powf(-cycles_recip)
+    // This would be the correct formula to fix a half-life, but powf is not available in non-std.
+    // 1.0 - 2f64.powf(-cycles_recip)
+    // We do this instead:
+    (cycles_recip / 2.0).min(0.9)
 }
 
 #[cfg(test)]
