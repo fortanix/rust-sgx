@@ -10,7 +10,7 @@ extern crate sgxs as sgxs_crate;
 use std::fs::{self, File};
 use std::io::stdout;
 
-use sgx_isa::{PageType, SecinfoFlags, Tcs};
+use sgx_isa::{PageType, SecinfoFlags, Tcs, TcsFlags};
 use crate::sgxs_crate::sgxs::{self, CanonicalSgxsWriter, SecinfoTruncated};
 use crate::sgxs_crate::util::{size_fit_natural, size_fit_page};
 
@@ -22,6 +22,7 @@ enum Block {
     },
     TcsSsa {
         nssa: u32,
+        flags: TcsFlags
     },
 }
 use crate::Block::*;
@@ -47,16 +48,23 @@ fn main() {
     let mut blocks = vec![];
     for arg in args {
         let mut arg_split = arg.splitn(2, "=");
-        let (k, v) = match (arg_split.next(), arg_split.next(), arg_split.next()) {
+        let (k, mut v) = match (arg_split.next(), arg_split.next(), arg_split.next()) {
             (Some(k), Some(v), None) => (k, v),
             _ => panic!("Invalid argument: «{}»", arg),
         };
         if k == "ssaframesize" {
             panic!("ssaframesize must be the first argument if specified");
         } else if k == "tcs" {
+            const FLAGS_SUFFIX: &str = ",flags=aexnotify";
+            let flags = if v.ends_with(FLAGS_SUFFIX) {
+                v = v.split_at(v.len() - FLAGS_SUFFIX.len()).0;
+                TcsFlags::AEXNOTIFY
+            } else {
+                TcsFlags::empty()
+            };
             if v.starts_with("nssa:") {
                 let nssa = v[5..].parse::<u32>().expect("nssa must be a number");
-                blocks.push(TcsSsa { nssa: nssa });
+                blocks.push(TcsSsa { nssa, flags });
             } else {
                 panic!("tcs must be specified as tcs=nssa:N");
             }
@@ -83,7 +91,7 @@ fn main() {
         .iter()
         .map(|block| match block {
             &Blob { pages, .. } => pages,
-            &TcsSsa { nssa } => 1 + ((nssa * ssaframesize) as usize),
+            &TcsSsa { nssa, .. } => 1 + ((nssa * ssaframesize) as usize),
         })
         .fold(0, std::ops::Add::add);
 
@@ -106,7 +114,7 @@ fn main() {
                     .write_pages(Some(&mut File::open(file).unwrap()), pages, None, secinfo)
                     .unwrap();
             }
-            TcsSsa { nssa } => {
+            TcsSsa { nssa, flags } => {
                 let tcs = Tcs {
                     ossa: writer.offset() + 0x1000,
                     nssa: nssa,
@@ -115,6 +123,7 @@ fn main() {
                     ogsbasgx: 0,
                     fslimit: 0xfff,
                     gslimit: 0xfff,
+                    flags,
                     ..Tcs::default()
                 };
                 let tcs = unsafe { std::mem::transmute::<_, [u8; 4096]>(tcs) };
