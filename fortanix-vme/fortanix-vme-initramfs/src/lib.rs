@@ -85,9 +85,27 @@ impl<R: Read> From<R> for Initramfs<R> {
 
 impl<R: Read + Write> Initramfs<R> {
     pub fn from_fs_tree(fs_tree: FsTree, output: R) -> Result<Initramfs<R>, Error> {
-        let encoder = GzEncoder::new(output, Compression::default());
+        Self::from_fs_tree_with_progress(fs_tree, output, |_, _| {})
+    }
+
+    pub fn from_fs_tree_with_progress<F>(
+        fs_tree: FsTree,
+        output: R,
+        mut progress: F,
+    ) -> Result<Initramfs<R>, Error>
+    where
+        F: FnMut(usize, usize),
+    {
+        let encoder = GzEncoder::new(output, Compression::fast());
         let inputs = fs_tree.into_cpio_input()?;
-        let encoder = cpio::write_cpio(inputs.into_iter(), encoder).map_err(Error::WriteError)?;
+        let total = inputs.len();
+
+        let inputs = inputs.into_iter().enumerate().map(|(index, input)| {
+            progress(index + 1, total);
+            input
+        });
+
+        let encoder = cpio::write_cpio(inputs, encoder).map_err(Error::WriteError)?;
         let encoder = encoder.finish().map_err(Error::WriteError)?;
         Ok(Initramfs(encoder))
     }
