@@ -24,7 +24,7 @@ const REL_TO_CUR: &str = "./";
 /// ```text
 /// use std::io::Cursor;
 ///
-/// let fs_tree = FsTreeBuilder::new()
+/// let fs_tree = FsTree::new()
 ///     .add_directory("bin")
 ///     .add_executable("bin/init", Cursor::new(b"#!/bin/sh\n"))
 ///     .add_file("etc/config", Cursor::new(b"key=value\n"))
@@ -72,11 +72,8 @@ impl FsTree {
                 break;
             }
 
-            to_add.push(FsTreeEntry {
-                path: path_buf,
-                mode,
-                inner: FsTreeEntryInner::Directory,
-            });
+            let dir_entry = FsTreeEntry::dir(path_buf, mode);
+            to_add.push(dir_entry);
         }
 
         // Add in reverse order to preserve the the order of directory
@@ -102,13 +99,14 @@ impl FsTree {
     where
         T: ReadSeek + 'static,
     {
-        let mut path = Self::normalize_path(basename);
-        let entry = FsTreeEntry::file(path.clone(), mode, Box::new(content));
+        let path = Self::normalize_path(basename);
 
         // Add parents first
-        if path.pop() {
-            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        if let Some(parent) = path.parent() {
+            self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
         }
+
+        let entry = FsTreeEntry::file(path, mode, Box::new(content));
 
         self.0.push(entry);
         self
@@ -119,13 +117,14 @@ impl FsTree {
     }
 
     pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
-        let mut path = Self::normalize_path(path);
-        let entry = FsTreeEntry::symlink(path.clone(), mode, target.to_owned());
+        let path = Self::normalize_path(path);
 
         // Add parents first
-        if path.pop() {
-            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        if let Some(parent) = path.parent() {
+            self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
         }
+
+        let entry = FsTreeEntry::symlink(path, mode, target.to_owned());
 
         self.0.push(entry);
         self
