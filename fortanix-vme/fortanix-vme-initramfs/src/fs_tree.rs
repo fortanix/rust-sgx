@@ -196,35 +196,25 @@ fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
 impl FsTreeEntry {
     pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
-        match self {
-            FsTreeEntry::Directory { path, mode } => {
-                let name = path
-                    .to_str()
-                    .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                let buffer = Box::new(Cursor::new([] as [u8; 0]));
-                Ok((builder, buffer))
-            }
-            FsTreeEntry::File {
-                path,
-                mode,
-                content,
-            } => {
-                let name = path
-                    .to_str()
-                    .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                Ok((builder, content))
-            }
-            FsTreeEntry::Symlink { path, target, mode } => {
-                let name = path
-                    .to_str()
-                    .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                let buffer = Box::new(Cursor::new(target.as_bytes().to_vec()));
-                Ok((builder, buffer))
-            }
-        }
+        let builder = self.get_newcbuilder()?;
+        let content = match self {
+            FsTreeEntry::Directory { .. } => Box::new(Cursor::new([] as [u8; 0])),
+            FsTreeEntry::File { content, .. } => content,
+            FsTreeEntry::Symlink { target, .. } => Box::new(Cursor::new(target.into_bytes())),
+        };
+        Ok((builder, content))
+    }
+
+    fn get_newcbuilder(&self) -> Result<NewcBuilder, Error> {
+        let (path, mode) = match self {
+            FsTreeEntry::Directory { path, mode, .. } => (path, mode),
+            FsTreeEntry::File { path, mode, .. } => (path, mode),
+            FsTreeEntry::Symlink { path, mode, .. } => (path, mode),
+        };
+        let name = path
+            .to_str()
+            .ok_or(Error::PathError(format!("{}", path.display())))?;
+        Ok(NewcBuilder::new(name).mode(*mode))
     }
 
     /// Compares the metadata of two entries while ignoring the file content.
