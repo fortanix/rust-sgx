@@ -1,6 +1,6 @@
 [package]
 name = "insecure-time"
-version = "0.3.0"
+version = "0.2.1"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
 edition = "2021"
