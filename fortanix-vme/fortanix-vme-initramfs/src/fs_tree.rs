@@ -1,4 +1,4 @@
-use crate::{Error, ReadSeek};
+use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
 use cpio::NewcBuilder;
 use derivative::Derivative;
 use normalize_path::NormalizePath;
@@ -57,7 +57,7 @@ impl FsTree {
     fn dir_exists(&self, dir: &PathBuf) -> bool {
         self.0
             .iter()
-            .any(|e| matches!(e, FsTreeEntry::Directory { path, .. } if path == dir))
+            .any(|e| matches!(e, FsTreeEntry { path, inner: FsTreeEntryInner::Directory, .. } if path == dir))
     }
 
     fn add_directory_with_parents(&mut self, dir: &Path, mode: u32) {
@@ -72,9 +72,10 @@ impl FsTree {
                 break;
             }
 
-            to_add.push(FsTreeEntry::Directory {
+            to_add.push(FsTreeEntry {
                 path: path_buf,
                 mode,
+                inner: FsTreeEntryInner::Directory,
             });
         }
 
@@ -102,11 +103,7 @@ impl FsTree {
         T: ReadSeek + 'static,
     {
         let mut path = Self::normalize_path(basename);
-        let entry = FsTreeEntry::File {
-            path: path.clone(),
-            mode,
-            content: Box::new(content),
-        };
+        let entry = FsTreeEntry::file(path.clone(), mode, Box::new(content));
 
         // Add parents first
         if path.pop() {
@@ -123,11 +120,7 @@ impl FsTree {
 
     pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
         let mut path = Self::normalize_path(path);
-        let entry = FsTreeEntry::Symlink {
-            path: path.clone(),
-            target: target.to_owned(),
-            mode,
-        };
+        let entry = FsTreeEntry::symlink(path.clone(), mode, target.to_owned());
 
         // Add parents first
         if path.pop() {
@@ -172,21 +165,48 @@ impl FsTree {
 
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub enum FsTreeEntry {
-    Directory {
-        path: PathBuf,
-        mode: u32,
-    },
+pub struct FsTreeEntry {
+    pub path: PathBuf,
+    pub mode: u32,
+    pub inner: FsTreeEntryInner,
+}
+
+impl FsTreeEntry {
+    pub fn dir(path: PathBuf, mode: u32) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::Directory,
+        }
+    }
+
+    pub fn file(path: PathBuf, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::File { content },
+        }
+    }
+
+    pub fn symlink(path: PathBuf, mode: u32, target: String) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::Symlink { target },
+        }
+    }
+}
+
+#[derive(Derivative)]
+#[derivative(Debug)]
+pub enum FsTreeEntryInner {
+    Directory,
     File {
-        path: PathBuf,
-        mode: u32,
         #[derivative(Debug(format_with = "redact"))]
         content: Box<dyn ReadSeek>,
     },
     Symlink {
-        path: PathBuf,
         target: String,
-        mode: u32,
     },
 }
 
@@ -197,24 +217,23 @@ fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 impl FsTreeEntry {
     pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
         let builder = self.get_newcbuilder()?;
-        let content = match self {
-            FsTreeEntry::Directory { .. } => Box::new(Cursor::new([] as [u8; 0])),
-            FsTreeEntry::File { content, .. } => content,
-            FsTreeEntry::Symlink { target, .. } => Box::new(Cursor::new(target.into_bytes())),
+        let content = match self.inner {
+            FsTreeEntryInner::Directory { .. } => Box::new(Cursor::new([] as [u8; 0])),
+            FsTreeEntryInner::File { content, .. } => content,
+            FsTreeEntryInner::Symlink { target, .. } => Box::new(Cursor::new(target.into_bytes())),
         };
         Ok((builder, content))
     }
 
     fn get_newcbuilder(&self) -> Result<NewcBuilder, Error> {
-        let (path, mode) = match self {
-            FsTreeEntry::Directory { path, mode, .. } => (path, mode),
-            FsTreeEntry::File { path, mode, .. } => (path, mode),
-            FsTreeEntry::Symlink { path, mode, .. } => (path, mode),
-        };
-        let name = path
+        let name = self
+            .path
             .to_str()
-            .ok_or(Error::PathError(format!("{}", path.display())))?;
-        Ok(NewcBuilder::new(name).mode(*mode))
+            .ok_or(Error::PathError(format!("{}", self.path.display())))?;
+        Ok(NewcBuilder::new(name)
+            .uid(DEFAULT_UID)
+            .gid(DEFAULT_GID)
+            .mode(self.mode))
     }
 
     /// Compares the metadata of two entries while ignoring the file content.
@@ -222,30 +241,22 @@ impl FsTreeEntry {
     /// Returns `true` if both entries are of the same type (both files or both directories)
     /// and their `path` and `mode` are identical.
     pub fn eq_metadata(&self, other: &Self) -> bool {
-        match (self, other) {
+        let FsTreeEntry {
+            path: p1,
+            mode: m1,
+            inner: inner1,
+        } = self;
+        let FsTreeEntry {
+            path: p2,
+            mode: m2,
+            inner: inner2,
+        } = other;
+        match (inner1, inner2) {
+            (FsTreeEntryInner::Directory, FsTreeEntryInner::Directory) => p1 == p2 && m1 == m2,
+            (FsTreeEntryInner::File { .. }, FsTreeEntryInner::File { .. }) => p1 == p2 && m1 == m2,
             (
-                FsTreeEntry::Directory { path: p1, mode: m1 },
-                FsTreeEntry::Directory { path: p2, mode: m2 },
-            ) => p1 == p2 && m1 == m2,
-            (
-                FsTreeEntry::File {
-                    path: p1, mode: m1, ..
-                },
-                FsTreeEntry::File {
-                    path: p2, mode: m2, ..
-                },
-            ) => p1 == p2 && m1 == m2,
-            (
-                FsTreeEntry::Symlink {
-                    path: p1,
-                    target: t1,
-                    mode: m1,
-                },
-                FsTreeEntry::Symlink {
-                    path: p2,
-                    target: t2,
-                    mode: m2,
-                },
+                FsTreeEntryInner::Symlink { target: t1, .. },
+                FsTreeEntryInner::Symlink { target: t2, .. },
             ) => p1 == p2 && t1 == t2 && m1 == m2,
             _ => false,
         }
@@ -257,26 +268,19 @@ mod tests {
     use super::*;
 
     fn make_file<T: ReadSeek + 'static>(path: &str, content: T) -> FsTreeEntry {
-        FsTreeEntry::File {
-            path: PathBuf::from(path),
-            mode: DEFAULT_FILE_PERMS,
-            content: Box::new(content),
-        }
+        FsTreeEntry::file(PathBuf::from(path), DEFAULT_FILE_PERMS, Box::new(content))
     }
 
     fn make_directory(path: &str) -> FsTreeEntry {
-        FsTreeEntry::Directory {
-            path: PathBuf::from(path),
-            mode: DEFAULT_DIR_PERMS,
-        }
+        FsTreeEntry::dir(PathBuf::from(path), DEFAULT_DIR_PERMS)
     }
 
     fn make_symlink(path: &str, target: &str) -> FsTreeEntry {
-        FsTreeEntry::Symlink {
-            path: PathBuf::from(path),
-            target: target.to_owned(),
-            mode: DEFAULT_SYMLINK_PERMS,
-        }
+        FsTreeEntry::symlink(
+            PathBuf::from(path),
+            DEFAULT_SYMLINK_PERMS,
+            target.to_owned(),
+        )
     }
 
     #[test]

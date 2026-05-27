@@ -9,7 +9,7 @@ use thiserror::Error;
 
 mod fs_tree;
 
-pub use fs_tree::{FsTree, FsTreeEntry, DEFAULT_SYMLINK_PERMS};
+pub use fs_tree::{FsTree, FsTreeEntry, FsTreeEntryInner, DEFAULT_SYMLINK_PERMS};
 
 const DEFAULT_UID: u32 = 0;
 const DEFAULT_GID: u32 = 0;
@@ -99,16 +99,14 @@ impl<R: Read> Initramfs<R> {
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
 
         for fs_entry in fs_tree.0.into_iter() {
-            match fs_entry {
-                FsTreeEntry::File {
-                    path,
-                    mode,
-                    mut content,
-                } => {
-                    let path_str = path
-                        .as_path()
-                        .to_str()
-                        .ok_or(Error::PathError(path.display().to_string()))?;
+            let path_str = fs_entry
+                .path
+                .as_path()
+                .to_str()
+                .ok_or(Error::PathError(fs_entry.path.display().to_string()))?;
+            let mode = fs_entry.mode;
+            match fs_entry.inner {
+                FsTreeEntryInner::File { mut content, .. } => {
                     Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
 
                     // Verify content
@@ -116,18 +114,10 @@ impl<R: Read> Initramfs<R> {
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
                     Initramfs::verify_entry_content(&mut reader, path_str, &buf)?;
                 }
-                FsTreeEntry::Directory { path, mode } => {
-                    let path_str = path
-                        .as_path()
-                        .to_str()
-                        .ok_or(Error::PathError(path.display().to_string()))?;
+                FsTreeEntryInner::Directory => {
                     Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
                 }
-                FsTreeEntry::Symlink { path, target, mode } => {
-                    let path_str = path
-                        .as_path()
-                        .to_str()
-                        .ok_or(Error::PathError(path.display().to_string()))?;
+                FsTreeEntryInner::Symlink { target } => {
                     Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
 
                     // Verify content (target)
