@@ -162,8 +162,7 @@ impl FsTree {
     }
 }
 
-#[derive(Derivative)]
-#[derivative(Debug)]
+#[derive(Debug)]
 pub struct FsTreeEntry {
     pub path: PathBuf,
     pub mode: u32,
@@ -217,9 +216,9 @@ impl FsTreeEntry {
     pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
         let builder = self.get_newcbuilder()?;
         let content = match self.inner {
-            FsTreeEntryInner::Directory { .. } => Box::new(Cursor::new([] as [u8; 0])),
-            FsTreeEntryInner::File { content, .. } => content,
-            FsTreeEntryInner::Symlink { target, .. } => Box::new(Cursor::new(target.into_bytes())),
+            FsTreeEntryInner::Directory => Box::new(Cursor::new([] as [u8; 0])),
+            FsTreeEntryInner::File { content } => content,
+            FsTreeEntryInner::Symlink { target } => Box::new(Cursor::new(target.into_bytes())),
         };
         Ok((builder, content))
     }
@@ -254,8 +253,8 @@ impl FsTreeEntry {
             (FsTreeEntryInner::Directory, FsTreeEntryInner::Directory) => p1 == p2 && m1 == m2,
             (FsTreeEntryInner::File { .. }, FsTreeEntryInner::File { .. }) => p1 == p2 && m1 == m2,
             (
-                FsTreeEntryInner::Symlink { target: t1, .. },
-                FsTreeEntryInner::Symlink { target: t2, .. },
+                FsTreeEntryInner::Symlink { target: t1 },
+                FsTreeEntryInner::Symlink { target: t2 },
             ) => p1 == p2 && t1 == t2 && m1 == m2,
             _ => false,
         }

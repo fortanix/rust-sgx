@@ -105,21 +105,18 @@ impl<R: Read> Initramfs<R> {
                 .to_str()
                 .ok_or(Error::PathError(fs_entry.path.display().to_string()))?;
             let mode = fs_entry.mode;
+            Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
             match fs_entry.inner {
-                FsTreeEntryInner::File { mut content, .. } => {
-                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
-
+                FsTreeEntryInner::File { mut content } => {
                     // Verify content
                     let mut buf = Vec::new();
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
                     Initramfs::verify_entry_content(&mut reader, path_str, &buf)?;
                 }
                 FsTreeEntryInner::Directory => {
-                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
+                    // No content to verify
                 }
                 FsTreeEntryInner::Symlink { target } => {
-                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
-
                     // Verify content (target)
                     Initramfs::verify_entry_content(&mut reader, path_str, target.as_bytes())?;
                 }
