@@ -44,11 +44,15 @@ impl FsTree {
         self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
     }
 
-    pub fn add_directory(self, dirname: &str) -> FsTree {
+    pub fn add_directory<P: AsRef<Path>>(self, dirname: P) -> FsTree {
         self.add_directory_with_permissions(dirname, DEFAULT_DIR_PERMS)
     }
 
-    pub fn add_directory_with_permissions(mut self, dirname: &str, mode: u32) -> FsTree {
+    pub fn add_directory_with_permissions<P: AsRef<Path>>(
+        mut self,
+        dirname: P,
+        mode: u32,
+    ) -> FsTree {
         let path = Self::normalize_path(dirname);
         self.add_directory_with_parents(path.as_path(), mode);
         self
@@ -81,21 +85,26 @@ impl FsTree {
         self.0.extend(to_add.into_iter().rev());
     }
 
-    pub fn add_executable<T>(self, basename: &str, content: T) -> FsTree
+    pub fn add_executable<T, P: AsRef<Path>>(self, basename: P, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_EXEC_PERMS)
     }
 
-    pub fn add_file<T>(self, basename: &str, content: T) -> FsTree
+    pub fn add_file<T, P: AsRef<Path>>(self, basename: P, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_FILE_PERMS)
     }
 
-    pub fn add_file_with_permissions<T>(mut self, basename: &str, content: T, mode: u32) -> FsTree
+    pub fn add_file_with_permissions<T, P: AsRef<Path>>(
+        mut self,
+        basename: P,
+        content: T,
+        mode: u32,
+    ) -> FsTree
     where
         T: ReadSeek + 'static,
     {
@@ -112,11 +121,16 @@ impl FsTree {
         self
     }
 
-    pub fn add_symlink(self, path: &str, target: &str) -> FsTree {
+    pub fn add_symlink<P: AsRef<Path>>(self, path: P, target: &str) -> FsTree {
         self.add_symlink_with_permissions(path, target, DEFAULT_SYMLINK_PERMS)
     }
 
-    pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
+    pub fn add_symlink_with_permissions<P: AsRef<Path>>(
+        mut self,
+        path: P,
+        target: &str,
+        mode: u32,
+    ) -> FsTree {
         let path = Self::normalize_path(path);
 
         // Add parents first
@@ -135,9 +149,9 @@ impl FsTree {
     /// This function performs standard path normalization, removes any leading
     /// absolute root separators (`/`), and prepends the internal `./`
     /// prefix to ensure the path is relative for the initramfs environment.
-    pub(crate) fn normalize_path(basename: &str) -> PathBuf {
+    pub(crate) fn normalize_path<P: AsRef<Path>>(basename: P) -> PathBuf {
         // Do the regular normalization first
-        let normalized = Path::new(basename).normalize();
+        let normalized = basename.as_ref().normalize();
         // Normalized path may begin with "/", drop it if exists
         let stripped = if let Ok(stripped) = normalized.strip_prefix("/") {
             stripped
@@ -312,6 +326,34 @@ mod tests {
             make_file("./nsm.ko", Cursor::new(content.clone())),
             make_symlink("./rootfs/bin/sh", "dash"),
         ]);
+        assert!(files.eq_metadata(&expected));
+    }
+
+    #[test]
+    fn test_structure_with_paths() {
+        let content = vec![0, 1, 2, 3, 4];
+        let files = FsTree::new()
+            .add_file(Path::new("rootfs/bin/a.out"), Cursor::new(content.clone()))
+            .add_file(
+                PathBuf::from("rootfs/bin/b.out"),
+                Cursor::new(content.clone()),
+            )
+            .add_directory(Path::new("rootfs/dev_a"))
+            .add_directory(PathBuf::from("rootfs/dev_b"))
+            .add_symlink(Path::new("rootfs/bin/sh_a"), "dash")
+            .add_symlink(PathBuf::from("rootfs/bin/sh_b"), "dash");
+
+        let expected = FsTree(vec![
+            make_directory("./rootfs"),
+            make_directory("./rootfs/bin"),
+            make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
+            make_file("./rootfs/bin/b.out", Cursor::new(content.clone())),
+            make_directory("./rootfs/dev_a"),
+            make_directory("./rootfs/dev_b"),
+            make_symlink("./rootfs/bin/sh_a", "dash"),
+            make_symlink("./rootfs/bin/sh_b", "dash"),
+        ]);
+
         assert!(files.eq_metadata(&expected));
     }
 
