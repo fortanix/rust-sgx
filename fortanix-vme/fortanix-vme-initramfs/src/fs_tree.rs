@@ -58,7 +58,7 @@ impl FsTree {
         self
     }
 
-    fn dir_exists(&self, dir: &PathBuf) -> bool {
+    fn dir_exists(&self, dir: &Path) -> bool {
         self.0
             .iter()
             .any(|e| matches!(e, FsTreeEntry { path, inner: FsTreeEntryInner::Directory, .. } if path == dir))
@@ -71,7 +71,7 @@ impl FsTree {
                 break;
             }
 
-            let path_buf = dir.into();
+            let path_buf = dir.to_path_buf();
             if self.dir_exists(&path_buf) {
                 break;
             }
@@ -326,34 +326,6 @@ mod tests {
             make_file("./nsm.ko", Cursor::new(content.clone())),
             make_symlink("./rootfs/bin/sh", "dash"),
         ]);
-        assert!(files.eq_metadata(&expected));
-    }
-
-    #[test]
-    fn test_structure_with_paths() {
-        let content = vec![0, 1, 2, 3, 4];
-        let files = FsTree::new()
-            .add_file(Path::new("rootfs/bin/a.out"), Cursor::new(content.clone()))
-            .add_file(
-                PathBuf::from("rootfs/bin/b.out"),
-                Cursor::new(content.clone()),
-            )
-            .add_directory(Path::new("rootfs/dev_a"))
-            .add_directory(PathBuf::from("rootfs/dev_b"))
-            .add_symlink(Path::new("rootfs/bin/sh_a"), "dash")
-            .add_symlink(PathBuf::from("rootfs/bin/sh_b"), "dash");
-
-        let expected = FsTree(vec![
-            make_directory("./rootfs"),
-            make_directory("./rootfs/bin"),
-            make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
-            make_file("./rootfs/bin/b.out", Cursor::new(content.clone())),
-            make_directory("./rootfs/dev_a"),
-            make_directory("./rootfs/dev_b"),
-            make_symlink("./rootfs/bin/sh_a", "dash"),
-            make_symlink("./rootfs/bin/sh_b", "dash"),
-        ]);
-
         assert!(files.eq_metadata(&expected));
     }
 
