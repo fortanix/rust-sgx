@@ -115,7 +115,12 @@ impl<R: Read> Initramfs<R> {
                 }
                 FsTreeEntryInner::Symlink { target } => {
                     // Verify content (target)
-                    Initramfs::verify_entry_content(&mut reader, path, target.as_bytes())?;
+                    let os_string = target.into_os_string();
+                    Initramfs::verify_entry_content(
+                        &mut reader,
+                        path,
+                        &os_string.into_encoded_bytes(),
+                    )?;
                 }
             }
             reader = Initramfs::next(reader)?;

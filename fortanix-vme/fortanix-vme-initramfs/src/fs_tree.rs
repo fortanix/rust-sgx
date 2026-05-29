@@ -121,14 +121,14 @@ impl FsTree {
         self
     }
 
-    pub fn add_symlink<P: AsRef<Path>>(self, path: P, target: &str) -> FsTree {
+    pub fn add_symlink<P: AsRef<Path>, U: AsRef<Path>>(self, path: P, target: U) -> FsTree {
         self.add_symlink_with_permissions(path, target, DEFAULT_SYMLINK_PERMS)
     }
 
-    pub fn add_symlink_with_permissions<P: AsRef<Path>>(
+    pub fn add_symlink_with_permissions<P: AsRef<Path>, U: AsRef<Path>>(
         mut self,
         path: P,
-        target: &str,
+        target: U,
         mode: u32,
     ) -> FsTree {
         let path = Self::normalize_path(path);
@@ -138,7 +138,7 @@ impl FsTree {
             self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
         }
 
-        let entry = FsTreeEntry::symlink(path, mode, target.to_owned());
+        let entry = FsTreeEntry::symlink(path, mode, target);
 
         self.0.push(entry);
         self
@@ -184,7 +184,9 @@ pub struct FsTreeEntry {
 }
 
 impl FsTreeEntry {
-    pub fn dir(path: PathBuf, mode: u32) -> Self {
+    pub fn dir<P: AsRef<Path>>(path: P, mode: u32) -> Self {
+        let path = path.as_ref().to_path_buf();
+
         Self {
             path,
             mode,
@@ -192,7 +194,9 @@ impl FsTreeEntry {
         }
     }
 
-    pub fn file(path: PathBuf, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+    pub fn file<P: AsRef<Path>>(path: P, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+        let path = path.as_ref().to_path_buf();
+
         Self {
             path,
             mode,
@@ -200,7 +204,10 @@ impl FsTreeEntry {
         }
     }
 
-    pub fn symlink(path: PathBuf, mode: u32, target: String) -> Self {
+    pub fn symlink<P: AsRef<Path>, U: AsRef<Path>>(path: P, mode: u32, target: U) -> Self {
+        let path = path.as_ref().to_path_buf();
+        let target = target.as_ref().to_path_buf();
+
         Self {
             path,
             mode,
@@ -218,7 +225,7 @@ pub enum FsTreeEntryInner {
         content: Box<dyn ReadSeek>,
     },
     Symlink {
-        target: String,
+        target: PathBuf,
     },
 }
 
@@ -232,7 +239,10 @@ impl FsTreeEntry {
         let content = match self.inner {
             FsTreeEntryInner::Directory => Box::new(Cursor::new([] as [u8; 0])),
             FsTreeEntryInner::File { content } => content,
-            FsTreeEntryInner::Symlink { target } => Box::new(Cursor::new(target.into_bytes())),
+            FsTreeEntryInner::Symlink { target } => {
+                let os_string = target.into_os_string();
+                Box::new(Cursor::new(os_string.into_encoded_bytes()))
+            }
         };
         Ok((builder, content))
     }
