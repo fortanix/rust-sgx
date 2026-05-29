@@ -108,7 +108,7 @@ impl<R: Read> Initramfs<R> {
                     // Verify content
                     let mut buf = Vec::new();
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
-                    Initramfs::verify_entry_content(&mut reader, path, &buf)?;
+                    Initramfs::verify_entry_content(&mut reader, &path, &buf)?;
                 }
                 FsTreeEntryInner::Directory => {
                     // No content to verify
@@ -118,7 +118,7 @@ impl<R: Read> Initramfs<R> {
                     let os_string = target.into_os_string();
                     Initramfs::verify_entry_content(
                         &mut reader,
-                        path,
+                        &path,
                         &os_string.into_encoded_bytes(),
                     )?;
                 }
@@ -154,20 +154,19 @@ impl<R: Read> Initramfs<R> {
         Err(Error::PathError(format!("{}", path.as_ref().display())))
     }
 
-    fn verify_entry<P: AsRef<Path>>(
+    fn verify_entry(
         reader: &NewcReader<R>,
-        path: P,
+        path: &Path,
         uid: u32,
         gid: u32,
         mode: u32,
     ) -> Result<(), Error> {
         let entry = reader.entry();
-        let path_ref = path.as_ref();
 
-        if entry.name() != path_ref {
+        if entry.name() != path {
             return Err(Error::wrong_entry_name(
                 entry.name().to_string(),
-                format!("{}", path_ref.display()),
+                format!("{}", path.display()),
             ));
         }
         if entry.uid() != uid {
@@ -182,17 +181,18 @@ impl<R: Read> Initramfs<R> {
         Ok(())
     }
 
-    fn verify_entry_content<P: AsRef<Path>>(
+    fn verify_entry_content(
         reader: &mut NewcReader<R>,
-        path: P,
+        path: &Path,
         expected: &[u8],
     ) -> Result<(), Error> {
         let data = Self::read_entry_content(reader)?;
         if data != expected {
             let found = String::from_utf8_lossy(&data).to_string();
             let expected = String::from_utf8_lossy(expected).to_string();
+
             return Err(Error::unexpected_data(
-                format!("{}", path.as_ref().display()),
+                format!("{}", path.display()),
                 found,
                 expected,
             ));
