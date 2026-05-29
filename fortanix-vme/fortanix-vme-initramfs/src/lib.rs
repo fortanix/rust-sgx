@@ -1,15 +1,15 @@
 #![deny(warnings)]
 use cpio::{self, NewcReader};
-use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
 use thiserror::Error;
 
 mod fs_tree;
 
-pub use fs_tree::{FsTree, FsTreeEntry};
+pub use fs_tree::{FsTree, FsTreeEntry, FsTreeEntryInner, DEFAULT_SYMLINK_PERMS};
 
 const DEFAULT_UID: u32 = 0;
 const DEFAULT_GID: u32 = 0;
@@ -99,29 +99,26 @@ impl<R: Read> Initramfs<R> {
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
 
         for fs_entry in fs_tree.0.into_iter() {
-            match fs_entry {
-                FsTreeEntry::File {
-                    path,
-                    mode,
-                    mut content,
-                } => {
-                    let path_str = path
-                        .as_path()
-                        .to_str()
-                        .ok_or(Error::PathError(path.display().to_string()))?;
-                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
-
+            let path_str = fs_entry
+                .path
+                .as_path()
+                .to_str()
+                .ok_or(Error::PathError(fs_entry.path.display().to_string()))?;
+            let mode = fs_entry.mode;
+            Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
+            match fs_entry.inner {
+                FsTreeEntryInner::File { mut content } => {
                     // Verify content
                     let mut buf = Vec::new();
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
                     Initramfs::verify_entry_content(&mut reader, path_str, &buf)?;
                 }
-                FsTreeEntry::Directory { path, mode } => {
-                    let path_str = path
-                        .as_path()
-                        .to_str()
-                        .ok_or(Error::PathError(path.display().to_string()))?;
-                    Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
+                FsTreeEntryInner::Directory => {
+                    // No content to verify
+                }
+                FsTreeEntryInner::Symlink { target } => {
+                    // Verify content (target)
+                    Initramfs::verify_entry_content(&mut reader, path_str, target.as_bytes())?;
                 }
             }
             reader = Initramfs::next(reader)?;
@@ -216,7 +213,7 @@ impl<R: Read> Initramfs<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Initramfs, fs_tree::FsTree};
+    use super::{fs_tree::FsTree, Initramfs};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
     use std::io::{Cursor, Seek};
@@ -236,6 +233,7 @@ mod tests {
                     .add_executable("app", Cursor::new(app0.clone()))
                     .add_executable("init", Cursor::new(init0.clone()))
                     .add_executable("nsm", Cursor::new(nsm0.clone()))
+                    .add_symlink("sh", "app")
             }
         };
 
@@ -243,14 +241,19 @@ mod tests {
         let initramfs: Initramfs<Cursor<Vec<u8>>> =
             Initramfs::<Cursor<Vec<_>>>::from_fs_tree(fs_tree, Cursor::new(Vec::new())).unwrap();
         let initramfs_blob: Vec<u8> = initramfs.into_inner().into_inner();
-        assert_eq!(initramfs_blob.len(), 188);
+        assert_eq!(initramfs_blob.len(), 229);
         let sha256 = Sha256::digest(&initramfs_blob);
         assert_eq!(
             sha256[..],
-            hex!("07b33a2c4abb76d839912f0dfeade8868cb79b28305c86fdfcf3646c5cf504c3")[..]
+            hex!("1288d75f2b03df145219cb7d1d966fbaaeedd0ca352cb3971fca4d36ca269147")[..]
         );
 
-        let path_bin_pairs = [("app", app0), ("init", init0), ("nsm", nsm0)];
+        let path_bin_pairs = [
+            ("app", app0),
+            ("init", init0),
+            ("nsm", nsm0),
+            ("sh", b"app".to_vec()),
+        ];
 
         // Parse initramfs and verify binaries in it.
         let mut cursor = Cursor::new(initramfs_blob);

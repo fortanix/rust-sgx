@@ -1,4 +1,4 @@
-use crate::{Error, ReadSeek};
+use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
 use cpio::NewcBuilder;
 use derivative::Derivative;
 use normalize_path::NormalizePath;
@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 const DEFAULT_FILE_PERMS: u32 = 0o100664;
 const DEFAULT_DIR_PERMS: u32 = 0o40775;
 const DEFAULT_EXEC_PERMS: u32 = 0o100775;
+pub const DEFAULT_SYMLINK_PERMS: u32 = 0o120777;
 const REL_TO_CUR: &str = "./";
 
 /// A builder for constructing an initramfs filesystem [`FsTree`] incrementally.
@@ -23,7 +24,7 @@ const REL_TO_CUR: &str = "./";
 /// ```text
 /// use std::io::Cursor;
 ///
-/// let fs_tree = FsTreeBuilder::new()
+/// let fs_tree = FsTree::new()
 ///     .add_directory("bin")
 ///     .add_executable("bin/init", Cursor::new(b"#!/bin/sh\n"))
 ///     .add_file("etc/config", Cursor::new(b"key=value\n"))
@@ -43,16 +44,20 @@ impl FsTree {
         self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
     }
 
-    pub fn add_directory(mut self, dirname: &str) -> FsTree {
+    pub fn add_directory(self, dirname: &str) -> FsTree {
+        self.add_directory_with_permissions(dirname, DEFAULT_DIR_PERMS)
+    }
+
+    pub fn add_directory_with_permissions(mut self, dirname: &str, mode: u32) -> FsTree {
         let path = Self::normalize_path(dirname);
-        self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        self.add_directory_with_parents(path.as_path(), mode);
         self
     }
 
     fn dir_exists(&self, dir: &PathBuf) -> bool {
         self.0
             .iter()
-            .any(|e| matches!(e, FsTreeEntry::Directory { path, .. } if path == dir))
+            .any(|e| matches!(e, FsTreeEntry { path, inner: FsTreeEntryInner::Directory, .. } if path == dir))
     }
 
     fn add_directory_with_parents(&mut self, dir: &Path, mode: u32) {
@@ -67,10 +72,8 @@ impl FsTree {
                 break;
             }
 
-            to_add.push(FsTreeEntry::Directory {
-                path: path_buf,
-                mode,
-            });
+            let dir_entry = FsTreeEntry::dir(path_buf, mode);
+            to_add.push(dir_entry);
         }
 
         // Add in reverse order to preserve the the order of directory
@@ -96,17 +99,32 @@ impl FsTree {
     where
         T: ReadSeek + 'static,
     {
-        let mut path = Self::normalize_path(basename);
-        let entry = FsTreeEntry::File {
-            path: path.clone(),
-            mode,
-            content: Box::new(content),
-        };
+        let path = Self::normalize_path(basename);
 
         // Add parents first
-        if path.pop() {
-            self.add_directory_with_parents(path.as_path(), DEFAULT_DIR_PERMS);
+        if let Some(parent) = path.parent() {
+            self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
         }
+
+        let entry = FsTreeEntry::file(path, mode, Box::new(content));
+
+        self.0.push(entry);
+        self
+    }
+
+    pub fn add_symlink(self, path: &str, target: &str) -> FsTree {
+        self.add_symlink_with_permissions(path, target, DEFAULT_SYMLINK_PERMS)
+    }
+
+    pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
+        let path = Self::normalize_path(path);
+
+        // Add parents first
+        if let Some(parent) = path.parent() {
+            self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
+        }
+
+        let entry = FsTreeEntry::symlink(path, mode, target.to_owned());
 
         self.0.push(entry);
         self
@@ -144,18 +162,49 @@ impl FsTree {
     }
 }
 
+#[derive(Debug)]
+pub struct FsTreeEntry {
+    pub path: PathBuf,
+    pub mode: u32,
+    pub inner: FsTreeEntryInner,
+}
+
+impl FsTreeEntry {
+    pub fn dir(path: PathBuf, mode: u32) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::Directory,
+        }
+    }
+
+    pub fn file(path: PathBuf, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::File { content },
+        }
+    }
+
+    pub fn symlink(path: PathBuf, mode: u32, target: String) -> Self {
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::Symlink { target },
+        }
+    }
+}
+
 #[derive(Derivative)]
 #[derivative(Debug)]
-pub enum FsTreeEntry {
-    Directory {
-        path: PathBuf,
-        mode: u32,
-    },
+pub enum FsTreeEntryInner {
+    Directory,
     File {
-        path: PathBuf,
-        mode: u32,
         #[derivative(Debug(format_with = "redact"))]
         content: Box<dyn ReadSeek>,
+    },
+    Symlink {
+        target: String,
     },
 }
 
@@ -165,27 +214,24 @@ fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 
 impl FsTreeEntry {
     pub(crate) fn into_cpio_input(self) -> Result<CpioInput, Error> {
-        match self {
-            FsTreeEntry::Directory { path, mode } => {
-                let name = path
-                    .to_str()
-                    .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                let buffer = Box::new(Cursor::new([] as [u8; 0]));
-                Ok((builder, buffer))
-            }
-            FsTreeEntry::File {
-                path,
-                mode,
-                content,
-            } => {
-                let name = path
-                    .to_str()
-                    .ok_or(Error::PathError(path.display().to_string()))?;
-                let builder = NewcBuilder::new(name).uid(0).gid(0).mode(mode);
-                Ok((builder, content))
-            }
-        }
+        let builder = self.get_newcbuilder()?;
+        let content = match self.inner {
+            FsTreeEntryInner::Directory => Box::new(Cursor::new([] as [u8; 0])),
+            FsTreeEntryInner::File { content } => content,
+            FsTreeEntryInner::Symlink { target } => Box::new(Cursor::new(target.into_bytes())),
+        };
+        Ok((builder, content))
+    }
+
+    fn get_newcbuilder(&self) -> Result<NewcBuilder, Error> {
+        let name = self
+            .path
+            .to_str()
+            .ok_or(Error::PathError(format!("{}", self.path.display())))?;
+        Ok(NewcBuilder::new(name)
+            .uid(DEFAULT_UID)
+            .gid(DEFAULT_GID)
+            .mode(self.mode))
     }
 
     /// Compares the metadata of two entries while ignoring the file content.
@@ -193,19 +239,23 @@ impl FsTreeEntry {
     /// Returns `true` if both entries are of the same type (both files or both directories)
     /// and their `path` and `mode` are identical.
     pub fn eq_metadata(&self, other: &Self) -> bool {
-        match (self, other) {
+        let FsTreeEntry {
+            path: p1,
+            mode: m1,
+            inner: inner1,
+        } = self;
+        let FsTreeEntry {
+            path: p2,
+            mode: m2,
+            inner: inner2,
+        } = other;
+        match (inner1, inner2) {
+            (FsTreeEntryInner::Directory, FsTreeEntryInner::Directory) => p1 == p2 && m1 == m2,
+            (FsTreeEntryInner::File { .. }, FsTreeEntryInner::File { .. }) => p1 == p2 && m1 == m2,
             (
-                FsTreeEntry::Directory { path: p1, mode: m1 },
-                FsTreeEntry::Directory { path: p2, mode: m2 },
-            ) => p1 == p2 && m1 == m2,
-            (
-                FsTreeEntry::File {
-                    path: p1, mode: m1, ..
-                },
-                FsTreeEntry::File {
-                    path: p2, mode: m2, ..
-                },
-            ) => p1 == p2 && m1 == m2,
+                FsTreeEntryInner::Symlink { target: t1 },
+                FsTreeEntryInner::Symlink { target: t2 },
+            ) => p1 == p2 && t1 == t2 && m1 == m2,
             _ => false,
         }
     }
@@ -216,18 +266,19 @@ mod tests {
     use super::*;
 
     fn make_file<T: ReadSeek + 'static>(path: &str, content: T) -> FsTreeEntry {
-        FsTreeEntry::File {
-            path: PathBuf::from(path),
-            mode: DEFAULT_FILE_PERMS,
-            content: Box::new(content),
-        }
+        FsTreeEntry::file(PathBuf::from(path), DEFAULT_FILE_PERMS, Box::new(content))
     }
 
     fn make_directory(path: &str) -> FsTreeEntry {
-        FsTreeEntry::Directory {
-            path: PathBuf::from(path),
-            mode: DEFAULT_DIR_PERMS,
-        }
+        FsTreeEntry::dir(PathBuf::from(path), DEFAULT_DIR_PERMS)
+    }
+
+    fn make_symlink(path: &str, target: &str) -> FsTreeEntry {
+        FsTreeEntry::symlink(
+            PathBuf::from(path),
+            DEFAULT_SYMLINK_PERMS,
+            target.to_owned(),
+        )
     }
 
     #[test]
@@ -243,7 +294,8 @@ mod tests {
             .add_file("cmd", Cursor::new(content.clone()))
             .add_file("env", Cursor::new(content.clone()))
             .add_file("init", Cursor::new(content.clone()))
-            .add_file("nsm.ko", Cursor::new(content.clone()));
+            .add_file("nsm.ko", Cursor::new(content.clone()))
+            .add_symlink("rootfs/bin/sh", "dash");
 
         let expected = FsTree(vec![
             make_directory("./rootfs"),
@@ -258,6 +310,7 @@ mod tests {
             make_file("./env", Cursor::new(content.clone())),
             make_file("./init", Cursor::new(content.clone())),
             make_file("./nsm.ko", Cursor::new(content.clone())),
+            make_symlink("./rootfs/bin/sh", "dash"),
         ]);
         assert!(files.eq_metadata(&expected));
     }
