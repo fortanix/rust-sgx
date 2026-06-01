@@ -115,11 +115,10 @@ impl<R: Read> Initramfs<R> {
                 }
                 FsTreeEntryInner::Symlink { target } => {
                     // Verify content (target)
-                    let os_string = target.into_os_string();
                     Initramfs::verify_entry_content(
                         &mut reader,
                         &path,
-                        &os_string.into_encoded_bytes(),
+                        &target.into_encoded_bytes(),
                     )?;
                 }
             }

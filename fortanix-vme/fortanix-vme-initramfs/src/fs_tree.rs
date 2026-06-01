@@ -2,6 +2,7 @@ use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
 use cpio::NewcBuilder;
 use derivative::Derivative;
 use normalize_path::NormalizePath;
+use std::ffi::OsString;
 use std::fmt;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -206,7 +207,7 @@ impl FsTreeEntry {
 
     pub fn symlink<P: AsRef<Path>, U: AsRef<Path>>(path: P, mode: u32, target: U) -> Self {
         let path = path.as_ref().to_path_buf();
-        let target = target.as_ref().to_path_buf();
+        let target = target.as_ref().into();
 
         Self {
             path,
@@ -225,7 +226,7 @@ pub enum FsTreeEntryInner {
         content: Box<dyn ReadSeek>,
     },
     Symlink {
-        target: PathBuf,
+        target: OsString,
     },
 }
 
@@ -240,8 +241,7 @@ impl FsTreeEntry {
             FsTreeEntryInner::Directory => Box::new(Cursor::new([] as [u8; 0])),
             FsTreeEntryInner::File { content } => content,
             FsTreeEntryInner::Symlink { target } => {
-                let os_string = target.into_os_string();
-                Box::new(Cursor::new(os_string.into_encoded_bytes()))
+                Box::new(Cursor::new(target.into_encoded_bytes()))
             }
         };
         Ok((builder, content))
