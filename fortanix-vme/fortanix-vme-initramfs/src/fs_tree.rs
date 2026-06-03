@@ -2,6 +2,7 @@ use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
 use cpio::NewcBuilder;
 use derivative::Derivative;
 use normalize_path::NormalizePath;
+use std::ffi::OsString;
 use std::fmt;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
@@ -44,17 +45,21 @@ impl FsTree {
         self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
     }
 
-    pub fn add_directory(self, dirname: &str) -> FsTree {
+    pub fn add_directory<P: AsRef<Path>>(self, dirname: P) -> FsTree {
         self.add_directory_with_permissions(dirname, DEFAULT_DIR_PERMS)
     }
 
-    pub fn add_directory_with_permissions(mut self, dirname: &str, mode: u32) -> FsTree {
+    pub fn add_directory_with_permissions<P: AsRef<Path>>(
+        mut self,
+        dirname: P,
+        mode: u32,
+    ) -> FsTree {
         let path = Self::normalize_path(dirname);
         self.add_directory_with_parents(path.as_path(), mode);
         self
     }
 
-    fn dir_exists(&self, dir: &PathBuf) -> bool {
+    fn dir_exists(&self, dir: &Path) -> bool {
         self.0
             .iter()
             .any(|e| matches!(e, FsTreeEntry { path, inner: FsTreeEntryInner::Directory, .. } if path == dir))
@@ -67,7 +72,7 @@ impl FsTree {
                 break;
             }
 
-            let path_buf = dir.into();
+            let path_buf = dir.to_path_buf();
             if self.dir_exists(&path_buf) {
                 break;
             }
@@ -81,21 +86,26 @@ impl FsTree {
         self.0.extend(to_add.into_iter().rev());
     }
 
-    pub fn add_executable<T>(self, basename: &str, content: T) -> FsTree
+    pub fn add_executable<T, P: AsRef<Path>>(self, basename: P, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_EXEC_PERMS)
     }
 
-    pub fn add_file<T>(self, basename: &str, content: T) -> FsTree
+    pub fn add_file<T, P: AsRef<Path>>(self, basename: P, content: T) -> FsTree
     where
         T: ReadSeek + 'static,
     {
         self.add_file_with_permissions(basename, content, DEFAULT_FILE_PERMS)
     }
 
-    pub fn add_file_with_permissions<T>(mut self, basename: &str, content: T, mode: u32) -> FsTree
+    pub fn add_file_with_permissions<T, P: AsRef<Path>>(
+        mut self,
+        basename: P,
+        content: T,
+        mode: u32,
+    ) -> FsTree
     where
         T: ReadSeek + 'static,
     {
@@ -112,11 +122,16 @@ impl FsTree {
         self
     }
 
-    pub fn add_symlink(self, path: &str, target: &str) -> FsTree {
+    pub fn add_symlink<P: AsRef<Path>, U: AsRef<Path>>(self, path: P, target: U) -> FsTree {
         self.add_symlink_with_permissions(path, target, DEFAULT_SYMLINK_PERMS)
     }
 
-    pub fn add_symlink_with_permissions(mut self, path: &str, target: &str, mode: u32) -> FsTree {
+    pub fn add_symlink_with_permissions<P: AsRef<Path>, U: AsRef<Path>>(
+        mut self,
+        path: P,
+        target: U,
+        mode: u32,
+    ) -> FsTree {
         let path = Self::normalize_path(path);
 
         // Add parents first
@@ -124,7 +139,7 @@ impl FsTree {
             self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
         }
 
-        let entry = FsTreeEntry::symlink(path, mode, target.to_owned());
+        let entry = FsTreeEntry::symlink(path, mode, target);
 
         self.0.push(entry);
         self
@@ -135,9 +150,9 @@ impl FsTree {
     /// This function performs standard path normalization, removes any leading
     /// absolute root separators (`/`), and prepends the internal `./`
     /// prefix to ensure the path is relative for the initramfs environment.
-    pub(crate) fn normalize_path(basename: &str) -> PathBuf {
+    pub(crate) fn normalize_path<P: AsRef<Path>>(basename: P) -> PathBuf {
         // Do the regular normalization first
-        let normalized = Path::new(basename).normalize();
+        let normalized = basename.as_ref().normalize();
         // Normalized path may begin with "/", drop it if exists
         let stripped = if let Ok(stripped) = normalized.strip_prefix("/") {
             stripped
@@ -170,7 +185,9 @@ pub struct FsTreeEntry {
 }
 
 impl FsTreeEntry {
-    pub fn dir(path: PathBuf, mode: u32) -> Self {
+    pub fn dir<P: AsRef<Path>>(path: P, mode: u32) -> Self {
+        let path = path.as_ref().to_path_buf();
+
         Self {
             path,
             mode,
@@ -178,7 +195,9 @@ impl FsTreeEntry {
         }
     }
 
-    pub fn file(path: PathBuf, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+    pub fn file<P: AsRef<Path>>(path: P, mode: u32, content: Box<dyn ReadSeek>) -> Self {
+        let path = path.as_ref().to_path_buf();
+
         Self {
             path,
             mode,
@@ -186,7 +205,10 @@ impl FsTreeEntry {
         }
     }
 
-    pub fn symlink(path: PathBuf, mode: u32, target: String) -> Self {
+    pub fn symlink<P: AsRef<Path>, U: AsRef<Path>>(path: P, mode: u32, target: U) -> Self {
+        let path = path.as_ref().to_path_buf();
+        let target = target.as_ref().into();
+
         Self {
             path,
             mode,
@@ -204,7 +226,7 @@ pub enum FsTreeEntryInner {
         content: Box<dyn ReadSeek>,
     },
     Symlink {
-        target: String,
+        target: OsString,
     },
 }
 
@@ -218,7 +240,9 @@ impl FsTreeEntry {
         let content = match self.inner {
             FsTreeEntryInner::Directory => Box::new(Cursor::new([] as [u8; 0])),
             FsTreeEntryInner::File { content } => content,
-            FsTreeEntryInner::Symlink { target } => Box::new(Cursor::new(target.into_bytes())),
+            FsTreeEntryInner::Symlink { target } => {
+                Box::new(Cursor::new(target.into_encoded_bytes()))
+            }
         };
         Ok((builder, content))
     }

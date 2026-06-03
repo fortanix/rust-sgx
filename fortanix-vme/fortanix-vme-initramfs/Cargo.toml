@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-vme-initramfs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"

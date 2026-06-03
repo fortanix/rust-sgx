@@ -99,26 +99,27 @@ impl<R: Read> Initramfs<R> {
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
 
         for fs_entry in fs_tree.0.into_iter() {
-            let path_str = fs_entry
-                .path
-                .as_path()
-                .to_str()
-                .ok_or(Error::PathError(fs_entry.path.display().to_string()))?;
             let mode = fs_entry.mode;
-            Initramfs::verify_entry(&reader, path_str, DEFAULT_UID, DEFAULT_GID, mode)?;
+            let path = fs_entry.path;
+
+            Initramfs::verify_entry(&reader, &path, DEFAULT_UID, DEFAULT_GID, mode)?;
             match fs_entry.inner {
                 FsTreeEntryInner::File { mut content } => {
                     // Verify content
                     let mut buf = Vec::new();
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
-                    Initramfs::verify_entry_content(&mut reader, path_str, &buf)?;
+                    Initramfs::verify_entry_content(&mut reader, &path, &buf)?;
                 }
                 FsTreeEntryInner::Directory => {
                     // No content to verify
                 }
                 FsTreeEntryInner::Symlink { target } => {
                     // Verify content (target)
-                    Initramfs::verify_entry_content(&mut reader, path_str, target.as_bytes())?;
+                    Initramfs::verify_entry_content(
+                        &mut reader,
+                        &path,
+                        &target.into_encoded_bytes(),
+                    )?;
                 }
             }
             reader = Initramfs::next(reader)?;
@@ -131,8 +132,8 @@ impl<R: Read> Initramfs<R> {
         Ok(())
     }
 
-    pub fn read_entry_by_path(self, path: &str) -> Result<Vec<u8>, Error> {
-        let normalized = FsTree::normalize_path(path);
+    pub fn read_entry_by_path<P: AsRef<Path>>(self, path: P) -> Result<Vec<u8>, Error> {
+        let normalized = FsTree::normalize_path(path.as_ref());
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
         loop {
@@ -149,21 +150,22 @@ impl<R: Read> Initramfs<R> {
             reader = Initramfs::next(reader)?;
         }
 
-        Err(Error::PathError(path.to_owned()))
+        Err(Error::PathError(format!("{}", path.as_ref().display())))
     }
 
     fn verify_entry(
         reader: &NewcReader<R>,
-        path: &str,
+        path: &Path,
         uid: u32,
         gid: u32,
         mode: u32,
     ) -> Result<(), Error> {
         let entry = reader.entry();
+
         if entry.name() != path {
             return Err(Error::wrong_entry_name(
                 entry.name().to_string(),
-                path.to_string(),
+                format!("{}", path.display()),
             ));
         }
         if entry.uid() != uid {
@@ -180,14 +182,19 @@ impl<R: Read> Initramfs<R> {
 
     fn verify_entry_content(
         reader: &mut NewcReader<R>,
-        path: &str,
+        path: &Path,
         expected: &[u8],
     ) -> Result<(), Error> {
         let data = Self::read_entry_content(reader)?;
         if data != expected {
             let found = String::from_utf8_lossy(&data).to_string();
             let expected = String::from_utf8_lossy(expected).to_string();
-            return Err(Error::unexpected_data(path.to_string(), found, expected));
+
+            return Err(Error::unexpected_data(
+                format!("{}", path.display()),
+                found,
+                expected,
+            ));
         }
 
         Ok(())
