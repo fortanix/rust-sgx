@@ -5,22 +5,31 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use abi::*;
-use thiserror::Error as ThisError;
 
+use std::fmt::{self, Display};
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
 use std::result::Result as StdResult;
 
-#[derive(ThisError, Debug)]
+#[derive(Debug)]
 pub enum Error {
-    #[error("The stream is not canonical.")]
     StreamNotCanonical,
-    #[error("An invalid measurement tag {:016x} was encountered.", _0)]
     InvalidMeasTag(u64),
-    #[error("The given offset is not a multiple of the page size.")]
     InvalidPageOffset,
-    #[error("An unsized stream was encountered but a sized stream was expected.")]
     StreamUnsized,
 }
+
+impl Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::StreamNotCanonical => f.write_str("The stream is not canonical."),
+            Self::InvalidMeasTag(tag) => write!(f, "An invalid measurement tag {tag:016x} was encountered."),
+            Self::InvalidPageOffset => f.write_str("The given offset is not a multiple of the page size."),
+            Self::StreamUnsized => f.write_str("An unsized stream was encountered but a sized stream was expected."),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 pub type Result<T> = StdResult<T, anyhow::Error>;
 
