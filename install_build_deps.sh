@@ -11,6 +11,18 @@ info() {
     echo "[INFO] $*"
 }
 
+apt_get_with_retry() {
+    local -r retries="${APT_GET_RETRIES:-3}"
+    local -r timeout_seconds="${APT_GET_TIMEOUT_SECONDS:-10}"
+
+    run_as_root apt-get \
+        -o Acquire::Retries="$retries" \
+        -o Acquire::http::Timeout="$timeout_seconds" \
+        -o Acquire::https::Timeout="$timeout_seconds" \
+        -o DPkg::Lock::Timeout="$timeout_seconds" \
+        "$@"
+}
+
 require_command() {
     command -v "$1" >/dev/null 2>&1 || error "Required command '$1' not found. Please install it."
 }
@@ -43,8 +55,8 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 info "Updating package lists and installing gpg..."
-$SUDO apt-get update -y
-$SUDO apt-get install -y gpg
+apt_get_with_retry update -y
+apt_get_with_retry install -y gpg
 
 info "Adding Intel SGX package repository key..."
 cat intel-sgx-deb.key | gpg --dearmor | $SUDO tee /usr/share/keyrings/intel-sgx-deb.gpg > /dev/null
@@ -54,9 +66,9 @@ ARCH=$(dpkg --print-architecture)
 echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/intel-sgx-deb.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu noble main" | $SUDO tee /etc/apt/sources.list.d/intel-sgx-deb.list > /dev/null
 
 info "Updating package lists..."
-$SUDO apt-get update -y
+apt_get_with_retry update -y
 
 info "Installing build dependencies: faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib"
-$SUDO apt-get install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
+apt_get_with_retry install -y faketime protobuf-compiler libsgx-dcap-ql-dev clang-18 musl-tools gcc-multilib
 
 info "All dependencies installed successfully."
