@@ -56,6 +56,7 @@ pub enum ErrorKind {
     Asn1InvalidBitstring,
     Asn1NotBytes,
     CaNotConfigured,
+    InvalidCaCertificate,
     MissingIasReport,
     ReportAsn1Parse,
     ReportJsonParse,
@@ -82,6 +83,7 @@ impl fmt::Display for ErrorKind {
             Asn1InvalidBitstring => f.write_fmt(format_args!("ASN.1 bitstring is not a multiple of bytes")),
             Asn1NotBytes => f.write_fmt(format_args!("ASN.1 value is not a bitstring or octetstring")),
             CaNotConfigured => f.write_fmt(format_args!("at least one CA certificate is required")),
+            InvalidCaCertificate => f.write_fmt(format_args!("One of the provided CA certificates cannot be parsed")),
             MissingIasReport => f.write_fmt(format_args!("no IAS report extension in certificate")),
             ReportAsn1Parse => f.write_fmt(format_args!("unable to parse report ASN.1")),
             ReportJsonParse => f.write_fmt(format_args!("unable to parse report JSON")),
@@ -117,12 +119,12 @@ impl fmt::Display for ErrorKind {
     }
 }
 
-pub(crate) fn verify_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8], cert_chain: &Vec<DerSequence>, ca_certificates: &[&[u8]]) -> Result<(), Error> {
-    // TODO: check the validity of the chain, and use the CA as the trust
-    // anchor rather than the leaf. Chain verification outside the context
-    // of TLS connection establishment does not seem to be exposed by
-    // either the rust openssl or mbedtls bindings.
-
+pub(crate) fn verify_raw_report<C: Crypto>(
+    raw_report: &[u8],
+    report_sig: &[u8],
+    cert_chain: &Vec<DerSequence>,
+    ca_certificates: &[&[u8]],
+) -> Result<(), Error> {
     let leaf_cert = match cert_chain.first() {
         None => return Err(Error::enclave_certificate(ErrorKind::ReportNoCertificate, None::<Error>)),
         Some(cert) => GenericCertificate::from_der(cert)
@@ -135,14 +137,10 @@ pub(crate) fn verify_raw_report<C: Crypto>(raw_report: &[u8], report_sig: &[u8],
         return Err(Error::enclave_certificate(ErrorKind::CaNotConfigured, None::<Error>));
     }
 
-    // Verify that the leaf cert appears in our list of trusted certificates
-    if !ca_certificates.iter().map(GenericCertificate::from_der)
-        .any(|c| match c {
-            Ok(ref c) if c == &leaf_cert => true,
-            _ => false
-        }) {
-        return Err(Error::enclave_certificate(ErrorKind::ReportUntrustedCertificate, None::<Error>));
-    }
+    // Verify the validity of the certificate chain
+    let mut ca_certs = Vec::new();
+    ca_certificates.iter().for_each(|c| ca_certs.push(DerSequence::from(*c)));
+    C::x509_verify_chain(cert_chain, &ca_certs)?;
 
     C::rsa_sha256_verify(leaf_cert.tbscert.spki.as_ref(), &raw_report, report_sig)
         .map_err(|e| Error::enclave_certificate(ErrorKind::ReportBadSignature, Some(e)))?;
@@ -183,7 +181,13 @@ mod tests {
     const verify_report: for<'a> fn(ca_certificates: &[&[u8]], report: &AttestationEmbeddedIasReport<'a, 'a, 'a>) -> Result<(), Error>
         = super::verify_report::<super::crypto::Mbedtls>;
 
-    lazy_static::lazy_static!{
+    lazy_static::lazy_static! {
+
+        //This is the IAS report signing root CA
+        static ref TEST_REPORT_SIGNING_ROOT_CA: Vec<u8> =
+            pem_to_der(include_str!("../tests/data/intel_sgx_attestation_report_signing_ca"),
+                       Some(PEM_CERTIFICATE)).unwrap();
+
         // This is the IAS report signing certificate.
         static ref TEST_REPORT_SIGNING_CERT: Vec<u8> =
             pem_to_der(include_str!("../tests/data/reports/test_report_signing_cert"),
@@ -214,7 +218,7 @@ mod tests {
 
     #[test]
     fn verify_report_success() {
-        verify_report(&[&TEST_REPORT_SIGNING_CERT], &TEST_REPORT_EXT).unwrap();
+        verify_report(&[&TEST_REPORT_SIGNING_ROOT_CA], &TEST_REPORT_EXT).unwrap();
     }
 
     macro_rules! assert_match {
@@ -228,30 +232,54 @@ mod tests {
     fn verify_report_missing_cert() {
         let mut report = TEST_REPORT_EXT.clone();
         report.certificates = vec![];
-        let result = verify_report(&[&TEST_REPORT_SIGNING_CERT], &report).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportNoCertificate, cause: _ });
+        let result = verify_report(&[&TEST_REPORT_SIGNING_ROOT_CA], &report).unwrap_err();
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::ReportNoCertificate,
+                cause: _
+            }
+        );
     }
 
     #[test]
     fn verify_report_bad_cert() {
         let mut report = TEST_REPORT_EXT.clone();
         report.certificates = vec![vec![0x30, 0x00].into()];
-        let result = verify_report(&[&TEST_REPORT_SIGNING_CERT], &report).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportInvalidCertificate, cause: _ });
+        let result = verify_report(&[&TEST_REPORT_SIGNING_ROOT_CA], &report).unwrap_err();
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::ReportInvalidCertificate,
+                cause: _
+            }
+        );
     }
 
     #[test]
     fn verify_report_wrong_cert() {
-        let mut cert = GenericCertificate::from_der(TEST_REPORT_SIGNING_CERT.as_slice()).unwrap();
-        cert.tbscert.spki.value.to_mut()[0] ^= 0x80;
+        let mut cert = GenericCertificate::from_der(TEST_REPORT_SIGNING_ROOT_CA.as_slice()).unwrap();
+        cert.tbscert.spki.value.to_mut()[50] ^= 0x80;
         let result = verify_report(&[&cert.to_der()], &TEST_REPORT_EXT).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportUntrustedCertificate, cause: _ });
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::ReportUntrustedCertificate,
+                cause: _
+            }
+        );
     }
 
     #[test]
     fn verify_report_bad_ca_cert() {
         let result = verify_report(&[&vec![0x30, 0x00]], &TEST_REPORT_EXT).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportUntrustedCertificate, cause: _ });
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::InvalidCaCertificate,
+                cause: _
+            }
+        );
     }
 
     #[test]
@@ -265,8 +293,14 @@ mod tests {
         // Signature corrupted
         let mut report = TEST_REPORT_EXT.clone();
         report.report_sig.to_mut()[0] ^= 0x80;
-        let result = verify_report(&[&TEST_REPORT_SIGNING_CERT], &report).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportBadSignature, cause: _ });
+        let result = verify_report(&[&TEST_REPORT_SIGNING_ROOT_CA], &report).unwrap_err();
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::ReportBadSignature,
+                cause: _
+            }
+        );
     }
 
     #[test]
@@ -274,7 +308,13 @@ mod tests {
         // Message (report JSON) corrupted
         let mut report = TEST_REPORT_EXT.clone();
         report.http_body.to_mut()[0] ^= 0x80;
-        let result = verify_report(&[&TEST_REPORT_SIGNING_CERT], &report).unwrap_err();
-        assert_match!(result, Error { error_kind: ErrorKind::ReportBadSignature, cause: _ });
+        let result = verify_report(&[&TEST_REPORT_SIGNING_ROOT_CA], &report).unwrap_err();
+        assert_match!(
+            result,
+            Error {
+                error_kind: ErrorKind::ReportBadSignature,
+                cause: _
+            }
+        );
     }
 }

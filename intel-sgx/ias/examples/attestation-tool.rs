@@ -27,10 +27,10 @@ const IAS_DEV_URL: &'static str = "https://api.trustedservices.intel.com/sgx/dev
 
 const REPORT_SIZE_TRUNCATED: usize = 384; // without KEYID, MAC
 
-lazy_static::lazy_static!{
-    // This is the IAS report signing certificate.
-    static ref IAS_REPORT_SIGNING_CERTIFICATE: Vec<u8> =
-        pem::pem_to_der(include_str!("../tests/data/reports/test_report_signing_cert"),
+lazy_static::lazy_static! {
+    // This is the IAS report signing CA certificate.
+    static ref IAS_REPORT_SIGNING_CA: Vec<u8> =
+        pem::pem_to_der(include_str!("../tests/data/intel_sgx_attestation_report_signing_ca"),
                 Some(PEM_CERTIFICATE)).unwrap();
 }
 
@@ -137,14 +137,13 @@ async fn main() {
 
     match ias_client.verify_quote(quote.quote()).await {
         Ok(response) => {
-            let report = match response
-                .verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CERTIFICATE.as_slice()]) {
-                    Ok(report) => report,
-                    Err(_) => {
-                        eprintln!("Unable to verify signature on IAS report");
-                        process::exit(1);
-                    }
-                };
+            let report = match response.verify::<Mbedtls>(&[IAS_REPORT_SIGNING_CA.as_slice()]) {
+                Ok(report) => report,
+                Err(_) => {
+                    eprintln!("Unable to verify signature on IAS report");
+                    process::exit(1);
+                }
+            };
 
             let pstatus = report.platform_info_blob().as_ref()
                 .map(|v| v.parse::<PlatformStatus>().map_err(|_| v.to_owned()));
