@@ -131,6 +131,40 @@ impl MbedSSLClient {
     }
 }
 
+#[cfg(feature = "async")]
+mod async_io {
+    use tokio::io::{AsyncRead, AsyncWrite};
+
+    use super::*;
+
+    impl MbedSSLClient {
+        pub async fn wrap_stream<T>(
+            &self,
+            stream: T,
+            host: &str,
+        ) -> Result<Context<T>, mbedtls::Error>
+        where
+            T: Unpin + AsyncRead + AsyncWrite + 'static,
+        {
+            let mut context = Context::new(self.rc_config.clone());
+
+            let verify_hostname = match self.verify_hostname {
+                true => Some(
+                    self.override_sni
+                        .as_ref()
+                        .map(|v| v.as_str())
+                        .unwrap_or(host),
+                ),
+                false => None,
+            };
+
+            context.establish_async(stream, verify_hostname).await?;
+
+            Ok(context)
+        }
+    }
+}
+
 impl<T> SslClient<T> for MbedSSLClient
     where T: NetworkStream + Send + Clone + fmt::Debug + Sync
 {

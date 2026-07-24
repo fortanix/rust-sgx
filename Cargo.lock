@@ -1571,6 +1571,7 @@ dependencies = [
  "serde_json",
  "sgx-isa",
  "sgx_pkix",
+ "tokio",
  "url 1.7.2",
  "uuid 0.6.5",
  "uuid 0.8.2",
@@ -2919,6 +2920,7 @@ dependencies = [
  "rustc_version",
  "serde",
  "serde_derive 1.0.204 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio",
  "yasna 0.2.2",
 ]
 

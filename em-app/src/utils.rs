@@ -185,15 +185,33 @@ pub fn get_hyper_connector_pool(ca_chain: Vec<Vec<u8>>) -> Result<Arc<hyper::Cli
 }
 
 pub fn get_mbedtls_hyper_connector_pool(ca_chain: Vec<Vec<u8>>, client_pki: Option<(Arc<MbedtlsList<Certificate>>, Arc<Pk>)>) -> Result<Arc<hyper::Client>, String> {
+    let ssl = get_mbedtls_client(ca_chain, client_pki)?;
+    let connector = HttpsConnector::new(ssl);
+
+    let mut pool = Pool::with_connector(Default::default(), connector);
+    pool.set_idle_timeout(Some(Duration::from_secs(CONNECTION_IDLE_TIMEOUT_SECS)));
+
+    Ok(Arc::new(hyper::Client::with_connector(pool)))
+}
+
+pub fn get_mbedtls_client(
+    ca_chain: Vec<Vec<u8>>,
+    client_pki: Option<(Arc<MbedtlsList<Certificate>>, Arc<Pk>)>,
+) -> Result<MbedSSLClient, String> {
     let mut config = Config::new(Endpoint::Client, Transport::Stream, Preset::Default);
 
     config.set_rng(Arc::new(mbedtls::rng::Rdrand));
-    config.set_min_version(Version::Tls1_2).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+    config
+        .set_min_version(Version::Tls1_2)
+        .map_err(|e| format!("TLS configuration failed: {:?}", e))?;
 
     if !ca_chain.is_empty() {
         let mut list = MbedtlsList::<Certificate>::new();
         for i in ca_chain {
-            list.push(Certificate::from_der(&i).map_err(|e| format!("Failed parsing ca cert, error: {:?}", e))?);
+            list.push(
+                Certificate::from_der(&i)
+                    .map_err(|e| format!("Failed parsing ca cert, error: {:?}", e))?,
+            );
         }
 
         config.set_ca_list(Arc::new(list), None);
@@ -203,14 +221,10 @@ pub fn get_mbedtls_hyper_connector_pool(ca_chain: Vec<Vec<u8>>, client_pki: Opti
     }
 
     if let Some((cert, key)) = client_pki {
-        config.push_cert(cert, key).map_err(|e| format!("TLS configuration failed: {:?}", e))?;
+        config
+            .push_cert(cert, key)
+            .map_err(|e| format!("TLS configuration failed: {:?}", e))?;
     }
-    
-    let ssl = MbedSSLClient::new(Arc::new(config), true);
-    let connector = HttpsConnector::new(ssl);
 
-    let mut pool = Pool::with_connector(Default::default(), connector);
-    pool.set_idle_timeout(Some(Duration::from_secs(CONNECTION_IDLE_TIMEOUT_SECS)));
-
-    Ok(Arc::new(hyper::Client::with_connector(pool)))
+    Ok(MbedSSLClient::new(Arc::new(config), true))
 }
