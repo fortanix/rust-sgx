@@ -34,13 +34,13 @@ sgx_pkix = { version = ">=0.2.0, <0.4.0", path = "../intel-sgx/sgx_pkix" }
 sgx-isa = { version = ">=0.4.0, <0.6.0", path = "../intel-sgx/sgx-isa", default-features = false }
 
 [target.x86_64-unknown-linux-musl.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = { version = "0.5.2", default-features = false }
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-gnu.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = { version = "0.5.2", default-features = false }
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
 
 [target.x86_64-unknown-linux-fortanixvme.dependencies]
-aws-nitro-enclaves-nsm-api = "0.2.0"
+aws-nitro-enclaves-nsm-api = { version = "0.5.2", default-features = false }
 vme-pkix = { version = "0.1.0", path = "../fortanix-vme/vme-pkix/" }
