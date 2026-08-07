@@ -449,6 +449,14 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
         &self.fmspc
     }
 
+    pub fn issue_date(&self) -> &DateTime<Utc> {
+        &self.issue_date
+    }
+
+    pub fn next_update(&self) -> &DateTime<Utc> {
+        &self.next_update
+    }
+
     /// Function to find matching TCB level, but disregarding the platform-specific
     /// TCB components, and only compares the SGX TCB components.
     pub fn find_sgx_tcb_level<TT>(
