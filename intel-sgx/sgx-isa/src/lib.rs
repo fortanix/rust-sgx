@@ -31,7 +31,7 @@ use serde::{Serialize, Deserialize};
 #[cfg(target_env = "sgx")]
 mod arch;
 
-use core::{slice, convert::TryFrom};
+use core::slice;
 
 #[cfg(feature = "serde")]
 mod array_64 {
@@ -74,16 +74,6 @@ mod array_64 {
 
 // These helper functions implement defaults for structs' reserved fields,
 // which is necessary for serde support.
-#[cfg(feature = "serde")]
-fn report_reserved1() -> [u8; 28] {
-    [0u8; 28]
-}
-
-#[cfg(feature = "serde")]
-fn report_reserved2() -> [u8; 32] {
-    [0u8; 32]
-}
-
 #[cfg(feature = "serde")]
 fn report_reserved3() -> [u8; 96] {
     [0u8; 96]
@@ -581,7 +571,8 @@ pub struct Sigstruct {
     pub attributes: Attributes,
     pub attributemask: [u64; 2],
     pub enclavehash: [u8; 32],
-    pub _reserved3: [u8; 32],
+    pub _reserved3: [u8; 16],
+    pub isvextprodid: [u8; 16],
     pub isvprodid: u16,
     pub isvsvn: u16,
     pub _reserved4: [u8; 12],
@@ -649,11 +640,12 @@ struct_def! {
 pub struct Report {
     pub cpusvn: [u8; 16],
     pub miscselect: Miscselect,
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved1"), serde(skip))]
-    pub _reserved1: [u8; 28],
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub _reserved1: [u8; 12],
+    pub isvextnprodid: [u8; 16],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved2"), serde(skip))]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub _reserved2: [u8; 32],
     pub mrsigner: [u8; 32],
     #[cfg_attr(feature = "serde", serde(default = "report_reserved3"), serde(skip))]
