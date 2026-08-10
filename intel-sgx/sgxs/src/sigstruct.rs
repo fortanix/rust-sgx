@@ -66,6 +66,7 @@ pub struct Signer {
     miscmask: u32,
     attributes: Attributes,
     attributemask: [u64; 2],
+    isvextprodid: [u8; 16],
     isvprodid: u16,
     isvsvn: u16,
     enclavehash: EnclaveHash,
@@ -92,6 +93,7 @@ impl Signer {
                 xfrm: 0x3,
             },
             attributemask: [!abi::AttributesFlags::DEBUG.bits(), !0x3],
+            isvextprodid: [0; 16],
             isvprodid: 0,
             isvsvn: 0,
             enclavehash,
@@ -142,7 +144,7 @@ impl Signer {
             attributemask: self.attributemask,
             enclavehash: self.enclavehash.hash,
             _reserved3: [0; 16],
-            isvextprodid: [0; 16],
+            isvextprodid: self.isvextprodid,
             isvprodid: self.isvprodid,
             isvsvn: self.isvsvn,
             _reserved4: [0; 12],
@@ -207,6 +209,11 @@ impl Signer {
 
     pub fn swdefined(&mut self, swdefined: u32) -> &mut Self {
         self.swdefined = swdefined;
+        self
+    }
+
+    pub fn isvextprodid(&mut self, isvextprodid: [u8; 16]) -> &mut Self {
+        self.isvextprodid = isvextprodid;
         self
     }
 
