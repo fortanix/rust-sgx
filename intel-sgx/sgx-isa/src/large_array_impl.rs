@@ -29,7 +29,7 @@ macro_rules! impl_default_clone_eq {
         }
         // This cannot be derived because the derivation asserts that the members are Eq.
         impl Eq for $t {}
-    }
+    };
 }
 
 impl ::core::fmt::Debug for Secs {
