@@ -35,6 +35,9 @@ mod arch;
 
 use core::slice;
 
+#[cfg(target_env = "sgx")]
+use core::convert::TryFrom;
+
 #[cfg(feature = "serde")]
 mod array_64 {
     use core::fmt;
