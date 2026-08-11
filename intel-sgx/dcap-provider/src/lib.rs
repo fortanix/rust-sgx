@@ -322,7 +322,7 @@ pub extern "C" fn sgx_ql_get_quote_config(
         }
         .clone();
 
-        if pckcert.certchain.len() > u32::max_value() as usize {
+        if pckcert.certchain.len() > u32::MAX as usize {
             error!(
                 "Returned PCK certificate too large: {} bytes",
                 pckcert.certchain.len()

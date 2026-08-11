@@ -560,7 +560,7 @@ impl PckCerts {
         // Sort PCK certs by applicable TCB level. If two certs are in the same TCB
         // level, maintain existing ordering (stable sort). PCK certs without a TCB
         // level are sorted last.
-        pck_certs.sort_by_cached_key(|cert| cert.find_sgx_tcb_level_idx(tcb_info).unwrap_or(usize::max_value()));
+        pck_certs.sort_by_cached_key(|cert| cert.find_sgx_tcb_level_idx(tcb_info).unwrap_or(usize::MAX));
         pck_certs
     }
 
