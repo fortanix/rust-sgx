@@ -75,13 +75,8 @@ mod array_64 {
 // These helper functions implement defaults for structs' reserved fields,
 // which is necessary for serde support.
 #[cfg(feature = "serde")]
-fn report_reserved3() -> [u8; 96] {
-    [0u8; 96]
-}
-
-#[cfg(feature = "serde")]
-fn report_reserved4() -> [u8; 60] {
-    [0u8; 60]
+fn report_reserved4() -> [u8; 42] {
+    [0u8; 42]
 }
 
 #[cfg(feature = "serde")]
@@ -640,20 +635,25 @@ struct_def! {
 pub struct Report {
     pub cpusvn: [u8; 16],
     pub miscselect: Miscselect,
+    pub cet_attributes: u8,
     #[cfg_attr(feature = "serde", serde(skip))]
-    pub _reserved1: [u8; 12],
+    pub _reserved1: [u8; 11],
     pub isvextnprodid: [u8; 16],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
     #[cfg_attr(feature = "serde", serde(skip))]
     pub _reserved2: [u8; 32],
     pub mrsigner: [u8; 32],
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved3"), serde(skip))]
-    pub _reserved3: [u8; 96],
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub _reserved3: [u8; 32],
+    #[cfg_attr(feature = "serde", serde(with = "array_64"))]
+    pub configid: [u8; 64],
     pub isvprodid: u16,
     pub isvsvn: u16,
+    pub configsvn: u16,
     #[cfg_attr(feature = "serde", serde(default = "report_reserved4"), serde(skip))]
-    pub _reserved4: [u8; 60],
+    pub _reserved4: [u8; 42],
+    pub isvfamilyid: [u8; 16],
     #[cfg_attr(feature = "serde", serde(with = "array_64"))]
     pub reportdata: [u8; 64],
     pub keyid: [u8; 32],
