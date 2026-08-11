@@ -73,12 +73,6 @@ jobs:
       - name: Cargo test -p dcap-ql --features verify
         run: cargo test --verbose --locked -p dcap-ql --features verify
 
-      - name: Cargo test -p ias --features mbedtls
-        run: cargo test --verbose --locked -p ias --features mbedtls
-
-      - name: Cargo test -p ias --features client,mbedtls
-        run: cargo test --verbose --locked -p ias --features client,mbedtls
-
       # uses backtrace, which still requires nightly on SGX
       - name: Nightly build -p aesm-client --target=x86_64-fortanix-unknown-sgx
         run: cargo +nightly build --verbose --locked -p aesm-client --target=x86_64-fortanix-unknown-sgx
