@@ -610,12 +610,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
-
-[[package]]
-name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -2490,35 +2484,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ias"
-version = "0.2.3"
-dependencies = [
- "aesm-client",
- "base64 0.13.0",
- "bitflags 1.2.1",
- "byteorder 1.5.0",
- "clap 2.34.0",
- "env_logger",
- "lazy_static",
- "log 0.4.28",
- "mbedtls",
- "percent-encoding 2.3.2",
- "pkix",
- "report-test",
- "reqwest",
- "serde",
- "serde-bytes-repr",
- "serde_bytes",
- "serde_json",
- "sgx-isa",
- "sgx_pkix",
- "sgxs",
- "sgxs-loaders",
- "tokio",
- "url 2.5.4",
-]
-
-[[package]]
 name = "icu_collections"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4380,17 +4345,6 @@ dependencies = [
  "rustc-std-workspace-alloc",
  "rustc-std-workspace-core",
  "serde_derive 1.0.204 (git+https://github.com/fortanix/serde.git?branch=master)",
-]
-
-[[package]]
-name = "serde-bytes-repr"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9eb83481bce328081ced4404f986de002bf2e08865bec386734595ebf3b2c425"
-dependencies = [
- "base64 0.13.0",
- "hex 0.4.3",
- "serde",
 ]
 
 [[package]]
