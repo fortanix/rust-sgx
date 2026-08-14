@@ -157,6 +157,14 @@ impl QeIdentity {
     pub fn miscselect_mask(&self) -> Miscselect {
         Miscselect::from_bits_truncate(self.miscselect_mask)
     }
+
+    pub fn issue_date(&self) -> &DateTime<Utc> {
+        &self.issue_date
+    }
+
+    pub fn next_update(&self) -> &DateTime<Utc> {
+        &self.next_update
+    }
 }
 
 impl<V: VerificationType> QeIdentity<V> {

@@ -324,8 +324,7 @@ impl TdxModuleTcbLevel {
 
 /// Deserializer function for TDX ID as it appears in the TDX Module entry of the TDX TCB Info.
 /// TDX ID is always in the format of "TDX_xx" in which xx is a number of the TDX Module ID.
-/// It is currently unspecified if the number is in base 10 or base 16. Currently it is assumed
-/// it is base 10 with leading zero.
+/// It is confirmed from Intel that xx is in base 16 radix.
 ///
 /// Reference: https://api.portal.trustedservices.intel.com/content/documentation.html#pcs-tcb-info-tdx-v4
 /// step no. 5
@@ -336,18 +335,18 @@ fn tdx_id_deserializer<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u8,
         .ok_or(serde::de::Error::custom(format!(
             "Failed to parse TDX ID. Found: {id_str}"
         )))?;
-    split
-        .parse::<u8>()
+
+    u8::from_str_radix(split, 16)
         .map_err(|_| serde::de::Error::custom(format!("Failed to parse TDX ID. Found: {id_str}")))
 }
 
 
 #[allow(unused)]
-fn tdx_id_serializer<S>(id: u8, serializer: S) -> Result<S::Ok, S::Error>
+fn tdx_id_serializer<S>(id: &u8, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: ::serde::Serializer,
 {
-    serializer.serialize_str(format!("TDX_{id:02}").as_str())
+    serializer.serialize_str(format!("TDX_{id:02X}").as_str())
 }
 
 fn tdx_mrsigner_deserializer<'de, D: Deserializer<'de>>(
@@ -447,6 +446,14 @@ impl<T: PlatformTypeForTcbInfo> TcbData<T, Verified> {
 
     pub fn fmspc(&self) -> &Fmspc {
         &self.fmspc
+    }
+
+    pub fn issue_date(&self) -> &DateTime<Utc> {
+        &self.issue_date
+    }
+
+    pub fn next_update(&self) -> &DateTime<Utc> {
+        &self.next_update
     }
 
     /// Function to find matching TCB level, but disregarding the platform-specific
@@ -748,9 +755,10 @@ mod tests {
         crate::RootCaCrl,
         tempdir::TempDir,
     };
-    use {crate::{PlatformTypeForTcbInfo, TcbComponentsOf, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, std::convert::TryFrom};
+    use {crate::{PlatformTypeForTcbInfo, TcbComponentsOf, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, serde::{Deserialize, Serialize}, std::convert::TryFrom};
     use super::AdvisoryID;
     use test_case::test_case;
+    use crate::tcb_info::{tdx_id_deserializer, tdx_id_serializer};
 
     #[test]
     #[cfg(not(target_env = "sgx"))]
@@ -949,6 +957,33 @@ mod tests {
         } else {
             assert!(matches!(expected, ExpectTcbLevel::None));
         }
+    }
+
+    #[test]
+    fn test_tdx_id_parser() {
+        #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+        #[serde(rename_all = "camelCase")]
+        pub struct TdxIdTest {
+            #[serde(
+                deserialize_with = "tdx_id_deserializer",
+                serialize_with = "tdx_id_serializer"
+            )]
+            id: u8,
+        }
+
+        let test_val = TdxIdTest {
+            id: 10,
+        };
+
+        let serialized = serde_json::ser::to_string(&test_val).unwrap();
+
+        println!("{serialized}");
+
+        assert!(serialized.contains("TDX_0A"));
+
+        let deserialized: TdxIdTest = serde_json::de::from_str(&serialized).unwrap();
+
+        assert_eq!(test_val.id, deserialized.id);
     }
 
 }

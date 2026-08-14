@@ -41,6 +41,16 @@ impl<T: PlatformTypeForTcbInfo, V: VerificationType> TcbEvaluationDataNumbers<T,
     }
 }
 
+impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbers<T> {
+    pub fn issue_date(&self) -> &DateTime<Utc> {
+        &self.issue_date
+    }
+
+    pub fn next_update(&self) -> &DateTime<Utc> {
+        &self.next_update
+    }
+}
+
 impl<T: PlatformTypeForTcbInfo> TcbEvaluationDataNumbers<T, Unverified> {
     /// Given a particular TCB level, select the best available TCB eval number.
     /// That is the one that gives the most favorable TCB status, and the higher
