@@ -11,9 +11,11 @@
 //!
 //! [isdm]: https://www-ssl.intel.com/content/www/us/en/processors/architectures-software-developer-manuals.html
 #![no_std]
-#![doc(html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
-       html_favicon_url = "https://edp.fortanix.com/favicon.ico",
-       html_root_url = "https://edp.fortanix.com/docs/api/")]
+#![doc(
+    html_logo_url = "https://edp.fortanix.com/img/docs/edp-logo.svg",
+    html_favicon_url = "https://edp.fortanix.com/favicon.ico",
+    html_root_url = "https://edp.fortanix.com/docs/api/"
+)]
 #![cfg_attr(all(feature = "sgxstd", target_env = "sgx"), feature(sgx_platform))]
 
 #[cfg(all(feature = "sgxstd", target_env = "sgx"))]
@@ -26,20 +28,23 @@ extern crate bitflags;
 extern crate serde;
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(target_env = "sgx")]
 mod arch;
 
-use core::{slice, convert::TryFrom};
+use core::slice;
+
+#[cfg(target_env = "sgx")]
+use core::convert::TryFrom;
 
 #[cfg(feature = "serde")]
 mod array_64 {
+    use core::fmt;
     use serde::{
         de::{Deserializer, Error, SeqAccess, Visitor},
         ser::{SerializeTuple, Serializer},
     };
-    use core::fmt;
 
     const LEN: usize = 64;
 
@@ -75,23 +80,8 @@ mod array_64 {
 // These helper functions implement defaults for structs' reserved fields,
 // which is necessary for serde support.
 #[cfg(feature = "serde")]
-fn report_reserved1() -> [u8; 28] {
-    [0u8; 28]
-}
-
-#[cfg(feature = "serde")]
-fn report_reserved2() -> [u8; 32] {
-    [0u8; 32]
-}
-
-#[cfg(feature = "serde")]
-fn report_reserved3() -> [u8; 96] {
-    [0u8; 96]
-}
-
-#[cfg(feature = "serde")]
-fn report_reserved4() -> [u8; 60] {
-    [0u8; 60]
+fn report_reserved4() -> [u8; 42] {
+    [0u8; 42]
 }
 
 #[cfg(feature = "serde")]
@@ -577,11 +567,15 @@ pub struct Sigstruct {
     pub signature: [u8; 384],
     pub miscselect: Miscselect,
     pub miscmask: u32,
-    pub _reserved2: [u8; 20],
+    pub cet_attributes: u8,
+    pub cet_attributes_mask: u8,
+    pub _reserved2: u16,
+    pub isvfamilyid: [u8; 16],
     pub attributes: Attributes,
     pub attributemask: [u64; 2],
     pub enclavehash: [u8; 32],
-    pub _reserved3: [u8; 32],
+    pub _reserved3: [u8; 16],
+    pub isvextprodid: [u8; 16],
     pub isvprodid: u16,
     pub isvsvn: u16,
     pub _reserved4: [u8; 12],
@@ -604,7 +598,7 @@ impl Sigstruct {
 
             (
                 slice::from_raw_parts(part1_start, part1_end - (part1_start as usize)),
-                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize))
+                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize)),
             )
         }
     }
@@ -649,19 +643,25 @@ struct_def! {
 pub struct Report {
     pub cpusvn: [u8; 16],
     pub miscselect: Miscselect,
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved1"), serde(skip))]
-    pub _reserved1: [u8; 28],
+    pub cet_attributes: u8,
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub _reserved1: [u8; 11],
+    pub isvextnprodid: [u8; 16],
     pub attributes: Attributes,
     pub mrenclave: [u8; 32],
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved2"), serde(skip))]
+    #[cfg_attr(feature = "serde", serde(skip))]
     pub _reserved2: [u8; 32],
     pub mrsigner: [u8; 32],
-    #[cfg_attr(feature = "serde", serde(default = "report_reserved3"), serde(skip))]
-    pub _reserved3: [u8; 96],
+    #[cfg_attr(feature = "serde", serde(skip))]
+    pub _reserved3: [u8; 32],
+    #[cfg_attr(feature = "serde", serde(with = "array_64"))]
+    pub configid: [u8; 64],
     pub isvprodid: u16,
     pub isvsvn: u16,
+    pub configsvn: u16,
     #[cfg_attr(feature = "serde", serde(default = "report_reserved4"), serde(skip))]
-    pub _reserved4: [u8; 60],
+    pub _reserved4: [u8; 42],
+    pub isvfamilyid: [u8; 16],
     #[cfg_attr(feature = "serde", serde(with = "array_64"))]
     pub reportdata: [u8; 64],
     pub keyid: [u8; 32],
@@ -716,18 +716,12 @@ impl Report {
             ..Default::default()
         };
         let key = req.egetkey().expect("Couldn't get report key");
-        check_mac(
-            &key,
-            self.mac_data(),
-            &self.mac,
-        )
+        check_mac(&key, self.mac_data(), &self.mac)
     }
 
     /// Returns that part of the `Report` that is MACed.
     pub fn mac_data(&self) -> &[u8; Report::TRUNCATED_SIZE] {
-        unsafe {
-            &*(self as *const Self as *const [u8; Report::TRUNCATED_SIZE])
-        }
+        unsafe { &*(self as *const Self as *const [u8; Report::TRUNCATED_SIZE]) }
     }
 }
 
@@ -791,7 +785,7 @@ impl Keyrequest {
         match arch::egetkey(self.as_ref()) {
             Ok(k) => Ok(k.0),
             // unwrap ok, `arch::egetkey` will always return a valid `ErrorCode`
-            Err(e) => Err(ErrorCode::try_from(e).unwrap())
+            Err(e) => Err(ErrorCode::try_from(e).unwrap()),
         }
     }
 }
@@ -864,7 +858,6 @@ pub const REPORT_DATA_SIZE: usize = 64;
 
 /// Message SHA 256 HASH Code - 32 bytes
 pub const TEE_MAC_SIZE: usize = 32;
-
 
 struct_def! {
 /// Rust definition of `REPORTMACSTRUCT`, used by TDX `TDREPORT_STRUCT`
