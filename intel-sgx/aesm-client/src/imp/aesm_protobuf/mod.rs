@@ -157,12 +157,13 @@ impl AesmClient {
 
         req.set_att_key_id(att_key_id.clone());
         req.set_b_pub_key_id(false);
-        
+        req.set_buf_size(0);
+
         let res = self.transact(req)?;
         let buf_size = res.pub_key_id_size();
 
         let mut req = InitQuoteExRequest::new();
-        
+
         req.set_att_key_id(att_key_id);
         req.set_b_pub_key_id(true);
         req.set_buf_size(buf_size);
