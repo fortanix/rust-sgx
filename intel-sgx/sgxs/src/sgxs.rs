@@ -8,6 +8,8 @@ use abi::*;
 use thiserror::Error as ThisError;
 
 use std::io::{self, Error as IoError, ErrorKind as IoErrorKind, Read, Result as IoResult, Write};
+use std::mem;
+use std::ptr;
 use std::result::Result as StdResult;
 
 #[derive(ThisError, Debug)]
@@ -127,6 +129,21 @@ fn read_fill<R: Read>(reader: &mut R, mut buf: &mut [u8]) -> IoResult<bool> {
     }
 }
 
+/// A `[u8; 64]` buffer with enough alignment to safely [`ptr::read`] and
+/// [`ptr::write`] SGXS tag+headers (`u64`, [`MeasECreate`], [`MeasEAdd`],
+/// [`MeasEExtend`]).
+#[repr(C, align(8))]
+struct AlignedHeader([u8; 64]);
+
+const _: () = assert!(mem::align_of::<AlignedHeader>() >= mem::align_of::<u64>());
+const _: () = assert!(mem::align_of::<AlignedHeader>() >= mem::align_of::<MeasECreate>());
+const _: () = assert!(mem::align_of::<AlignedHeader>() >= mem::align_of::<MeasEAdd>());
+const _: () = assert!(mem::align_of::<AlignedHeader>() >= mem::align_of::<MeasEExtend>());
+
+const _: () = assert!(mem::size_of::<AlignedHeader>() >= mem::size_of::<u64>() + mem::size_of::<MeasECreate>());
+const _: () = assert!(mem::size_of::<AlignedHeader>() >= mem::size_of::<u64>() + mem::size_of::<MeasEAdd>());
+const _: () = assert!(mem::size_of::<AlignedHeader>() >= mem::size_of::<u64>() + mem::size_of::<MeasEExtend>());
+
 pub trait SgxsRead {
     fn read_meas(&mut self) -> Result<Option<Meas>>;
 }
@@ -135,24 +152,24 @@ impl<R: Read> SgxsRead for R {
     fn read_meas(&mut self) -> Result<Option<Meas>> {
         use byteorder::{LittleEndian, ReadBytesExt};
 
-        let mut header = [0u8; 64];
-        if !(read_fill(self, &mut header)?) {
+        let mut header = AlignedHeader([0u8; 64]);
+        if !(read_fill(self, &mut header.0)?) {
             return Ok(None);
         }
-        let mut headerp = &header[..];
+        let mut headerp = &header.0[..];
 
         match headerp.read_u64::<LittleEndian>().unwrap() {
             MEAS_ECREATE => Ok(Some(Meas::ECreate(
-                unsafe { &*(headerp as *const _ as *const MeasECreate) }.clone(),
+                unsafe { ptr::read(headerp.as_ptr() as *const MeasECreate) },
             ))),
             MEAS_UNSIZED => Ok(Some(Meas::Unsized(
-                unsafe { &*(headerp as *const _ as *const MeasECreate) }.clone(),
+                unsafe { ptr::read(headerp.as_ptr() as *const MeasECreate) },
             ))),
             MEAS_EADD => Ok(Some(Meas::EAdd(
-                unsafe { &*(headerp as *const _ as *const MeasEAdd) }.clone(),
+                unsafe { ptr::read(headerp.as_ptr() as *const MeasEAdd) },
             ))),
             m @ MEAS_EEXTEND | m @ MEAS_UNMEASRD => {
-                let header = unsafe { &*(headerp as *const _ as *const MeasEExtend) }.clone();
+                let header = unsafe { ptr::read(headerp.as_ptr() as *const MeasEExtend) };
 
                 let mut data = [0u8; 256];
                 if !(read_fill(self, &mut data)?) {
@@ -414,41 +431,40 @@ pub trait SgxsWrite {
 impl<W: Write> SgxsWrite for W {
     fn write_meas(&mut self, meas: &Meas) -> Result<()> {
         use self::Meas::*;
-        use std::ptr;
 
-        let mut buf = [0u8; 64];
+        let mut buf = AlignedHeader([0u8; 64]);
         unsafe {
-            let (tag, headerdst) = buf.split_at_mut(8);
-            let tag = &mut *(&mut tag[0..8] as *mut _ as *mut u64);
-            let headerdst = &mut headerdst[0..56] as *mut _;
+            let (tag, headerdst) = buf.0.split_at_mut(8);
+            let tag = tag.as_mut_ptr() as *mut u64;
+            let headerdst = headerdst.as_mut_ptr();
 
             match meas {
-                &ECreate(ref header) => {
-                    *tag = MEAS_ECREATE;
-                    ptr::write(headerdst as *mut _, header.clone())
+                ECreate(header) => {
+                    ptr::write(tag, MEAS_ECREATE);
+                    ptr::write(headerdst as *mut _, *header)
                 }
-                &Unsized(ref header) => {
-                    *tag = MEAS_UNSIZED;
-                    ptr::write(headerdst as *mut _, header.clone())
+                Unsized(header) => {
+                    ptr::write(tag, MEAS_UNSIZED);
+                    ptr::write(headerdst as *mut _, *header)
                 }
-                &EAdd(ref header) => {
-                    *tag = MEAS_EADD;
-                    ptr::write(headerdst as *mut _, header.clone())
+                EAdd(header) => {
+                    ptr::write(tag, MEAS_EADD);
+                    ptr::write(headerdst as *mut _, *header)
                 }
-                &EExtend { ref header, .. } | &BareEExtend(ref header) => {
-                    *tag = MEAS_EEXTEND;
-                    ptr::write(headerdst as *mut _, header.clone())
+                EExtend { header, .. } | BareEExtend(header) => {
+                    ptr::write(tag, MEAS_EEXTEND);
+                    ptr::write(headerdst as *mut _, *header)
                 }
-                &Unmeasured { ref header, .. } | &BareUnmeasured(ref header) => {
-                    *tag = MEAS_UNMEASRD;
-                    ptr::write(headerdst as *mut _, header.clone())
+                Unmeasured { header, .. } | BareUnmeasured(header) => {
+                    ptr::write(tag, MEAS_UNMEASRD);
+                    ptr::write(headerdst as *mut _, *header)
                 }
             };
         }
-        self.write_all(&buf)?;
+        self.write_all(&buf.0)?;
 
         match meas {
-            &EExtend { ref data, .. } | &Unmeasured { ref data, .. } => self.write_all(data)?,
+            EExtend { data, .. } | Unmeasured { data, .. } => self.write_all(data)?,
             _ => {}
         }
 
@@ -626,4 +642,41 @@ pub fn copy_measured<R: SgxsRead, W: SgxsWrite>(reader: &mut R, writer: &mut W) 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An .sgxs enclave binary. This is just a copy of the `report-test`
+    /// enclave (as of 2026-08-19).
+    const FIXTURE_SGXS: &[u8] = include_bytes!("../tests/data/fixture.sgxs");
+
+    #[test]
+    fn sgxs_roundtrip() {
+        let mut reader = FIXTURE_SGXS;
+        let mut encoded = Vec::with_capacity(FIXTURE_SGXS.len());
+        let mut ecreate_count = 0;
+        let mut eadd_count = 0;
+        let mut eextend_count = 0;
+
+        while let Some(meas) = reader.read_meas().unwrap() {
+            match &meas {
+                Meas::ECreate(header) => {
+                    assert_eq!({ header.ssaframesize }, 1);
+                    assert_eq!({ header.size }, 0x4000);
+                    ecreate_count += 1;
+                }
+                Meas::EAdd(_) => eadd_count += 1,
+                Meas::EExtend { .. } => eextend_count += 1,
+                _ => panic!("unexpected measurement in fixture"),
+            }
+            encoded.write_meas(&meas).unwrap();
+        }
+
+        assert_eq!(ecreate_count, 1);
+        assert_eq!(eadd_count, 3);
+        assert_eq!(eextend_count, 48);
+        assert_eq!(encoded.as_slice(), FIXTURE_SGXS);
+    }
 }
