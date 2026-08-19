@@ -627,3 +627,40 @@ pub fn copy_measured<R: SgxsRead, W: SgxsWrite>(reader: &mut R, writer: &mut W) 
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An .sgxs enclave binary. This is just a copy of the `report-test`
+    /// enclave (as of 2026-08-19).
+    const FIXTURE_SGXS: &[u8] = include_bytes!("../tests/data/fixture.sgxs");
+
+    #[test]
+    fn sgxs_roundtrip() {
+        let mut reader = FIXTURE_SGXS;
+        let mut encoded = Vec::with_capacity(FIXTURE_SGXS.len());
+        let mut ecreate_count = 0;
+        let mut eadd_count = 0;
+        let mut eextend_count = 0;
+
+        while let Some(meas) = reader.read_meas().unwrap() {
+            match &meas {
+                Meas::ECreate(header) => {
+                    assert_eq!({ header.ssaframesize }, 1);
+                    assert_eq!({ header.size }, 0x4000);
+                    ecreate_count += 1;
+                }
+                Meas::EAdd(_) => eadd_count += 1,
+                Meas::EExtend { .. } => eextend_count += 1,
+                _ => panic!("unexpected measurement in fixture"),
+            }
+            encoded.write_meas(&meas).unwrap();
+        }
+
+        assert_eq!(ecreate_count, 1);
+        assert_eq!(eadd_count, 3);
+        assert_eq!(eextend_count, 48);
+        assert_eq!(encoded.as_slice(), FIXTURE_SGXS);
+    }
+}
