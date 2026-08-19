@@ -587,18 +587,27 @@ pub struct Sigstruct {
 impl Sigstruct {
     pub const UNPADDED_SIZE: usize = 1808;
 
-    /// Returns that part of the `Sigstruct` that is signed. The returned
+    /// Returns the part of the `Sigstruct` that is signed. The returned
     /// slices should be concatenated for hashing.
     pub fn signature_data(&self) -> (&[u8], &[u8]) {
-        unsafe {
-            let part1_start = &(self.header) as *const _ as *const u8;
-            let part1_end = &(self.modulus) as *const _ as *const u8 as usize;
-            let part2_start = &(self.miscselect) as *const _ as *const u8;
-            let part2_end = &(self._reserved4) as *const _ as *const u8 as usize;
+        use core::mem::offset_of;
 
+        const PART1_LEN: usize = offset_of!(Sigstruct, modulus);
+        const PART2_START: usize = offset_of!(Sigstruct, miscselect);
+        const PART2_LEN: usize = offset_of!(Sigstruct, _reserved4) - PART2_START;
+
+        // sig-data := [ header || .. || _reserved1 ] || [ miscselect || .. || isvsvn ]
+        //
+        // SAFETY:
+        // - Both slices are computed from field offsets and lie within `self`.
+        // - Reading `self` bytes as `u8` is valid, as the type is repr(C)
+        //   without any uninit padding bytes.
+        // - The returned slices inherit `self`'s lifetime.
+        let p = self as *const Self as *const u8;
+        unsafe {
             (
-                slice::from_raw_parts(part1_start, part1_end - (part1_start as usize)),
-                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize)),
+                slice::from_raw_parts(p, PART1_LEN),
+                slice::from_raw_parts(p.add(PART2_START), PART2_LEN),
             )
         }
     }
