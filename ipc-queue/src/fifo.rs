@@ -23,6 +23,17 @@ use super::{Identified, Transmittable, TryRecvError, TrySendError, UserRef, User
 use super::{AsyncReceiver, AsyncSender, AsyncSynchronizer, DescriptorGuard, Identified, Receiver, Sender,
     Synchronizer, Transmittable, TryRecvError, TrySendError};
 
+/// [`FifoDescriptor`] reserves one bit above the queue index for tracking
+/// whether an offset has wrapped around. Read and write offsets are `u32`s,
+/// so the ABI limits queues to 2^31 elements.
+const MAX_FIFO_LEN: usize = 1 << 31;
+
+/// Returns true if a given value is a valid length for a [`Fifo`] IPC queue.
+/// See: [`FifoDescriptor::len`]
+const fn is_valid_fifo_len(len: usize) -> bool {
+    len <= MAX_FIFO_LEN && len.is_power_of_two()
+}
+
 // `fortanix_sgx_abi::WithId` is not `Copy` because it contains an `AtomicU64`.
 // This type has the same memory layout but is `Copy` and can be marked as
 // `UserSafeSized` which is needed for the `User::from_raw_parts()` below.
@@ -119,10 +130,7 @@ pub(crate) struct FifoBuffer<T> {
 #[cfg(not(target_env = "sgx"))]
 impl<T: Transmittable> FifoBuffer<T> {
     fn new(len: usize) -> Self {
-        assert!(
-            len.is_power_of_two(),
-            "Fifo len should be a power of two"
-        );
+        assert!(is_valid_fifo_len(len));
         let mut data = Vec::with_capacity(len);
         data.resize_with(len, || WithId { id: AtomicU64::new(0), data: T::default() });
         Self {
@@ -172,10 +180,7 @@ impl<T> Fifo<T> {
 
 impl<T: Transmittable> Fifo<T> {
     pub(crate) unsafe fn from_descriptor(descriptor: FifoDescriptor<T>) -> Self {
-        assert!(
-            descriptor.len.is_power_of_two(),
-            "Fifo len should be a power of two"
-        );
+        assert!(is_valid_fifo_len(descriptor.len));
         #[cfg(target_env = "sgx")] {
             use std::os::fortanix_sgx::usercalls::alloc::User;
 
@@ -189,7 +194,7 @@ impl<T: Transmittable> Fifo<T> {
         Self {
             data: &*(data_slice as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
             offsets: &*descriptor.offsets,
-            storage: Storage::Static(PhantomData::default()),
+            storage: Storage::Static(PhantomData),
         }
     }
 
@@ -314,7 +319,7 @@ impl Offsets {
     }
 
     pub(crate) fn new(offsets: usize, len: u32) -> Self {
-        debug_assert!(len.is_power_of_two());
+        debug_assert!(is_valid_fifo_len(len as usize));
         Self {
             write: (offsets >> 32) as u32,
             read: offsets as u32,
@@ -344,14 +349,14 @@ impl Offsets {
 
     pub(crate) fn increment_read_offset(&self) -> Self {
         Self {
-            read: (self.read + 1) & (self.len * 2 - 1),
+            read: self.read.wrapping_add(1) & self.len.wrapping_mul(2).wrapping_sub(1),
             ..*self
         }
     }
 
     pub(crate) fn increment_write_offset(&self) -> Self {
         Self {
-            write: (self.write + 1) & (self.len * 2 - 1),
+            write: self.write.wrapping_add(1) & self.len.wrapping_mul(2).wrapping_sub(1),
             ..*self
         }
     }
@@ -485,5 +490,52 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn offsets_at_max_len() {
+        // Test full Offsets at max len
+        let (w, r) = (MAX_FIFO_LEN as u32, 0);
+        let offsets = ((w as usize) << 32) | (r as usize);
+        let full = Offsets::new(offsets, MAX_FIFO_LEN as u32);
+        assert!(!full.is_empty());
+        assert!(full.is_full());
+
+        let full = full.increment_read_offset();
+        assert_eq!(full.read_offset(), 1);
+        assert!(!full.is_empty());
+        assert!(!full.is_full());
+
+        let full = full.increment_write_offset();
+        assert_eq!(full.write_offset(), 1);
+        assert!(!full.is_empty());
+        assert!(full.is_full());
+
+        // Test Offsets read/write idxs wrapping at max len
+        let (w, r) = (u32::MAX, u32::MAX);
+        let offsets = ((w as usize) << 32) | (r as usize);
+        let wrap = Offsets::new(offsets, MAX_FIFO_LEN as u32);
+        assert!(wrap.is_empty());
+        assert!(!wrap.is_full());
+
+        let wrap = wrap.increment_write_offset();
+        assert_eq!(wrap.write_offset(), 0);
+        assert!(!wrap.is_empty());
+        assert!(!wrap.is_full());
+
+        let wrap = wrap.increment_read_offset();
+        assert_eq!(wrap.read_offset(), 0);
+        assert!(wrap.is_empty());
+        assert!(!wrap.is_full());
+    }
+
+    #[test]
+    fn test_is_valid_fifo_len() {
+        assert!(!is_valid_fifo_len(0));
+        assert!(is_valid_fifo_len(1));
+        assert!(is_valid_fifo_len(MAX_FIFO_LEN));
+        assert!(!is_valid_fifo_len(MAX_FIFO_LEN + 1));
+        assert!(!is_valid_fifo_len(u32::MAX as usize));
+        assert!(!is_valid_fifo_len(1_usize << 32));
     }
 }
