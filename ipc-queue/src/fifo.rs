@@ -19,6 +19,9 @@ use fortanix_sgx_abi::{FifoDescriptor, WithId};
 #[cfg(target_env = "sgx")]
 use super::{Identified, Transmittable, TryRecvError, TrySendError, UserRef, UserSafeSized};
 
+#[cfg(all(test, target_env = "sgx"))]
+use super::{Receiver, Sender, Synchronizer};
+
 #[cfg(not(target_env = "sgx"))]
 use super::{AsyncReceiver, AsyncSender, AsyncSynchronizer, DescriptorGuard, Identified, Receiver, Sender,
     Synchronizer, Transmittable, TryRecvError, TrySendError};
@@ -372,10 +375,141 @@ mod tests {
     use super::*;
     use crate::test_support::{NoopSynchronizer, TestValue};
     use std::sync::mpsc;
+    #[cfg(target_env = "sgx")]
+    use std::sync::{atomic::{AtomicUsize, AtomicU64}, Arc};
     use std::thread;
 
     fn inner<T, S>(tx: Sender<T, S>) -> Fifo<T> {
         tx.inner
+    }
+
+    /// Helper struct to make a valid `Fifo<TestValue>` with `Storage::Static`.
+    struct StaticFifoStorage {
+        data: Box<[UnsafeCell<WithId<TestValue>>]>,
+        offsets: Box<AtomicUsize>,
+    }
+
+    impl StaticFifoStorage {
+        fn new(len: usize) -> Self {
+            assert!(len.is_power_of_two());
+            let data = (0..len)
+                .map(|_| UnsafeCell::new(WithId {
+                    id: AtomicU64::new(0),
+                    data: TestValue::default(),
+                }))
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            Self { data, offsets: Box::new(AtomicUsize::new(0)) }
+        }
+
+        fn fifo(&self) -> Fifo<TestValue> {
+            unsafe {
+                Fifo {
+                    data: std::slice::from_raw_parts(self.data.as_ptr(), self.data.len()),
+                    offsets: &*(self.offsets.as_ref() as *const AtomicUsize),
+                    storage: Storage::Static(PhantomData),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transmittable_write_read() {
+        let expected = TestValue(42);
+        let mut slot = TestValue::default();
+
+        unsafe {
+            TestValue::write(&mut slot, &expected);
+            assert_eq!(TestValue::read(&slot).0, expected.0);
+        }
+    }
+
+    #[test]
+    fn static_fifo_send_recv() {
+        let storage = StaticFifoStorage::new(2);
+        let fifo = storage.fifo();
+
+        assert!(fifo.try_send_impl(Identified { id: 1, data: TestValue(42) }).unwrap());
+        let (value, was_full, read_wrapped_around) = fifo.try_recv_impl().unwrap();
+
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
+        assert!(!was_full);
+        assert!(!read_wrapped_around);
+    }
+
+    #[test]
+    fn static_fifo_send_recv_concurrent() {
+        const PRODUCERS: u64 = 2;
+        const VALUES_PER_PRODUCER: u64 = 4;
+
+        let storage = StaticFifoStorage::new(2);
+        let fifo = storage.fifo();
+        let tx = Arc::new(Sender { inner: fifo.clone(), synchronizer: NoopSynchronizer });
+        let rx = Receiver { inner: fifo, synchronizer: NoopSynchronizer };
+        let consumer = thread::spawn(move || {
+            let mut values = Vec::new();
+            for _ in 0..PRODUCERS * VALUES_PER_PRODUCER {
+                values.push(rx.recv().unwrap());
+            }
+            values
+        });
+
+        let mut producers = Vec::new();
+        for producer in 0..PRODUCERS {
+            let tx = tx.clone();
+            producers.push(thread::spawn(move || {
+                for value in 0..VALUES_PER_PRODUCER {
+                    let id = producer * VALUES_PER_PRODUCER + value + 1;
+                    tx.send(Identified { id, data: TestValue(id) }).unwrap();
+                }
+            }));
+        }
+
+        for producer in producers {
+            producer.join().unwrap();
+        }
+        let mut values = consumer.join().unwrap();
+        values.sort_unstable_by_key(|value| value.id);
+        assert!(values.iter().enumerate().all(|(index, value)| {
+            value.id == index as u64 + 1 && value.data.0 == value.id
+        }));
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    #[test]
+    fn from_descriptor_send_recv() {
+        let mut buffer = FifoBuffer::<TestValue>::new(2);
+        let descriptor = FifoDescriptor {
+            data: buffer.data.as_mut_ptr(),
+            len: buffer.data.len(),
+            offsets: buffer.offsets.as_ref(),
+        };
+
+        let tx = unsafe { Sender::from_descriptor(descriptor, NoopSynchronizer) };
+        let rx = unsafe { Receiver::from_descriptor(descriptor, NoopSynchronizer) };
+
+        tx.try_send(Identified { id: 1, data: TestValue(42) }).unwrap();
+        let value = rx.try_recv().unwrap();
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    #[test]
+    fn descriptor_guard_keeps_storage_alive() {
+        let (tx, rx) = bounded(2, NoopSynchronizer);
+        drop(rx);
+        let guard = tx.inner.into_descriptor_guard();
+        let descriptor = guard.fifo_descriptor();
+
+        let tx = unsafe { Sender::from_descriptor(descriptor, NoopSynchronizer) };
+        let rx = unsafe { Receiver::from_descriptor(descriptor, NoopSynchronizer) };
+
+        tx.try_send(Identified { id: 1, data: TestValue(42) }).unwrap();
+        let value = rx.try_recv().unwrap();
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
     }
 
     #[test]
