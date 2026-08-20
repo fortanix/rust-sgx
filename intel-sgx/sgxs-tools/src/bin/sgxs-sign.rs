@@ -159,10 +159,6 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         signer.miscselect(sel, !mask);
     }
 
-    let isvextprodid = matches
-        .value_of("isvextprodid")
-        .map(parse_num::<u128>)
-        .unwrap_or_default();
 
     let (mut attributes, attributemask) = matches
         .value_of("attributes/attributemask")
@@ -180,10 +176,10 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         attributes |= sgx_isa::AttributesFlags::DEBUG.bits();
         attributemask &= !(sgx_isa::AttributesFlags::DEBUG.bits());
     }
-    // If extended product id is has a value
-    // make KSS essential. Hosts without KSS support
-    // would fail on enclave launch.
-    if isvextprodid > 0 {
+
+    // If an extended product ID is provided, make KSS mandatory.
+    // Hosts without KSS support will fail to launch the enclave.
+    if matches.is_present("isvextprodid") {
         attributes |= sgx_isa::AttributesFlags::KSS.bits();
         attributemask |= sgx_isa::AttributesFlags::KSS.bits();
     }
@@ -203,9 +199,10 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         .map(parse_num::<u32>)
         .map(|v| signer.swdefined(v));
 
-    if isvextprodid > 0 {
-        signer.isvextprodid(isvextprodid.to_le_bytes());
-    }
+    matches
+        .value_of("isvextprodid")
+        .map(parse_num::<u128>)
+        .map(|v| signer.isvextprodid(v.to_le_bytes()));
 
     matches
         .value_of("isvprodid")
