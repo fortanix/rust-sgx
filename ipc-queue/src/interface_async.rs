@@ -138,8 +138,11 @@ mod tests {
     async fn single_sender() {
         do_single_sender(4, 10).await;
         do_single_sender(1, 10).await;
-        do_single_sender(32, 1024).await;
-        do_single_sender(1024, 32).await;
+        #[cfg(not(miri))]
+        {
+            do_single_sender(32, 1024).await;
+            do_single_sender(1024, 32).await;
+        }
     }
 
     async fn do_multi_sender(len: usize, n: u64, senders: u64) {
@@ -173,9 +176,12 @@ mod tests {
     #[tokio::test]
     async fn multi_sender() {
         do_multi_sender(4, 10, 3).await;
-        do_multi_sender(4, 1, 100).await;
-        do_multi_sender(2, 10, 100).await;
-        do_multi_sender(1024, 30, 100).await;
+        #[cfg(not(miri))]
+        {
+            do_multi_sender(4, 1, 100).await;
+            do_multi_sender(2, 10, 100).await;
+            do_multi_sender(1024, 30, 100).await;
+        }
     }
 
     #[tokio::test]
@@ -217,7 +223,12 @@ mod tests {
         assert!(monitor.read_position().is_past(&p2) == Some(true));
         assert!(monitor.read_position().is_past(&p3) == Some(false));
 
-        for i in 0..1000 {
+        #[cfg(miri)]
+        const ROUNDS: usize = 8;
+        #[cfg(not(miri))]
+        const ROUNDS: usize = 1000;
+
+        for i in 0..ROUNDS {
             let n = 1 + (i % LEN);
             let p4 = monitor.write_position();
             for _ in 0..n {
