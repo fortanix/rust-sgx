@@ -51,7 +51,7 @@ jobs:
       - name: Setup Rust toolchain
         run: |
           rustup target add x86_64-fortanix-unknown-sgx x86_64-unknown-linux-musl
-          rustup toolchain add nightly
+          rustup toolchain add nightly --component miri
           rustup target add x86_64-fortanix-unknown-sgx --toolchain nightly
           rustup update
 
@@ -124,3 +124,6 @@ jobs:
 
       - name: snmalloc correctness test
         run: cd ./examples/mem-correctness-test && cargo run
+
+      - name: Nightly Miri test -p sgx-isa
+        run: cargo +nightly miri test --verbose --locked -p sgx-isa
