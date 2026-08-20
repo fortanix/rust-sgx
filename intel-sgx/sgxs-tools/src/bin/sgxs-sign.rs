@@ -115,7 +115,7 @@ fn args_desc<'a>() -> clap::App<'a, 'a> {
         .arg(Arg::with_name("32bit")                              .long("32")                                                           .help("Unsets the MODE64BIT bit in the ATTRIBUTES field, sets MODE64BIT in the ATTRIBUTEMASK field"))
         .arg(Arg::with_name("debug")                   .short("d").long("debug")                                                        .help("Sets the DEBUG bit in the ATTRIBUTES field, unsets the DEBUG bit in the ATTRIBUTEMASK field"))
         .arg(Arg::with_name("date")                               .long("date")      .value_name("YYYYMMDD").validator(date_validate)   .help("Sets the DATE field (default: today)"))
-        .arg(Arg::with_name("isvextprodid")                       .long("isvextprodid").takes_value(true)   .validator(num_validate)    .help("Sets the ISVEXTPRODID field (default: 0)"))
+        .arg(Arg::with_name("isvextprodid")                       .long("isvextprodid").takes_value(true)   .validator(num_validate)    .help("Sets the ISVEXTPRODID field"))
         .arg(Arg::with_name("isvprodid")               .short("p").long("isvprodid") .takes_value(true)     .validator(num_validate)    .help("Sets the ISVPRODID field (default: 0)"))
         .arg(Arg::with_name("isvsvn")                  .short("v").long("isvsvn")    .takes_value(true)     .validator(num_validate)    .help("Sets the ISVSVN field (default: 0)"))
         .arg(Arg::with_name("key-file")                .short("k").long("key")       .value_name("FILE")    .required(true)             .help("Sets the path to the PEM-encoded RSA private key"))
