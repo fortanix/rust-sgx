@@ -4536,7 +4536,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs"
-version = "0.8.2"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "byteorder 1.5.0",
@@ -4568,7 +4568,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-tools"
-version = "0.9.4"
+version = "0.10.0"
 dependencies = [
  "aesm-client",
  "anyhow",

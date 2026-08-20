@@ -115,6 +115,7 @@ fn args_desc<'a>() -> clap::App<'a, 'a> {
         .arg(Arg::with_name("32bit")                              .long("32")                                                           .help("Unsets the MODE64BIT bit in the ATTRIBUTES field, sets MODE64BIT in the ATTRIBUTEMASK field"))
         .arg(Arg::with_name("debug")                   .short("d").long("debug")                                                        .help("Sets the DEBUG bit in the ATTRIBUTES field, unsets the DEBUG bit in the ATTRIBUTEMASK field"))
         .arg(Arg::with_name("date")                               .long("date")      .value_name("YYYYMMDD").validator(date_validate)   .help("Sets the DATE field (default: today)"))
+        .arg(Arg::with_name("isvextprodid")                       .long("isvextprodid").takes_value(true)   .validator(num_validate)    .help("Sets the ISVEXTPRODID field"))
         .arg(Arg::with_name("isvprodid")               .short("p").long("isvprodid") .takes_value(true)     .validator(num_validate)    .help("Sets the ISVPRODID field (default: 0)"))
         .arg(Arg::with_name("isvsvn")                  .short("v").long("isvsvn")    .takes_value(true)     .validator(num_validate)    .help("Sets the ISVSVN field (default: 0)"))
         .arg(Arg::with_name("key-file")                .short("k").long("key")       .value_name("FILE")    .required(true)             .help("Sets the path to the PEM-encoded RSA private key"))
@@ -158,6 +159,7 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         signer.miscselect(sel, !mask);
     }
 
+
     let (mut attributes, attributemask) = matches
         .value_of("attributes/attributemask")
         .map(parse_num_num::<u64>)
@@ -174,6 +176,13 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         attributes |= sgx_isa::AttributesFlags::DEBUG.bits();
         attributemask &= !(sgx_isa::AttributesFlags::DEBUG.bits());
     }
+
+    // If an extended product ID is provided, make KSS mandatory.
+    // Hosts without KSS support will fail to launch the enclave.
+    if matches.is_present("isvextprodid") {
+        attributes |= sgx_isa::AttributesFlags::KSS.bits();
+        attributemask |= sgx_isa::AttributesFlags::KSS.bits();
+    }
     let attributes = AttributesFlags::from_bits(attributes).unwrap_or_else(|| {
         println!("WARNING: Dropping unknown bits in input ATTRIBUTES!");
         AttributesFlags::from_bits_truncate(attributes)
@@ -189,6 +198,12 @@ fn do_sign<'a>(matches: &clap::ArgMatches<'a>, key: &PKey<pkey::Private>) -> Sig
         .value_of("swdefined")
         .map(parse_num::<u32>)
         .map(|v| signer.swdefined(v));
+
+    matches
+        .value_of("isvextprodid")
+        .map(parse_num::<u128>)
+        .map(|v| signer.isvextprodid(v.to_le_bytes()));
+
     matches
         .value_of("isvprodid")
         .map(parse_num::<u16>)
