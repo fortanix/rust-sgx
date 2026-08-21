@@ -8,11 +8,8 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 #[cfg(not(target_env = "sgx"))]
-use {
-    std::sync::atomic::AtomicU64,
-    std::sync::Arc,
-};
-use std::sync::atomic::{AtomicUsize, Ordering, Ordering::SeqCst};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, Ordering::SeqCst};
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
 
@@ -256,9 +253,17 @@ impl<T: Transmittable> Fifo<T> {
 
         // 4. Write the data, then the `id`.
         unsafe {
-            let slot = &mut *self.data[new.write_offset()].get();
-            T::write(&mut slot.data, &val.data);
-            slot.id.store(val.id, SeqCst);
+            // NOTE: stay in pointers to avoid a concurrent &/&mut ref with a
+            // concurrent recv'er while they loop.
+            let slot_ptr: *mut WithId<T> = UnsafeCell::raw_get(
+                self.data.as_ptr().add(new.write_offset()),
+            );
+            let slot_data_ptr: *mut T = &raw mut (*slot_ptr).data;
+            T::write(slot_data_ptr, &val.data);
+
+            let slot_id_ptr: *const AtomicU64 = &raw const (*slot_ptr).id;
+            let slot_id: &AtomicU64 = &*slot_id_ptr;
+            slot_id.store(val.id, SeqCst);
         }
 
         // 5. If the queue was empty in step 1, signal the reader to wake up.
@@ -277,22 +282,32 @@ impl<T: Transmittable> Fifo<T> {
         // 3. Add 1 to the read offset.
         let new = current.increment_read_offset();
 
-        let (slot, id) = loop {
+        // NOTE: stay in pointers to avoid a concurrent &/&mut ref with a
+        // concurrent sender while we loop.
+        let (slot_ptr, slot_id): (*mut WithId<T>, &AtomicU64) = unsafe {
+            let slot_ptr = UnsafeCell::raw_get(self.data.as_ptr().add(new.read_offset()));
+            let slot_id_ptr: *const AtomicU64 = &raw const (*slot_ptr).id;
+            let slot_id = &*slot_id_ptr;
+            (slot_ptr, slot_id)
+        };
+        let id = loop {
             // 4. Read the `id` at the new read offset.
-            let slot = unsafe { &mut *self.data[new.read_offset()].get() };
-            let id = slot.id.load(SeqCst);
+            let id = slot_id.load(SeqCst);
 
             // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
             //    expected to be written imminently.
             if id != 0 {
-                break (slot, id);
+                break id;
             }
         };
 
         // 6. Read the data, then store `0` in the `id`.
-        let data = unsafe { T::read(&slot.data) };
+        let data = unsafe {
+            let slot_data_ptr: *const T = &raw const (*slot_ptr).data;
+            T::read(slot_data_ptr)
+        };
         let val = Identified { id, data };
-        slot.id.store(0, SeqCst);
+        slot_id.store(0, SeqCst);
 
         // 7. Store the new read offset, retrieving the old offsets.
         let before = fetch_adjust(
