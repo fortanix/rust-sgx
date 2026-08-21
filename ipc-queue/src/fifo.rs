@@ -113,7 +113,7 @@ where
 
 #[cfg(not(target_env = "sgx"))]
 pub(crate) struct FifoBuffer<T> {
-    data: Box<[WithId<T>]>,
+    data: Box<[UnsafeCell<WithId<T>>]>,
     offsets: Box<AtomicUsize>,
 }
 
@@ -125,7 +125,9 @@ impl<T: Transmittable> FifoBuffer<T> {
             "Fifo len should be a power of two"
         );
         let mut data = Vec::with_capacity(len);
-        data.resize_with(len, || WithId { id: AtomicU64::new(0), data: T::default() });
+        data.resize_with(len, || {
+            UnsafeCell::new(WithId { id: AtomicU64::new(0), data: T::default() })
+        });
         Self {
             data: data.into_boxed_slice(),
             offsets: Box::new(AtomicUsize::new(0)),
@@ -186,9 +188,15 @@ impl<T: Transmittable> Fifo<T> {
             UserRef::from_ptr(descriptor.offsets as *const WrapUsize);
 
         }
-        let data_slice = std::slice::from_raw_parts(descriptor.data, descriptor.len);
+        // Cast `*mut WithId<T>` -> `*mut UnsafeCell<WithId<T>>` _before_ making
+        // the slice. Casting the slices would give `data` read-only pointer
+        // provenance.
+        let data = std::slice::from_raw_parts(
+            descriptor.data.cast::<UnsafeCell<WithId<T>>>(),
+            descriptor.len,
+        );
         Self {
-            data: &*(data_slice as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+            data,
             offsets: &*descriptor.offsets,
             storage: Storage::Static(PhantomData::default()),
         }
@@ -203,7 +211,7 @@ impl<T: Transmittable> Fifo<T> {
         //   and `offsets` point into the `FifoBuffer`.
         unsafe {
             Self {
-                data: &*(buffer.data.as_ref() as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+                data: std::slice::from_raw_parts(buffer.data.as_ptr(), buffer.data.len()),
                 offsets: &*(buffer.offsets.as_ref() as *const AtomicUsize),
                 storage: Storage::Shared(buffer),
             }
@@ -219,7 +227,7 @@ impl<T: Transmittable> Fifo<T> {
             Storage::Static(_) => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
         };
         let descriptor = FifoDescriptor {
-            data: self.data.as_ptr() as _,
+            data: UnsafeCell::raw_get(self.data.as_ptr()),
             len: self.data.len(),
             offsets: self.offsets,
         };
