@@ -63,8 +63,7 @@ where
     T: Transmittable,
     S: Synchronizer,
 {
-    let arc = Arc::new(FifoBuffer::new(len));
-    let inner = Fifo::from_arc(arc);
+    let inner = Fifo::new(len);
     let tx = Sender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = Receiver { inner, synchronizer: s };
     (tx, rx)
@@ -76,8 +75,7 @@ where
     T: Transmittable,
     S: AsyncSynchronizer,
 {
-    let arc = Arc::new(FifoBuffer::new(len));
-    let inner = Fifo::from_arc(arc);
+    let inner = Fifo::new(len);
     let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = AsyncReceiver { inner, synchronizer: s, read_epoch: Arc::new(AtomicU64::new(0)) };
     (tx, rx)
@@ -197,12 +195,17 @@ impl<T: Transmittable> Fifo<T> {
     }
 
     #[cfg(not(target_env = "sgx"))]
-    fn from_arc(fifo: Arc<FifoBuffer<T>>) -> Self {
+    fn new(len: usize) -> Self {
+        let buffer = Arc::new(FifoBuffer::new(len));
+        // SAFETY:
+        // - `storage` keeps the backing `FifoBuffer` live until this queue
+        //   handle and all its clones are dropped, so it's safe to have `data`
+        //   and `offsets` point into the `FifoBuffer`.
         unsafe {
             Self {
-                data: &*(fifo.data.as_ref() as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
-                offsets: &*(fifo.offsets.as_ref() as *const AtomicUsize),
-                storage: Storage::Shared(fifo),
+                data: &*(buffer.data.as_ref() as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+                offsets: &*(buffer.offsets.as_ref() as *const AtomicUsize),
+                storage: Storage::Shared(buffer),
             }
         }
     }
@@ -479,11 +482,17 @@ mod tests {
     #[cfg(not(target_env = "sgx"))]
     #[test]
     fn from_descriptor_send_recv() {
-        let mut buffer = FifoBuffer::<TestValue>::new(2);
+        let mut data = Vec::with_capacity(2);
+        data.resize_with(2, || WithId {
+            id: AtomicU64::new(0),
+            data: TestValue::default(),
+        });
+        let mut data = data.into_boxed_slice();
+        let offsets = Box::new(AtomicUsize::new(0));
         let descriptor = FifoDescriptor {
-            data: buffer.data.as_mut_ptr(),
-            len: buffer.data.len(),
-            offsets: buffer.offsets.as_ref(),
+            data: data.as_mut_ptr(),
+            len: data.len(),
+            offsets: offsets.as_ref(),
         };
 
         let tx = unsafe { Sender::from_descriptor(descriptor, NoopSynchronizer) };
