@@ -25,8 +25,8 @@ impl AsyncUsercallProvider {
             F: FnOnce(io::Result<usize>, User<[u8]>) + Send + 'static,
     {
         let mut read_buf = ManuallyDrop::new(MakeSend::new(read_buf));
-        let ptr = read_buf.as_mut_ptr();
-        let len = read_buf.len();
+        let ptr = read_buf.as_user_mut().as_mut_ptr();
+        let len = read_buf.as_user_ref().len();
         let cb = move |res: io::Result<usize>| {
             // Passing a `User<u8>` likely leads to the value being dropped implicitly,
             // which will cause a synchronous `free` usercall.
@@ -49,8 +49,8 @@ impl AsyncUsercallProvider {
             F: FnOnce(io::Result<usize>, UserBuf) + Send + 'static,
     {
         let mut write_buf = ManuallyDrop::new(write_buf);
-        let ptr = write_buf.as_mut_ptr();
-        let len = write_buf.len();
+        let ptr = write_buf.as_user_mut().as_mut_ptr();
+        let len = write_buf.as_user_ref().len();
         let cb = move |res| {
             let write_buf = ManuallyDrop::into_inner(write_buf);
             callback(res, write_buf);
@@ -101,9 +101,10 @@ impl AsyncUsercallProvider {
         let mut addr_buf = ManuallyDrop::new(MakeSend::new(User::<[u8]>::uninitialized(addr.len())));
         let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
-        addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
-        let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
-        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
+        let mut addr_buf_mut = addr_buf.as_user_mut();
+        addr_buf_mut.reborrow().index_mut(0..addr.len()).copy_from_enclave(addr.as_bytes());
+        let addr_buf_ptr = addr_buf_mut.as_raw_mut_ptr() as *mut u8;
+        let local_addr_ptr = local_addr_buf.as_user_mut().as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
             // `_addr_buf` is of type `MakeSend<_>`, which will lead to a synchronous usercall
@@ -114,7 +115,7 @@ impl AsyncUsercallProvider {
             // See: https://github.com/fortanix/rust-sgx/issues/531
             let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
 
-            let local_addr = Some(string_from_bytebuffer(&local_addr_buf, "bind_stream", "local_addr"));
+            let local_addr = Some(string_from_bytebuffer(local_addr_buf.as_user_ref(), "bind_stream", "local_addr"));
             let res = res.map(|fd| unsafe { TcpListener::from_raw_fd(fd, TcpListenerMetadata { local_addr }) });
             callback(res);
         };
@@ -134,15 +135,15 @@ impl AsyncUsercallProvider {
         let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
         let mut peer_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
-        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
-        let peer_addr_ptr = peer_addr_buf.as_raw_mut_ptr();
+        let local_addr_ptr = local_addr_buf.as_user_mut().as_raw_mut_ptr();
+        let peer_addr_ptr = peer_addr_buf.as_user_mut().as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
             let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
             let peer_addr_buf = ManuallyDrop::into_inner(peer_addr_buf);
 
-            let local_addr = Some(string_from_bytebuffer(&*local_addr_buf, "accept_stream", "local_addr"));
-            let peer_addr = Some(string_from_bytebuffer(&*peer_addr_buf, "accept_stream", "peer_addr"));
+            let local_addr = Some(string_from_bytebuffer(local_addr_buf.as_user_ref(), "accept_stream", "local_addr"));
+            let peer_addr = Some(string_from_bytebuffer(peer_addr_buf.as_user_ref(), "accept_stream", "peer_addr"));
             let res = res.map(|fd| unsafe { TcpStream::from_raw_fd(fd, TcpStreamMetadata { local_addr, peer_addr }) });
             callback(res);
         };
@@ -163,18 +164,19 @@ impl AsyncUsercallProvider {
         let mut local_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
         let mut peer_addr_buf = ManuallyDrop::new(MakeSend::new(User::<ByteBuffer>::uninitialized()));
 
-        addr_buf[0..addr.len()].copy_from_enclave(addr.as_bytes());
-        let addr_buf_ptr = addr_buf.as_raw_mut_ptr() as *mut u8;
-        let local_addr_ptr = local_addr_buf.as_raw_mut_ptr();
-        let peer_addr_ptr = peer_addr_buf.as_raw_mut_ptr();
+        let mut addr_buf_mut = addr_buf.as_user_mut();
+        addr_buf_mut.reborrow().index_mut(0..addr.len()).copy_from_enclave(addr.as_bytes());
+        let addr_buf_ptr = addr_buf_mut.as_raw_mut_ptr() as *mut u8;
+        let local_addr_ptr = local_addr_buf.as_user_mut().as_raw_mut_ptr();
+        let peer_addr_ptr = peer_addr_buf.as_user_mut().as_raw_mut_ptr();
 
         let cb = move |res: io::Result<Fd>| {
             let _addr_buf = ManuallyDrop::into_inner(addr_buf);
             let local_addr_buf = ManuallyDrop::into_inner(local_addr_buf);
             let peer_addr_buf = ManuallyDrop::into_inner(peer_addr_buf);
 
-            let local_addr = Some(string_from_bytebuffer(&local_addr_buf, "connect_stream", "local_addr"));
-            let peer_addr = Some(string_from_bytebuffer(&peer_addr_buf, "connect_stream", "peer_addr"));
+            let local_addr = Some(string_from_bytebuffer(local_addr_buf.as_user_ref(), "connect_stream", "local_addr"));
+            let peer_addr = Some(string_from_bytebuffer(peer_addr_buf.as_user_ref(), "connect_stream", "peer_addr"));
             let res = res.map(|fd| unsafe { TcpStream::from_raw_fd(fd, TcpStreamMetadata { local_addr, peer_addr }) });
             callback(res);
         };
@@ -232,7 +234,7 @@ impl AsyncUsercallProvider {
             T: ?Sized + UserSafe,
             F: FnOnce() + Send + 'static,
     {
-        let ptr = buf.as_raw_mut_ptr();
+        let ptr = buf.as_user_mut().as_raw_mut_ptr();
         let cb = callback.map(|callback| move |()| callback());
         unsafe {
             self.raw_free(
@@ -267,19 +269,19 @@ impl AsyncUsercallProvider {
 
 // The code is similar to `rust-lang/sys/sgx/abi/usercalls/mod.rs`,
 // see: https://github.com/fortanix/rust-sgx/issues/532
-fn string_from_bytebuffer(buf: &UserRef<ByteBuffer>, usercall: &str, arg: &str) -> String {
+fn string_from_bytebuffer(buf: UserRef<'_, ByteBuffer>, usercall: &str, arg: &str) -> String {
     String::from_utf8(copy_user_buffer(buf))
         .unwrap_or_else(|_| panic!("Usercall {}: expected {} to be valid UTF-8", usercall, arg))
 }
 
 // The code is similar to `rust-lang/sys/sgx/abi/usercalls/mod.rs`,
 // see: https://github.com/fortanix/rust-sgx/issues/532
-fn copy_user_buffer(buf: &UserRef<ByteBuffer>) -> Vec<u8> {
+fn copy_user_buffer(buf: UserRef<'_, ByteBuffer>) -> Vec<u8> {
     unsafe {
         let buf = buf.to_enclave();
         if buf.len > 0 {
             let user = User::from_raw_parts(buf.data as _, buf.len);
-            let v = user.to_enclave();
+            let v = user.as_user_ref().to_enclave();
             batch_drop(user);
             v
         } else {
