@@ -2,6 +2,7 @@
 name = "async-usercalls"
 version = "0.7.2"
 authors = ["Fortanix, Inc."]
+build = "build.rs"
 license = "MPL-2.0"
 edition = "2018"
 description = """

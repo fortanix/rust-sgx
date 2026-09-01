@@ -38,7 +38,7 @@
 //! [tokio]: https://docs.rs/tokio/latest/tokio/
 
 #![feature(sgx_platform)]
-#![feature(never_type)]
+#![cfg_attr(no_never_type, feature(never_type))]
 #![cfg_attr(test, feature(unboxed_closures))]
 #![cfg_attr(test, feature(fn_traits))]
 
