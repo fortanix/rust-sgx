@@ -140,6 +140,7 @@ dependencies = [
  "ipc-queue",
  "lazy_static",
  "rand 0.8.5",
+ "rustc_version",
 ]
 
 [[package]]
