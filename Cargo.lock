@@ -25,7 +25,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aesm-client"
-version = "0.6.2"
+version = "0.6.3"
 dependencies = [
  "anyhow",
  "byteorder 1.5.0",
@@ -1340,7 +1340,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "anyhow",
  "byteorder 1.5.0",
@@ -1362,7 +1362,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-ql-sys"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "num-derive",
  "num-traits",
@@ -1371,7 +1371,7 @@ dependencies = [
 
 [[package]]
 name = "dcap-retrieve-pckid"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -1569,7 +1569,7 @@ dependencies = [
 
 [[package]]
 name = "em-app"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "aws-nitro-enclaves-nsm-api",
  "b64-ct",
@@ -1666,7 +1666,7 @@ dependencies = [
 
 [[package]]
 name = "enclave-runner-sgx"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "crossbeam",
@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-sgx-tools"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -3551,7 +3551,7 @@ dependencies = [
 
 [[package]]
 name = "pcs"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "anyhow",
  "b64-ct",
@@ -4115,7 +4115,7 @@ dependencies = [
 
 [[package]]
 name = "report-test"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "anyhow",
  "enclave-runner 0.8.0",
@@ -4668,7 +4668,7 @@ dependencies = [
 
 [[package]]
 name = "sgx_pkix"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "byteorder 1.5.0",
  "lazy_static",
@@ -4695,7 +4695,7 @@ dependencies = [
 
 [[package]]
 name = "sgxs-loaders"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "aesm-client",
  "anyhow",
@@ -4967,7 +4967,7 @@ dependencies = [
 
 [[package]]
 name = "tdx-ql"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "clap 4.4.18",
  "nix 0.30.1",

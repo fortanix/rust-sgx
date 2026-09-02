@@ -1,6 +1,6 @@
 [package]
 name = "em-app"
-version = "0.5.2"
+version = "0.5.3"
 authors = ["fortanix.com"]
 license = "MPL-2.0"
 edition = "2018"
