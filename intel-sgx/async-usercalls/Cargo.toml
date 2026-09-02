@@ -2,6 +2,7 @@
 name = "async-usercalls"
 version = "0.7.2"
 authors = ["Fortanix, Inc."]
+build = "build.rs"
 license = "MPL-2.0"
 edition = "2018"
 description = """
@@ -26,6 +27,9 @@ fnv = "1.0"               # MIT/Apache-2.0
 
 [dev-dependencies]
 rand = "0.8"
+
+[build-dependencies]
+rustc_version = "0.4.1"   # MIT/Apache-2.0
 
 # For cargo test --target x86_64-fortanix-unknown-sgx
 [package.metadata.fortanix-sgx]

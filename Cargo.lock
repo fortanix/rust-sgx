@@ -140,6 +140,7 @@ dependencies = [
  "ipc-queue",
  "lazy_static",
  "rand 0.8.5",
+ "rustc_version",
 ]
 
 [[package]]
@@ -4292,9 +4293,9 @@ dependencies = [
 
 [[package]]
 name = "sdkms"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b12e3cb05862db268118482cbad26eee384b479de1924fe5404028e3444481a"
+checksum = "6d2e70f9b18786894511f918b4d95cc7b0db138cce7b7ee05a7be6fb4a25e3ee"
 dependencies = [
  "bitflags 1.2.1",
  "chrono",
@@ -4303,7 +4304,6 @@ dependencies = [
  "rustc-serialize",
  "serde",
  "serde_json",
- "url 1.7.2",
  "uuid 0.8.2",
 ]
 
