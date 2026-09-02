@@ -18,7 +18,7 @@ categories = ["development-tools"]
 # Project dependencies
 "enclave-runner-sgx" = { version = "0.1.0", path = "../enclave-runner-sgx" }
 "enclave-runner" = { version = "0.8.0", path = "../../enclave-runner" }
-"sgxs" = { version = "0.8.0", path = "../sgxs" }
+"sgxs" = { version = "0.9.0", path = "../sgxs" }
 "sgx-isa" = { version = ">=0.4.0, <0.7.0", path = "../sgx-isa" }
 
 # External dependencies
