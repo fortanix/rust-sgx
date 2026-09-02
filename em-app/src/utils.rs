@@ -9,6 +9,7 @@ use std::io::Read;
 pub use em_client::models;
 
 use hyper::client::Pool;
+use hyper::header::{Authorization, Basic, Bearer, ContentType};
 use hyper::net::HttpsConnector;
 use em_client::{Api, Client};
 use mbedtls::alloc::{List as MbedtlsList};
@@ -27,6 +28,73 @@ use crate::mbedtls_hyper::MbedSSLClient;
 
 pub fn convert_uuid(api_uuid: Uuid) -> SdkmsUuid {
     SdkmsUuid::from_bytes(*api_uuid.as_bytes())
+}
+
+fn sdkms_response_error(operation: &str, response: &mut hyper::client::Response) -> String {
+    let mut message = format!("SDKMS {} failed with status {}", operation, response.status);
+    let mut error_body = String::new();
+    if response.read_to_string(&mut error_body).is_ok() && !error_body.is_empty() {
+        message.push_str(&format!(": {}", error_body));
+    }
+    message
+}
+
+fn sdkms_authenticate(
+    client: &hyper::Client,
+    api_endpoint: &str,
+    app_id: &Uuid,
+) -> Result<String, String> {
+    let mut response = client.post(&format!("{}/sys/v1/session/auth", api_endpoint))
+        .header(Authorization(Basic {
+            username: app_id.to_string(),
+            password: Some(String::new()),
+        }))
+        .send().map_err(|e| format!("SDKMS authenticate failed: {:?}", e))?;
+    if !response.status.is_success() {
+        return Err(sdkms_response_error("authenticate", &mut response));
+    }
+
+    let response: sdkms::api_model::AuthResponse = serde_json::from_reader(&mut response)
+        .map_err(|e| format!("Failed parsing SDKMS authentication response: {:?}", e))?;
+    Ok(response.access_token)
+}
+
+fn sdkms_export_sobject(
+    client: &hyper::Client,
+    api_endpoint: &str,
+    access_token: &str,
+    dataset_id: String,
+) -> Result<sdkms::api_model::Sobject, String> {
+    let key_id = sdkms::api_model::SobjectDescriptor::Name(dataset_id);
+    let request_body = serde_json::to_vec(&key_id)
+        .map_err(|e| format!("Failed encoding SDKMS export request: {:?}", e))?;
+    let mut response = client.post(&format!("{}/crypto/v1/keys/export", api_endpoint))
+        .header(Authorization(Bearer {
+            token: access_token.to_owned(),
+        }))
+        .header(ContentType::json())
+        .body(request_body.as_slice())
+        .send().map_err(|e| format!("Failed SDKMS export operation: {:?}", e))?;
+    if !response.status.is_success() {
+        return Err(sdkms_response_error("export", &mut response));
+    }
+
+    serde_json::from_reader(&mut response)
+        .map_err(|e| format!("Failed parsing SDKMS export response: {:?}", e))
+}
+
+fn sdkms_terminate_session(
+    client: &hyper::Client,
+    api_endpoint: &str,
+    access_token: String,
+) -> Result<(), String> {
+    let mut response = client.post(&format!("{}/sys/v1/session/terminate", api_endpoint))
+        .header(Authorization(Bearer { token: access_token }))
+        .send().map_err(|e| format!("SDKMS session termination failed: {:?}", e))?;
+    if !response.status.is_success() {
+        return Err(sdkms_response_error("session termination", &mut response));
+    }
+    Ok(())
 }
 
 /// Computes a Sha256 hash of an input
@@ -103,17 +171,13 @@ pub fn get_sdkms_dataset(
     
     let ssl = MbedSSLClient::new(Arc::new(config), true);
     let connector = HttpsConnector::new(ssl);
-    let client = Arc::new(hyper::Client::with_connector(Pool::with_connector(Default::default(), connector)));
+    let client = hyper::Client::with_connector(Pool::with_connector(Default::default(), connector));
 
-    let client = sdkms::SdkmsClient::builder()
-        .with_api_endpoint(&sdkms_url)
-        .with_hyper_client(client)
-        .build().map_err(|e| format!("SDKMS Build failed: {:?}", e))?
-        .authenticate_with_cert(Some(&convert_uuid(app_id))).map_err(|e| format!("SDKMS authenticate failed: {:?}", e))?;
-
-    let key_id = sdkms::api_model::SobjectDescriptor::Name(dataset_id);
-    
-    let result = client.export_sobject(&key_id).map_err(|e| format!("Failed SDKMS export operation: {:?}", e))?;
+    let api_endpoint = sdkms_url.trim_end_matches('/');
+    let access_token = sdkms_authenticate(&client, api_endpoint, &app_id)?;
+    let result = sdkms_export_sobject(&client, api_endpoint, &access_token, dataset_id);
+    let _ = sdkms_terminate_session(&client, api_endpoint, access_token);
+    let result = result?;
     
     result.value.ok_or("Missing value in exported object".to_string())
 }
