@@ -8,4 +8,4 @@ build = "build.rs"
 
 [build-dependencies]
 data_downloader = "0.2"
-hex-literal = "0.4.1"
+hex-literal = "1.1.0"
