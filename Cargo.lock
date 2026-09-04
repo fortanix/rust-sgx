@@ -1648,7 +1648,7 @@ dependencies = [
  "ipc-queue",
  "lazy_static",
  "libc",
- "nix 0.13.1",
+ "nix 0.30.1",
  "openssl",
  "sgx-isa",
  "sgxs",
@@ -1819,7 +1819,7 @@ dependencies = [
  "enclave-runner 0.8.0",
  "enclave-runner-sgx",
  "libc",
- "nix 0.13.1",
+ "nix 0.30.1",
  "num_cpus",
  "os_str_bytes 7.1.1",
  "serde",
@@ -3059,32 +3059,6 @@ dependencies = [
  "signal-hook",
  "vmm-sys-util",
  "vsock",
-]
-
-[[package]]
-name = "nix"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dbdc256eaac2e3bd236d93ad999d3479ef775c863dbda3068c4006a92eec51b"
-dependencies = [
- "bitflags 1.2.1",
- "cc",
- "cfg-if 0.1.10",
- "libc",
- "void",
-]
-
-[[package]]
-name = "nix"
-version = "0.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b2e0b4f3320ed72aaedb9a5ac838690a8047c7b275da22711fddff4f8a14229"
-dependencies = [
- "bitflags 1.2.1",
- "cc",
- "cfg-if 0.1.10",
- "libc",
- "void",
 ]
 
 [[package]]
@@ -4612,7 +4586,7 @@ dependencies = [
  "anyhow",
  "bitflags 1.2.1",
  "libloading 0.5.2",
- "nix 0.15.0",
+ "nix 0.30.1",
  "report-test",
  "sgx-isa",
  "sgxs",
@@ -5510,12 +5484,6 @@ dependencies = [
  "bitflags 1.2.1",
  "libc",
 ]
-
-[[package]]
-name = "void"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a02e4885ed3bc0f2de90ea6dd45ebcbb66dacffe03547fadbb0eeae2770887d"
 
 [[package]]
 name = "vsimd"
