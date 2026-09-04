@@ -185,8 +185,11 @@ mod tests {
     fn single_sender() {
         do_single_sender(4, 10);
         do_single_sender(1, 10);
-        do_single_sender(32, 1024);
-        do_single_sender(1024, 32);
+        #[cfg(not(miri))]
+        {
+            do_single_sender(32, 1024);
+            do_single_sender(1024, 32);
+        }
     }
 
     fn do_multi_sender(len: usize, n: u64, senders: u64) {
@@ -216,9 +219,12 @@ mod tests {
     #[test]
     fn multi_sender() {
         do_multi_sender(4, 10, 3);
-        do_multi_sender(4, 1, 100);
-        do_multi_sender(2, 10, 100);
-        do_multi_sender(1024, 30, 100);
+        #[cfg(not(miri))]
+        {
+            do_multi_sender(4, 1, 100);
+            do_multi_sender(2, 10, 100);
+            do_multi_sender(1024, 30, 100);
+        }
     }
 
     #[test]
@@ -319,6 +325,9 @@ mod tests {
     fn try_iter() {
         let s = TestSynchronizer::new();
         let (tx, rx) = bounded(8, s);
+        #[cfg(miri)]
+        const N: u64 = 32;
+        #[cfg(not(miri))]
         const N: u64 = 2048;
 
         let h = thread::spawn(move || {
@@ -343,7 +352,13 @@ mod tests {
     fn try_send_multiple() {
         let s = TestSynchronizer::new();
         let (tx, rx) = bounded(32, s);
+        #[cfg(miri)]
+        const SENDERS: usize = 2;
+        #[cfg(not(miri))]
         const SENDERS: usize = 4;
+        #[cfg(miri)]
+        const N: usize = 8;
+        #[cfg(not(miri))]
         const N: usize = 1024;
         let mut handles = Vec::with_capacity(SENDERS);
 
