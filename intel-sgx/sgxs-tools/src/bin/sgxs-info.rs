@@ -13,7 +13,7 @@ use std::fs::File;
 use std::path::Path;
 
 use clap::{App, Arg};
-use sgx_isa::{PageType, SecinfoFlags, Tcs};
+use sgx_isa::{PageType, SecinfoFlags, Tcs, TcsFlags};
 
 use crate::sgxs_crate::sgxs::{self, SgxsRead};
 use crate::sgxs_crate::util::size_fit_natural;
@@ -210,8 +210,8 @@ impl<'a, R: sgxs::SgxsRead + 'a> Pages<'a, R> {
         Ok(self.reader.read_page()?.map(|(eadd, chunks, data)| {
             let tcs_info = if eadd.secinfo.flags.page_type() == PageType::Tcs as u8 {
                 let tcs = Tcs::try_copy_from(&data).unwrap();
-                Some(format!(" [oentry=0x{:x}, ossa=0x{:x}, nssa={}]",
-                             tcs.oentry, tcs.ossa, tcs.nssa))
+                Some(format!(" [oentry=0x{:x}, ossa=0x{:x}, nssa={}, aexnotify={}]",
+                             tcs.oentry, tcs.ossa, tcs.nssa, tcs.flags.contains(TcsFlags::AEXNOTIFY)))
             } else {
                 None
             };
