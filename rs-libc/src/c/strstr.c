@@ -1,5 +1,9 @@
-#include <string.h>
+#include <stddef.h>
 #include <stdint.h>
+
+int memcmp(const void *s1, const void *s2, size_t n);
+void *memchr(const void *src, int c, size_t n);
+char *strchr(const char *s, int c);
 
 static char *twobyte_strstr(const unsigned char *h, const unsigned char *n)
 {
