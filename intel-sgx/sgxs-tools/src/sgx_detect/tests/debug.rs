@@ -21,6 +21,17 @@ impl DebugSupport for SgxCpuSupport {
     }
 }
 
+impl DebugSupport for AexNotify {
+    fn debug(&self, mut out: debug::Output, _items: &DetectItemMap) -> fmt::Result {
+        let mut supported = "ENCLU[EDECCSSA] instruction";
+        let mut unsupported = "AEXNOTIFY attribute";
+        if self.aexnotify.unwrap_or(false) {
+            std::mem::swap(&mut supported, &mut unsupported);
+        }
+        writeln!(out, "Invalid AEX notify configuration: the {} is supported, but the {} isn't. This could indicate a CPU or hypervisor bug.", supported, unsupported)
+    }
+}
+
 impl DebugSupport for SgxCpuConfiguration {
     fn debug(&self, mut out: debug::Output, _items: &DetectItemMap) -> fmt::Result {
         let mut debug_msr = true;
