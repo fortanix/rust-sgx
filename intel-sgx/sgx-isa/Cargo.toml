@@ -15,7 +15,7 @@ homepage = "https://edp.fortanix.com/"
 keywords = ["sgx", "enclave"]
 categories = ["hardware-support"]
 
-[dev-dependencies]
+[target.'cfg(target_env = "sgx")'.dev-dependencies]
 # External dependencies
 mbedtls = { version = ">=0.12.0, <0.14.0", default-features = false, features = ["std"] }
 
