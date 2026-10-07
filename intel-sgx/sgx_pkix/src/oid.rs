@@ -19,6 +19,7 @@ lazy_static!{
     pub static ref sgxIsvprodid: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 1, 1, 6].into();
     pub static ref sgxIsvsvn: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 1, 1, 7].into();
     pub static ref sgxReportdata: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 1, 1, 8].into();
+    pub static ref sgxIsvextnprodid: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 1, 1, 9].into();
 
     // Fortanix CSR attributes / certificate extensions
     pub static ref attestationInlineSgxLocal: ObjectIdentifier = vec![1, 3, 6, 1, 4, 1, 49690, 2, 1, 1].into();

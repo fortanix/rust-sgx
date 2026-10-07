@@ -23,6 +23,7 @@ quick_error!{
         InvalidMrenclave { display("invalid MRENCLAVE") }
         InvalidMrsigner { display("invalid MRSIGNER") }
         InvalidIsvprodid { display("invalid ISVPRODID") }
+        InvalidIsvextnprodid { display("invalid ISVEXTNPRODID") }
         InvalidIsvsvn { display("invalid ISVSVN") }
         InvalidReportdata { display("invalid REPORTDATA") }
         InvalidAttestation { display("invalid attestation") }

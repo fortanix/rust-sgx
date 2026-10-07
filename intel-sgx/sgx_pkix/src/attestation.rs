@@ -100,6 +100,7 @@ impl SgxName {
             (oid::sgxMrenclave.clone(),report.mrenclave[..].to_owned().into()),
             (oid::sgxMrsigner.clone(),report.mrsigner[..].to_owned().into()),
             (oid::sgxIsvprodid.clone(),isvprodid_to_bytes(report.isvprodid).into()),
+            (oid::sgxIsvextnprodid.clone(),report.isvextnprodid[..].to_owned().into()),
             (oid::sgxIsvsvn.clone(),isvsvn_to_bytes(report.isvsvn).into()),
         ];
         if include_reportdata {
@@ -158,6 +159,11 @@ pub(crate) fn reconstruct_sgx_report(subject: &Name, attestation: &AttestationIn
     report.attributes = bytes(attributes).and_then(|b| attributes_from_bytes(b)).map_err(|_| Error::InvalidAttributes)?;
 
     report.isvprodid = bytes(isvprodid).and_then(|b| isvprodid_from_bytes(b))?;
+    if let Some(isvextprodid) = subject.get(&oid::sgxIsvextnprodid) {
+        bytes(isvextprodid)
+            .and_then(|b| assign_slice(&mut report.isvextnprodid, b))
+            .map_err(|_| Error::InvalidIsvextnprodid)?;
+    }
     report.isvsvn = bytes(isvsvn).and_then(|b| isvsvn_from_bytes(b))?;
 
     assign_slice(&mut report.keyid, &attestation.keyid).map_err(|_| Error::InvalidKeyid)?;
@@ -366,5 +372,109 @@ impl QuoteResult {
 
     pub fn qe_report(&self) -> &[u8] {
         &self.qe_report
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use pkix::types::TaggedDerValue;
+    use pkix::yasna::tags::TAG_BITSTRING;
+    use sgx_isa::{Attributes, AttributesFlags, Miscselect, Report};
+
+    use super::{reconstruct_sgx_report, AttestationInlineSgxLocal, SgxName};
+    use crate::oid;
+    use crate::Error;
+
+    fn sample_report() -> Report {
+        let mut report = Report::default();
+        report.cpusvn = [1; 16];
+        report.miscselect = Miscselect::EXINFO;
+        report.attributes = Attributes {
+            flags: AttributesFlags::MODE64BIT,
+            xfrm: 3,
+        };
+        report.mrenclave = [2; 32];
+        report.mrsigner = [3; 32];
+        report.isvprodid = 0x1234;
+        report.isvsvn = 7;
+        report.isvextnprodid = [
+            0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+            0xcd, 0xef,
+        ];
+        report.reportdata = [4; 64];
+        report.keyid = [5; 32];
+        report.mac = [6; 16];
+        report
+    }
+
+    fn attestation(report: &Report) -> AttestationInlineSgxLocal<'static, 'static> {
+        AttestationInlineSgxLocal {
+            keyid: Cow::Owned(report.keyid.to_vec()),
+            mac: Cow::Owned(report.mac.to_vec()),
+        }
+    }
+
+    #[test]
+    fn isvextprodid_is_in_the_subject_and_round_trips() {
+        let report = sample_report();
+        let name = SgxName::from_report(&report, true).to_name();
+
+        let ext = name.get(&oid::sgxIsvextnprodid).expect("sgxIsvextnprodid");
+        assert_eq!(ext.as_bytes(), Some(report.isvextnprodid.as_ref()));
+
+        let prod = name
+            .value
+            .iter()
+            .position(|(oid, _)| oid == &*oid::sgxIsvprodid)
+            .unwrap();
+        let ext_at = name
+            .value
+            .iter()
+            .position(|(oid, _)| oid == &*oid::sgxIsvextnprodid)
+            .unwrap();
+        assert_eq!(ext_at, prod + 1);
+
+        let decoded = reconstruct_sgx_report(&name, &attestation(&report)).unwrap();
+        assert_eq!(decoded.isvextnprodid, report.isvextnprodid);
+        assert_eq!(decoded.isvprodid, report.isvprodid);
+        assert_eq!(decoded.isvsvn, report.isvsvn);
+        assert_eq!(decoded.mrenclave, report.mrenclave);
+        assert_eq!(decoded.mrsigner, report.mrsigner);
+        assert_eq!(decoded.reportdata, report.reportdata);
+        assert_eq!(decoded.cpusvn, report.cpusvn);
+        assert_eq!(decoded.keyid, report.keyid);
+        assert_eq!(decoded.mac, report.mac);
+    }
+
+    #[test]
+    fn missing_isvextprodid_defaults_to_zero() {
+        let report = sample_report();
+        let mut name = SgxName::from_report(&report, true).to_name();
+        name.value
+            .retain(|(oid, _)| oid != &*oid::sgxIsvextnprodid);
+
+        let decoded = reconstruct_sgx_report(&name, &attestation(&report)).unwrap();
+        assert_eq!(decoded.isvextnprodid, [0u8; 16]);
+        assert_eq!(decoded.isvprodid, report.isvprodid);
+    }
+
+    #[test]
+    fn isvextprodid_rejects_wrong_length() {
+        let report = sample_report();
+        let mut name = SgxName::from_report(&report, true).to_name();
+        let value = name
+            .value
+            .iter_mut()
+            .find(|(oid, _)| oid == &*oid::sgxIsvextnprodid)
+            .unwrap();
+        // BIT STRING payload is unused-bits byte plus two content bytes.
+        value.1 = TaggedDerValue::from_tag_and_bytes(TAG_BITSTRING, vec![0, 1, 2]);
+
+        assert!(matches!(
+            reconstruct_sgx_report(&name, &attestation(&report)),
+            Err(Error::InvalidIsvextnprodid)
+        ));
     }
 }
