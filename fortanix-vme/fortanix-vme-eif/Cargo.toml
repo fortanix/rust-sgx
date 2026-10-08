@@ -12,7 +12,7 @@ fortanix-vme-initramfs = { version = "0.2", path = "../fortanix-vme-initramfs" }
 serde_json = "1.0"
 sha2 = "0.9"
 tempfile = "3"
-thiserror = "1.0"
+thiserror = "2.0"
 
 [dev-dependencies]
 aws-nitro-blobs = { path = "../aws-nitro-enclaves/aws-nitro-blobs" }
