@@ -199,7 +199,7 @@ name = "aws-nitro-blobs"
 version = "0.1.0"
 dependencies = [
  "data_downloader",
- "hex-literal",
+ "hex-literal 1.1.0",
 ]
 
 [[package]]
@@ -1265,7 +1265,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e1b6bdb6d14664330b526dd9ffe01022e9e0b4b9febeaa72e9a44e87fcfeb10"
 dependencies = [
  "dirs 5.0.1",
- "hex-literal",
+ "hex-literal 0.4.1",
  "reqwest",
  "sha2 0.10.9",
  "thiserror 1.0.59",
@@ -1866,7 +1866,7 @@ dependencies = [
  "cpio",
  "derivative",
  "flate2",
- "hex-literal",
+ "hex-literal 1.1.0",
  "normalize-path",
  "sha2 0.9.9",
  "thiserror 1.0.59",
@@ -2186,6 +2186,12 @@ name = "hex-literal"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6fe2267d4ed49bc07b63801559be28c718ea06c4738b7a03c94df7386d2cde46"
+
+[[package]]
+name = "hex-literal"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e712f64ec3850b98572bffac52e2c6f282b29fe6c5fa6d42334b30be438d95c1"
 
 [[package]]
 name = "hmac"
