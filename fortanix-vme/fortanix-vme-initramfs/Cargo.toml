@@ -7,7 +7,7 @@ license = "MPL-2.0"
 description = "Initramfs file builder for VME enclaves."
 
 [dependencies]
-cpio = "0.2"
+cpio = "0.4"
 derivative = "2.2.0"
 flate2 = "1.0"
 normalize-path = "0.2.1"
