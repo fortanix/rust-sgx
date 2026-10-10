@@ -21,10 +21,12 @@ if [ -v RUST_DIR ]; then
         --set build.docs=true \
         --set profile=library \
         --set rust.deny-warnings=false
-    ./x.py doc library/std library/alloc library/core --target x86_64-fortanix-unknown-sgx
+    ./x.py doc library/std library/alloc library/core --target x86_64-fortanix-unknown-sgx --stage 1
     popd
     mkdir -p target
     cp -r $RUST_DIR/build/x86_64-fortanix-unknown-sgx/doc target
+    export RUSTDOC="${RUST_DIR}/build/host/stage1/bin/rustdoc"
+    export RUSTDOCFLAGS="-Zunstable-options --extern-html-root-url std=../std --extern-html-root-url core=../core --extern-html-root-url alloc=../alloc"
 else
     echo 'Skipping `std` docs, set RUST_DIR if you want to generate those'
 fi
