@@ -14,12 +14,17 @@ if [ -v RUST_DIR ]; then
     git submodule update --init --recursive
     git apply < $PATCH
     rm -rf target/x86_64-fortanix-unknown-sgx/doc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p core
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p alloc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std
+    rm -rf config.toml bootstrap.toml
+    rm -rf build
+    ./configure \
+        --set build.target=x86_64-unknown-linux-gnu,x86_64-fortanix-unknown-sgx \
+        --set build.docs=true \
+        --set profile=library \
+        --set rust.deny-warnings=false
+    ./x.py doc library/std library/alloc library/core --target x86_64-fortanix-unknown-sgx
     popd
     mkdir -p target
-    cp -r $RUST_DIR/target/x86_64-fortanix-unknown-sgx/doc target
+    cp -r $RUST_DIR/build/x86_64-fortanix-unknown-sgx/doc target
 else
     echo 'Skipping `std` docs, set RUST_DIR if you want to generate those'
 fi
