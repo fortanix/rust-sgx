@@ -13,13 +13,13 @@ if [ -v RUST_DIR ]; then
     git reset --hard $COMMIT
     git submodule update --init --recursive
     git apply < $PATCH
-    rm -rf target/x86_64-fortanix-unknown-sgx/doc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p core
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p alloc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std
+    mkdir -p ${PWD}/empty-sysroot/lib/rustlib/x86_64-unknown-linux-gnu/lib
+    pushd library
+    RUSTDOCFLAGS="--sysroot ${PWD}/empty-sysroot" cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std -p core -p alloc --features std/panic-unwind
     popd
-    mkdir -p target
-    cp -r $RUST_DIR/target/x86_64-fortanix-unknown-sgx/doc target
+    popd
+    rm -rf target && mkdir target
+    cp -r $RUST_DIR/library/target/x86_64-fortanix-unknown-sgx/doc target/doc
 else
     echo 'Skipping `std` docs, set RUST_DIR if you want to generate those'
 fi
