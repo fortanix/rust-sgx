@@ -13,8 +13,8 @@ if [ -v RUST_DIR ]; then
     git reset --hard $COMMIT
     git submodule update --init --recursive
     git apply < $PATCH
-    mkdir -p ${PWD}/empty-sysroot/lib/rustlib/x86_64-unknown-linux-gnu/lib
     pushd library
+    mkdir -p empty-sysroot
     RUSTDOCFLAGS="--sysroot ${PWD}/empty-sysroot" cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std -p core -p alloc --features std/panic-unwind
     popd
     popd
