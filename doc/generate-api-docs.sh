@@ -2,7 +2,7 @@
 
 cd "$(readlink -f "$(dirname "$0")/..")"
 
-rm -rf target/doc
+rm -rf target/doc && mkdir -p target
 
 # Generate docs for core/alloc/std (x86_64-fortanix-unknown-sgx target)
 if [ -v RUST_DIR ]; then
@@ -13,13 +13,12 @@ if [ -v RUST_DIR ]; then
     git reset --hard $COMMIT
     git submodule update --init --recursive
     git apply < $PATCH
-    rm -rf target/x86_64-fortanix-unknown-sgx/doc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p core
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p alloc
-    cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std
+    pushd library
+    mkdir -p empty-sysroot
+    RUSTDOCFLAGS="--sysroot ${PWD}/empty-sysroot" cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std -p core -p alloc --features std/panic-unwind
     popd
-    mkdir -p target
-    cp -r $RUST_DIR/target/x86_64-fortanix-unknown-sgx/doc target
+    popd
+    cp -r $RUST_DIR/library/target/x86_64-fortanix-unknown-sgx/doc target/doc
 else
     echo 'Skipping `std` docs, set RUST_DIR if you want to generate those'
 fi
