@@ -2,7 +2,7 @@
 
 cd "$(readlink -f "$(dirname "$0")/..")"
 
-rm -rf target/doc
+rm -rf target/doc && mkdir -p target
 
 # Generate docs for core/alloc/std (x86_64-fortanix-unknown-sgx target)
 if [ -v RUST_DIR ]; then
@@ -18,7 +18,6 @@ if [ -v RUST_DIR ]; then
     RUSTDOCFLAGS="--sysroot ${PWD}/empty-sysroot" cargo doc --target x86_64-fortanix-unknown-sgx --no-deps -p std -p core -p alloc --features std/panic-unwind
     popd
     popd
-    rm -rf target && mkdir target
     cp -r $RUST_DIR/library/target/x86_64-fortanix-unknown-sgx/doc target/doc
 else
     echo 'Skipping `std` docs, set RUST_DIR if you want to generate those'
