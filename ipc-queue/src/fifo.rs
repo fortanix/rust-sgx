@@ -8,16 +8,16 @@ use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::mem;
 #[cfg(not(target_env = "sgx"))]
-use {
-    std::sync::atomic::AtomicU64,
-    std::sync::Arc,
-};
-use std::sync::atomic::{AtomicUsize, Ordering, Ordering::SeqCst};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering, Ordering::SeqCst};
 
 use fortanix_sgx_abi::{FifoDescriptor, WithId};
 
 #[cfg(target_env = "sgx")]
 use super::{Identified, Transmittable, TryRecvError, TrySendError, UserRef, UserSafeSized};
+
+#[cfg(all(test, target_env = "sgx"))]
+use super::{Receiver, Sender, Synchronizer};
 
 #[cfg(not(target_env = "sgx"))]
 use super::{AsyncReceiver, AsyncSender, AsyncSynchronizer, DescriptorGuard, Identified, Receiver, Sender,
@@ -60,8 +60,7 @@ where
     T: Transmittable,
     S: Synchronizer,
 {
-    let arc = Arc::new(FifoBuffer::new(len));
-    let inner = Fifo::from_arc(arc);
+    let inner = Fifo::new(len);
     let tx = Sender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = Receiver { inner, synchronizer: s };
     (tx, rx)
@@ -73,8 +72,7 @@ where
     T: Transmittable,
     S: AsyncSynchronizer,
 {
-    let arc = Arc::new(FifoBuffer::new(len));
-    let inner = Fifo::from_arc(arc);
+    let inner = Fifo::new(len);
     let tx = AsyncSender { inner: inner.clone(), synchronizer: s.clone() };
     let rx = AsyncReceiver { inner, synchronizer: s, read_epoch: Arc::new(AtomicU64::new(0)) };
     (tx, rx)
@@ -112,7 +110,7 @@ where
 
 #[cfg(not(target_env = "sgx"))]
 pub(crate) struct FifoBuffer<T> {
-    data: Box<[WithId<T>]>,
+    data: Box<[UnsafeCell<WithId<T>>]>,
     offsets: Box<AtomicUsize>,
 }
 
@@ -124,7 +122,9 @@ impl<T: Transmittable> FifoBuffer<T> {
             "Fifo len should be a power of two"
         );
         let mut data = Vec::with_capacity(len);
-        data.resize_with(len, || WithId { id: AtomicU64::new(0), data: T::default() });
+        data.resize_with(len, || {
+            UnsafeCell::new(WithId { id: AtomicU64::new(0), data: T::default() })
+        });
         Self {
             data: data.into_boxed_slice(),
             offsets: Box::new(AtomicUsize::new(0)),
@@ -185,21 +185,32 @@ impl<T: Transmittable> Fifo<T> {
             UserRef::from_ptr(descriptor.offsets as *const WrapUsize);
 
         }
-        let data_slice = std::slice::from_raw_parts(descriptor.data, descriptor.len);
+        // Cast `*mut WithId<T>` -> `*mut UnsafeCell<WithId<T>>` _before_ making
+        // the slice. Casting the slices would give `data` read-only pointer
+        // provenance.
+        let data = std::slice::from_raw_parts(
+            descriptor.data.cast::<UnsafeCell<WithId<T>>>(),
+            descriptor.len,
+        );
         Self {
-            data: &*(data_slice as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
+            data,
             offsets: &*descriptor.offsets,
             storage: Storage::Static(PhantomData::default()),
         }
     }
 
     #[cfg(not(target_env = "sgx"))]
-    fn from_arc(fifo: Arc<FifoBuffer<T>>) -> Self {
+    fn new(len: usize) -> Self {
+        let buffer = Arc::new(FifoBuffer::new(len));
+        // SAFETY:
+        // - `storage` keeps the backing `FifoBuffer` live until this queue
+        //   handle and all its clones are dropped, so it's safe to have `data`
+        //   and `offsets` point into the `FifoBuffer`.
         unsafe {
             Self {
-                data: &*(fifo.data.as_ref() as *const [WithId<T>] as *const [UnsafeCell<WithId<T>>]),
-                offsets: &*(fifo.offsets.as_ref() as *const AtomicUsize),
-                storage: Storage::Shared(fifo),
+                data: std::slice::from_raw_parts(buffer.data.as_ptr(), buffer.data.len()),
+                offsets: &*(buffer.offsets.as_ref() as *const AtomicUsize),
+                storage: Storage::Shared(buffer),
             }
         }
     }
@@ -213,7 +224,7 @@ impl<T: Transmittable> Fifo<T> {
             Storage::Static(_) => panic!("Sender/Receiver created using `from_descriptor()` cannot be turned into DescriptorGuard."),
         };
         let descriptor = FifoDescriptor {
-            data: self.data.as_ptr() as _,
+            data: UnsafeCell::raw_get(self.data.as_ptr()),
             len: self.data.len(),
             offsets: self.offsets,
         };
@@ -242,9 +253,17 @@ impl<T: Transmittable> Fifo<T> {
 
         // 4. Write the data, then the `id`.
         unsafe {
-            let slot = &mut *self.data[new.write_offset()].get();
-            T::write(&mut slot.data, &val.data);
-            slot.id.store(val.id, SeqCst);
+            // NOTE: stay in pointers to avoid a concurrent &/&mut ref with a
+            // concurrent recv'er while they loop.
+            let slot_ptr: *mut WithId<T> = UnsafeCell::raw_get(
+                self.data.as_ptr().add(new.write_offset()),
+            );
+            let slot_data_ptr: *mut T = &raw mut (*slot_ptr).data;
+            T::write(slot_data_ptr, &val.data);
+
+            let slot_id_ptr: *const AtomicU64 = &raw const (*slot_ptr).id;
+            let slot_id: &AtomicU64 = &*slot_id_ptr;
+            slot_id.store(val.id, SeqCst);
         }
 
         // 5. If the queue was empty in step 1, signal the reader to wake up.
@@ -263,22 +282,32 @@ impl<T: Transmittable> Fifo<T> {
         // 3. Add 1 to the read offset.
         let new = current.increment_read_offset();
 
-        let (slot, id) = loop {
+        // NOTE: stay in pointers to avoid a concurrent &/&mut ref with a
+        // concurrent sender while we loop.
+        let (slot_ptr, slot_id): (*mut WithId<T>, &AtomicU64) = unsafe {
+            let slot_ptr = UnsafeCell::raw_get(self.data.as_ptr().add(new.read_offset()));
+            let slot_id_ptr: *const AtomicU64 = &raw const (*slot_ptr).id;
+            let slot_id = &*slot_id_ptr;
+            (slot_ptr, slot_id)
+        };
+        let id = loop {
             // 4. Read the `id` at the new read offset.
-            let slot = unsafe { &mut *self.data[new.read_offset()].get() };
-            let id = slot.id.load(SeqCst);
+            let id = slot_id.load(SeqCst);
 
             // 5. If `id` is `0`, go to step 4 (spin). Spinning is OK because data is
             //    expected to be written imminently.
             if id != 0 {
-                break (slot, id);
+                break id;
             }
         };
 
         // 6. Read the data, then store `0` in the `id`.
-        let data = unsafe { T::read(&slot.data) };
+        let data = unsafe {
+            let slot_data_ptr: *const T = &raw const (*slot_ptr).data;
+            T::read(slot_data_ptr)
+        };
         let val = Identified { id, data };
-        slot.id.store(0, SeqCst);
+        slot_id.store(0, SeqCst);
 
         // 7. Store the new read offset, retrieving the old offsets.
         let before = fetch_adjust(
@@ -372,10 +401,147 @@ mod tests {
     use super::*;
     use crate::test_support::{NoopSynchronizer, TestValue};
     use std::sync::mpsc;
+    #[cfg(target_env = "sgx")]
+    use std::sync::{atomic::{AtomicUsize, AtomicU64}, Arc};
     use std::thread;
 
     fn inner<T, S>(tx: Sender<T, S>) -> Fifo<T> {
         tx.inner
+    }
+
+    /// Helper struct to make a valid `Fifo<TestValue>` with `Storage::Static`.
+    struct StaticFifoStorage {
+        data: Box<[UnsafeCell<WithId<TestValue>>]>,
+        offsets: Box<AtomicUsize>,
+    }
+
+    impl StaticFifoStorage {
+        fn new(len: usize) -> Self {
+            assert!(len.is_power_of_two());
+            let data = (0..len)
+                .map(|_| UnsafeCell::new(WithId {
+                    id: AtomicU64::new(0),
+                    data: TestValue::default(),
+                }))
+                .collect::<Vec<_>>()
+                .into_boxed_slice();
+            Self { data, offsets: Box::new(AtomicUsize::new(0)) }
+        }
+
+        fn fifo(&self) -> Fifo<TestValue> {
+            unsafe {
+                Fifo {
+                    data: std::slice::from_raw_parts(self.data.as_ptr(), self.data.len()),
+                    offsets: &*(self.offsets.as_ref() as *const AtomicUsize),
+                    storage: Storage::Static(PhantomData),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn transmittable_write_read() {
+        let expected = TestValue(42);
+        let mut slot = TestValue::default();
+
+        unsafe {
+            TestValue::write(&mut slot, &expected);
+            assert_eq!(TestValue::read(&slot).0, expected.0);
+        }
+    }
+
+    #[test]
+    fn static_fifo_send_recv() {
+        let storage = StaticFifoStorage::new(2);
+        let fifo = storage.fifo();
+
+        assert!(fifo.try_send_impl(Identified { id: 1, data: TestValue(42) }).unwrap());
+        let (value, was_full, read_wrapped_around) = fifo.try_recv_impl().unwrap();
+
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
+        assert!(!was_full);
+        assert!(!read_wrapped_around);
+    }
+
+    #[test]
+    fn static_fifo_send_recv_concurrent() {
+        const PRODUCERS: u64 = 2;
+        const VALUES_PER_PRODUCER: u64 = 4;
+
+        let storage = StaticFifoStorage::new(2);
+        let fifo = storage.fifo();
+        let tx = Arc::new(Sender { inner: fifo.clone(), synchronizer: NoopSynchronizer });
+        let rx = Receiver { inner: fifo, synchronizer: NoopSynchronizer };
+        let consumer = thread::spawn(move || {
+            let mut values = Vec::new();
+            for _ in 0..PRODUCERS * VALUES_PER_PRODUCER {
+                values.push(rx.recv().unwrap());
+            }
+            values
+        });
+
+        let mut producers = Vec::new();
+        for producer in 0..PRODUCERS {
+            let tx = tx.clone();
+            producers.push(thread::spawn(move || {
+                for value in 0..VALUES_PER_PRODUCER {
+                    let id = producer * VALUES_PER_PRODUCER + value + 1;
+                    tx.send(Identified { id, data: TestValue(id) }).unwrap();
+                }
+            }));
+        }
+
+        for producer in producers {
+            producer.join().unwrap();
+        }
+        let mut values = consumer.join().unwrap();
+        values.sort_unstable_by_key(|value| value.id);
+        assert!(values.iter().enumerate().all(|(index, value)| {
+            value.id == index as u64 + 1 && value.data.0 == value.id
+        }));
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    #[test]
+    fn from_descriptor_send_recv() {
+        let mut data = Vec::with_capacity(2);
+        data.resize_with(2, || WithId {
+            id: AtomicU64::new(0),
+            data: TestValue::default(),
+        });
+        let mut data = data.into_boxed_slice();
+        let offsets = Box::new(AtomicUsize::new(0));
+        let descriptor = FifoDescriptor {
+            data: data.as_mut_ptr(),
+            len: data.len(),
+            offsets: offsets.as_ref(),
+        };
+
+        let tx = unsafe { Sender::from_descriptor(descriptor, NoopSynchronizer) };
+        let rx = unsafe { Receiver::from_descriptor(descriptor, NoopSynchronizer) };
+
+        tx.try_send(Identified { id: 1, data: TestValue(42) }).unwrap();
+        let value = rx.try_recv().unwrap();
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
+    }
+
+    #[cfg(not(target_env = "sgx"))]
+    #[test]
+    fn descriptor_guard_keeps_storage_alive() {
+        let (tx, rx) = bounded(2, NoopSynchronizer);
+        drop(rx);
+        let guard = tx.inner.into_descriptor_guard();
+        let descriptor = guard.fifo_descriptor();
+
+        let tx = unsafe { Sender::from_descriptor(descriptor, NoopSynchronizer) };
+        let rx = unsafe { Receiver::from_descriptor(descriptor, NoopSynchronizer) };
+
+        tx.try_send(Identified { id: 1, data: TestValue(42) }).unwrap();
+        let value = rx.try_recv().unwrap();
+        assert_eq!(value.id, 1);
+        assert_eq!(value.data.0, 42);
     }
 
     #[test]
