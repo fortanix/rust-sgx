@@ -1,4 +1,4 @@
-TOOLS_DIR ?= ../../target/debug
+TOOLS_DIR ?= ../../../target/debug
 
 all: report.sgxs
 
