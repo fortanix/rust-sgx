@@ -1,4 +1,6 @@
-#include <string.h>
+#include <stddef.h>
+
+size_t strcspn(const char *s, const char *c);
 
 char *strpbrk(const char *s, const char *b)
 {
