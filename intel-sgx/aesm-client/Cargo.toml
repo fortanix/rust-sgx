@@ -33,7 +33,7 @@ sgx-isa = { version = ">=0.4.1, <0.7.0", path = "../sgx-isa"}
 byteorder = "1.0"          # Unlicense/MIT
 lazy_static = "1"          # MIT/Apache-2.0
 protobuf = "3"             # MIT/Apache-2.0
-thiserror = "1.0"          # MIT/Apache-2.0
+thiserror = "2.0"          # MIT/Apache-2.0
 anyhow = "1.0"             # MIT/Apache-2.0
 
 [target.'cfg(unix)'.dependencies]

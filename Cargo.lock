@@ -22,7 +22,7 @@ dependencies = [
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "unix_socket2",
  "winapi",
 ]
@@ -731,7 +731,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "serde_urlencoded",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
  "tokio",
  "tokio-util",
  "tower-service",
@@ -1268,7 +1268,7 @@ dependencies = [
  "hex-literal",
  "reqwest",
  "sha2 0.10.9",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1652,7 +1652,7 @@ dependencies = [
  "openssl",
  "sgx-isa",
  "sgxs",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "tokio",
 ]
 
@@ -1769,7 +1769,7 @@ dependencies = [
  "log 0.4.28",
  "nu-ansi-term",
  "regex",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -1827,7 +1827,7 @@ dependencies = [
  "sgx-isa",
  "sgxs",
  "sgxs-loaders",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "toml",
  "xmas-elf",
 ]
@@ -1840,7 +1840,7 @@ dependencies = [
  "rustc-std-workspace-core",
  "serde",
  "serde_cbor",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1856,7 +1856,7 @@ dependencies = [
  "sha2 0.9.9",
  "tempfile",
  "test_resources",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1869,7 +1869,7 @@ dependencies = [
  "hex-literal",
  "normalize-path",
  "sha2 0.9.9",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -1893,7 +1893,7 @@ dependencies = [
  "rand 0.7.3",
  "serde_cbor",
  "sev",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-vsock",
  "vsock",
@@ -1912,7 +1912,7 @@ dependencies = [
  "log 0.4.28",
  "serde",
  "tempfile",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -3469,7 +3469,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa925f9becb532d758b0014b472c576869910929cf4c3f8054b386f19ab9e21"
 dependencies = [
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3654,7 +3654,7 @@ checksum = "58678a64de2fced2bdec6bca052a6716a0efe692d6e3f53d1bda6a1def64cfc0"
 dependencies = [
  "once_cell",
  "protobuf-support",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3669,7 +3669,7 @@ dependencies = [
  "protobuf-parse",
  "regex",
  "tempfile",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3684,7 +3684,7 @@ dependencies = [
  "protobuf",
  "protobuf-support",
  "tempfile",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
  "which",
 ]
 
@@ -3694,7 +3694,7 @@ version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1ed294a835b0f30810e13616b1cd34943c6d1e84a8f3b0dcfe466d256c3e7e7"
 dependencies = [
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -3952,7 +3952,7 @@ checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
 dependencies = [
  "getrandom 0.2.17",
  "libredox",
- "thiserror 1.0.59",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -4600,7 +4600,7 @@ dependencies = [
  "openssl-sys",
  "sgx-isa",
  "sha2 0.10.9",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "time 0.3.41",
 ]
 
@@ -4616,7 +4616,7 @@ dependencies = [
  "report-test",
  "sgx-isa",
  "sgxs",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "winapi",
 ]
 
@@ -4653,7 +4653,7 @@ dependencies = [
  "sgxs",
  "sgxs-loaders",
  "syn 0.15.44",
- "thiserror 1.0.59",
+ "thiserror 2.0.18",
  "winapi",
  "yansi",
 ]
@@ -5001,11 +5001,11 @@ checksum = "c13547615a44dc9c452a8a534638acdf07120d4b6847c8178705da06306a3057"
 
 [[package]]
 name = "thiserror"
-version = "1.0.59"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0126ad08bff79f29fc3ae6a55cc72352056dfff61e3ff8bb7129476d44b23aa"
+checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl 1.0.59",
+ "thiserror-impl 1.0.69",
 ]
 
 [[package]]
@@ -5019,9 +5019,9 @@ dependencies = [
 
 [[package]]
 name = "thiserror-impl"
-version = "1.0.59"
+version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d1cd413b5d558b4c5bf3680e324a6fa5014e7b7c067a51e69dbdf47eb7148b66"
+checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2 1.0.95",
  "quote 1.0.41",
