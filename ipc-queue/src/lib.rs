@@ -18,7 +18,7 @@ use fortanix_sgx_abi::FifoDescriptor;
 use self::fifo::Fifo;
 
 #[cfg(target_env = "sgx")]
-use std::os::fortanix_sgx::usercalls::alloc::{UserRef, UserSafeSized};
+use std::os::fortanix_sgx::usercalls::alloc::{UserMut, UserRef, UserSafeSized};
 
 #[cfg(not(target_env = "sgx"))]
 use {
@@ -36,7 +36,7 @@ mod test_support;
 #[cfg(target_env = "sgx")]
 pub trait Transmittable: UserSafeSized + Default {
     unsafe fn write(ptr: *mut Self, val: &Self) {
-        UserRef::<Self>::from_mut_ptr(ptr).copy_from_enclave(val)
+        UserMut::<Self>::from_mut_ptr(ptr).copy_from_enclave(val)
     }
 
     unsafe fn read(ptr: *const Self) -> Self {

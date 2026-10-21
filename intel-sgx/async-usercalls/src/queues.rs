@@ -66,9 +66,9 @@ fn init_async_queues() -> io::Result<(Sender<Usercall>, Sender<Cancel>, Receiver
         return Err(io::Error::from_raw_os_error(r));
     }
 
-    let usercall_queue = unsafe { User::<FifoDescriptor<Usercall>>::from_raw(usercall_q) }.to_enclave();
-    let cancel_queue = unsafe { User::<FifoDescriptor<Cancel>>::from_raw(cancel_q) }.to_enclave();
-    let return_queue = unsafe { User::<FifoDescriptor<Return>>::from_raw(return_q) }.to_enclave();
+    let usercall_queue = unsafe { User::<FifoDescriptor<Usercall>>::from_raw(usercall_q) }.as_user_ref().to_enclave();
+    let cancel_queue = unsafe { User::<FifoDescriptor<Cancel>>::from_raw(cancel_q) }.as_user_ref().to_enclave();
+    let return_queue = unsafe { User::<FifoDescriptor<Return>>::from_raw(return_q) }.as_user_ref().to_enclave();
 
     // FIXME: once `WithId` is exported from `std::os::fortanix_sgx::usercalls::raw`, we can remove
     // `transmute` calls here and use FifoDescriptor/WithId from std everywhere including in ipc-queue.
