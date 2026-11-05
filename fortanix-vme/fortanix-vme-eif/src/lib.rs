@@ -350,6 +350,7 @@ mod tests {
     read_blob!(KERNEL_CONFIG, KERNEL_CONFIG_PATH);
     read_blob!(NSM, NSM_PATH);
 
+    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn eif_creation() {
         // Create eif
@@ -413,6 +414,7 @@ mod tests {
         assert_eq!(eif_reader.metadata().unwrap().img_name, name);
     }
 
+    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn eif_creation_and_extraction() {
         let name = String::from("TestEnclave");
@@ -431,6 +433,7 @@ mod tests {
         assert_eq!(eif.application().unwrap(), HELLO_WORLD);
     }
 
+    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn initramfs_verification() {
         let output = Cursor::new(Vec::new());
