@@ -1,6 +1,6 @@
 macro_rules! confidential_blob_path {
     ($suffix: literal) => {
-        concat!("/opt/fortanix/confidential-vm-blobs/", $suffix)
+        concat!("/opt/fortanix/confidential-vm-blobs/snp/", $suffix)
     };
 }
 

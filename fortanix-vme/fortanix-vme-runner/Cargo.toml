@@ -1,6 +1,6 @@
 [package]
 name = "fortanix-vme-runner"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2018"
 authors = ["Fortanix, Inc."]
 license = "MPL-2.0"
@@ -16,7 +16,7 @@ anyhow = "1.0"
 b64-ct = "0.1.3"
 clap = { version = "4.0", features = ["derive"] }
 clap-verbosity-flag = "3.0.3"
-confidential-vm-blobs = { version = "0.1", path = "../tools/confidential-vm-blobs/" }
+confidential-vm-blobs = { version = "0.2", path = "../tools/confidential-vm-blobs/" }
 enclave-runner = { version = "0.8.0" }
 env_logger = "0.9.0"
 fnv = "1.0.7"
