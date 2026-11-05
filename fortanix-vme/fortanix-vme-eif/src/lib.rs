@@ -321,25 +321,48 @@ pub fn read_eif_with_metadata<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::{initramfs, Builder, FtxEif};
-    use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
+    use aws_nitro_blobs::{CMDLINE_PATH, INIT_PATH, KERNEL_CONFIG_PATH, KERNEL_PATH, NSM_PATH};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
     use fortanix_vme_initramfs::Initramfs;
     use std::io::{Cursor, Seek};
     use std::ops::Deref;
+    use std::sync::LazyLock;
     use test_resources::HELLO_WORLD;
+
+    macro_rules! read_blob {
+        ($name:ident, $path:expr) => {
+            static $name: LazyLock<Vec<u8>> = LazyLock::new(|| {
+                std::fs::read($path).unwrap_or_else(|e| {
+                    panic!(
+                        "Failed to read {} at {} ({})",
+                        stringify!($name),
+                        CMDLINE_PATH,
+                        e
+                    )
+                })
+            });
+        };
+    }
+
+    read_blob!(CMDLINE, CMDLINE_PATH);
+    read_blob!(INIT, INIT_PATH);
+    read_blob!(KERNEL, KERNEL_PATH);
+    read_blob!(KERNEL_CONFIG, KERNEL_CONFIG_PATH);
+    read_blob!(NSM, NSM_PATH);
 
     #[test]
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
+        let cmdline_static = str::from_utf8(&CMDLINE.as_slice()).unwrap();
         let eif = Builder::new(
             name.clone(),
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT),
-            Cursor::new(NSM),
-            Cursor::new(KERNEL),
-            Cursor::new(KERNEL_CONFIG),
-            CMDLINE,
+            Cursor::new(INIT.as_slice()),
+            Cursor::new(NSM.as_slice()),
+            Cursor::new(KERNEL.as_slice()),
+            Cursor::new(KERNEL_CONFIG.as_slice()),
+            cmdline_static,
         )
         .build(Cursor::new(Vec::new()))
         .unwrap()
@@ -362,7 +385,7 @@ mod tests {
                 }
                 EifSectionType::EifSectionCmdline => {
                     assert_eq!(
-                        CMDLINE.trim(),
+                        cmdline_static.trim(),
                         String::from_utf8(content.deref().clone()).unwrap()
                     );
                     assert_eq!(None, cmdline.replace(content));
@@ -370,8 +393,8 @@ mod tests {
                 EifSectionType::EifSectionRamdisk => {
                     let expected_initramfs = initramfs::build(
                         Cursor::new(HELLO_WORLD),
-                        Cursor::new(INIT),
-                        Cursor::new(NSM),
+                        Cursor::new(INIT.as_slice()),
+                        Cursor::new(NSM.as_slice()),
                         Cursor::new(Vec::new()),
                     )
                     .unwrap()
@@ -394,11 +417,12 @@ mod tests {
     fn eif_creation_and_extraction() {
         let name = String::from("TestEnclave");
         let hello_world = Cursor::new(HELLO_WORLD);
-        let init = Cursor::new(INIT);
-        let nsm = Cursor::new(NSM);
-        let kernel = Cursor::new(KERNEL);
-        let kernel_config = Cursor::new(KERNEL_CONFIG);
-        let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, CMDLINE)
+        let init = Cursor::new(INIT.as_slice());
+        let nsm = Cursor::new(NSM.as_slice());
+        let kernel = Cursor::new(KERNEL.as_slice());
+        let kernel_config = Cursor::new(KERNEL_CONFIG.as_slice());
+        let cmdline = str::from_utf8(CMDLINE.as_slice()).unwrap();
+        let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, cmdline)
             .build(Cursor::new(Vec::new()))
             .unwrap()
             .into_inner()
@@ -412,8 +436,8 @@ mod tests {
         let output = Cursor::new(Vec::new());
         let initramfs = initramfs::build(
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT),
-            Cursor::new(NSM),
+            Cursor::new(INIT.as_slice()),
+            Cursor::new(NSM.as_slice()),
             output,
         )
         .unwrap()
@@ -421,8 +445,8 @@ mod tests {
         let initramfs = Initramfs::from(Cursor::new(initramfs));
         let fs_tree = initramfs::build_fs_tree(
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT),
-            Cursor::new(NSM),
+            Cursor::new(INIT.as_slice()),
+            Cursor::new(NSM.as_slice()),
         );
         let initramfs_blob = initramfs.into_inner().into_inner();
         let mut cursor = Cursor::new(initramfs_blob);
