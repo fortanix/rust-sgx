@@ -196,7 +196,7 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-blobs"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "data_downloader",
  "hex-literal",
@@ -1845,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-vme-eif"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
@@ -1901,7 +1901,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-vme-tools"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "aws-nitro-blobs",
