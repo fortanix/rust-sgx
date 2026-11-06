@@ -326,7 +326,6 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -334,9 +333,7 @@ mod tests {
 
     #[test]
     fn cli_parses_aws_nitro_verbose_simulate_with_trailing_args() {
-        let temp = Builder::new()
-            .tempfile()
-            .expect("create temp elf file");
+        let temp = Builder::new().tempfile().expect("create temp elf file");
         let path = temp.path().to_path_buf();
 
         let _cli = Cli::try_parse_from([
@@ -381,9 +378,7 @@ mod tests {
 
     #[test]
     fn cli_parses_amd_sev_snp_default_log_level() {
-        let temp = Builder::new()
-            .tempfile()
-            .expect("create temp elf file");
+        let temp = Builder::new().tempfile().expect("create temp elf file");
         let path = temp.path().to_path_buf();
 
         let cli = Cli::try_parse_from([

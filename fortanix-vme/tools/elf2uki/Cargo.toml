@@ -1,6 +1,6 @@
 [package]
 name = "elf2uki"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [[bin]]
@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.4", features = ["cargo", "derive"] }
-confidential-vm-blobs = { path = "../confidential-vm-blobs/" }
+confidential-vm-blobs = { path = "../confidential-vm-blobs/", version = "0.2" }
 env_logger = "0.9"
 fortanix-vme-initramfs = { path = "../../fortanix-vme-initramfs" }
 log = "0.4"
