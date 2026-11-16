@@ -2,7 +2,7 @@ use aws_nitro_blobs::{CMDLINE_PATH, INIT_PATH, KERNEL_CONFIG_PATH, KERNEL_PATH, 
 use clap::Parser;
 use fortanix_vme_eif::Builder;
 use std::fs::{self, File};
-use std::io::{BufReader, BufWriter, Cursor, Write};
+use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
@@ -27,11 +27,12 @@ fn main() {
     let elf = BufReader::new(elf);
     let eif = File::create(cli.output_path).expect("Failed to open output path");
     let eif = BufWriter::new(eif);
-    let init = fs::read(INIT_PATH).expect(&format!("Failed to read {}", INIT_PATH));
-    let nsm = fs::read(NSM_PATH).expect(&format!("Failed to read {}", NSM_PATH));
-    let kernel = fs::read(KERNEL_PATH).expect(&format!("Failed to read {}", KERNEL_PATH));
+
+    let init = File::open(INIT_PATH).expect(&format!("Failed to open {}", INIT_PATH));
+    let nsm = File::open(NSM_PATH).expect(&format!("Failed to open {}", NSM_PATH));
+    let kernel = File::open(KERNEL_PATH).expect(&format!("Failed to open {}", KERNEL_PATH));
     let kernel_config =
-        fs::read(KERNEL_CONFIG_PATH).expect(&format!("Failed to read {}", KERNEL_CONFIG_PATH));
+        File::open(KERNEL_CONFIG_PATH).expect(&format!("Failed to open {}", KERNEL_CONFIG_PATH));
     let cmdline = fs::read(CMDLINE_PATH).expect(&format!("Failed to read {}", CMDLINE_PATH));
     let cmdline = str::from_utf8(&cmdline).expect("invalid cmdline content");
     let name = cli
@@ -44,18 +45,10 @@ fn main() {
         })
         .unwrap_or(String::from("FtxEnclave"));
 
-    Builder::new(
-        name,
-        elf,
-        Cursor::new(init),
-        Cursor::new(nsm),
-        Cursor::new(kernel),
-        Cursor::new(kernel_config),
-        cmdline.trim(),
-    )
-    .build(eif)
-    .expect("Failed to create eif file")
-    .into_inner()
-    .flush()
-    .expect("Failed to flush remaining data to eif file");
+    Builder::new(name, elf, init, nsm, kernel, kernel_config, cmdline.trim())
+        .build(eif)
+        .expect("Failed to create eif file")
+        .into_inner()
+        .flush()
+        .expect("Failed to flush remaining data to eif file");
 }
