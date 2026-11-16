@@ -321,48 +321,31 @@ pub fn read_eif_with_metadata<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::{initramfs, Builder, FtxEif};
-    use aws_nitro_blobs::{CMDLINE_PATH, INIT_PATH, KERNEL_CONFIG_PATH, KERNEL_PATH, NSM_PATH};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
     use fortanix_vme_initramfs::Initramfs;
     use std::io::{Cursor, Seek};
     use std::ops::Deref;
-    use std::sync::LazyLock;
     use test_resources::HELLO_WORLD;
 
-    macro_rules! read_blob {
-        ($name:ident, $path:expr) => {
-            static $name: LazyLock<Vec<u8>> = LazyLock::new(|| {
-                std::fs::read($path).unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to read {} at {} ({})",
-                        stringify!($name),
-                        CMDLINE_PATH,
-                        e
-                    )
-                })
-            });
-        };
-    }
+    static CMDLINE: &[u8; 7] = b"cmdline";
+    static INIT: &[u8; 4] = b"init";
+    static KERNEL: &[u8; 6] = b"kernel";
+    // 3rd line is parsed by aws-nitro-enclaves-image-format, so it must match with the expectation
+    static KERNEL_CONFIG: &[u8; 102] = b"first-line\nsecond-line\n# Linux/x86_64 4.14.177-104.253.amzn2.x86_64 Kernel Configuration \nanother line";
+    static NSM: &[u8; 10] = b"nsm-module";
 
-    read_blob!(CMDLINE, CMDLINE_PATH);
-    read_blob!(INIT, INIT_PATH);
-    read_blob!(KERNEL, KERNEL_PATH);
-    read_blob!(KERNEL_CONFIG, KERNEL_CONFIG_PATH);
-    read_blob!(NSM, NSM_PATH);
-
-    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
-        let cmdline_static = str::from_utf8(&CMDLINE.as_slice()).unwrap();
+        let cmdline_static = str::from_utf8(CMDLINE).unwrap();
         let eif = Builder::new(
             name.clone(),
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT.as_slice()),
-            Cursor::new(NSM.as_slice()),
-            Cursor::new(KERNEL.as_slice()),
-            Cursor::new(KERNEL_CONFIG.as_slice()),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
+            Cursor::new(KERNEL),
+            Cursor::new(KERNEL_CONFIG),
             cmdline_static,
         )
         .build(Cursor::new(Vec::new()))
@@ -414,16 +397,15 @@ mod tests {
         assert_eq!(eif_reader.metadata().unwrap().img_name, name);
     }
 
-    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn eif_creation_and_extraction() {
         let name = String::from("TestEnclave");
         let hello_world = Cursor::new(HELLO_WORLD);
-        let init = Cursor::new(INIT.as_slice());
-        let nsm = Cursor::new(NSM.as_slice());
-        let kernel = Cursor::new(KERNEL.as_slice());
-        let kernel_config = Cursor::new(KERNEL_CONFIG.as_slice());
-        let cmdline = str::from_utf8(CMDLINE.as_slice()).unwrap();
+        let init = Cursor::new(INIT);
+        let nsm = Cursor::new(NSM);
+        let kernel = Cursor::new(KERNEL);
+        let kernel_config = Cursor::new(KERNEL_CONFIG);
+        let cmdline = str::from_utf8(CMDLINE).unwrap();
         let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, cmdline)
             .build(Cursor::new(Vec::new()))
             .unwrap()
@@ -433,14 +415,13 @@ mod tests {
         assert_eq!(eif.application().unwrap(), HELLO_WORLD);
     }
 
-    #[ignore = "Skip until nitro blobs are installed on CI executor"]
     #[test]
     fn initramfs_verification() {
         let output = Cursor::new(Vec::new());
         let initramfs = initramfs::build(
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT.as_slice()),
-            Cursor::new(NSM.as_slice()),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
             output,
         )
         .unwrap()
@@ -448,8 +429,8 @@ mod tests {
         let initramfs = Initramfs::from(Cursor::new(initramfs));
         let fs_tree = initramfs::build_fs_tree(
             Cursor::new(HELLO_WORLD),
-            Cursor::new(INIT.as_slice()),
-            Cursor::new(NSM.as_slice()),
+            Cursor::new(INIT),
+            Cursor::new(NSM),
         );
         let initramfs_blob = initramfs.into_inner().into_inner();
         let mut cursor = Cursor::new(initramfs_blob);
