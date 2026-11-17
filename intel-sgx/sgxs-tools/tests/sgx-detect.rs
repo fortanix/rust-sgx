@@ -7,12 +7,7 @@ use std::process::Command;
 use regex::Regex;
 
 fn sgx_detect_bin_path() -> PathBuf {
-    let mut testbin = PathBuf::from(env::args_os().next().unwrap());
-    assert!(testbin.pop());
-    assert_eq!(testbin.file_name().unwrap(), "deps");
-    assert!(testbin.pop());
-    testbin.push("sgx-detect");
-    testbin
+    PathBuf::from(env!("CARGO_BIN_EXE_sgx-detect"))
 }
 
 fn ui_tests_dir() -> PathBuf {
