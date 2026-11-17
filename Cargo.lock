@@ -196,11 +196,7 @@ dependencies = [
 
 [[package]]
 name = "aws-nitro-blobs"
-version = "0.1.0"
-dependencies = [
- "data_downloader",
- "hex-literal",
-]
+version = "0.2.0"
 
 [[package]]
 name = "aws-nitro-enclaves-cose"
@@ -1037,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "confidential-vm-blobs"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "convert_case"
@@ -1259,19 +1255,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "data_downloader"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e1b6bdb6d14664330b526dd9ffe01022e9e0b4b9febeaa72e9a44e87fcfeb10"
-dependencies = [
- "dirs 5.0.1",
- "hex-literal",
- "reqwest",
- "sha2 0.10.9",
- "thiserror 1.0.59",
-]
-
-[[package]]
 name = "dcap-artifact-retrieval"
 version = "0.5.2"
 dependencies = [
@@ -1416,32 +1399,11 @@ dependencies = [
 
 [[package]]
 name = "dirs"
-version = "5.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c45a9d03d6676652bcb5e724c7e988de1acad23a711b5217ab9cbecbec2225"
-dependencies = [
- "dirs-sys 0.4.1",
-]
-
-[[package]]
-name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3e8aa94d75141228480295a7d0e7feb620b1a5ad9f12bc40be62411e38cce4e"
 dependencies = [
- "dirs-sys 0.5.0",
-]
-
-[[package]]
-name = "dirs-sys"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "520f05a5cbd335fae5a99ff7a6ab8627577660ee5cfd6a94a6a929b52ff0321c"
-dependencies = [
- "libc",
- "option-ext",
- "redox_users 0.4.6",
- "windows-sys 0.48.0",
+ "dirs-sys",
 ]
 
 [[package]]
@@ -1452,7 +1414,7 @@ checksum = "e01a3366d27ee9890022452ee61b2b63a67e6f13f58900b651ff5665f0bb1fab"
 dependencies = [
  "libc",
  "option-ext",
- "redox_users 0.5.2",
+ "redox_users",
  "windows-sys 0.61.2",
 ]
 
@@ -1526,7 +1488,7 @@ dependencies = [
 
 [[package]]
 name = "elf2uki"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap 4.4.18",
@@ -1845,7 +1807,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-vme-eif"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aws-nitro-blobs",
  "aws-nitro-enclaves-image-format",
@@ -1874,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-vme-runner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "b64-ct",
@@ -1901,7 +1863,7 @@ dependencies = [
 
 [[package]]
 name = "fortanix-vme-tools"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "aws-nitro-blobs",
@@ -3932,17 +3894,6 @@ dependencies = [
 
 [[package]]
 name = "redox_users"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba009ff324d1fc1b900bd1fdb31564febe58a8ccc8a6fdbb93b543d33b13ca43"
-dependencies = [
- "getrandom 0.2.17",
- "libredox",
- "thiserror 1.0.59",
-]
-
-[[package]]
-name = "redox_users"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4e608c6638b9c18977b00b475ac1f28d14e84b27d8d42f70e0bf1e3dec127ac"
@@ -4531,7 +4482,7 @@ dependencies = [
  "bitfield",
  "bitflags 2.11.0",
  "byteorder 1.5.0",
- "dirs 6.0.0",
+ "dirs",
  "hex 0.4.3",
  "iocuddle",
  "lazy_static",

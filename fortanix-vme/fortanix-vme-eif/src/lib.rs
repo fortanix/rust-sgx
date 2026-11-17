@@ -321,17 +321,24 @@ pub fn read_eif_with_metadata<P: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::{initramfs, Builder, FtxEif};
-    use aws_nitro_blobs::{CMDLINE, INIT, KERNEL, KERNEL_CONFIG, NSM};
     use aws_nitro_enclaves_image_format::defs::EifSectionType;
     use fortanix_vme_initramfs::Initramfs;
     use std::io::{Cursor, Seek};
     use std::ops::Deref;
     use test_resources::HELLO_WORLD;
 
+    static CMDLINE: &[u8; 7] = b"cmdline";
+    static INIT: &[u8; 4] = b"init";
+    static KERNEL: &[u8; 6] = b"kernel";
+    // 3rd line is parsed by aws-nitro-enclaves-image-format, so it must match with the expectation
+    static KERNEL_CONFIG: &[u8; 102] = b"first-line\nsecond-line\n# Linux/x86_64 4.14.177-104.253.amzn2.x86_64 Kernel Configuration \nanother line";
+    static NSM: &[u8; 10] = b"nsm-module";
+
     #[test]
     fn eif_creation() {
         // Create eif
         let name = String::from("enclave");
+        let cmdline_static = str::from_utf8(CMDLINE).unwrap();
         let eif = Builder::new(
             name.clone(),
             Cursor::new(HELLO_WORLD),
@@ -339,7 +346,7 @@ mod tests {
             Cursor::new(NSM),
             Cursor::new(KERNEL),
             Cursor::new(KERNEL_CONFIG),
-            CMDLINE,
+            cmdline_static,
         )
         .build(Cursor::new(Vec::new()))
         .unwrap()
@@ -362,7 +369,7 @@ mod tests {
                 }
                 EifSectionType::EifSectionCmdline => {
                     assert_eq!(
-                        CMDLINE.trim(),
+                        cmdline_static.trim(),
                         String::from_utf8(content.deref().clone()).unwrap()
                     );
                     assert_eq!(None, cmdline.replace(content));
@@ -370,8 +377,8 @@ mod tests {
                 EifSectionType::EifSectionRamdisk => {
                     let expected_initramfs = initramfs::build(
                         Cursor::new(HELLO_WORLD),
-                        Cursor::new(INIT),
-                        Cursor::new(NSM),
+                        Cursor::new(INIT.as_slice()),
+                        Cursor::new(NSM.as_slice()),
                         Cursor::new(Vec::new()),
                     )
                     .unwrap()
@@ -398,7 +405,8 @@ mod tests {
         let nsm = Cursor::new(NSM);
         let kernel = Cursor::new(KERNEL);
         let kernel_config = Cursor::new(KERNEL_CONFIG);
-        let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, CMDLINE)
+        let cmdline = str::from_utf8(CMDLINE).unwrap();
+        let eif = Builder::new(name, hello_world, init, nsm, kernel, kernel_config, cmdline)
             .build(Cursor::new(Vec::new()))
             .unwrap()
             .into_inner()
