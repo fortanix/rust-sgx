@@ -32,17 +32,23 @@ const REL_TO_CUR: &str = "./";
 ///     .build();
 /// ```
 #[derive(Debug, Default)]
-pub struct FsTree(pub(crate) Vec<FsTreeEntry>);
+pub struct FsTree {
+    pub(crate) entries: Vec<FsTreeEntry>,
+}
 
 type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
 
 impl FsTree {
     pub fn new() -> Self {
-        Self(Vec::new())
+        let entries = Vec::new();
+        Self { entries }
     }
 
     pub fn eq_metadata(&self, other: &Self) -> bool {
-        self.0.iter().zip(&other.0).all(|(l, r)| l.eq_metadata(r))
+        self.entries
+            .iter()
+            .zip(&other.entries)
+            .all(|(l, r)| l.eq_metadata(r))
     }
 
     pub fn add_directory<P: AsRef<Path>>(self, dirname: P) -> FsTree {
@@ -60,7 +66,7 @@ impl FsTree {
     }
 
     fn dir_exists(&self, dir: &Path) -> bool {
-        self.0
+        self.entries
             .iter()
             .any(|e| matches!(e, FsTreeEntry { path, inner: FsTreeEntryInner::Directory, .. } if path == dir))
     }
@@ -83,7 +89,7 @@ impl FsTree {
 
         // Add in reverse order to preserve the the order of directory
         // hiearchy while adding into initramfs
-        self.0.extend(to_add.into_iter().rev());
+        self.entries.extend(to_add.into_iter().rev());
     }
 
     pub fn add_executable<T, P: AsRef<Path>>(self, basename: P, content: T) -> FsTree
@@ -118,7 +124,7 @@ impl FsTree {
 
         let entry = FsTreeEntry::file(path, mode, Box::new(content));
 
-        self.0.push(entry);
+        self.entries.push(entry);
         self
     }
 
@@ -141,7 +147,7 @@ impl FsTree {
 
         let entry = FsTreeEntry::symlink(path, mode, target);
 
-        self.0.push(entry);
+        self.entries.push(entry);
         self
     }
 
@@ -167,8 +173,8 @@ impl FsTree {
     }
 
     pub fn into_cpio_input(self) -> Result<Vec<CpioInput>, Error> {
-        let mut inputs = Vec::with_capacity(self.0.len());
-        for entry in self.0 {
+        let mut inputs = Vec::with_capacity(self.entries.len());
+        for entry in self.entries {
             let input = entry.into_cpio_input()?;
             inputs.push(input);
         }
@@ -321,36 +327,40 @@ mod tests {
             .add_file("nsm.ko", Cursor::new(content.clone()))
             .add_symlink("rootfs/bin/sh", "dash");
 
-        let expected = FsTree(vec![
-            make_directory("./rootfs"),
-            make_directory("./rootfs/bin"),
-            make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
-            make_directory("./rootfs/dev"),
-            make_directory("./rootfs/proc"),
-            make_directory("./rootfs/run"),
-            make_directory("./rootfs/sys"),
-            make_directory("./rootfs/tmp"),
-            make_file("./cmd", Cursor::new(content.clone())),
-            make_file("./env", Cursor::new(content.clone())),
-            make_file("./init", Cursor::new(content.clone())),
-            make_file("./nsm.ko", Cursor::new(content.clone())),
-            make_symlink("./rootfs/bin/sh", "dash"),
-        ]);
+        let expected = FsTree {
+            entries: vec![
+                make_directory("./rootfs"),
+                make_directory("./rootfs/bin"),
+                make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
+                make_directory("./rootfs/dev"),
+                make_directory("./rootfs/proc"),
+                make_directory("./rootfs/run"),
+                make_directory("./rootfs/sys"),
+                make_directory("./rootfs/tmp"),
+                make_file("./cmd", Cursor::new(content.clone())),
+                make_file("./env", Cursor::new(content.clone())),
+                make_file("./init", Cursor::new(content.clone())),
+                make_file("./nsm.ko", Cursor::new(content.clone())),
+                make_symlink("./rootfs/bin/sh", "dash"),
+            ],
+        };
         assert!(files.eq_metadata(&expected));
     }
 
     #[test]
     fn test_long_paths() {
         let files = FsTree::new().add_file("a/b/c/d/e/f/g.txt", Cursor::new(vec![]));
-        let expected = FsTree(vec![
-            make_directory("./a"),
-            make_directory("./a/b"),
-            make_directory("./a/b/c"),
-            make_directory("./a/b/c/d"),
-            make_directory("./a/b/c/d/e"),
-            make_directory("./a/b/c/d/e/f"),
-            make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
-        ]);
+        let expected = FsTree {
+            entries: vec![
+                make_directory("./a"),
+                make_directory("./a/b"),
+                make_directory("./a/b/c"),
+                make_directory("./a/b/c/d"),
+                make_directory("./a/b/c/d/e"),
+                make_directory("./a/b/c/d/e/f"),
+                make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
+            ],
+        };
         assert!(files.eq_metadata(&expected));
     }
 
@@ -359,13 +369,15 @@ mod tests {
         let files = FsTree::new()
             .add_directory("a/b/c/../../d/e/")
             .add_directory("/x/y/../z");
-        let expected = FsTree(vec![
-            make_directory("./a"),
-            make_directory("./a/d"),
-            make_directory("./a/d/e"),
-            make_directory("./x"),
-            make_directory("./x/z"),
-        ]);
+        let expected = FsTree {
+            entries: vec![
+                make_directory("./a"),
+                make_directory("./a/d"),
+                make_directory("./a/d/e"),
+                make_directory("./x"),
+                make_directory("./x/z"),
+            ],
+        };
         assert!(files.eq_metadata(&expected));
     }
 

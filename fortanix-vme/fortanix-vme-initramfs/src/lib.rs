@@ -98,7 +98,7 @@ impl<R: Read> Initramfs<R> {
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
 
-        for fs_entry in fs_tree.0.into_iter() {
+        for fs_entry in fs_tree.entries.into_iter() {
             let mode = fs_entry.mode;
             let path = fs_entry.path;
 
