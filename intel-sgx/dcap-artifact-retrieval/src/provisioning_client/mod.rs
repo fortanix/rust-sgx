@@ -493,19 +493,8 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
         if let Some(retry_timeout) = self.retry_timeout {
             let op = || match self.service.call_service::<F>(fetcher, input) {
                 Ok(output) => Ok(output),
-                Err(err) => match err {
-                    Error::PCSError(status_code, msg) => {
-                        let code = status_code.clone() as u16;
-                        // 429: Too Many Requests - 408: Request Timeout
-                        if code >= 500 || code == 429 || code == 408 {
-                            Err(backoff::Error::transient(Error::PCSError(status_code, msg)))
-                        } else {
-                            Err(backoff::Error::permanent(Error::PCSError(status_code, msg)))
-                        }
-                    }
-                    err @ Error::FetcherTransientFailure(_) => Err(backoff::Error::transient(err)),
-                    err @ _ => Err(backoff::Error::Permanent(err)),
-                },
+                Err(err) if err.is_transient() => Err(backoff::Error::transient(err)),
+                Err(err) => Err(backoff::Error::permanent(err)),
             };
 
             let backoff = backoff::ExponentialBackoffBuilder::default()
@@ -989,12 +978,13 @@ impl<'req> Fetcher<'req> for ReqwestClient {
         let mut body = Vec::new();
         response.read_to_end(&mut body).map_err(|e| {
             let msg = format!("Error while trying to read response body. Error: {}", e);
-            // reqwest's blocking reader reports a timeout as io::ErrorKind::Other wrapping a
-            // reqwest::Error whose source chain contains its TimedOut marker.
+
+            // check if the error is related to a timeout or not
             let timed_out = e
                 .get_ref()
                 .and_then(|inner| inner.downcast_ref::<reqwest::Error>())
                 .map_or(false, |re| re.is_timeout());
+
             if timed_out {
                 Error::FetcherTransientFailure(msg)
             } else {

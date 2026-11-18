@@ -115,6 +115,21 @@ quick_error! {
     }
 }
 
+impl Error {
+    /// Returns true for failures that may go away when retried: network timeouts and
+    /// connection errors, and HTTP 5xx / 429 Too Many Requests / 408 Request Timeout.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Error::FetcherTransientFailure(_) => true,
+            Error::PCSError(status_code, _) => {
+                let code = status_code.clone() as u16;
+                code >= 500 || code == 429 || code == 408
+            }
+            _ => false,
+        }
+    }
+}
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Create a reqwest client using native tls(by default) or rustls if feature
