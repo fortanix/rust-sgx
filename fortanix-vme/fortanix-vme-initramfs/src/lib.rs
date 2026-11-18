@@ -3,6 +3,7 @@ use cpio::{self, NewcReader};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use std::ffi::OsStr;
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
 use thiserror::Error;
@@ -22,6 +23,8 @@ pub enum Error {
     ExtractError(#[source] io::Error),
     #[error("Expected trailer in initramfs missing")]
     ExpectedTrailer,
+    #[error("Missing hardlink target: {target:?}, source: {source_:?}")]
+    MissingHardlinkTarget { source_: String, target: String },
     #[error("Path conversion error: {0}")]
     PathError(String),
     #[error("Reading initramfs failed")]
@@ -49,6 +52,13 @@ pub enum Error {
 }
 
 impl Error {
+    pub fn missing_hardlink_target(source: &OsStr, target: &OsStr) -> Self {
+        Error::MissingHardlinkTarget {
+            source_: format!("{:?}", source),
+            target: format!("{:?}", target),
+        }
+    }
+
     pub fn unexpected_data(path: String, found: String, expected: String) -> Self {
         Error::UnexpectedData {
             path,
@@ -85,9 +95,8 @@ impl<R: Read> From<R> for Initramfs<R> {
 
 impl<R: Read + Write> Initramfs<R> {
     pub fn from_fs_tree(fs_tree: FsTree, output: R) -> Result<Initramfs<R>, Error> {
-        let encoder = GzEncoder::new(output, Compression::default());
-        let inputs = fs_tree.into_cpio_input()?;
-        let encoder = cpio::write_cpio(inputs.into_iter(), encoder).map_err(Error::WriteError)?;
+        let mut encoder = GzEncoder::new(output, Compression::default());
+        fs_tree.write_cpio(&mut encoder)?;
         let encoder = encoder.finish().map_err(Error::WriteError)?;
         Ok(Initramfs(encoder))
     }
@@ -121,6 +130,7 @@ impl<R: Read> Initramfs<R> {
                         &target.into_encoded_bytes(),
                     )?;
                 }
+                FsTreeEntryInner::Hardlink { .. } => todo!(),
             }
             reader = Initramfs::next(reader)?;
         }

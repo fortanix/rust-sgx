@@ -1,11 +1,14 @@
-use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
+use std::collections::HashMap;
+use std::ffi::OsString;
+use std::fmt;
+use std::io::{self, Cursor, Read, Write};
+use std::path::{Path, PathBuf};
+
 use cpio::NewcBuilder;
 use derivative::Derivative;
 use normalize_path::NormalizePath;
-use std::ffi::OsString;
-use std::fmt;
-use std::io::Cursor;
-use std::path::{Path, PathBuf};
+
+use crate::{Error, ReadSeek, DEFAULT_GID, DEFAULT_UID};
 
 const DEFAULT_FILE_PERMS: u32 = 0o100664;
 const DEFAULT_DIR_PERMS: u32 = 0o40775;
@@ -34,6 +37,7 @@ const REL_TO_CUR: &str = "./";
 #[derive(Debug, Default)]
 pub struct FsTree {
     pub(crate) entries: Vec<FsTreeEntry>,
+    pub(crate) hardlink_targets: HashMap<OsString, HardlinkTarget>,
 }
 
 type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
@@ -41,7 +45,11 @@ type CpioInput = (NewcBuilder, Box<dyn ReadSeek>);
 impl FsTree {
     pub fn new() -> Self {
         let entries = Vec::new();
-        Self { entries }
+        let hardlink_targets = HashMap::new();
+        Self {
+            entries,
+            hardlink_targets,
+        }
     }
 
     pub fn eq_metadata(&self, other: &Self) -> bool {
@@ -151,6 +159,45 @@ impl FsTree {
         self
     }
 
+    pub fn add_hardlink<P: AsRef<Path>, U: AsRef<Path>>(
+        mut self,
+        path: P,
+        target: U,
+    ) -> Result<FsTree, Error> {
+        let path = Self::normalize_path(path);
+        let target = Self::normalize_path(target).as_os_str().to_os_string();
+        if path != target {
+            return Err(Error::PathError(format!(
+                "Cyclic hardlinks are not allowed, path: {:?}",
+                path
+            )));
+        }
+
+        self.inc_hardlink_target_ref(target.clone());
+
+        if let Some(parent) = path.parent() {
+            self.add_directory_with_parents(parent, DEFAULT_DIR_PERMS);
+        }
+
+        let entry = FsTreeEntry::hardlink(path, target);
+
+        self.entries.push(entry);
+        Ok(self)
+    }
+
+    pub fn inc_hardlink_target_ref(&mut self, target: OsString) {
+        if let Some(hardlink_target) = self.hardlink_targets.get_mut(&target) {
+            hardlink_target.nlink += 1;
+        } else {
+            let hardlink_target = HardlinkTarget {
+                entries_index: None,
+                // Start from 2 as hardlink comes with target & source
+                nlink: 2,
+            };
+            self.hardlink_targets.insert(target, hardlink_target);
+        }
+    }
+
     /// Normalizes a path and anchors it to the current working directory.
     ///
     /// This function performs standard path normalization, removes any leading
@@ -180,6 +227,83 @@ impl FsTree {
         }
 
         Ok(inputs)
+    }
+
+    // This is re-write of cpio's `write_cpio function`.
+    // Ref: https://github.com/jcreekmore/cpio-rs/blob/0ef80dc848c03dedb24cd5f69fcb37a31e0bbb99/src/lib.rs#L16
+    // The re-write is necessary due to the issue:
+    // https://github.com/jcreekmore/cpio-rs/issues/23
+    //
+    // Theory of operation:
+    // We first write everything non-hardlink
+    // During write, hardlink target indexes are resolved
+    // As a last step hardlink sources are written
+    // by using resolved hardlink target indexes
+    pub fn write_cpio<R: Read + Write>(mut self, output: &mut R) -> Result<(), Error> {
+        let mut hardlink_entries = Vec::new();
+        let mut inodes = vec![0 as u32; self.entries.len()];
+        for (index, entry) in self.entries.into_iter().enumerate() {
+            if matches!(entry.inner, FsTreeEntryInner::Hardlink { .. }) {
+                hardlink_entries.push(entry);
+                continue;
+            }
+
+            let mut nlink = 1;
+            if matches!(entry.inner, FsTreeEntryInner::File { .. }) {
+                let path = entry.path.as_os_str();
+                if let Some(hardlink_entry) = self.hardlink_targets.get_mut(path) {
+                    hardlink_entry.entries_index = Some(index);
+                    nlink = hardlink_entry.nlink;
+                }
+            }
+
+            let inode = index as u32;
+            inodes[index] = inode;
+            Self::write_cpio_entry(entry, inode, nlink, output)?;
+        }
+
+        for entry in hardlink_entries {
+            let FsTreeEntry {
+                path,
+                mode: _,
+                inner: FsTreeEntryInner::Hardlink { target },
+            } = &entry
+            else {
+                // This list is only populated with hardlink entries above
+                unreachable!();
+            };
+            let (entry_index, nlink) =
+                if let Some(hardlink_entry) = self.hardlink_targets.get(target) {
+                    (hardlink_entry.entries_index, hardlink_entry.nlink)
+                } else {
+                    (None, 0)
+                };
+            let entry_index =
+                entry_index.ok_or(Error::missing_hardlink_target(path.as_os_str(), target))?;
+            let inode = inodes[entry_index];
+            Self::write_cpio_entry(entry, inode, nlink, output)?;
+        }
+
+        Ok(())
+    }
+
+    fn write_cpio_entry<R: Read + Write>(
+        entry: FsTreeEntry,
+        inode: u32,
+        nlink: u32,
+        output: &mut R,
+    ) -> Result<(), Error> {
+        let (builder, mut input) = entry.into_cpio_input()?;
+        let len = input.seek(io::SeekFrom::End(0)).map_err(Error::ReadError)?;
+        input
+            .seek(io::SeekFrom::Start(0))
+            .map_err(Error::WriteError)?;
+
+        let mut fp = builder.ino(inode).nlink(nlink).write(output, len as u32);
+        io::copy(&mut input, &mut fp).map_err(Error::WriteError)?;
+        fp.finish().map_err(Error::WriteError)?;
+
+        Ok(())
     }
 }
 
@@ -221,6 +345,16 @@ impl FsTreeEntry {
             inner: FsTreeEntryInner::Symlink { target },
         }
     }
+
+    pub fn hardlink<P: AsRef<Path>>(path: P, target: OsString) -> Self {
+        let path = path.as_ref().to_path_buf();
+        let mode = 0; // The target file's mode overrides after resolution
+        Self {
+            path,
+            mode,
+            inner: FsTreeEntryInner::Hardlink { target },
+        }
+    }
 }
 
 #[derive(Derivative)]
@@ -234,6 +368,15 @@ pub enum FsTreeEntryInner {
     Symlink {
         target: OsString,
     },
+    Hardlink {
+        target: OsString,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) struct HardlinkTarget {
+    entries_index: Option<usize>,
+    nlink: u32,
 }
 
 fn redact<T>(_: &T, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -249,6 +392,7 @@ impl FsTreeEntry {
             FsTreeEntryInner::Symlink { target } => {
                 Box::new(Cursor::new(target.into_encoded_bytes()))
             }
+            FsTreeEntryInner::Hardlink { .. } => Box::new(Cursor::new([] as [u8; 0])),
         };
         Ok((builder, content))
     }
@@ -285,6 +429,10 @@ impl FsTreeEntry {
             (
                 FsTreeEntryInner::Symlink { target: t1 },
                 FsTreeEntryInner::Symlink { target: t2 },
+            ) => p1 == p2 && t1 == t2 && m1 == m2,
+            (
+                FsTreeEntryInner::Hardlink { target: t1 },
+                FsTreeEntryInner::Hardlink { target: t2 },
             ) => p1 == p2 && t1 == t2 && m1 == m2,
             _ => false,
         }
@@ -327,40 +475,38 @@ mod tests {
             .add_file("nsm.ko", Cursor::new(content.clone()))
             .add_symlink("rootfs/bin/sh", "dash");
 
-        let expected = FsTree {
-            entries: vec![
-                make_directory("./rootfs"),
-                make_directory("./rootfs/bin"),
-                make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
-                make_directory("./rootfs/dev"),
-                make_directory("./rootfs/proc"),
-                make_directory("./rootfs/run"),
-                make_directory("./rootfs/sys"),
-                make_directory("./rootfs/tmp"),
-                make_file("./cmd", Cursor::new(content.clone())),
-                make_file("./env", Cursor::new(content.clone())),
-                make_file("./init", Cursor::new(content.clone())),
-                make_file("./nsm.ko", Cursor::new(content.clone())),
-                make_symlink("./rootfs/bin/sh", "dash"),
-            ],
-        };
+        let mut expected = FsTree::new();
+        expected.entries = vec![
+            make_directory("./rootfs"),
+            make_directory("./rootfs/bin"),
+            make_file("./rootfs/bin/a.out", Cursor::new(content.clone())),
+            make_directory("./rootfs/dev"),
+            make_directory("./rootfs/proc"),
+            make_directory("./rootfs/run"),
+            make_directory("./rootfs/sys"),
+            make_directory("./rootfs/tmp"),
+            make_file("./cmd", Cursor::new(content.clone())),
+            make_file("./env", Cursor::new(content.clone())),
+            make_file("./init", Cursor::new(content.clone())),
+            make_file("./nsm.ko", Cursor::new(content.clone())),
+            make_symlink("./rootfs/bin/sh", "dash"),
+        ];
         assert!(files.eq_metadata(&expected));
     }
 
     #[test]
     fn test_long_paths() {
         let files = FsTree::new().add_file("a/b/c/d/e/f/g.txt", Cursor::new(vec![]));
-        let expected = FsTree {
-            entries: vec![
-                make_directory("./a"),
-                make_directory("./a/b"),
-                make_directory("./a/b/c"),
-                make_directory("./a/b/c/d"),
-                make_directory("./a/b/c/d/e"),
-                make_directory("./a/b/c/d/e/f"),
-                make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
-            ],
-        };
+        let mut expected = FsTree::new();
+        expected.entries = vec![
+            make_directory("./a"),
+            make_directory("./a/b"),
+            make_directory("./a/b/c"),
+            make_directory("./a/b/c/d"),
+            make_directory("./a/b/c/d/e"),
+            make_directory("./a/b/c/d/e/f"),
+            make_file("./a/b/c/d/e/f/g.txt", Cursor::new(vec![])),
+        ];
         assert!(files.eq_metadata(&expected));
     }
 
@@ -369,15 +515,14 @@ mod tests {
         let files = FsTree::new()
             .add_directory("a/b/c/../../d/e/")
             .add_directory("/x/y/../z");
-        let expected = FsTree {
-            entries: vec![
-                make_directory("./a"),
-                make_directory("./a/d"),
-                make_directory("./a/d/e"),
-                make_directory("./x"),
-                make_directory("./x/z"),
-            ],
-        };
+        let mut expected = FsTree::new();
+        expected.entries = vec![
+            make_directory("./a"),
+            make_directory("./a/d"),
+            make_directory("./a/d/e"),
+            make_directory("./x"),
+            make_directory("./x/z"),
+        ];
         assert!(files.eq_metadata(&expected));
     }
 
