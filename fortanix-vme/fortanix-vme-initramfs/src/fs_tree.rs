@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt;
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 
-use cpio::NewcBuilder;
+use cpio::{newc, NewcBuilder};
 use derivative::Derivative;
 use normalize_path::NormalizePath;
 
@@ -166,7 +166,7 @@ impl FsTree {
     ) -> Result<FsTree, Error> {
         let path = Self::normalize_path(path);
         let target = Self::normalize_path(target).as_os_str().to_os_string();
-        if path != target {
+        if path == target {
             return Err(Error::PathError(format!(
                 "Cyclic hardlinks are not allowed, path: {:?}",
                 path
@@ -239,9 +239,9 @@ impl FsTree {
     // During write, hardlink target indexes are resolved
     // As a last step hardlink sources are written
     // by using resolved hardlink target indexes
-    pub fn write_cpio<R: Read + Write>(mut self, output: &mut R) -> Result<(), Error> {
+    pub fn write_cpio<W: Write>(mut self, mut output: W) -> Result<W, Error> {
         let mut hardlink_entries = Vec::new();
-        let mut inodes = vec![0 as u32; self.entries.len()];
+        let mut inode_mode_pairs = vec![(0, 0); self.entries.len()];
         for (index, entry) in self.entries.into_iter().enumerate() {
             if matches!(entry.inner, FsTreeEntryInner::Hardlink { .. }) {
                 hardlink_entries.push(entry);
@@ -258,11 +258,11 @@ impl FsTree {
             }
 
             let inode = index as u32;
-            inodes[index] = inode;
-            Self::write_cpio_entry(entry, inode, nlink, output)?;
+            inode_mode_pairs[index] = (inode, entry.mode);
+            Self::write_cpio_entry(entry, inode, nlink, &mut output)?;
         }
 
-        for entry in hardlink_entries {
+        for mut entry in hardlink_entries {
             let FsTreeEntry {
                 path,
                 mode: _,
@@ -280,18 +280,20 @@ impl FsTree {
                 };
             let entry_index =
                 entry_index.ok_or(Error::missing_hardlink_target(path.as_os_str(), target))?;
-            let inode = inodes[entry_index];
-            Self::write_cpio_entry(entry, inode, nlink, output)?;
+            let (inode, mode) = inode_mode_pairs[entry_index];
+            // Update entry mode based on link target.
+            entry.mode = mode;
+            Self::write_cpio_entry(entry, inode, nlink, &mut output)?;
         }
 
-        Ok(())
+        newc::trailer(output).map_err(Error::WriteError)
     }
 
-    fn write_cpio_entry<R: Read + Write>(
+    fn write_cpio_entry<W: Write>(
         entry: FsTreeEntry,
         inode: u32,
         nlink: u32,
-        output: &mut R,
+        output: &mut W,
     ) -> Result<(), Error> {
         let (builder, mut input) = entry.into_cpio_input()?;
         let len = input.seek(io::SeekFrom::End(0)).map_err(Error::ReadError)?;

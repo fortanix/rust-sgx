@@ -95,8 +95,8 @@ impl<R: Read> From<R> for Initramfs<R> {
 
 impl<R: Read + Write> Initramfs<R> {
     pub fn from_fs_tree(fs_tree: FsTree, output: R) -> Result<Initramfs<R>, Error> {
-        let mut encoder = GzEncoder::new(output, Compression::default());
-        fs_tree.write_cpio(&mut encoder)?;
+        let encoder = GzEncoder::new(output, Compression::default());
+        let encoder = fs_tree.write_cpio(encoder)?;
         let encoder = encoder.finish().map_err(Error::WriteError)?;
         Ok(Initramfs(encoder))
     }
