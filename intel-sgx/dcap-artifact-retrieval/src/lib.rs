@@ -39,6 +39,10 @@ quick_error! {
             from()
             display("{}", err)
         }
+        FetcherTransientFailure(err: String) {
+            description("Network failure (timeout, connection error) when sending the request")
+            display("{}", err)
+        }
         IoError(err: IoError) {
             from()
         }

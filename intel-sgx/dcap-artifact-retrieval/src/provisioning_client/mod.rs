@@ -495,12 +495,15 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
                 Ok(output) => Ok(output),
                 Err(err) => match err {
                     Error::PCSError(status_code, msg) => {
-                        if status_code.clone() as u16 >= 500 {
+                        let code = status_code.clone() as u16;
+                        // 429: Too Many Requests - 408: Request Timeout
+                        if code >= 500 || code == 429 || code == 408 {
                             Err(backoff::Error::transient(Error::PCSError(status_code, msg)))
                         } else {
                             Err(backoff::Error::permanent(Error::PCSError(status_code, msg)))
                         }
                     }
+                    err @ Error::FetcherTransientFailure(_) => Err(backoff::Error::transient(err)),
                     err @ _ => Err(backoff::Error::Permanent(err)),
                 },
             };
@@ -965,7 +968,14 @@ impl<'req> Fetcher<'req> for ReqwestClient {
             }
             s
         }
-        let response = request.send().map_err(|e| report(&e))?;
+        let response = request.send().map_err(|e| {
+            let msg = report(&e);
+            if e.is_timeout() || e.is_connect() {
+                Error::FetcherTransientFailure(msg)
+            } else {
+                Error::FetcherFailure(msg)
+            }
+        })?;
         let status_code =
             StatusCode::try_from(response.status().as_u16()).map_err(|e| e.to_string())?;
 
@@ -978,9 +988,18 @@ impl<'req> Fetcher<'req> for ReqwestClient {
     ) -> Result<(String, Vec<(String, String)>), Error> {
         let mut body = Vec::new();
         response.read_to_end(&mut body).map_err(|e| {
-            Error::ReadResponseError(
-                format!("Error while trying to read response body. Error: {}", e).into(),
-            )
+            let msg = format!("Error while trying to read response body. Error: {}", e);
+            // reqwest's blocking reader reports a timeout as io::ErrorKind::Other wrapping a
+            // reqwest::Error whose source chain contains its TimedOut marker.
+            let timed_out = e
+                .get_ref()
+                .and_then(|inner| inner.downcast_ref::<reqwest::Error>())
+                .map_or(false, |re| re.is_timeout());
+            if timed_out {
+                Error::FetcherTransientFailure(msg)
+            } else {
+                Error::ReadResponseError(msg.into())
+            }
         })?;
 
         let body = String::from_utf8(body)
