@@ -229,6 +229,7 @@ mod tests {
     const TIME_RETRY_TIMEOUT: Duration = Duration::from_secs(180);
 
     #[test]
+    #[ignore = "contacts Azure PCS, which often times out; run in a separate non-blocking CI step"]
     pub fn pcks_azure() {
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)
@@ -299,6 +300,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "contacts Azure PCS, which often times out; run in a separate non-blocking CI step"]
     pub fn test_pckcerts_with_fallback() {
         let client = AzureProvisioningClientBuilder::new(PcsVersion::V4)
             .set_retry_timeout(TIME_RETRY_TIMEOUT)

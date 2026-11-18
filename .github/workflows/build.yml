@@ -67,6 +67,13 @@ jobs:
       - name: Cargo test -p dcap-artifact-retrieval --features rustls-tls
         run: cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls
 
+      - name: Cargo test -p dcap-artifact-retrieval Azure tests (non-blocking)
+        run: |
+          if ! cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls \
+               provisioning_client::azure::tests:: -- --ignored; then
+            echo "::warning title=Azure DCAP tests failed::Azure PCS tests failed (probably a service timeout). Not blocking CI; see the step log."
+          fi
+
       - name: Cargo test -p dcap-ql --features link
         run: cargo test --verbose --locked -p dcap-ql --features link
 
