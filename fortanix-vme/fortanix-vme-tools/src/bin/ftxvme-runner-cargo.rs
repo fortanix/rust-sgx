@@ -87,6 +87,7 @@ fn parse_elf_path(arg: &str) -> Result<PathBuf> {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "kebab-case")]
 struct CargoTomlMetadata {
+    #[serde(default)]
     fortanix_vme: FortanixVmeConfig,
 }
 
