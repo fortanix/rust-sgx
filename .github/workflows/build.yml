@@ -69,9 +69,13 @@ jobs:
 
       - name: Cargo test -p dcap-artifact-retrieval Azure tests (non-blocking)
         run: |
-          if ! cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls \
-               provisioning_client::azure::tests:: -- --ignored; then
-            echo "::warning title=Azure DCAP tests failed::Azure PCS tests failed (probably a service timeout). Not blocking CI; see the step log."
+          if ! curl -fsS -o /dev/null --connect-timeout 10 --max-time 20 https://global.acccache.azure.net/; then
+            echo "::warning title=Azure PCS unavailable::It looks like the Azure PCS is unavailable, skipping tests."
+          else
+            if ! cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls \
+                provisioning_client::azure::tests:: -- --ignored; then
+              echo "::warning title=Azure DCAP tests failed::Azure PCS tests failed (probably a service timeout). Not blocking CI; see the step log."
+            fi
           fi
 
       - name: Cargo test -p dcap-ql --features link
