@@ -40,7 +40,7 @@ reqwest = { version = "0.12", features = ["blocking", "json"] } # MIT/Apache-2.0
 regex = "1"                                      # MIT/Apache-2.0
 num = "0.2"                                      # MIT/Apache-2.0
 byteorder = "1.1.0"                              # Unlicense/MIT
-openssl = "0.10"                                 # Apache-2.0
+openssl = "0.10.82"                              # Apache-2.0
 anyhow = "1.0"                                   # MIT/Apache-2.0
 thiserror = "1.0"                                # MIT/Apache-2.0
 crypto-hash = "0.3"                              # MIT
