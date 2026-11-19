@@ -8,7 +8,6 @@
 use std::collections::BTreeMap;
 use std::convert::{TryFrom, TryInto};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::Read;
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
@@ -34,7 +33,7 @@ pub use self::intel::IntelProvisioningClientBuilder;
 pub use self::pccs::PccsProvisioningClientBuilder;
 
 // Taken from https://www.iana.org/assignments/http-status-codes/http-status-codes.xhtml
-#[derive(Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, TryFromPrimitive)]
 #[repr(u16)]
 pub enum StatusCode {
     Continue = 100,
@@ -493,16 +492,8 @@ impl<T: for<'a> ProvisioningServiceApi<'a> + Sync + ?Sized> BackoffService<T> {
         if let Some(retry_timeout) = self.retry_timeout {
             let op = || match self.service.call_service::<F>(fetcher, input) {
                 Ok(output) => Ok(output),
-                Err(err) => match err {
-                    Error::PCSError(status_code, msg) => {
-                        if status_code.clone() as u16 >= 500 {
-                            Err(backoff::Error::transient(Error::PCSError(status_code, msg)))
-                        } else {
-                            Err(backoff::Error::permanent(Error::PCSError(status_code, msg)))
-                        }
-                    }
-                    err @ _ => Err(backoff::Error::Permanent(err)),
-                },
+                Err(err) if err.is_transient() => Err(backoff::Error::transient(err)),
+                Err(err) => Err(backoff::Error::permanent(err)),
             };
 
             let backoff = backoff::ExponentialBackoffBuilder::default()
@@ -943,7 +934,7 @@ impl<'req> Fetcher<'req> for ReqwestClient {
         url: &String,
         headers: Vec<(String, String)>,
     ) -> Result<Self::Request, Error> {
-        let url = reqwest::Url::parse(url).map_err(|e| e.to_string())?;
+        let url = reqwest::Url::parse(url).map_err(|_| Error::BadRequest("failed to parse URL"))?;
 
         let mut result = self.get(url);
 
@@ -965,32 +956,40 @@ impl<'req> Fetcher<'req> for ReqwestClient {
             }
             s
         }
-        let response = request.send().map_err(|e| report(&e))?;
+        let response = request.send().map_err(|e| {
+            let msg = report(&e);
+            if e.is_timeout() || e.is_connect() {
+                Error::NetworkError(msg)
+            } else {
+                Error::FetcherFailure(msg)
+            }
+        })?;
         let status_code =
-            StatusCode::try_from(response.status().as_u16()).map_err(|e| e.to_string())?;
+            StatusCode::try_from(response.status().as_u16())
+                .map_err(|e| Error::read_response_error(e.to_string()))?;
 
         Ok((status_code, response))
     }
 
     fn parse_response(
         &'req self,
-        mut response: Self::Response,
+        response: Self::Response,
     ) -> Result<(String, Vec<(String, String)>), Error> {
-        let mut body = Vec::new();
-        response.read_to_end(&mut body).map_err(|e| {
-            Error::ReadResponseError(
-                format!("Error while trying to read response body. Error: {}", e).into(),
-            )
-        })?;
-
-        let body = String::from_utf8(body)
-            .map_err(|e| Error::ReadResponseError(format!("{}", e).into()))?;
-
         let headers: Vec<(String, String)> = response
             .headers()
             .iter()
             .map(|(header, value)| (header.to_string(), value.to_str().unwrap_or("").to_string()))
             .collect();
+
+        let body = response.text().map_err(|e| {
+            let msg = format!("Error while trying to read response body. Error: {}", e);
+
+            if e.is_timeout() {
+                Error::NetworkError(msg)
+            } else {
+                Error::ReadResponseError(msg.into())
+            }
+        })?;
         Ok((body, headers))
     }
 }

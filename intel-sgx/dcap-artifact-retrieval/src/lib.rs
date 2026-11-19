@@ -32,11 +32,9 @@ quick_error! {
             display("Error parsing PCKID file: {}", msg)
         }
         ReadResponseError(msg: Cow<'static, str>) {
-            from()
             display("{}", msg)
         }
         FetcherFailure(err: String) {
-            from()
             display("{}", err)
         }
         IoError(err: IoError) {
@@ -107,6 +105,28 @@ quick_error! {
         RequestNotSupported {
             description("Client does not support this request")
             display("Client does not support this request")
+        }
+        NetworkError(err: String) {
+            display("{}", err)
+        }
+    }
+}
+
+impl Error {
+    /// Shorthand for [Error::ReadResponseError].
+    pub fn read_response_error<T: Into<Cow<'static, str>>>(s: T) -> Self {
+        Error::ReadResponseError(s.into())
+    }
+
+    /// Returns true for failures that may go away when retried: network timeouts and
+    /// connection errors, and HTTP 5xx / 429 Too Many Requests / 408 Request Timeout.
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Error::NetworkError(_) => true,
+            Error::PCSError(status_code, _) => {
+                matches!(*status_code as u16, 500.. | 429 | 408)
+            }
+            _ => false,
         }
     }
 }
