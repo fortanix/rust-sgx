@@ -109,10 +109,10 @@ fn serve(mut conn: TcpStream, key: &mut Pk, cert: &mut Certificate) -> TlsResult
     Ok(())
 }
 
-/// The below main() starts a TLS echo server on `local host:7878`.
+/// The below main() starts a TLS echo server on port `7878` on all interfaces.
 fn main() {
     let (mut key, mut cert) = get_key_and_cert();
-    let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
+    let listener = TcpListener::bind("0.0.0.0:7878").unwrap();
 
     for stream in listener.incoming() {
         let stream = stream.unwrap();
