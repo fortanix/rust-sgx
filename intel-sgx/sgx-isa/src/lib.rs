@@ -587,18 +587,27 @@ pub struct Sigstruct {
 impl Sigstruct {
     pub const UNPADDED_SIZE: usize = 1808;
 
-    /// Returns that part of the `Sigstruct` that is signed. The returned
+    /// Returns the part of the `Sigstruct` that is signed. The returned
     /// slices should be concatenated for hashing.
     pub fn signature_data(&self) -> (&[u8], &[u8]) {
-        unsafe {
-            let part1_start = &(self.header) as *const _ as *const u8;
-            let part1_end = &(self.modulus) as *const _ as *const u8 as usize;
-            let part2_start = &(self.miscselect) as *const _ as *const u8;
-            let part2_end = &(self._reserved4) as *const _ as *const u8 as usize;
+        use core::mem::offset_of;
 
+        const PART1_LEN: usize = offset_of!(Sigstruct, modulus);
+        const PART2_START: usize = offset_of!(Sigstruct, miscselect);
+        const PART2_LEN: usize = offset_of!(Sigstruct, _reserved4) - PART2_START;
+
+        // sig-data := [ header || .. || _reserved1 ] || [ miscselect || .. || isvsvn ]
+        //
+        // SAFETY:
+        // - Both slices are computed from field offsets and lie within `self`.
+        // - Reading `self` bytes as `u8` is valid, as the type is repr(C)
+        //   without any uninit padding bytes.
+        // - The returned slices inherit `self`'s lifetime.
+        let p = self as *const Self as *const u8;
+        unsafe {
             (
-                slice::from_raw_parts(part1_start, part1_end - (part1_start as usize)),
-                slice::from_raw_parts(part2_start, part2_end - (part2_start as usize)),
+                slice::from_raw_parts(p, PART1_LEN),
+                slice::from_raw_parts(p.add(PART2_START), PART2_LEN),
             )
         }
     }
@@ -903,21 +912,110 @@ impl ReportMacStruct {
     }
 }
 
-#[test]
-fn test_eq() {
-    let mut a = Keyrequest::default();
-    let mut b = Keyrequest::default();
-    assert!(a == b);
+#[cfg(test)]
+mod test {
+    use super::*;
 
-    a.keyname = 22;
-    assert!(a != b);
+    #[test]
+    fn test_eq() {
+        let mut a = Keyrequest::default();
+        let mut b = Keyrequest::default();
+        assert!(a == b);
 
-    b.keyname = 22;
-    assert!(a == b);
+        a.keyname = 22;
+        assert!(a != b);
 
-    a.miscmask = 0xdeadbeef;
-    assert!(a != b);
+        b.keyname = 22;
+        assert!(a == b);
 
-    b.miscmask = 0xdeadbeef;
-    assert!(a == b);
+        a.miscmask = 0xdeadbeef;
+        assert!(a != b);
+
+        b.miscmask = 0xdeadbeef;
+        assert!(a == b);
+    }
+
+    #[test]
+    fn test_struct_roundtrips() {
+        macro_rules! assert_byte_round_trip {
+            ($type:ty) => {{
+                #[cfg(not(feature = "large_array_derive"))]
+                {
+                    let default = <$type>::default();
+                    assert!(AsRef::<[u8]>::as_ref(&default)
+                        .iter()
+                        .all(|byte| *byte == 0));
+                }
+
+                let bytes = [0xa5; <$type>::UNPADDED_SIZE];
+                let value = <$type>::try_copy_from(&bytes).unwrap();
+                let cloned = value.clone();
+                assert!(value == cloned);
+                assert_eq!(AsRef::<[u8]>::as_ref(&value), &bytes[..]);
+            }};
+        }
+
+        assert_byte_round_trip!(Secs);
+        assert_byte_round_trip!(Attributes);
+        assert_byte_round_trip!(Tcs);
+        assert_byte_round_trip!(Pageinfo);
+        assert_byte_round_trip!(Secinfo);
+        assert_byte_round_trip!(Pcmd);
+        assert_byte_round_trip!(Sigstruct);
+        assert_byte_round_trip!(Einittoken);
+        assert_byte_round_trip!(Report);
+        assert_byte_round_trip!(Targetinfo);
+        assert_byte_round_trip!(Keyrequest);
+        assert_byte_round_trip!(ReportType);
+        assert_byte_round_trip!(ReportMacStruct);
+        assert_byte_round_trip!(tdx::TeeTcbInfo);
+        assert_byte_round_trip!(tdx::TdInfoBase);
+        assert_byte_round_trip!(tdx::TdInfoV1);
+        assert_byte_round_trip!(tdx::TdxReportV1);
+
+        let bytes = [0; Report::UNPADDED_SIZE + 1];
+        assert!(Report::try_copy_from(&bytes[..Report::UNPADDED_SIZE - 1]).is_none());
+        assert!(Report::try_copy_from(&bytes).is_none());
+    }
+
+    #[test]
+    fn test_page_type_mut() {
+        let mut flags = SecinfoFlags::R | SecinfoFlags::W | SecinfoFlags::from(PageType::Tcs);
+        assert_eq!(flags.page_type(), PageType::Tcs as u8);
+
+        *flags.page_type_mut() = 0xa5;
+
+        assert_eq!(flags.page_type(), 0xa5);
+        assert!(flags.contains(SecinfoFlags::R | SecinfoFlags::W));
+    }
+
+    #[test]
+    fn test_signature_data() {
+        const PART1_END: usize = 128;
+        const PART2_START: usize = 900;
+        const PART2_END: usize = 1028;
+
+        let mut bytes = [0; Sigstruct::UNPADDED_SIZE];
+        bytes[..PART1_END].fill(0x11);
+        bytes[PART1_END..PART2_START].fill(0x22);
+        bytes[PART2_START..PART2_END].fill(0x33);
+        bytes[PART2_END..].fill(0x44);
+
+        let sigstruct = Sigstruct::try_copy_from(&bytes).unwrap();
+        let (part1, part2) = sigstruct.signature_data();
+
+        assert_eq!(part1, &bytes[..PART1_END]);
+        assert_eq!(part2, &bytes[PART2_START..PART2_END]);
+    }
+
+    #[test]
+    fn test_report_mac_data() {
+        let mut bytes = [0; Report::UNPADDED_SIZE];
+        bytes[..Report::TRUNCATED_SIZE].fill(0x11);
+        bytes[Report::TRUNCATED_SIZE..].fill(0x22);
+
+        let report = Report::try_copy_from(&bytes).unwrap();
+
+        assert_eq!(&report.mac_data()[..], &bytes[..Report::TRUNCATED_SIZE]);
+    }
 }
