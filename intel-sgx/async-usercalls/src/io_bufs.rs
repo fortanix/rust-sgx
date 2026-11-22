@@ -1,8 +1,8 @@
 use std::cell::UnsafeCell;
 use std::cmp;
 use std::io::IoSlice;
-use std::ops::{Deref, DerefMut, Range};
-use std::os::fortanix_sgx::usercalls::alloc::{User, UserRef};
+use std::ops::Range;
+use std::os::fortanix_sgx::usercalls::alloc::{User, UserMut, UserRef};
 use std::sync::Arc;
 
 /// Userspace buffer. Note that you have to be careful with reading data and writing data
@@ -39,39 +39,30 @@ impl UserBuf {
 
 unsafe impl Send for UserBuf {}
 
-impl Deref for UserBuf {
-    type Target = UserRef<[u8]>;
 
-    fn deref(&self) -> &Self::Target {
-        match self.0 {
-            UserBufKind::Owned { ref user, ref range } => &user[range.start..range.end],
-            UserBufKind::Shared { ref user, ref range } => {
-                let user = unsafe { &*user.get() };
-                &user[range.start..range.end]
-            }
-        }
+impl UserBuf {
+    pub fn as_user_ref(&self) -> UserRef<'_, [u8]> {
+        let (user, range) = match &self.0 {
+            UserBufKind::Owned { user, range } => (user, range),
+            UserBufKind::Shared { user, range } => (unsafe { &*user.get() }, range),
+        };
+        user.as_user_ref().index(range.clone())
+    }
+
+    pub fn as_user_mut(&mut self) -> UserMut<'_, [u8]> {
+        let (user, range) = match &mut self.0 {
+            UserBufKind::Owned { user, range } => (user, range),
+            UserBufKind::Shared { user, range } => (unsafe { &mut *user.get() }, range),
+        };
+        user.as_user_mut().index_mut(range.clone())
     }
 }
 
-impl DerefMut for UserBuf {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        match self.0 {
-            UserBufKind::Owned {
-                ref mut user,
-                ref range,
-            } => &mut user[range.start..range.end],
-            UserBufKind::Shared { ref user, ref range } => {
-                let user = unsafe { &mut *user.get() };
-                &mut user[range.start..range.end]
-            }
-        }
-    }
-}
 
 impl From<User<[u8]>> for UserBuf {
     fn from(user: User<[u8]>) -> Self {
         UserBuf(UserBufKind::Owned {
-            range: 0..user.len(),
+            range: 0..user.as_user_ref().len(),
             user,
         })
     }
@@ -102,7 +93,7 @@ unsafe impl Send for WriteBuffer {}
 impl WriteBuffer {
     pub fn new(userbuf: User<[u8]>) -> Self {
         Self {
-            buf_len: userbuf.len(),
+            buf_len: userbuf.as_user_ref().len(),
             userbuf: Arc::new(UnsafeCell::new(userbuf)),
             read: 0,
             write: 0,
@@ -134,7 +125,7 @@ impl WriteBuffer {
         let n = end - write_offset;
         unsafe {
             let userbuf = &mut *self.userbuf.get();
-            userbuf[write_offset..write_offset + n].copy_from_enclave(&buf[..n]);
+            userbuf.as_user_mut().index_mut(write_offset..write_offset + n).copy_from_enclave(&buf[..n]);
         }
         self.advance_write(n);
         n + if n < can_write { self.write(&buf[n..]) } else { 0 }
@@ -172,7 +163,7 @@ impl WriteBuffer {
     ///
     /// This function is supposed to be used in conjunction with `consumable_chunk()`.
     pub fn consume(&mut self, buf: UserBuf, n: usize) {
-        assert!(n <= buf.len());
+        assert!(n <= buf.as_user_ref().len());
         const PANIC_MESSAGE: &'static str = "`buf` not produced by self.consumable_chunk()";
         let buf = buf.into_shared().expect(PANIC_MESSAGE);
         assert!(Arc::ptr_eq(&self.userbuf, &buf), "{}", PANIC_MESSAGE);
@@ -230,7 +221,7 @@ impl ReadBuffer {
     /// Constructs a new `ReadBuffer`, assuming `len` bytes of `userbuf` have
     /// meaningful data. Panics if `len > userbuf.len()`.
     pub fn new(userbuf: User<[u8]>, len: usize) -> ReadBuffer {
-        assert!(len <= userbuf.len());
+        assert!(len <= userbuf.as_user_ref().len());
         ReadBuffer {
             userbuf,
             position: 0,
@@ -244,7 +235,7 @@ impl ReadBuffer {
             return 0;
         }
         let n = cmp::min(buf.len(), self.len - self.position);
-        self.userbuf[self.position..self.position + n].copy_to_enclave(&mut buf[..n]);
+        self.userbuf.as_user_ref().index(self.position..self.position + n).copy_to_enclave(&mut buf[..n]);
         self.position += n;
         n
     }
