@@ -26,7 +26,7 @@ impl Platform for NitroEnclaves {
 
     fn run<I: Into<Self::RunArgs>>(run_args: I) -> Result<Self::EnclaveDescriptor, RunnerError> {
         let mut run_args: RunEnclavesArgs = run_args.into();
-        let logger = logger::init_logger().expect("Log init failed");
+        let logger = logger::init_logger()?;
         let mut comm = enclave_proc_comm::enclave_proc_spawn(&logger)?;
 
         if run_args.enclave_name.is_none() {
