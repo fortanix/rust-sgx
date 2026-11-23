@@ -19,4 +19,7 @@ serde_cbor = { version = "0.11" }
 std = ["serde/std", "thiserror"]
 default = ["std"]
 docs = []
-rustc-dep-of-std = ["core", "alloc", "serde/rustc-dep-of-std"]
+# in the Rust std (fortanix/rust), the `serde/rustc-dep-of-std` feature (defined in fortanix/serde)
+# is already added in library/std/Cargo.toml. Omitting it here doesn't break std compilation 
+# (Cargo merges features), and allows using upstream `serde` in the rust-sgx workspace.
+rustc-dep-of-std = ["core", "alloc", "serde"]

@@ -55,4 +55,3 @@ resolver = "2"
 
 [patch.crates-io]
 rustc-serialize = { git = "https://github.com/fortanix/rustc-serialize.git", branch = "portability" }
-serde = { git = "https://github.com/fortanix/serde.git", branch = "master" }
