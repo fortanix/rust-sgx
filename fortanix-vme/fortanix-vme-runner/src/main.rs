@@ -221,9 +221,13 @@ impl TryFrom<IdBlockCliArgs> for IdBlockArgs {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    env_logger::Builder::new()
-        .filter_level(cli.verbose.into())
-        .init();
+    // The logging initialization here causes a crash for Nitro
+    // as Nitro runs initialize their own global logger in NitroEnclaves::run.
+    if cli.common_args.simulate || !matches!(&cli.command, Commands::AwsNitro(_)) {
+        env_logger::Builder::new()
+            .filter_level(cli.verbose.into())
+            .init();
+    }
 
     let common_args = cli.common_args;
     match cli.command {
