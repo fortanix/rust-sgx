@@ -396,4 +396,41 @@ mod tests {
             false
         });
     }
+
+    #[test]
+    fn test_get_quote_full() {
+        use sgxs_loaders::isgx::Device as IsgxDevice;
+
+        const SGX_QL_ALG_ECDSA_P256: u32 = 2;
+
+        let mut device = IsgxDevice::new()
+            .map_err(|err| anyhow::Error::from(err).context("Error opening SGX device"))?
+            .einittoken_provider(AesmClient::new())
+            .build();
+
+        let client = AesmClient::new();
+
+        let key_ids = client
+            .get_supported_att_key_ids()
+            .map_err(|err| anyhow::Error::from(err).context("AESM communication error getting attestation key ID"))?;
+
+        let ecdsa_key_id = key_ids
+            .into_iter()
+            .find(|id| SGX_QL_ALG_ECDSA_P256 == get_algorithm_id(id))
+            .ok_or(anyhow!("No appropriate attestation key ID"))?;
+
+        let quote_info = client
+            .init_quote_ex(ecdsa_key_id.clone())
+            .map_err(|err| anyhow::Error::from(err).context("Error during quote initialization"))?;
+
+        let ti = Targetinfo::try_copy_from(quote_info.target_info()).unwrap();
+        let report = report_test::report(&ti, &mut device).unwrap();
+
+        let res = client
+            .get_quote_ex(ecdsa_key_id, report.as_ref().to_owned(), None, vec![0; 16])
+            .map_err(|err| anyhow::Error::from(err).context("Error obtaining quote"))?;
+
+        let quote = Quote::parse(res.quote()).map_err(|err| err.context("Error parsing quote"))?;
+        let QuoteHeader::V3 { user_data, .. } = quote.header();
+    }
 }
