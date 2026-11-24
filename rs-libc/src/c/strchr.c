@@ -1,4 +1,4 @@
-#include <string.h>
+#include <stddef.h>
 
 char *__strchrnul(const char *, int);
 
