@@ -144,7 +144,7 @@ impl RootCaCrl<Verified> {
 #[cfg(test)]
 #[cfg(feature = "verify")]
 mod tests {
-    use tempdir::TempDir;
+    use tempfile::TempDir;
     use crate::{Unverified, WriteOptionsBuilder};
     use super::RootCaCrl;
 
@@ -158,7 +158,7 @@ mod tests {
 
         let root_ca_crl = root_ca_crl.verify(&root_cas).unwrap();
 
-        let temp_dir = TempDir::new("tempdir").unwrap();
+        let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
         root_ca_crl.write_to_file(&path, WriteOptionsBuilder::new().build()).unwrap();
 

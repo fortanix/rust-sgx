@@ -38,7 +38,7 @@ mbedtls = { version = "0.13.1", features = ["std", "time"], default-features = f
 
 [dev-dependencies]
 hex = "0.4.2"
-tempdir = "0.3.7"
+tempfile = "3.27.0"
 test-case = "3.3.1"
 
 [target.'cfg(not(target_env = "sgx"))'.dev-dependencies]

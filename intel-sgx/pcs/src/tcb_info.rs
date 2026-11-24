@@ -753,7 +753,7 @@ mod tests {
         crate::tcb_info::{Fmspc, TcbInfo},
         crate::platform,
         crate::RootCaCrl,
-        tempdir::TempDir,
+        tempfile::TempDir,
     };
     use {crate::{PlatformTypeForTcbInfo, TcbComponentsOf, TcbData, TcbStatus, Unverified, tcb_info::TdxTcbLevel}, serde::{Deserialize, Serialize}, std::convert::TryFrom};
     use super::AdvisoryID;
@@ -781,7 +781,7 @@ mod tests {
         assert!(info.verify_ex(&root_certificates, &root_ca_crls, 2, &juni_5_2020).is_ok());
 
         // Test serialization/deserialization
-        let temp_dir = TempDir::new("tempdir").unwrap();
+        let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().as_os_str().to_str().unwrap();
         info.write_to_file(&path, WriteOptionsBuilder::new().build()).unwrap();
         let info2 = TcbInfo::read_from_file(&path, &Fmspc::try_from("00906ea10000").expect("static fmspc"), Some(8)).unwrap();
