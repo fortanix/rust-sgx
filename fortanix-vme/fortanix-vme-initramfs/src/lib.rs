@@ -3,6 +3,8 @@ use cpio::{self, NewcReader};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::io::{self, Read, Seek, Write};
 use std::path::Path;
 use thiserror::Error;
@@ -22,6 +24,8 @@ pub enum Error {
     ExtractError(#[source] io::Error),
     #[error("Expected trailer in initramfs missing")]
     ExpectedTrailer,
+    #[error("Missing hardlink target: {target:?}, source: {source_:?}")]
+    MissingHardlinkTarget { source_: String, target: String },
     #[error("Path conversion error: {0}")]
     PathError(String),
     #[error("Reading initramfs failed")]
@@ -46,9 +50,20 @@ pub enum Error {
     WrongGid { found: u32, expected: u32 },
     #[error("Unexpected mode (found \"{found:?}\", expected \"{expected:?}\")")]
     WrongMode { found: u32, expected: u32 },
+    #[error("Unexpected link count (found {found}, expected {expected})")]
+    WrongNlink { found: u32, expected: u32 },
+    #[error("Hardlink {source_:?} does not share an inode and device with {target:?}")]
+    WrongHardlinkTarget { source_: String, target: String },
 }
 
 impl Error {
+    pub fn missing_hardlink_target(source: &OsStr, target: &OsStr) -> Self {
+        Error::MissingHardlinkTarget {
+            source_: format!("{:?}", source),
+            target: format!("{:?}", target),
+        }
+    }
+
     pub fn unexpected_data(path: String, found: String, expected: String) -> Self {
         Error::UnexpectedData {
             path,
@@ -86,8 +101,7 @@ impl<R: Read> From<R> for Initramfs<R> {
 impl<R: Read + Write> Initramfs<R> {
     pub fn from_fs_tree(fs_tree: FsTree, output: R) -> Result<Initramfs<R>, Error> {
         let encoder = GzEncoder::new(output, Compression::default());
-        let inputs = fs_tree.into_cpio_input()?;
-        let encoder = cpio::write_cpio(inputs.into_iter(), encoder).map_err(Error::WriteError)?;
+        let encoder = fs_tree.write_cpio(encoder)?;
         let encoder = encoder.finish().map_err(Error::WriteError)?;
         Ok(Initramfs(encoder))
     }
@@ -98,13 +112,52 @@ impl<R: Read> Initramfs<R> {
         let decoder = GzDecoder::new(self.0);
         let mut reader = NewcReader::new(decoder).map_err(Error::ReadError)?;
 
-        for fs_entry in fs_tree.0.into_iter() {
-            let mode = fs_entry.mode;
+        // Match the writer's order: regular entries first, then hardlinks.
+        let (hardlinks, entries): (Vec<_>, Vec<_>) = fs_tree
+            .entries
+            .into_iter()
+            .partition(|entry| matches!(entry.inner, FsTreeEntryInner::Hardlink { .. }));
+        let mut link_counts = HashMap::new();
+        for entry in &hardlinks {
+            if let FsTreeEntryInner::Hardlink { target } = &entry.inner {
+                *link_counts.entry(target.clone()).or_insert(1) += 1;
+            }
+        }
+        let mut targets = HashMap::new();
+
+        for fs_entry in entries.into_iter().chain(hardlinks) {
+            let (mode, nlink) = match &fs_entry.inner {
+                FsTreeEntryInner::Hardlink { target } => {
+                    let &(mode, _, _, _) = targets.get(target).ok_or_else(|| {
+                        Error::missing_hardlink_target(fs_entry.path.as_os_str(), target)
+                    })?;
+                    (mode, link_counts[target])
+                }
+                FsTreeEntryInner::File { .. } => (
+                    fs_entry.mode,
+                    link_counts
+                        .get(fs_entry.path.as_os_str())
+                        .copied()
+                        .unwrap_or(1),
+                ),
+                _ => (fs_entry.mode, 1),
+            };
             let path = fs_entry.path;
 
             Initramfs::verify_entry(&reader, &path, DEFAULT_UID, DEFAULT_GID, mode)?;
+            if reader.entry().nlink() != nlink {
+                return Err(Error::WrongNlink {
+                    found: reader.entry().nlink(),
+                    expected: nlink,
+                });
+            }
             match fs_entry.inner {
                 FsTreeEntryInner::File { mut content } => {
+                    let entry = reader.entry();
+                    targets.insert(
+                        path.as_os_str().to_os_string(),
+                        (mode, entry.ino(), entry.dev_major(), entry.dev_minor()),
+                    );
                     // Verify content
                     let mut buf = Vec::new();
                     content.read_to_end(&mut buf).map_err(Error::ReadError)?;
@@ -120,6 +173,19 @@ impl<R: Read> Initramfs<R> {
                         &path,
                         &target.into_encoded_bytes(),
                     )?;
+                }
+                FsTreeEntryInner::Hardlink { target } => {
+                    let &(_, ino, dev_major, dev_minor) = &targets[&target];
+                    let entry = reader.entry();
+                    if (entry.ino(), entry.dev_major(), entry.dev_minor())
+                        != (ino, dev_major, dev_minor)
+                    {
+                        return Err(Error::WrongHardlinkTarget {
+                            source_: path.display().to_string(),
+                            target: target.to_string_lossy().into_owned(),
+                        });
+                    }
+                    Initramfs::verify_entry_content(&mut reader, &path, &[])?;
                 }
             }
             reader = Initramfs::next(reader)?;
@@ -220,10 +286,115 @@ impl<R: Read> Initramfs<R> {
 
 #[cfg(test)]
 mod tests {
-    use super::{fs_tree::FsTree, Initramfs};
+    use super::{fs_tree::FsTree, Error, Initramfs};
+    use cpio::NewcBuilder;
+    use flate2::{write::GzEncoder, Compression};
     use hex_literal::hex;
     use sha2::{Digest, Sha256};
     use std::io::{Cursor, Seek};
+
+    fn hardlink_tree() -> FsTree {
+        FsTree::new()
+            .add_hardlink("alias", "target")
+            .unwrap()
+            .add_executable("target", Cursor::new(b"payload"))
+            .add_hardlink("alias2", "target")
+            .unwrap()
+    }
+
+    #[test]
+    fn verify_hardlinks_before_and_after_target() {
+        let archive = Initramfs::from_fs_tree(hardlink_tree(), Cursor::new(Vec::new())).unwrap();
+        let mut data = archive.into_inner();
+        data.rewind().unwrap();
+        Initramfs::from(data).verify(hardlink_tree()).unwrap();
+    }
+
+    // Build independent archive fixtures so FsTree::verify is tested against malformed headers
+    fn hardlink_fixture(alias: NewcBuilder, content: &[u8], target_nlink: u32) -> Cursor<Vec<u8>> {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        let entries = [
+            (
+                NewcBuilder::new("./target")
+                    .mode(0o100775)
+                    .ino(7)
+                    .nlink(target_nlink),
+                &b"payload"[..],
+            ),
+            (alias, content),
+            (
+                NewcBuilder::new("./alias2").mode(0o100775).ino(7).nlink(3),
+                &b""[..],
+            ),
+        ];
+        for (builder, mut content) in entries {
+            let mut writer = builder.write(&mut encoder, content.len() as u32);
+            std::io::copy(&mut content, &mut writer).unwrap();
+            writer.finish().unwrap();
+        }
+        cpio::newc::trailer(&mut encoder).unwrap();
+        Cursor::new(encoder.finish().unwrap())
+    }
+
+    fn alias_builder() -> NewcBuilder {
+        NewcBuilder::new("./alias").mode(0o100775).ino(7).nlink(3)
+    }
+
+    #[test]
+    fn verify_hardlinks_accepts_independent_inode_numbers() {
+        Initramfs::from(hardlink_fixture(alias_builder(), b"", 3))
+            .verify(hardlink_tree())
+            .unwrap();
+    }
+
+    #[test]
+    fn verify_hardlinks_rejects_wrong_inode_or_device() {
+        for alias in [
+            alias_builder().ino(8),
+            alias_builder().dev_major(1),
+            alias_builder().dev_minor(1),
+        ] {
+            assert!(matches!(
+                Initramfs::from(hardlink_fixture(alias, b"", 3)).verify(hardlink_tree()),
+                Err(Error::WrongHardlinkTarget { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn verify_hardlinks_rejects_wrong_link_counts() {
+        for (alias, target_nlink) in [(alias_builder().nlink(2), 3), (alias_builder(), 1)] {
+            assert!(matches!(
+                Initramfs::from(hardlink_fixture(alias, b"", target_nlink)).verify(hardlink_tree()),
+                Err(Error::WrongNlink { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn verify_hardlinks_rejects_wrong_mode_and_content() {
+        assert!(matches!(
+            Initramfs::from(hardlink_fixture(alias_builder().mode(0o100664), b"", 3))
+                .verify(hardlink_tree()),
+            Err(Error::WrongMode { .. })
+        ));
+        assert!(matches!(
+            Initramfs::from(hardlink_fixture(alias_builder(), b"extra", 3)).verify(hardlink_tree()),
+            Err(Error::UnexpectedData { .. })
+        ));
+    }
+
+    #[test]
+    fn verify_hardlinks_reports_missing_target() {
+        let archive = Initramfs::from_fs_tree(FsTree::new(), Cursor::new(Vec::new())).unwrap();
+        let mut data = archive.into_inner();
+        data.rewind().unwrap();
+        let expected = FsTree::new().add_hardlink("alias", "missing").unwrap();
+        assert!(matches!(
+            Initramfs::from(data).verify(expected),
+            Err(Error::MissingHardlinkTarget { .. })
+        ));
+    }
 
     #[test]
     fn create_and_parse_initramfs() {
