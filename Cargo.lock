@@ -1038,6 +1038,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "compiler_builtins"
+version = "0.1.160"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6376049cfa92c0aa8b9ac95fae22184b981c658208d4ed8a1dc553cd83612895"
+
+[[package]]
 name = "confidential-vm-blobs"
 version = "0.2.0"
 
@@ -1472,7 +1478,7 @@ dependencies = [
  "aws-nitro-enclaves-image-format",
  "libc",
  "nix 0.26.4",
- "vsock",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -1601,6 +1607,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "enclave-runner-client"
+version = "0.1.0"
+dependencies = [
+ "fortanix-vme-abi",
+ "libc",
+ "rustc-std-workspace-alloc",
+ "rustc-std-workspace-core",
+ "serde_cbor",
+ "vsock 0.2.4",
+]
+
+[[package]]
 name = "enclave-runner-sgx"
 version = "0.1.4"
 dependencies = [
@@ -1679,7 +1697,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33d852cb9b869c2a9b3df2f71a3074817f01e1844f839a144f5fcef059a4eb5d"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1868,7 +1886,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-vsock",
- "vsock",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -2027,8 +2045,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if 1.0.0",
+ "compiler_builtins",
  "js-sys",
  "libc",
+ "rustc-std-workspace-core",
  "wasi 0.11.0+wasi-snapshot-preview1",
  "wasm-bindgen",
 ]
@@ -2674,7 +2694,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi 0.5.2",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2832,9 +2852,12 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.186"
+version = "0.2.191"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+dependencies = [
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "libloading"
@@ -3143,7 +3166,7 @@ dependencies = [
  "sha2 0.9.9",
  "signal-hook",
  "vmm-sys-util",
- "vsock",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -3177,6 +3200,19 @@ name = "nix"
 version = "0.20.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e06129fb611568ef4e868c14b326274959aa70ff7776e9d55323531c374945"
+dependencies = [
+ "bitflags 1.2.1",
+ "cc",
+ "cfg-if 1.0.0",
+ "libc",
+ "memoffset 0.6.4",
+]
+
+[[package]]
+name = "nix"
+version = "0.22.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4916f159ed8e5de0082076562152a76b7a1f64a01fd9d1e0fea002c37624faf"
 dependencies = [
  "bitflags 1.2.1",
  "cc",
@@ -3837,7 +3873,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4198,15 +4234,15 @@ source = "git+https://github.com/fortanix/rustc-serialize.git?branch=portability
 
 [[package]]
 name = "rustc-std-workspace-alloc"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ff66d57013a5686e1917ed6a025d54dd591fcda71a41fe07edf4d16726aefa86"
+checksum = "f9d441c3b2ebf55cebf796bfdc265d67fa09db17b7bb6bd4be75c509e1e8fec3"
 
 [[package]]
 name = "rustc-std-workspace-core"
-version = "1.0.0"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1956f5517128a2b6f23ab2dadf1a976f4f5b27962e7724c2bf3d45e539ec098c"
+checksum = "aa9c45b374136f52f2d6311062c7146bff20fec063c3f5d46a410bd937746955"
 
 [[package]]
 name = "rustc_version"
@@ -4227,7 +4263,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4240,7 +4276,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4972,7 +5008,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5245,7 +5281,7 @@ dependencies = [
  "futures 0.3.31",
  "libc",
  "tokio",
- "vsock",
+ "vsock 0.5.2",
 ]
 
 [[package]]
@@ -5582,6 +5618,17 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock"
+version = "0.2.4"
+dependencies = [
+ "compiler_builtins",
+ "getrandom 0.2.17",
+ "libc",
+ "nix 0.22.3",
+ "rustc-std-workspace-core",
+]
+
+[[package]]
+name = "vsock"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2da6e4ac76cd19635dce0f98985378bb62f8044ee2ff80abd2a7334b920ed63"
@@ -5617,6 +5664,11 @@ name = "wasi"
 version = "0.11.0+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9c8d87e72b64a3b4db28d11ce29237c246188f4f51057d65a7eab63b7987e423"
+dependencies = [
+ "compiler_builtins",
+ "rustc-std-workspace-alloc",
+ "rustc-std-workspace-core",
+]
 
 [[package]]
 name = "wasm-bindgen"

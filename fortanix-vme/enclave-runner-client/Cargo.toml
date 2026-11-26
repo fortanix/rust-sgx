@@ -1,0 +1,36 @@
+[package]
+name = "enclave-runner-client"
+version = "0.1.0"
+edition = "2024"
+authors = ["Fortanix, Inc."]
+
+[dependencies]
+core = { version = "1.0.1", optional = true, package = "rustc-std-workspace-core" }
+alloc = { version = "1.0.1", optional = true, package = "rustc-std-workspace-alloc" }
+
+#vsock = { git = "https://github.com/fortanix/vsock-rs.git", branch = "gianlu33/rte-1352-fix-compiler-errors", default-features = false, features = ["random_port"] }
+vsock = { path = "../../../vsock-rs", default-features = false, features = ["random_port"] }
+serde_cbor = { version = "0.11", default-features = false }
+
+# `fortanix/rust` patches libc to our `fortanix/libc` fork (branch `fortanixvme-2023-05-07-alpha), 
+# which is currently at version 0.2.175. Specifying a higher version here will make cargo use upstream
+# libc, which will break std compilation as upstream libc is not aware of the fortanixvme target. 
+libc = { version = "0.2.175", default-features = false }
+
+fortanix-vme-abi = { path = "../fortanix-vme-abi", default-features = false, features = ["serde"] }
+
+[dev-dependencies]
+
+[features]
+core = ["dep:core", "fortanix-vme-abi/core"]
+alloc = ["dep:alloc", "serde_cbor/alloc", "fortanix-vme-abi/alloc"]
+std = ["vsock/std", "serde_cbor/std", "libc/std", "fortanix-vme-abi/std"]
+default = ["std"]
+docs = []
+rustc-dep-of-std = [
+    "core",
+    "alloc",
+    "vsock/rustc-dep-of-std",
+    "libc/rustc-dep-of-std",
+    "fortanix-vme-abi/rustc-dep-of-std",
+]
