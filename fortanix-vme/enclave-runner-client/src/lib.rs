@@ -13,7 +13,7 @@ use alloc::string::{String, ToString};
 #[cfg(feature = "std")]
 use libc as _;
 
-mod fortanixvme;
+mod platform;
 
 mod connection_info;
 pub use connection_info::*;

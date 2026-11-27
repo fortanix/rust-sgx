@@ -9,14 +9,14 @@ use vsock::{VsockStream, VsockListener, SockAddr};
 
 use crate::Error;
 use crate::connection_info::ConnectionInfo;
-use crate::fortanixvme::Fortanixvme;
+use crate::platform::ClientPlatform;
 
 pub struct Client {
-    stream: VsockStream<Fortanixvme>,
+    stream: VsockStream<ClientPlatform>,
 }
 
 impl Client {
-    fn connect(port: u32) -> Result<VsockStream<Fortanixvme>, Error> {
+    fn connect(port: u32) -> Result<VsockStream<ClientPlatform>, Error> {
         // Try to contact the enclave runner through the hypervisor
         VsockStream::connect_with_cid_port(vsock::VMADDR_CID_HOST, port).or_else(|e0| {
             // When debugging, there may not be a hypervisor. Fall back to local communication
@@ -54,7 +54,7 @@ impl Client {
     pub fn bind_socket(&mut self, addr: String) -> Result<ConnectionInfo, Error> {
         // Start listener socket within enclave, waiting for incoming connections from enclave
         // runner
-        let listener = VsockListener::<Fortanixvme>::bind_with_cid(vsock::VMADDR_CID_ANY)?;
+        let listener = VsockListener::<ClientPlatform>::bind_with_cid(vsock::VMADDR_CID_ANY)?;
         let enclave_port = listener.local_addr()?.port();
 
         // Tell runner to start listening on the specified address and forward trafic to the
@@ -116,7 +116,7 @@ impl Client {
     }
 
     pub fn local_vsock_addr(fd: i32) -> Result<SockAddr, Error> {
-        Ok(SockAddr::from_raw_fd::<Fortanixvme>(fd)?)
+        Ok(SockAddr::from_raw_fd::<ClientPlatform>(fd)?)
     }
 
     fn send(&mut self, req: &Request) -> Result<(), Error> {
