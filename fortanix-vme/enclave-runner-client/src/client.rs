@@ -11,6 +11,22 @@ use crate::Error;
 use crate::connection_info::ConnectionInfo;
 use crate::platform::ClientPlatform;
 
+/// The byte stream to the runner. Implemented for the vsock stream; tests
+/// implement it for an in-memory fake.
+pub(crate) trait Transport {
+    fn write_all(&mut self, buf: &[u8]) -> Result<(), Error>;
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error>;
+}
+
+impl Transport for VsockStream<ClientPlatform> {
+    fn write_all(&mut self, buf: &[u8]) -> Result<(), Error> {
+        VsockStream::write_all(&*self, buf).map(|_| ()).map_err(Error::from)
+    }
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), Error> {
+        VsockStream::read_exact(&*self, buf).map_err(Error::from)
+    }
+}
+
 pub struct Client {
     stream: VsockStream<ClientPlatform>,
 }
@@ -120,32 +136,41 @@ impl Client {
     }
 
     fn send(&mut self, req: &Request) -> Result<(), Error> {
-        let req: Vec<u8> = serde_cbor::ser::to_vec(req)
-            .map_err(|_e| Error::SerializationError)?;
-        self.stream.write_all(&req.len().to_le_bytes())?;
-        self.stream.write_all(req.as_slice())?;
-        Ok(())
+        send_request(&mut self.stream, req)
     }
 
     fn receive(&mut self) -> Result<Response, Error> {
-        let mut size = [0u8; usize::BITS as usize / 8];
-        self.stream.read_exact(&mut size[..])?;
-        let size = usize::from_le_bytes(size);
+        receive_response(&mut self.stream)
+    }
+}
 
-        let mut resp = Vec::new();
-        resp.resize(size, 0);
-        self.stream.read_exact(&mut resp[..])?;
-        let resp = serde_cbor::from_slice(&resp)
-            .map_err(|_| Error::DeserializationError)?;
+pub(crate) fn send_request<S: Transport>(stream: &mut S, req: &Request) -> Result<(), Error> {
+    let req: Vec<u8> = serde_cbor::ser::to_vec(req)
+        .map_err(|_e| Error::SerializationError)?;
+    stream.write_all(&req.len().to_le_bytes())?;
+    stream.write_all(req.as_slice())?;
+    Ok(())
+}
 
-        match resp {
-            fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::Command(kind)) => {
-                Err(Error::IoError(kind))
-            }
-            fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::SystemError(errno)) => {
-                Err(Error::SystemError(errno))
-            }
-            other => Ok(other),
+pub(crate) fn receive_response<S: Transport>(stream: &mut S) -> Result<Response, Error> {
+    let mut size = [0u8; usize::BITS as usize / 8];
+    stream.read_exact(&mut size[..])?;
+    let size = usize::from_le_bytes(size);
+
+    let mut resp = Vec::new();
+    resp.resize(size, 0);
+    stream.read_exact(&mut resp[..])?;
+    let resp = serde_cbor::from_slice(&resp)
+        .map_err(|_| Error::DeserializationError)?;
+
+    match resp {
+        fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::Command(kind)) => {
+            Err(Error::IoError(kind))
         }
+        fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::SystemError(errno)) => {
+            Err(Error::SystemError(errno))
+        }
+        fortanix_vme_abi::Response::Failed(e) => Err(Error::Other(alloc::format!("{:?}", e))),
+        other => Ok(other),
     }
 }
