@@ -16,6 +16,7 @@ impl Platform for ClientPlatform {
         #[cfg(feature = "std")]
         let errno = std::io::Error::last_os_error().raw_os_error().unwrap_or(0);
         #[cfg(not(feature = "std"))]
+        // SAFETY: `__errno_location` returns a valid pointer to this thread's errno.
         let errno = unsafe { *libc::__errno_location() };
         vsock::Error::SystemError(errno as i32)
     }
