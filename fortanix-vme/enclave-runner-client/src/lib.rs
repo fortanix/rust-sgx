@@ -5,6 +5,7 @@ extern crate std;
 #[cfg_attr(feature = "rustc-dep-of-std", allow(unused_extern_crates))]
 extern crate alloc;
 
+use core::fmt::{Display, Error as FmtError, Formatter};
 use alloc::string::{String, ToString};
 
 // libc is only used without `std` (errno in the no_std path). This prevents
@@ -26,15 +27,26 @@ pub use vsock::SockAddr as VsockAddr;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     InvalidInput,
-    SystemError {
-        errno: i32
-    },
-    IoError {
-        error: IoError
-    },
+    SystemError(i32),
+    IoError(IoError),
     SerializationError,
     DeserializationError,
+    MissingFd,
     Other(String)
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), FmtError> {
+        match self {
+            Error::InvalidInput => write!(f, "invalid input"),
+            Error::SystemError(errno) => write!(f, "system error {}", errno),
+            Error::IoError(error) => write!(f, "I/O error: {:?}", error),
+            Error::SerializationError => write!(f, "serialization error"),
+            Error::DeserializationError => write!(f, "deserialization error"),
+            Error::MissingFd => write!(f, "missing file descriptor"),
+            Error::Other(reason) => write!(f, "{}", reason),
+        }
+    }
 }
 
 impl From<vsock::Error> for Error {
@@ -46,7 +58,7 @@ impl From<vsock::Error> for Error {
             vsock::Error::ReservedPort => {
                 Error::InvalidInput
             }
-            vsock::Error::SystemError(errno) => Error::SystemError { errno },
+            vsock::Error::SystemError(errno) => Error::SystemError(errno),
             vsock::Error::WrongAddressType => {
                 Error::InvalidInput
             }
@@ -54,10 +66,10 @@ impl From<vsock::Error> for Error {
                 Error::InvalidInput
             }
             vsock::Error::WriteZero => {
-                Error::IoError { error: IoError::WriteZero }
+                Error::IoError(IoError::WriteZero)
             }
             vsock::Error::UnexpectedEof => {
-                Error::IoError { error: IoError::UnexpectedEof }
+                Error::IoError(IoError::UnexpectedEof)
             }
         }
     }

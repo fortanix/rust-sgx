@@ -1,5 +1,7 @@
 use fortanix_vme_abi::{Addr};
 
+use crate::Error;
+
 #[derive(Clone, Debug)]
 pub enum ConnectionInfo {
     Listener {
@@ -44,6 +46,13 @@ impl ConnectionInfo {
         match self {
             ConnectionInfo::Listener { enclave_port, .. } => *enclave_port,
             ConnectionInfo::Stream { enclave_port, .. } => *enclave_port,
+        }
+    }
+
+    pub fn fd(&self) -> Result<i32, Error> {
+        match self {
+            ConnectionInfo::Listener {fd, .. } => fd.ok_or(Error::MissingFd),
+            ConnectionInfo::Stream {fd, .. } => fd.ok_or(Error::MissingFd)
         }
     }
 }

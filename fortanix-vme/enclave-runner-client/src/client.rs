@@ -45,7 +45,7 @@ impl Client {
                 Some(proxy.into_raw_fd())
             ))
         } else {
-            Err(Error::IoError { error: ErrorKind::InvalidData })
+            Err(Error::IoError(ErrorKind::InvalidData))
         }
     }
 
@@ -68,7 +68,7 @@ impl Client {
                 Some(listener.into_raw_fd())
             ))
         } else {
-            Err(Error::IoError { error: ErrorKind::InvalidData })
+            Err(Error::IoError(ErrorKind::InvalidData))
         }
     }
 
@@ -79,7 +79,7 @@ impl Client {
         if let Response::IncomingConnection { local, peer, proxy_port } = self.receive()? {
             Ok((local, peer, proxy_port))
         } else {
-            Err(Error::IoError { error: ErrorKind::InvalidData })
+            Err(Error::IoError(ErrorKind::InvalidData))
         }
     }
 
@@ -92,7 +92,7 @@ impl Client {
         if let Response::Closed = client.receive()? {
             Ok(())
         } else {
-            Err(Error::IoError { error: ErrorKind::InvalidData })
+            Err(Error::IoError(ErrorKind::InvalidData))
         }
     }
 
@@ -103,7 +103,7 @@ impl Client {
         if let Response::Init { args } = r {
             Ok(args)
         } else {
-            Err(Error::IoError { error: ErrorKind::InvalidData })
+            Err(Error::IoError(ErrorKind::InvalidData))
         }
     }
 
@@ -115,8 +115,8 @@ impl Client {
         unsafe { libc::exit(code as libc::c_int) }
     }
 
-    pub fn local_vsock_addr(fd: i32) -> Result<SockAddr, vsock::Error> {
-        SockAddr::from_raw_fd::<Fortanixvme>(fd)
+    pub fn local_vsock_addr(fd: i32) -> Result<SockAddr, Error> {
+        Ok(SockAddr::from_raw_fd::<Fortanixvme>(fd)?)
     }
 
     fn send(&mut self, req: &Request) -> Result<(), Error> {
@@ -140,10 +140,10 @@ impl Client {
 
         match resp {
             fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::Command(kind)) => {
-                Err(Error::IoError { error: kind })
+                Err(Error::IoError(kind))
             }
             fortanix_vme_abi::Response::Failed(fortanix_vme_abi::Error::SystemError(errno)) => {
-                Err(Error::SystemError { errno })
+                Err(Error::SystemError(errno))
             }
             other => Ok(other),
         }
