@@ -69,8 +69,12 @@ jobs:
 
       - name: Cargo test -p dcap-artifact-retrieval Azure tests (non-blocking)
         run: |
-          if ! curl -fsS -o /dev/null --connect-timeout 10 --max-time 20 https://global.acccache.azure.net/; then
-            echo "::warning title=Azure PCS unavailable::It looks like the Azure PCS is unavailable, skipping tests."
+          # Any HTTP answer (even 404 on the root) means the service is reachable.
+          # 000 = no connection/timeout, 5xx = service-side problem.
+          status=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 20 \
+                     https://global.acccache.azure.net/ || true)
+          if [ "$status" = "000" ] || [ "$status" -ge 500 ]; then
+            echo "::warning title=Azure PCS unavailable::Azure PCS unreachable (HTTP $status), skipping tests."
           else
             if ! cargo test --verbose --locked -p dcap-artifact-retrieval --features rustls-tls \
                 provisioning_client::azure::tests:: -- --ignored; then
