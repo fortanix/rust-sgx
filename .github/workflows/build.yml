@@ -135,3 +135,23 @@ jobs:
 
       - name: snmalloc correctness test
         run: cd ./examples/mem-correctness-test && cargo run
+
+      - name: Cargo test -p enclave-runner-client --no-default-features --features alloc
+        run: cargo test --verbose --locked -p enclave-runner-client --no-default-features --features alloc
+
+      - name: Load vsock_loopback kernel module (non-blocking)
+        id: vsock
+        run: |
+          if sudo modprobe vsock_loopback; then
+            echo "loaded=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=vsock_loopback unavailable::Could not load vsock_loopback, skipping the enclave-runner-client loopback tests."
+          fi
+
+      - name: Cargo test -p enclave-runner-client --test loopback (vsock loopback)
+        if: steps.vsock.outputs.loaded == 'true'
+        run: cargo test --verbose --locked -p enclave-runner-client --test loopback -- --ignored
+
+      - name: Cargo test -p enclave-runner-client --no-default-features --features alloc --test loopback (vsock loopback)
+        if: steps.vsock.outputs.loaded == 'true'
+        run: cargo test --verbose --locked -p enclave-runner-client --no-default-features --features alloc --test loopback -- --ignored

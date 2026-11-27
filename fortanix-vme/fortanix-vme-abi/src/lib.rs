@@ -3,22 +3,16 @@
 
 #[cfg(feature="std")]
 extern crate std;
+#[cfg_attr(feature = "rustc-dep-of-std", allow(unused_extern_crates))]
+extern crate alloc;
 
-#[cfg(all(feature="alloc", not(feature="std")))]
+// std types are just re-exports of alloc/core types. Conditional compilation is not necessary here,
+// and it allows clean compilation even with no features enabled.
 use {
     alloc::string::String,
     alloc::vec::Vec,
 };
-#[cfg(all(feature="std", not(feature="alloc")))]
-use {
-    std::string::String,
-    std::vec::Vec,
-};
-
-#[cfg(feature="core")]
 use core::net::{IpAddr, SocketAddr};
-#[cfg(all(feature="std", not(feature="core")))]
-use std::net::{IpAddr, SocketAddr};
 
 #[cfg(feature="std")]
 use std::io;
@@ -99,7 +93,6 @@ impl From<SocketAddr> for Addr {
     }
 }
 
-#[cfg(any(feature="core", feature="std"))]
 impl From<Addr> for SocketAddr {
     fn from(addr: Addr) -> SocketAddr {
         match addr {
