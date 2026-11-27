@@ -5619,6 +5619,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 [[package]]
 name = "vsock"
 version = "0.2.4"
+source = "git+https://github.com/fortanix/vsock-rs.git?branch=gianlu33%2Frte-1352-fix-compiler-errors#d39c7d8451536172433aea238a463c11dc3bde5d"
 dependencies = [
  "compiler_builtins",
  "getrandom 0.2.17",

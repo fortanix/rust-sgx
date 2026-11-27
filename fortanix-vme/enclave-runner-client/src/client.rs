@@ -83,8 +83,8 @@ impl Client {
         }
     }
 
-    pub fn close_connection(enclave_port: u32) -> Result<(), Error> {
-        let mut client = Self::new(None)?;
+    pub fn close_connection(port: Option<u32>, enclave_port: u32) -> Result<(), Error> {
+        let mut client = Self::new(port)?;
 
         let close = Request::Close { enclave_port };
         client.send(&close)?;
